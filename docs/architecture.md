@@ -2,58 +2,53 @@
 
 Showduino v1 has one controller and one executor.
 
-This document corrects and locks the first real v1 architecture so the project stays clear and buildable.
+This document locks the weekend test architecture so the project stays clear and buildable.
 
 ## v1 Hardware Rule
 
 For Showduino v1:
 
 ```text
-There is only ONE controller: ESP32 CYD touchscreen.
-There is only ONE executor: Arduino Mega 2560.
-All show hardware connects to the Mega.
-No extra ESP32 nodes are part of v1.
+Controller: ESP32 CYD touchscreen
+Executor:   Arduino Mega 2560
+Hardware on Mega:
+- 4 pixel output lines
+- SD card reader
+- RTC module
+- Audio control layer for local SD/PCM-style audio hardware
+
+Not onboard for first v1:
+- Relay bank
+- DMX
+- Extra ESP32 executor
 ```
 
-Extra ESP32, SUE, ESP-NOW, R3 terminals, wireless nodes, and distributed audio nodes are future expansion ideas only.
-
-They are not part of the first v1 build.
-
-## Core Philosophy
-
-Showduino v1 should be:
-
-- Clear
-- Buildable
-- Repairable
-- Beginner-serviceable
-- Scare attraction focused
-- Safe during live operation
-- Able to run without internet
-- Controlled locally from the CYD touchscreen
-- Designed around scene creation, pixels, and audio
+Relay output is planned later as a separate ESP-NOW expansion node system.
 
 ## System Overview
 
 ```text
 GoreFX Dashboard / Scene Creator
         |
-        | WiFi / local network to CYD
+        | WiFi / local network
         v
 ESP32 CYD Touchscreen Controller
         |
-        | Serial command protocol
+        | UART serial command protocol
         v
 Arduino Mega 2560 Executor
         |
         | Direct hardware wiring
         v
-Relays / DMX / Pixels / Audio Board / Sensors / Props
+4 Pixel Lines / SD Card / RTC / Audio Control Hardware
+
+Future expansion:
+        |
+        v
+ESP-NOW Relay Nodes / Wireless Props / Add-ons
 ```
 
-## What Each Board Does
-
-## 1. CYD Touchscreen Controller
+## CYD Controller Role
 
 The CYD is the user interface and command controller.
 
@@ -61,21 +56,17 @@ Responsibilities:
 
 - Boot screen
 - Main menu
-- Show menu
+- Scene menu
 - Manual controls
-- Scene list
 - Diagnostics
 - Settings
 - Emergency stop button
-- SD card browsing if fitted/used
-- WiFi access point or local network connection
+- WiFi AP/local network connection
 - Receive commands from GoreFX dashboard
-- Send commands to the Mega executor
+- Send commands to Mega
 - Receive status from Mega
 
-The CYD should not directly run the show hardware.
-
-The CYD tells the Mega what to do.
+The CYD does not run the show hardware directly.
 
 Target folder:
 
@@ -83,26 +74,30 @@ Target folder:
 firmware/controller-cyd/
 ```
 
-## 2. Arduino Mega Executor
+## Mega Executor Role
 
-The Mega is the hardware brain.
+The Mega is the v1 hardware brain.
 
-All live show hardware connects here.
+Core hardware connected to the Mega:
+
+- Pixel line 1
+- Pixel line 2
+- Pixel line 3
+- Pixel line 4
+- SD card reader
+- RTC module
+- Audio control/trigger interface
 
 Responsibilities:
 
-- Relay outputs
-- DMX output
-- NeoPixel outputs
-- PCM/local audio board control if connected to Mega
-- Digital inputs
-- Analog inputs
-- Sensors
-- Props
-- Emergency stop behaviour
-- Status reporting
-- Scene playback commands
-- Timeline cue execution where needed
+- Run non-blocking pixel engine
+- Read/check SD card
+- Use RTC for time/date/status
+- Control or trigger local audio hardware
+- Receive commands from CYD
+- Report status to CYD
+- Run scene test timing
+- Handle emergency stop / blackout behaviour
 
 Target folder:
 
@@ -110,87 +105,51 @@ Target folder:
 firmware/executor-mega/
 ```
 
-## 3. GoreFX Dashboard / Scene Creator
+## Important Audio Note
 
-The dashboard is the main scene creation interface.
+A bare PCM5102A board normally expects I2S audio data.
 
-Responsibilities:
+Arduino Mega does not provide native ESP32-style I2S audio output, so the first weekend build treats audio as an abstract control layer until the exact audio board/control method is confirmed.
 
-- Create scenes
-- Edit timeline cues
-- Build pixel effects
-- Add audio cues
-- Add relay cues
-- Add DMX cues
-- Save `.shdo` scene files
-- Send commands to CYD
-- Preview/test cues where possible
-
-The dashboard talks to the CYD, not directly to random hardware.
-
-Target folder:
+The design goal remains:
 
 ```text
-web/gorefx-dashboard/
+Local SD-stored audio, triggered in sync with pixel scenes.
 ```
 
-## Hardware Output Direction
-
-All hardware in v1 should be treated as Mega-connected hardware.
+For testing, the Mega firmware will expose commands like:
 
 ```text
-Mega outputs:
-- 8 relays
-- DMX
-- NeoPixel data lines
-- Audio trigger/control lines or serial/audio board control
-- Sensor inputs
-- Prop outputs
+AUDIO:PLAY:001
+AUDIO:STOP
+AUDIO:VOLUME:80
 ```
 
-## Audio Direction for v1
-
-The desired audio direction is local SD-stored audio using a PCM audio board.
-
-Important v1 clarification:
-
-```text
-The PCM/audio hardware is part of the Mega executor hardware system.
-There is no separate ESP32 audio node in v1.
-```
-
-The exact audio board wiring and control method still needs to be confirmed.
-
-Possible Mega audio approaches:
-
-1. Mega triggers a dedicated SD/PCM audio playback board.
-2. Mega controls an audio playback module over serial/SPI/I2C if supported.
-3. CYD manages files/UI while Mega handles playback commands.
-
-The v1 design must not assume an extra ESP32 exists.
+These commands can later be mapped to the chosen audio board interface.
 
 ## Pixel Direction for v1
 
 Pixels connect to the Mega.
 
-The Mega should run the pixel engine for v1.
-
 Required pixel features:
 
-- Multiple pixel outputs if memory allows
-- Sub-strip support
-- Scene cue support
+- 4 output lines
+- Independent line control
+- Solid colour
+- Pulse
+- Fire/flicker-style effect
+- Strobe
+- Blackout
 - Brightness
-- Colour
 - Speed
 - Duration
-- Non-blocking effects
+- Non-blocking updates
 
 ## Scene Creator Direction
 
-The Scene Creator remains the heart of Showduino.
+The Scene Creator is the heart of Showduino.
 
-But the execution path is:
+Execution path:
 
 ```text
 GoreFX Scene Creator
@@ -199,163 +158,68 @@ CYD Controller
         ↓
 Mega Executor
         ↓
-Pixels / Audio / Relays / DMX
+Pixels / Audio / SD / RTC
 ```
 
-## Command Bridge
+## Weekend Hardware Test Target
 
-The command bridge translates user actions into stable Showduino commands.
-
-Preferred v1 style:
+The first real bench test should prove:
 
 ```text
-CATEGORY:TARGET:ACTION:VALUE
+1. Mega boots.
+2. RTC starts or reports missing.
+3. SD starts or reports missing.
+4. Four pixel lines initialise.
+5. CYD sends HEARTBEAT.
+6. Mega replies STATUS:ALIVE.
+7. CYD sends PIXEL commands.
+8. Mega runs pixel effects.
+9. CYD sends AUDIO commands.
+10. Mega logs/triggers audio abstraction.
+11. CYD sends SCENE:TEST.
+12. Mega plays a timed pixel/audio test scene.
+13. CYD sends EMERGENCY:STOP.
+14. Mega blackouts pixels and stops scene/audio.
 ```
 
-Examples:
+## Core Commands
 
 ```text
-RELAY:1:ON
-RELAY:1:OFF
-RELAY:1:PULSE:3000
-DMX:1:255
-DMX:1-10:0
-AUDIO:PLAY:001
+HEARTBEAT
+STATUS:REQUEST
+PIXEL:ALL:BLACKOUT
+PIXEL:1:COLOR:255,0,0
+PIXEL:1:EFFECT:PULSE
 PIXEL:1:EFFECT:FIRE
-SCENE:LOAD:chamber_intro.shdo
-SCENE:PLAY
+PIXEL:1:EFFECT:STROBE
+AUDIO:PLAY:001
+AUDIO:STOP
+AUDIO:VOLUME:80
+RTC:STATUS
+SD:STATUS
+SCENE:TEST
 SCENE:STOP
 EMERGENCY:STOP
 EMERGENCY:CLEAR
 ```
 
-Rules:
+## Future Expansion, Not Weekend v1
 
-- Commands should be human-readable.
-- Commands should be logged.
-- Commands should receive responses where possible.
-- Emergency commands must be processed first.
-- Old command formats can be supported through compatibility handlers.
+Parked for later:
 
-## Show Files
-
-Showduino v1 should support a human-readable scene/show file format.
-
-Working extension:
-
-```text
-.shdo
-```
-
-Example concept:
-
-```json
-{
-  "name": "Chamber Demo",
-  "version": 1,
-  "duration_ms": 10000,
-  "cues": [
-    {
-      "time_ms": 0,
-      "type": "AUDIO",
-      "command": "AUDIO:PLAY:001"
-    },
-    {
-      "time_ms": 0,
-      "type": "PIXEL",
-      "command": "PIXEL:1:EFFECT:PULSE:255,0,0"
-    },
-    {
-      "time_ms": 7000,
-      "type": "RELAY",
-      "command": "RELAY:1:PULSE:1000"
-    }
-  ]
-}
-```
-
-## Safety Model
-
-Showduino controls real-world props, relays, lights, audio, and potentially scare hardware. Safety must be built in from the start.
-
-Required safety behaviour:
-
-- Emergency stop turns off all relays.
-- Emergency stop blacks out DMX where configured.
-- Emergency stop stops scene playback.
-- Emergency stop stops audio where configured.
-- Emergency stop blacks out/stops pixels where configured.
-- System must boot with relays off.
-- Mega must handle hardware safety even if CYD disconnects.
-- Watchdog/heartbeat should detect communication loss.
-- Manual override must be possible.
-- Dangerous actions should require deliberate confirmation in UI.
-
-## v1 Development Phases
-
-### Phase 0 — Bootstrap
-
-Create docs, structure, audit, and rules.
-
-### Phase 1 — CYD + Mega Communication
-
-Get CYD and Mega talking reliably over serial.
-
-Required demo:
-
-```text
-CYD sends HEARTBEAT
-Mega replies STATUS:ALIVE
-CYD sends RELAY:1:ON
-Mega turns relay 1 on
-CYD sends EMERGENCY:STOP
-Mega makes all outputs safe
-```
-
-### Phase 2 — Mega Pixel Engine
-
-Add non-blocking pixel effects on the Mega.
-
-### Phase 3 — Mega Audio Control
-
-Add local audio board control through the Mega.
-
-### Phase 4 — Scene Playback
-
-Run a timed scene using audio, pixels, and relay cues.
-
-### Phase 5 — GoreFX Scene Creator
-
-Build scene files visually and send/run them through CYD/Mega.
-
-### Phase 6 — DMX and Advanced Outputs
-
-Add DMX cues and advanced hardware features.
-
-### Phase 7 — Release Candidate
-
-Compile, test, document, and tag v1.0.0.
-
-## Future Expansion, Not v1
-
-These ideas are parked for later:
-
+- ESP-NOW relay nodes
+- DMX
 - SUE ESP32-S3 nodes
-- ESP-NOW wireless add-ons
 - R3 terminal nodes
-- Separate audio ESP32
-- Distributed pixel nodes
-- Wireless relay nodes
-
-They are useful future ideas, but they must not confuse the first v1 build.
+- Wireless audio nodes
+- Wireless pixel nodes
 
 ## Final v1 Design Statement
-
-Showduino v1 is:
 
 ```text
 One CYD controller.
 One Mega executor.
-All hardware connected to the Mega.
-Scene creation focused on pixels, audio, and timing.
+Mega handles 4 pixel lines, SD, RTC, and audio control.
+Scene creation focuses on pixels, audio, and timing.
+Relays become a later ESP-NOW expansion system.
 ```
