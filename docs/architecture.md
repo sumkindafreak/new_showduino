@@ -2,224 +2,192 @@
 
 Showduino v1 has one controller and one executor.
 
-This document locks the weekend test architecture so the project stays clear and buildable.
-
-## v1 Hardware Rule
-
-For Showduino v1:
+This document locks the official v1 architecture:
 
 ```text
-Controller: ESP32 CYD touchscreen
-Executor:   Arduino Mega 2560
-Hardware on Mega:
-- 4 pixel output lines
-- SD card reader
-- RTC module
-- Audio control layer for local SD/PCM-style audio hardware
-
-Not onboard for first v1:
-- Relay bank
-- DMX
-- Extra ESP32 executor
+CYD = Director
+Mega = Stage Engine
 ```
 
-Relay output is planned later as a separate ESP-NOW expansion node system.
-
-## System Overview
+## Core Design
 
 ```text
-GoreFX Dashboard / Scene Creator
+GoreFX WebUI / Scene Creator
         |
-        | WiFi / local network
+        | Hosted by CYD
         v
-ESP32 CYD Touchscreen Controller
+ESP32 CYD Director
         |
         | UART serial command protocol
         v
-Arduino Mega 2560 Executor
+Arduino Mega Stage Engine
         |
         | Direct hardware wiring
         v
-4 Pixel Lines / SD Card / RTC / Audio Control Hardware
-
-Future expansion:
-        |
-        v
-ESP-NOW Relay Nodes / Wireless Props / Add-ons
+4 Pixel Lines / Mega SD Runtime Files / RTC / Audio Hardware
 ```
 
-## CYD Controller Role
+## CYD Director
 
-The CYD is the user interface and command controller.
+The CYD is the master controller.
 
-Responsibilities:
+It owns:
 
-- Boot screen
-- Main menu
-- Scene menu
-- Manual controls
-- Diagnostics
+- GoreFX WebUI server
+- Scene Creator
+- Timeline editor
+- Project storage
+- Scene storage
+- Show storage
+- UI assets
+- Themes/icons/images
 - Settings
-- Emergency stop button
-- WiFi AP/local network connection
-- Receive commands from GoreFX dashboard
-- Send commands to Mega
-- Receive status from Mega
+- Web/dashboard access
+- Serial command bridge to Mega
 
-The CYD does not run the show hardware directly.
+The CYD SD card is used for creative/project storage.
 
-Target folder:
+Recommended CYD SD layout:
 
 ```text
-firmware/controller-cyd/
+/scenes/
+  chamber_intro.shdo
+  portal_test.shdo
+
+/shows/
+  chamber_full_show.shdo
+
+/projects/
+  chamber_project.json
+
+/assets/
+  icons/
+  images/
+  themes/
+
+/logs/
+/settings.json
 ```
 
-## Mega Executor Role
+## Mega Stage Engine
 
-The Mega is the v1 hardware brain.
+The Mega is the deterministic runtime executor.
 
-Core hardware connected to the Mega:
+It owns:
 
-- Pixel line 1
-- Pixel line 2
-- Pixel line 3
-- Pixel line 4
-- SD card reader
+- 4 pixel output lines
 - RTC module
-- Audio control/trigger interface
+- Mega SD card for runtime files
+- Audio control/playback hardware
+- Emergency blackout behaviour
+- Local execution of deployed scenes/cues
+- Status reporting back to CYD
 
-Responsibilities:
-
-- Run non-blocking pixel engine
-- Read/check SD card
-- Use RTC for time/date/status
-- Control or trigger local audio hardware
-- Receive commands from CYD
-- Report status to CYD
-- Run scene test timing
-- Handle emergency stop / blackout behaviour
-
-Target folder:
+Recommended Mega SD layout:
 
 ```text
-firmware/executor-mega/
+/audio/
+  001.wav
+  002.wav
+  heartbeat.mp3
+
+/runtime/
+  active_scene.txt
+
+/pixels/
+  fire.tbl
+  portal.tbl
+
+/logs/
 ```
 
-## Important Audio Note
+## SD Card Roles
 
-A bare PCM5102A board normally expects I2S audio data.
+The two SD cards are not duplicates.
 
-Arduino Mega does not provide native ESP32-style I2S audio output, so the first weekend build treats audio as an abstract control layer until the exact audio board/control method is confirmed.
+### CYD SD Card
 
-The design goal remains:
+Purpose:
 
 ```text
-Local SD-stored audio, triggered in sync with pixel scenes.
+Creative/project storage
 ```
 
-For testing, the Mega firmware will expose commands like:
+Stores:
+
+- Scene files
+- Show files
+- WebUI assets
+- Icons/images/themes
+- Project files
+- Settings
+- Backups
+
+### Mega SD Card
+
+Purpose:
 
 ```text
-AUDIO:PLAY:001
-AUDIO:STOP
-AUDIO:VOLUME:80
+Runtime/execution storage
 ```
 
-These commands can later be mapped to the chosen audio board interface.
+Stores:
 
-## Pixel Direction for v1
+- Audio files
+- Runtime compiled scene files
+- Pixel lookup tables
+- Runtime logs
+- Any files needed by the Mega during playback
 
-Pixels connect to the Mega.
+## Scene Deployment Model
 
-Required pixel features:
+The CYD creates and stores scenes.
 
-- 4 output lines
-- Independent line control
-- Solid colour
-- Pulse
-- Fire/flicker-style effect
-- Strobe
-- Blackout
-- Brightness
-- Speed
-- Duration
-- Non-blocking updates
+Before playback, the CYD deploys a simple command list to the Mega.
 
-## Scene Creator Direction
-
-The Scene Creator is the heart of Showduino.
-
-Execution path:
+First version:
 
 ```text
-GoreFX Scene Creator
-        ↓
-CYD Controller
-        ↓
-Mega Executor
-        ↓
-Pixels / Audio / SD / RTC
-```
-
-## Weekend Hardware Test Target
-
-The first real bench test should prove:
-
-```text
-1. Mega boots.
-2. RTC starts or reports missing.
-3. SD starts or reports missing.
-4. Four pixel lines initialise.
-5. CYD sends HEARTBEAT.
-6. Mega replies STATUS:ALIVE.
-7. CYD sends PIXEL commands.
-8. Mega runs pixel effects.
-9. CYD sends AUDIO commands.
-10. Mega logs/triggers audio abstraction.
-11. CYD sends SCENE:TEST.
-12. Mega plays a timed pixel/audio test scene.
-13. CYD sends EMERGENCY:STOP.
-14. Mega blackouts pixels and stops scene/audio.
-```
-
-## Core Commands
-
-```text
-HEARTBEAT
-STATUS:REQUEST
-PIXEL:ALL:BLACKOUT
-PIXEL:1:COLOR:255,0,0
-PIXEL:1:EFFECT:PULSE
-PIXEL:1:EFFECT:FIRE
-PIXEL:1:EFFECT:STROBE
-AUDIO:PLAY:001
-AUDIO:STOP
-AUDIO:VOLUME:80
-RTC:STATUS
-SD:STATUS
 SCENE:TEST
-SCENE:STOP
-EMERGENCY:STOP
-EMERGENCY:CLEAR
 ```
 
-## Future Expansion, Not Weekend v1
+Next version:
 
-Parked for later:
+```text
+SCENE:BEGIN:portal_intro
+CUE:0:AUDIO:PLAY:001
+CUE:0:PIXEL:1:EFFECT:PULSE
+CUE:4000:PIXEL:2:EFFECT:FIRE
+CUE:7000:PIXEL:4:EFFECT:STROBE
+SCENE:END
+SCENE:PLAY
+```
 
-- ESP-NOW relay nodes
-- DMX
-- SUE ESP32-S3 nodes
-- R3 terminal nodes
-- Wireless audio nodes
-- Wireless pixel nodes
+The Mega then runs the scene locally for better timing.
+
+## Weekend Build Target
+
+Tonight/weekend test target:
+
+```text
+1. Upload Mega Stage Engine firmware.
+2. Upload CYD Director test firmware.
+3. Connect CYD TX/RX/GND to Mega Serial1.
+4. CYD sends HEARTBEAT.
+5. Mega replies STATUS:ALIVE.
+6. CYD sends pixel commands.
+7. Mega runs 4 pixel lines.
+8. CYD sends SCENE:TEST.
+9. Mega runs audio/pixel scene test.
+10. CYD sends EMERGENCY:STOP.
+11. Mega blackouts all pixels and stops runtime.
+```
 
 ## Final v1 Design Statement
 
 ```text
-One CYD controller.
-One Mega executor.
-Mega handles 4 pixel lines, SD, RTC, and audio control.
-Scene creation focuses on pixels, audio, and timing.
-Relays become a later ESP-NOW expansion system.
+CYD Director creates, stores, and controls scenes.
+Mega Stage Engine executes runtime hardware.
+CYD SD = projects/scenes/WebUI.
+Mega SD = audio/runtime/pixel tables/logs.
 ```
