@@ -1,224 +1,107 @@
 # Showduino v1
 
-**Showduino v1** is the first clean, unified build of the Showduino scare attraction control system.
+**Showduino v1** is a modular show-control platform for scare attractions, escape rooms, immersive experiences, and interactive props.
 
-This repository is intended to bring together the best parts of the previous Showduino, GoreFX, SUE, controller, and Arduino show control experiments into one stable product-style codebase.
-
-> Working name: `showduino_v1`
-
-## Project Goal
-
-Create one complete, documented, modular control platform for scare attractions, immersive rooms, props, lighting, audio, DMX, relays, sensors, timelines, and touchscreen/web control.
-
-## Core System Pieces
-
-### 1. Touchscreen Controller
-
-Target hardware:
-
-- ESP32 CYD / ESP32-2432S028R style touchscreen
-- TFT display
-- XPT2046 touch
-- SD card
-- WiFi AP / STA
-- Serial connection to Mega or executor board
-
-Purpose:
-
-- Local control panel
-- Show selection
-- Diagnostics
-- Manual trigger controls
-- Settings
-- SD show file management
-- Status display
-
-Source references:
-
-- `sumkindafreak/Showduino-controller`
-- `sumkindafreak/showduino-complete-code`
-
-### 2. Main Executor Firmware
-
-Target hardware:
-
-- Arduino Mega 2560 initially
-- Future ESP32-S3 executor option
-
-Purpose:
-
-- Relays
-- DMX
-- MP3 / audio players
-- NeoPixel outputs
-- Sensors / inputs
-- Emergency stop
-- Timeline command execution
-
-Source references:
-
-- `sumkindafreak/arduino_show_controller`
-- `sumkindafreak/showduino-complete-code`
-- `sumkindafreak/showduino-scare-control-system`
-
-### 3. SUE / ESP32-S3 Add-on Node
-
-Target hardware:
-
-- ESP32-S3 XH3SE / SUE-style board
-- FastLED output
-- RTC
-- SD card
-- relay outputs
-- PCM5102A I2S audio
-- ESP-NOW communication
-
-Purpose:
-
-- Wireless prop node
-- Audio node
-- Relay node
-- Scare effect node
-- Future expansion node
-
-Source references:
-
-- `sumkindafreak/SHOWDUINO---SUE`
-
-### 4. GoreFX Dashboard
-
-Target platform:
-
-- Vite
-- React
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-
-Purpose:
-
-- Browser dashboard
-- Live controls
-- Timeline editor
-- Show library
-- Audio manager
-- Settings
-- Diagnostics
-- Future community/show sharing
-
-Source references:
-
-- `sumkindafreak/gorefx-shadow-control`
-- `sumkindafreak/showduino-fx-control`
-
-## Planned Repository Structure
+## Current Architecture
 
 ```text
-showduino_v1/
-├── firmware/
-│   ├── controller-cyd/
-│   ├── executor-mega/
-│   ├── sue-esp32s3-node/
-│   └── addon-nodes/
-├── web/
-│   └── gorefx-dashboard/
-├── docs/
-│   ├── architecture.md
-│   ├── migration-plan.md
-│   ├── source-repo-audit.md
-│   ├── serial-protocol.md
-│   ├── hardware-pinout.md
-│   └── setup-guide.md
-├── hardware/
-│   ├── wiring/
-│   ├── pcb-notes/
-│   └── bom.md
-├── examples/
-│   ├── chamber-demo/
-│   ├── relay-test/
-│   ├── dmx-test/
-│   └── audio-test/
-└── tools/
-    └── show-file-tools/
+Phone / Tablet / Laptop
+        │
+     Browser
+        │
+ESP32-S3 Director (5" Touchscreen + WebUI)
+        │ UART
+ESP32-P4 Stage Engine
+        │ UART
+ESP32-C6/C3 ESP-NOW Bridge
+        │ ESP-NOW
+ESP32 Relay Nodes / Future Nodes
 ```
 
-## Development Rules
+## Core Components
 
-1. Every firmware build must compile independently.
-2. All pins must be defined clearly at the top of each firmware project.
-3. Every hardware target gets its own folder.
-4. No secret credentials are committed.
-5. WiFi passwords must live in local config files or be entered through setup UI.
-6. Serial commands must be documented before being added.
-7. Safety actions such as emergency stop must override everything.
-8. Stable builds are tagged as releases.
+### Director (ESP32-S3)
+- 5" touchscreen interface
+- Hosts the GoreFX Studio WebUI
+- Project management
+- Timeline and Flow editors
+- Show library
+- Diagnostics
+- OTA
+- Sends commands to the Stage Engine
 
-## Current Status
+### Stage Engine (ESP32-P4)
+- Deterministic show execution
+- Timeline engine
+- DMX
+- NeoPixels
+- Audio
+- Sensors
+- Safety system
+- Emergency stop
+- Routes relay commands to wireless nodes
 
-Phase 0 has started.
+### ESP-NOW Bridge
+- UART connection to the Stage Engine
+- ESP-NOW gateway
+- Routes commands to wireless nodes
+- Returns acknowledgements and status
 
-The first task is to audit all existing repositories, identify the best source files, and then migrate code into this clean structure.
+### Relay Nodes
+- ESP32 relay modules
+- Wireless over ESP-NOW
+- Local emergency handling
+- Expandable to multiple nodes
 
-## Previous Source Repositories
+## Repository Layout
 
-- https://github.com/sumkindafreak/SHOWDUINO---SUE
-- https://github.com/sumkindafreak/new_showduino
-- https://github.com/sumkindafreak/Showduino-controller
-- https://github.com/sumkindafreak/showduino-complete-code
-- https://github.com/sumkindafreak/gorefx-shadow-control
-- https://github.com/sumkindafreak/showduino-fx-control
-- https://github.com/sumkindafreak/showduino-scare-control-system
-- https://github.com/sumkindafreak/arduino_show_controller
+```text
+firmware/
+ ├── director-s3/
+ ├── stage-engine-p4/
+ ├── espnow-bridge/
+ ├── relay-node-esp32/
+ └── future-nodes/
 
-## Phase Roadmap
+web/
+ └── gorefx-dashboard/
 
-### Phase 0 — Repo Bootstrap
+docs/
+ ├── architecture.md
+ ├── command-protocol.md
+ ├── show-file-format.md
+```
 
-- Create clean structure
-- Add source audit
-- Add architecture plan
-- Add serial protocol draft
-- Add hardware pinout draft
+## Current Progress
 
-### Phase 1 — Stable Hardware Baseline
+✅ React + TypeScript GoreFX dashboard foundation
 
-- Mega executor firmware
-- CYD controller firmware
-- Basic serial protocol
-- Relay test
-- DMX test
-- Audio test
-- NeoPixel test
+✅ Shared Showduino command model
 
-### Phase 2 — Web Dashboard
+✅ Shared show file model
 
-- Bring in GoreFX dashboard
-- Connect dashboard commands to controller/executor
-- Add live controls
-- Add timeline editor foundation
+✅ ESP32-S3 Director UART scaffold
 
-### Phase 3 — Show Files
+✅ ESP32-P4 Stage Engine scaffold
 
-- Define `.shdo` show format
-- Add SD card show loading
-- Add timeline playback
-- Add import/export tools
+✅ ESP-NOW Bridge scaffold
 
-### Phase 4 — Add-on Nodes
+✅ ESP32 Relay Node scaffold
 
-- SUE ESP32-S3 node
-- ESP-NOW command bridge
-- R3 terminal style add-ons
-- Wireless trigger support
+✅ Locked modular architecture
 
-### Phase 5 — Product Polish
+## Long-Term Vision
 
-- Setup guide
-- Wiring diagrams
-- BOM
-- Release builds
-- Example attraction projects
+Showduino is designed as a hardware-independent platform.
 
----
+The WebUI, command protocol and show files remain stable while hardware evolves.
 
-Showduino v1 begins here.
+Current hardware targets:
+- ESP32-S3 Director
+- ESP32-P4 Stage Engine
+- ESP32-C6/C3 Bridge
+- ESP32 Relay Nodes
+
+Future nodes can include lighting, audio, sensors, puzzles, animatronics and custom props using the same command language.
+
+The goal is a scalable ecosystem where attractions can grow from a single controller to distributed wireless systems without changing how shows are created.
