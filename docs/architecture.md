@@ -1,193 +1,215 @@
 # Showduino v1 Architecture
 
-Showduino v1 has one controller and one executor.
-
-This document locks the official v1 architecture:
+Showduino v1 is built around a two-board core system:
 
 ```text
-CYD = Director
-Mega = Stage Engine
+Phone / Tablet / Laptop
+        │
+        │ WiFi browser control
+        ▼
+┌─────────────────────────────┐
+│ Showduino Director          │
+│ ESP32-S3 + 5 inch display   │
+│ Touch UI + WebUI server     │
+└─────────────────────────────┘
+        │
+        │ UART command link
+        ▼
+┌─────────────────────────────┐
+│ Showduino Stage Engine      │
+│ ESP32-P4                    │
+│ Real-time hardware executor │
+└─────────────────────────────┘
+        │
+        ▼
+Relays / DMX / Audio / Pixels / Sensors / Servos / Safety IO
 ```
 
-## Core Design
+## Core decision
+
+The old Arduino Mega executor role is now replaced by the **ESP32-P4 Stage Engine**.
+
+The word `Mega` should only be used historically. The product role is now:
+
+- **Director** — ESP32-S3 touchscreen and WebUI server
+- **Stage Engine** — ESP32-P4 hardware executor
+- **Nodes** — ESP32-C3/C6/S3 wireless props, puzzles and sensors
+- **Studio** — the browser-based editor served from the Director
+
+## 1. Showduino Director
+
+Target hardware:
+
+- ESP32-S3
+- 5 inch 800x480 touchscreen
+- WiFi AP/STA
+- SD card
+- UART link to the Stage Engine
+
+Main responsibilities:
+
+- Serve the GoreFX / Showduino Studio WebUI
+- Run the local touchscreen interface
+- Manage show files and project export/import
+- Send commands to the Stage Engine over UART
+- Display diagnostics and Stage Engine capability information
+- Provide OTA/update features where supported
+- Act as the human-facing control surface
+
+The Director should not directly control dangerous show hardware unless specifically required for a small standalone build.
+
+## 2. Showduino Stage Engine
+
+Target hardware:
+
+- ESP32-P4
+- No WiFi required
+- UART command link from the Director
+- Local IO for relays, DMX, audio, pixels, inputs and safety devices
+
+Main responsibilities:
+
+- Execute commands immediately and reliably
+- Run timed show sequences
+- Handle relays
+- Handle DMX
+- Handle NeoPixels
+- Trigger audio
+- Read sensors and inputs
+- Handle servos/motors where fitted
+- Enforce emergency stop and safe states
+- Keep running even if the Director touchscreen or WebUI crashes
+
+## 3. UART link
+
+Primary communication path:
 
 ```text
-GoreFX WebUI / Scene Creator
-        |
-        | Hosted by CYD
-        v
-ESP32 CYD Director
-        |
-        | UART serial command protocol
-        v
-Arduino Mega Stage Engine
-        |
-        | Direct hardware wiring
-        v
-4 Pixel Lines / Mega SD Runtime Files / RTC / Audio Hardware
+Director ESP32-S3 TX → Stage Engine ESP32-P4 RX
+Director ESP32-S3 RX ← Stage Engine ESP32-P4 TX
+GND shared between both boards
 ```
 
-## CYD Director
-
-The CYD is the master controller.
-
-It owns:
-
-- GoreFX WebUI server
-- Scene Creator
-- Timeline editor
-- Project storage
-- Scene storage
-- Show storage
-- UI assets
-- Themes/icons/images
-- Settings
-- Web/dashboard access
-- Serial command bridge to Mega
-
-The CYD SD card is used for creative/project storage.
-
-Recommended CYD SD layout:
+Default baud rate:
 
 ```text
-/scenes/
-  chamber_intro.shdo
-  portal_test.shdo
+115200
+```
 
-/shows/
-  chamber_full_show.shdo
+Starter command examples:
 
+```text
+HELLO
+STATUS:REQUEST
+SHOW:LOAD:ZombieBurst
+SHOW:START
+SHOW:STOP
+RELAY:1:ON
+RELAY:1:OFF
+RELAY:4:PULSE:2500
+AUDIO:1:PLAY:014
+DMX:10:255
+PIXEL:HELLFIRE
+EMERGENCY:STOP
+EMERGENCY:CLEAR
+```
+
+## 4. Capability handshake
+
+On boot, the Director sends:
+
+```text
+HELLO
+```
+
+The Stage Engine replies with a capability block:
+
+```text
+SHOWDUINO_STAGE_ENGINE
+FW:0.1.0
+RELAYS:8
+DMX:YES
+PIXELS:4
+AUDIO:2
+INPUTS:16
+OUTPUTS:8
+SD:YES
+READY
+```
+
+The Director uses this to enable/disable UI features automatically.
+
+## 5. Safety model
+
+Emergency stop must override everything.
+
+When the Stage Engine receives:
+
+```text
+EMERGENCY:STOP
+```
+
+It should:
+
+- Mark the system as emergency locked
+- Stop running show timelines
+- Turn off relays that should fail-safe off
+- Stop or reduce audio if configured
+- Blackout DMX where configured
+- Stop dangerous motion outputs
+- Keep status reporting alive
+
+The Stage Engine only returns to normal after:
+
+```text
+EMERGENCY:CLEAR
+```
+
+## 6. SD card roles
+
+### Director SD
+
+Creative/project storage:
+
+```text
 /projects/
-  chamber_project.json
-
+/shows/
+/scenes/
 /assets/
-  icons/
-  images/
-  themes/
-
 /logs/
 /settings.json
 ```
 
-## Mega Stage Engine
+### Stage Engine SD
 
-The Mega is the deterministic runtime executor.
-
-It owns:
-
-- 4 pixel output lines
-- RTC module
-- Mega SD card for runtime files
-- Audio control/playback hardware
-- Emergency blackout behaviour
-- Local execution of deployed scenes/cues
-- Status reporting back to CYD
-
-Recommended Mega SD layout:
+Runtime/execution storage:
 
 ```text
 /audio/
-  001.wav
-  002.wav
-  heartbeat.mp3
-
 /runtime/
-  active_scene.txt
-
 /pixels/
-  fire.tbl
-  portal.tbl
-
 /logs/
 ```
 
-## SD Card Roles
+The Director creates and manages shows. The Stage Engine only needs deployed runtime assets.
 
-The two SD cards are not duplicates.
+## 7. Why this architecture
 
-### CYD SD Card
+This split keeps the system reliable:
 
-Purpose:
+- The Director can be rich, visual, editable and networked.
+- The Stage Engine can be deterministic, simple and safe.
+- The live show can continue even if the WebUI disconnects.
+- Future hardware can change without rewriting the whole platform.
 
-```text
-Creative/project storage
-```
+## Current development target
 
-Stores:
+The first concrete build should implement:
 
-- Scene files
-- Show files
-- WebUI assets
-- Icons/images/themes
-- Project files
-- Settings
-- Backups
-
-### Mega SD Card
-
-Purpose:
-
-```text
-Runtime/execution storage
-```
-
-Stores:
-
-- Audio files
-- Runtime compiled scene files
-- Pixel lookup tables
-- Runtime logs
-- Any files needed by the Mega during playback
-
-## Scene Deployment Model
-
-The CYD creates and stores scenes.
-
-Before playback, the CYD deploys a simple command list to the Mega.
-
-First version:
-
-```text
-SCENE:TEST
-```
-
-Next version:
-
-```text
-SCENE:BEGIN:portal_intro
-CUE:0:AUDIO:PLAY:001
-CUE:0:PIXEL:1:EFFECT:PULSE
-CUE:4000:PIXEL:2:EFFECT:FIRE
-CUE:7000:PIXEL:4:EFFECT:STROBE
-SCENE:END
-SCENE:PLAY
-```
-
-The Mega then runs the scene locally for better timing.
-
-## Weekend Build Target
-
-Tonight/weekend test target:
-
-```text
-1. Upload Mega Stage Engine firmware.
-2. Upload CYD Director test firmware.
-3. Connect CYD TX/RX/GND to Mega Serial1.
-4. CYD sends HEARTBEAT.
-5. Mega replies STATUS:ALIVE.
-6. CYD sends pixel commands.
-7. Mega runs 4 pixel lines.
-8. CYD sends SCENE:TEST.
-9. Mega runs audio/pixel scene test.
-10. CYD sends EMERGENCY:STOP.
-11. Mega blackouts all pixels and stops runtime.
-```
-
-## Final v1 Design Statement
-
-```text
-CYD Director creates, stores, and controls scenes.
-Mega Stage Engine executes runtime hardware.
-CYD SD = projects/scenes/WebUI.
-Mega SD = audio/runtime/pixel tables/logs.
-```
+1. Director S3 UART bridge scaffold
+2. Stage Engine P4 command parser scaffold
+3. HELLO/capability handshake
+4. Emergency stop state
+5. Relay command parsing
+6. Status reporting
+7. Later: DMX, pixels, audio, SD show playback and timeline engine
