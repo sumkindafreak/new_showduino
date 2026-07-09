@@ -3,11 +3,16 @@
 
   Clean Showduino/GoreFX base firmware.
 
+  Primary use:
+  - Portable 5" ESP32-S3 control surface
+  - Sends live commands over ESP-NOW to the P4 board's built-in ESP32-C6 bridge
+  - Optional UART remains available as a bench/service fallback
+
   Required Arduino libraries:
   - lvgl 9.x
   - Arduino_GFX_Library
   - TAMC_GT911
-  - ESP32 Arduino core libraries: SPI, SD, FS, Wire
+  - ESP32 Arduino core libraries: SPI, SD, FS, Wire, WiFi, ESP-NOW
 
   Recommended Arduino IDE settings:
   - Board: ESP32S3 Dev Module
@@ -32,6 +37,7 @@
 #include "BoardConfig.h"
 #include "TouchDriver.h"
 #include "ShowduinoUi.h"
+#include "EspNowTransport.h"
 
 // =========================================================
 // Display objects using the manufacturer's RGB pin map
@@ -60,6 +66,7 @@ static lv_color_t *drawBuffer = nullptr;
 
 ShowduinoTouchDriver touchDriver;
 ShowduinoUi ui;
+ShowduinoEspNowTransport espNowTransport;
 
 String usbInputBuffer;
 String stageInputBuffer;
@@ -72,6 +79,7 @@ unsigned long bootMs = 0;
 
 bool stageReady = false;
 bool emergencyLocked = false;
+bool espNowReady = false;
 uint32_t txCount = 0;
 uint32_t rxCount = 0;
 
@@ -142,10 +150,25 @@ void lvglTouchRead(lv_indev_t *indev, lv_indev_data_t *data) {
 }
 
 // =========================================================
-// Stage Engine serial command sender
+// Stage Engine command sender
+// Primary route: ESP-NOW -> built-in ESP32-C6 bridge on the P4 board.
+// Backup route: direct UART for bench/service testing.
 // =========================================================
 void sendToStage(const String &command) {
-  Serial1.println(command);
+  bool sentByEspNow = false;
+
+#if SHOWDUINO_USE_ESPNOW
+  if (espNowReady) {
+    sentByEspNow = espNowTransport.sendCommand(command);
+  }
+#endif
+
+#if SHOWDUINO_USE_UART_FALLBACK
+  if (!sentByEspNow) {
+    Serial1.println(command);
+  }
+#endif
+
   txCount++;
 
   if (command == "EMERGENCY:STOP") emergencyLocked = true;
@@ -153,7 +176,9 @@ void sendToStage(const String &command) {
 
   ui.setTraffic(txCount, rxCount);
   ui.setEmergencyLocked(emergencyLocked);
-  ui.appendLog("TX -> Stage: " + command);
+
+  if (sentByEspNow) ui.appendLog("TX -> P4/C6 ESP-NOW: " + command);
+  else ui.appendLog("TX -> Stage UART fallback: " + command);
 }
 
 void handleUiCommand(const String &command) {
@@ -162,6 +187,7 @@ void handleUiCommand(const String &command) {
 
 // =========================================================
 // Stage Engine response parser
+// UART responses are mainly for bench/service mode until C6 ACKs are added.
 // =========================================================
 void handleStageLine(String line) {
   line.trim();
@@ -181,6 +207,7 @@ void handleStageLine(String line) {
 }
 
 void readStageSerial() {
+#if SHOWDUINO_USE_UART_FALLBACK
   while (Serial1.available() > 0) {
     char c = (char)Serial1.read();
     if (c == '\n' || c == '\r') {
@@ -196,6 +223,7 @@ void readStageSerial() {
       }
     }
   }
+#endif
 }
 
 // =========================================================
@@ -260,7 +288,7 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("Showduino Director 5in - ESP32-8048S050 starting...");
+  Serial.println("Showduino Portable Director 5in - ESP32-8048S050 starting...");
 
   pinMode(TFT_BL_PIN, OUTPUT);
   setBacklight(true);
@@ -273,7 +301,7 @@ void setup() {
   gfx->setTextColor(WHITE);
   gfx->setTextSize(2);
   gfx->setCursor(20, 20);
-  gfx->println("Showduino 5in booting...");
+  gfx->println("Showduino portable booting...");
 
   initSdCard();
   touchDriver.begin();
@@ -304,10 +332,17 @@ void setup() {
   bootMs = millis();
   ui.setBootTime(bootMs);
   ui.begin(handleUiCommand);
-  ui.appendLog("Showduino OS online on ESP32-8048S050.");
+  ui.appendLog("Showduino portable Director online.");
 
+#if SHOWDUINO_USE_ESPNOW
+  espNowReady = espNowTransport.begin();
+  ui.appendLog(espNowReady ? "ESP-NOW ready: targeting P4/C6 bridge." : "ESP-NOW failed: using UART fallback if wired.");
+#endif
+
+#if SHOWDUINO_USE_UART_FALLBACK
   Serial1.begin(STAGE_ENGINE_BAUD, SERIAL_8N1, STAGE_ENGINE_RX_PIN, STAGE_ENGINE_TX_PIN);
-  Serial.printf("Stage UART: RX=%d TX=%d baud=%d\n", STAGE_ENGINE_RX_PIN, STAGE_ENGINE_TX_PIN, STAGE_ENGINE_BAUD);
+  Serial.printf("Service UART fallback: RX=%d TX=%d baud=%d\n", STAGE_ENGINE_RX_PIN, STAGE_ENGINE_TX_PIN, STAGE_ENGINE_BAUD);
+#endif
 
   lastHeartbeatMs = millis();
   lastHelloMs = 0;
