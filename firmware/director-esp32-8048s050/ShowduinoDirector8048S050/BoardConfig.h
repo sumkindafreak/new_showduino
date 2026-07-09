@@ -77,7 +77,28 @@
 #define I2S_BCLK_PIN 0
 #define I2S_LRC_PIN  18
 
-// Stage Engine UART. IMPORTANT: 19/20 are used by GT911 touch, so we do NOT use them here.
+// =========================================================
+// Portable controller transport
+// =========================================================
+// Primary live link: ESP-NOW from the 5" ESP32-S3 Director to the P4 board's built-in ESP32-C6.
+// The C6 should receive these packets and forward the command to the P4 internally.
+#define SHOWDUINO_USE_ESPNOW 1
+#define SHOWDUINO_USE_UART_FALLBACK 1
+#define SHOWDUINO_ESPNOW_CHANNEL 1
+#define SHOWDUINO_ESPNOW_MAGIC 0x5348444FUL  // "SHDO"
+#define SHOWDUINO_ESPNOW_VERSION 1
+#define SHOWDUINO_ESPNOW_COMMAND_MAX 96
+
+// Replace this with the MAC address of the P4 board's built-in ESP32-C6 bridge.
+// Until confirmed, this is a broadcast-style placeholder and must be changed for reliable pairing.
+#define SHOWDUINO_P4_C6_MAC_0 0xFF
+#define SHOWDUINO_P4_C6_MAC_1 0xFF
+#define SHOWDUINO_P4_C6_MAC_2 0xFF
+#define SHOWDUINO_P4_C6_MAC_3 0xFF
+#define SHOWDUINO_P4_C6_MAC_4 0xFF
+#define SHOWDUINO_P4_C6_MAC_5 0xFF
+
+// Service UART fallback. IMPORTANT: 19/20 are used by GT911 touch, so we do NOT use them here.
 // GPIO43/44 are left free by the LCD/touch/SD pins on this board and work well for a bench UART link.
 #define STAGE_ENGINE_BAUD   115200
 #define STAGE_ENGINE_RX_PIN 44
