@@ -1,0 +1,47 @@
+name: Build ESP32-P4 Stage Engine
+
+on:
+  push:
+    paths:
+      - "stage-engine/esp32-p4/**"
+      - ".github/workflows/p4-stage-engine-build.yml"
+  pull_request:
+    paths:
+      - "stage-engine/esp32-p4/**"
+      - ".github/workflows/p4-stage-engine-build.yml"
+
+jobs:
+  build-p4-stage-engine:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.5
+
+    defaults:
+      run:
+        working-directory: stage-engine/esp32-p4
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show ESP-IDF version
+        run: idf.py --version
+
+      - name: Set ESP32-P4 target
+        run: idf.py set-target esp32p4
+
+      - name: Build Showduino Stage Engine
+        run: idf.py build
+
+      - name: Upload firmware artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showduino-stage-engine-esp32p4
+          path: |
+            stage-engine/esp32-p4/build/*.bin
+            stage-engine/esp32-p4/build/*.elf
+            stage-engine/esp32-p4/build/bootloader/bootloader.bin
+            stage-engine/esp32-p4/build/partition_table/partition-table.bin
+            stage-engine/esp32-p4/build/flasher_args.json
+          if-no-files-found: warn

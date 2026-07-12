@@ -7,7 +7,7 @@
 
 // =========================================================
 // Showduino LVGL 9 UI shell
-// Buttons call the callback below, so the main sketch controls hardware/UART.
+// Buttons call the callback below, so the main sketch controls transport.
 // =========================================================
 
 typedef void (*ShowduinoCommandCallback)(const String &command);
@@ -59,7 +59,7 @@ private:
   lv_obj_t *uptimeLabel = nullptr;
   lv_obj_t *trafficLabel = nullptr;
   lv_obj_t *logLabel = nullptr;
-  lv_style_t styleScreen, stylePanel, styleButton, styleDangerButton, styleTitle, styleSmall;
+  lv_style_t styleScreen, stylePanel, styleButton, styleDangerButton, styleProofButton, styleTitle, styleSmall;
   String uiLogText;
   bool stageReady = false;
   bool emergencyLocked = false;
@@ -117,6 +117,14 @@ private:
     lv_style_set_text_color(&styleDangerButton, lv_color_hex(0xFFFFFF));
     lv_style_set_pad_all(&styleDangerButton, 10);
 
+    lv_style_init(&styleProofButton);
+    lv_style_set_bg_color(&styleProofButton, lv_color_hex(0x163B24));
+    lv_style_set_border_color(&styleProofButton, lv_color_hex(0x63FF8C));
+    lv_style_set_border_width(&styleProofButton, 3);
+    lv_style_set_radius(&styleProofButton, 14);
+    lv_style_set_text_color(&styleProofButton, lv_color_hex(0xFFFFFF));
+    lv_style_set_pad_all(&styleProofButton, 10);
+
     lv_style_init(&styleTitle);
     lv_style_set_text_color(&styleTitle, lv_color_hex(0xFFFFFF));
     lv_style_set_text_letter_space(&styleTitle, 2);
@@ -148,10 +156,10 @@ private:
     return label;
   }
 
-  lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int x, int y, int w, int h, const char *command, bool danger = false) {
+  lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int x, int y, int w, int h, const char *command, bool danger = false, bool proof = false) {
     lv_obj_t *button = lv_button_create(parent);
     lv_obj_remove_style_all(button);
-    lv_obj_add_style(button, danger ? &styleDangerButton : &styleButton, 0);
+    lv_obj_add_style(button, proof ? &styleProofButton : (danger ? &styleDangerButton : &styleButton), 0);
     lv_obj_set_pos(button, x, y);
     lv_obj_set_size(button, w, h);
     lv_obj_add_event_cb(button, staticEventHandler, LV_EVENT_CLICKED, this);
@@ -198,10 +206,10 @@ private:
     createLogPanel(desktopScreen);
     lv_obj_t *main = makePanel(desktopScreen, 12, 86, 470, 292);
     makeLabel(main, "ESP32-8048S050 CONTROL SURFACE", 8, 8);
-    makeLabel(main, "LVGL 9 + Arduino_GFX + GT911 touch", 8, 38);
-    makeLabel(main, "Director -> Stage Engine UART -> FX hardware", 8, 66);
+    makeLabel(main, "Tonight proof: touchscreen -> C6 -> P4 LED", 8, 38);
+    makeLabel(main, "Director sends LED:TOGGLE over ESP-NOW", 8, 66);
     makeButton(main, "LIVE CONTROL", 12, 108, 190, 56, "SCREEN:LIVE");
-    makeButton(main, "SHOW LIBRARY", 222, 108, 190, 56, "SCREEN:SHOWS");
+    makeButton(main, "P4 LED TOGGLE", 222, 108, 190, 56, "LED:TOGGLE", false, true);
     makeButton(main, "DIAGNOSTICS", 12, 184, 190, 56, "SCREEN:DIAG");
     makeButton(main, "HELLO STAGE", 222, 184, 190, 56, "HELLO");
 
@@ -211,12 +219,12 @@ private:
     createLogPanel(liveScreen);
     lv_obj_t *live = makePanel(liveScreen, 12, 86, 470, 292);
     makeLabel(live, "FAST ACTIONS", 8, 8);
-    makeButton(live, "SHOW START", 12, 46, 140, 52, "SHOW:START");
-    makeButton(live, "SHOW STOP", 164, 46, 140, 52, "SHOW:STOP");
-    makeButton(live, "STATUS", 316, 46, 120, 52, "STATUS:REQUEST");
-    makeButton(live, "RELAY 1 ON", 12, 116, 140, 52, "RELAY:1:ON");
-    makeButton(live, "RELAY 1 OFF", 164, 116, 140, 52, "RELAY:1:OFF");
-    makeButton(live, "PULSE 1s", 316, 116, 120, 52, "RELAY:1:PULSE:1000");
+    makeButton(live, "P4 LED TOGGLE", 12, 46, 140, 52, "LED:TOGGLE", false, true);
+    makeButton(live, "LED ON", 164, 46, 140, 52, "LED:ON", false, true);
+    makeButton(live, "LED OFF", 316, 46, 120, 52, "LED:OFF");
+    makeButton(live, "SHOW START", 12, 116, 140, 52, "SHOW:START");
+    makeButton(live, "SHOW STOP", 164, 116, 140, 52, "SHOW:STOP");
+    makeButton(live, "STATUS", 316, 116, 120, 52, "STATUS:REQUEST");
     makeButton(live, "HELLFIRE FX", 12, 186, 140, 52, "PIXEL:HELLFIRE");
     makeButton(live, "AUDIO 001", 164, 186, 140, 52, "AUDIO:1:PLAY:001");
     makeButton(live, "E-CLEAR", 316, 186, 120, 52, "EMERGENCY:CLEAR");
@@ -238,11 +246,11 @@ private:
     createLogPanel(diagnosticsScreen);
     lv_obj_t *diag = makePanel(diagnosticsScreen, 12, 86, 470, 292);
     makeLabel(diag, "SYSTEM CHECKS", 8, 8);
-    makeLabel(diag, "Display: ST7262 RGB 800x480", 8, 46);
-    makeLabel(diag, "Touch: GT911 I2C", 8, 78);
+    makeLabel(diag, "Proof command: LED:TOGGLE", 8, 46);
+    makeLabel(diag, "Touch -> ESP-NOW -> C6 bridge -> P4 UART", 8, 78);
     makeLabel(diag, "Storage: SPI SD ready", 8, 110);
     makeButton(diag, "REQUEST STATUS", 12, 170, 190, 56, "STATUS:REQUEST");
-    makeButton(diag, "SELF TEST", 222, 170, 190, 56, "SELFTEST:START");
+    makeButton(diag, "P4 LED TOGGLE", 222, 170, 190, 56, "LED:TOGGLE", false, true);
 
     settingsScreen = makeScreen();
     createTopBar(settingsScreen, "SETTINGS");
@@ -250,9 +258,9 @@ private:
     createLogPanel(settingsScreen);
     lv_obj_t *settings = makePanel(settingsScreen, 12, 86, 470, 292);
     makeLabel(settings, "SHOWDUINO OS SETTINGS", 8, 8);
-    makeLabel(settings, "Theme: Neon / CRT / Inferno foundation", 8, 46);
-    makeLabel(settings, "Network: AP + STA next", 8, 78);
-    makeLabel(settings, "Storage: SD project folders next", 8, 110);
+    makeLabel(settings, "Network: ESP-NOW portable Director", 8, 46);
+    makeLabel(settings, "Fallback: service UART", 8, 78);
+    makeLabel(settings, "Tonight target: P4 LED proof", 8, 110);
     makeButton(settings, "HELLO STAGE", 12, 170, 190, 56, "HELLO");
     makeButton(settings, "CLEAR E-STOP", 222, 170, 190, 56, "EMERGENCY:CLEAR");
   }
