@@ -29,25 +29,40 @@ sendCommand("LED:TOGGLE");
 
 The UI does not need to know whether a command is delivered through ESP-NOW, Ethernet, USB, or a simulator.
 
-When the Director code is ready, it will be reviewed and integrated into this repository without rewriting the finished interface.
+When the Director code is ready, it will be reviewed and integrated without rewriting the finished interface.
 
 ### Stage Engine workstream — repository backend
 
-Current repository development focuses on the Waveshare ESP32-P4-Module-DEV-KIT backend:
+Native ESP-IDF development is now active under:
 
-- ESP32-P4 Stage Engine runtime
-- built-in ESP32-C6 wireless subsystem
-- supported P4↔C6 SDIO communication path
-- Ethernet services
-- USB Host services
-- SD-card storage
-- Showduino Protocol
-- command routing
-- discovery
-- ACK and retry handling
-- emergency priority
-- local safety behaviour
-- logging and diagnostics
+```text
+stage-engine/esp32-p4/
+```
+
+The first P4 implementation includes:
+
+- runtime state machine
+- transport-independent command router
+- latched emergency handling
+- safe-output service
+- GPIO23 proof output
+- USB/serial console testing
+- command counters and timestamps
+- periodic runtime diagnostics
+
+Supported proof commands:
+
+```text
+HELLO
+STATUS:REQUEST
+SHOW:START
+SHOW:STOP
+LED:ON
+LED:OFF
+LED:TOGGLE
+EMERGENCY:STOP
+EMERGENCY:CLEAR
+```
 
 ## Confirmed Stage Engine hardware
 
@@ -105,6 +120,16 @@ The P4 owns:
 - audio/video services
 - device and plugin services
 
+## Immediate backend sequence
+
+1. Build and flash the native P4 runtime.
+2. Confirm USB console commands.
+3. Confirm the GPIO23 proof output.
+4. Implement the supported P4/C6 SDIO transport.
+5. Feed C6 messages into the existing command router.
+6. Return ACK and status responses through the C6.
+7. Bring up Ethernet and USB Host as independent services.
+
 ## Immediate integration milestone
 
 Once the finished Director code is shared, the first end-to-end proof is:
@@ -120,9 +145,9 @@ Built-in ESP32-C6
     ↓
 Supported SDIO link
     ↓
-ESP32-P4 Stage Engine
+ESP32-P4 Stage Engine command router
     ↓
-Test GPIO or LED changes state
+GPIO23 changes state
 ```
 
 ## Rules
