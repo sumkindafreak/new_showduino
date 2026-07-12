@@ -6,11 +6,6 @@
 #include <esp_now.h>
 #include "BoardConfig.h"
 
-// =========================================================
-// Showduino ESP-NOW transport
-// Portable Director S3 -> P4 board built-in ESP32-C6 wireless bridge
-// =========================================================
-
 struct ShowduinoEspNowPacket {
   uint32_t magic;
   uint16_t version;
@@ -43,8 +38,9 @@ public:
     peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
     peerInfo.encrypt = false;
 
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-      Serial.println("ESP-NOW: failed to add P4/C6 bridge peer.");
+    esp_err_t peerResult = esp_now_add_peer(&peerInfo);
+    if (peerResult != ESP_OK && peerResult != ESP_ERR_ESPNOW_EXIST) {
+      Serial.printf("ESP-NOW: failed to add P4/C6 bridge peer: %d\n", (int)peerResult);
       online = false;
       return false;
     }
@@ -66,16 +62,12 @@ public:
     packet.sentMillis = millis();
     command.substring(0, SHOWDUINO_ESPNOW_COMMAND_MAX - 1).toCharArray(packet.command, SHOWDUINO_ESPNOW_COMMAND_MAX);
 
-    esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
+    esp_err_t result = esp_now_send(stageBridgeMac, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     lastSendOk = (result == ESP_OK);
     lastCommand = command;
     lastSequence = packet.sequence;
 
-    if (!lastSendOk) {
-      Serial.print("ESP-NOW: send failed for command: ");
-      Serial.println(command);
-    }
-
+    Serial.printf("ESP-NOW: queued seq=%u cmd=%s result=%d\n", packet.sequence, packet.command, (int)result);
     return lastSendOk;
   }
 
@@ -100,8 +92,14 @@ private:
     SHOWDUINO_P4_C6_MAC_5
   };
 
+#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+  static void onSentStatic(const esp_now_send_info_t *txInfo, esp_now_send_status_t status) {
+    (void)txInfo;
+#else
   static void onSentStatic(const uint8_t *macAddr, esp_now_send_status_t status) {
-    Serial.print("ESP-NOW: send status = ");
+    (void)macAddr;
+#endif
+    Serial.print("ESP-NOW: radio delivery = ");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "delivered" : "failed");
   }
 
