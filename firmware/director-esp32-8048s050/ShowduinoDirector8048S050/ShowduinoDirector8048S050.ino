@@ -1,8 +1,6 @@
 /*
   Showduino Director 5" - ESP32-8048S050 / ESP32-S3 RGB display
 
-  Clean Showduino/GoreFX base firmware.
-
   Primary use:
   - Portable 5" ESP32-S3 control surface
   - Sends live commands over ESP-NOW to the P4 board's built-in ESP32-C6 bridge
@@ -12,16 +10,7 @@
   - lvgl 9.x
   - Arduino_GFX_Library
   - TAMC_GT911
-  - ESP32 Arduino core libraries: SPI, SD, FS, Wire, WiFi, ESP-NOW
-
-  Recommended Arduino IDE settings:
-  - Board: ESP32S3 Dev Module
-  - USB CDC On Boot: Enabled
-  - CPU Frequency: 240MHz
-  - Flash Size: 16MB
-  - Flash Mode: QIO 80MHz
-  - PSRAM: OPI PSRAM / Enabled
-  - Serial Monitor: 115200 baud
+  - XPT2046_Touchscreen (only for resistive panel variants)
 */
 
 #include <Arduino.h>
@@ -39,27 +28,21 @@
 #include "ShowduinoUi.h"
 #include "EspNowTransport.h"
 
-// =========================================================
-// Display objects using the manufacturer's RGB pin map
-// =========================================================
-Arduino_ESP32RGBPanel *rgbBus = new Arduino_ESP32RGBPanel(
-  GFX_NOT_DEFINED, GFX_NOT_DEFINED, GFX_NOT_DEFINED,
+Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
   RGB_DE_PIN, RGB_VSYNC_PIN, RGB_HSYNC_PIN, RGB_PCLK_PIN,
   RGB_R0_PIN, RGB_R1_PIN, RGB_R2_PIN, RGB_R3_PIN, RGB_R4_PIN,
   RGB_G0_PIN, RGB_G1_PIN, RGB_G2_PIN, RGB_G3_PIN, RGB_G4_PIN, RGB_G5_PIN,
-  RGB_B0_PIN, RGB_B1_PIN, RGB_B2_PIN, RGB_B3_PIN, RGB_B4_PIN
+  RGB_B0_PIN, RGB_B1_PIN, RGB_B2_PIN, RGB_B3_PIN, RGB_B4_PIN,
+  RGB_HSYNC_POLARITY, RGB_HSYNC_FRONT, RGB_HSYNC_PULSE, RGB_HSYNC_BACK,
+  RGB_VSYNC_POLARITY, RGB_VSYNC_FRONT, RGB_VSYNC_PULSE, RGB_VSYNC_BACK,
+  RGB_PCLK_ACTIVE_NEG, RGB_PREFER_SPEED, false,
+  0, 0, 0
 );
 
-Arduino_RPi_DPI_RGBPanel *gfx = new Arduino_RPi_DPI_RGBPanel(
-  rgbBus,
-  SCREEN_WIDTH, RGB_HSYNC_POLARITY, RGB_HSYNC_FRONT, RGB_HSYNC_PULSE, RGB_HSYNC_BACK,
-  SCREEN_HEIGHT, RGB_VSYNC_POLARITY, RGB_VSYNC_FRONT, RGB_VSYNC_PULSE, RGB_VSYNC_BACK,
-  RGB_PCLK_ACTIVE_NEG, RGB_PREFER_SPEED, true
+Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
+  SCREEN_WIDTH, SCREEN_HEIGHT, rgbpanel, 0, true
 );
 
-// =========================================================
-// Global objects and variables
-// =========================================================
 static lv_display_t *displayHandle = nullptr;
 static lv_indev_t *touchInputHandle = nullptr;
 static lv_color_t *drawBuffer = nullptr;
@@ -83,17 +66,11 @@ bool espNowReady = false;
 uint32_t txCount = 0;
 uint32_t rxCount = 0;
 
-// =========================================================
-// Backlight helper
-// =========================================================
 void setBacklight(bool on) {
   digitalWrite(TFT_BL_PIN, on ? TFT_BL_ON : TFT_BL_OFF);
   Serial.println(on ? "Backlight: ON" : "Backlight: OFF");
 }
 
-// =========================================================
-// SD card helper
-// =========================================================
 void initSdCard() {
   Serial.println("SD: starting SPI bus...");
   pinMode(SD_CS_PIN, OUTPUT);
@@ -117,26 +94,18 @@ void initSdCard() {
   else if (cardType == CARD_SDHC) Serial.println("SDHC");
   else Serial.println("UNKNOWN");
 
-  uint64_t cardSizeMb = SD.cardSize() / (1024 * 1024);
-  Serial.printf("SD: card size = %llu MB\n", cardSizeMb);
+  Serial.printf("SD: card size = %llu MB\n", SD.cardSize() / (1024 * 1024));
 }
 
-// =========================================================
-// LVGL display flush callback
-// Sends LVGL's rendered pixels to the RGB panel.
-// =========================================================
 void lvglFlush(lv_display_t *display, const lv_area_t *area, uint8_t *pixelMap) {
   uint32_t width = (uint32_t)(area->x2 - area->x1 + 1);
   uint32_t height = (uint32_t)(area->y2 - area->y1 + 1);
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)pixelMap, width, height);
+  gfx->draw16bitRGBBitmap(area->x1, area->y1, reinterpret_cast<uint16_t *>(pixelMap), width, height);
   lv_display_flush_ready(display);
 }
 
-// =========================================================
-// LVGL touch read callback
-// Converts GT911 touch into LVGL pointer events.
-// =========================================================
 void lvglTouchRead(lv_indev_t *indev, lv_indev_data_t *data) {
+  (void)indev;
   uint16_t x = 0;
   uint16_t y = 0;
 
@@ -149,24 +118,15 @@ void lvglTouchRead(lv_indev_t *indev, lv_indev_data_t *data) {
   }
 }
 
-// =========================================================
-// Stage Engine command sender
-// Primary route: ESP-NOW -> built-in ESP32-C6 bridge on the P4 board.
-// Backup route: direct UART for bench/service testing.
-// =========================================================
 void sendToStage(const String &command) {
   bool sentByEspNow = false;
 
 #if SHOWDUINO_USE_ESPNOW
-  if (espNowReady) {
-    sentByEspNow = espNowTransport.sendCommand(command);
-  }
+  if (espNowReady) sentByEspNow = espNowTransport.sendCommand(command);
 #endif
 
 #if SHOWDUINO_USE_UART_FALLBACK
-  if (!sentByEspNow) {
-    Serial1.println(command);
-  }
+  if (!sentByEspNow) Serial1.println(command);
 #endif
 
   txCount++;
@@ -185,10 +145,6 @@ void handleUiCommand(const String &command) {
   sendToStage(command);
 }
 
-// =========================================================
-// Stage Engine response parser
-// UART responses are mainly for bench/service mode until C6 ACKs are added.
-// =========================================================
 void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
@@ -196,8 +152,7 @@ void handleStageLine(String line) {
   rxCount++;
   ui.appendLog("RX <- Stage: " + line);
 
-  if (line == "READY") stageReady = true;
-  if (line == "STATUS:READY") stageReady = true;
+  if (line == "READY" || line == "STATUS:READY") stageReady = true;
   if (line == "STATUS:EMERGENCY_LOCKED") emergencyLocked = true;
   if (line == "STATUS:EMERGENCY_CLEARED") emergencyLocked = false;
 
@@ -226,15 +181,12 @@ void readStageSerial() {
 #endif
 }
 
-// =========================================================
-// USB Serial command bridge for bench testing
-// =========================================================
 void handleUsbLine(String command) {
   command.trim();
   if (command.length() == 0) return;
 
   if (command == "HELP") {
-    ui.appendLog("USB commands: HELLO, STATUS:REQUEST, SHOW:START, SHOW:STOP, RELAY:1:ON, RELAY:1:OFF, EMERGENCY:STOP, EMERGENCY:CLEAR");
+    ui.appendLog("Commands: HELLO, STATUS:REQUEST, LED:ON, LED:OFF, LED:TOGGLE, SHOW:START, SHOW:STOP, EMERGENCY:STOP, EMERGENCY:CLEAR");
     return;
   }
 
@@ -259,9 +211,6 @@ void readUsbSerial() {
   }
 }
 
-// =========================================================
-// Automatic Stage Engine heartbeat / hello
-// =========================================================
 void sendHeartbeatIfDue() {
   unsigned long now = millis();
   if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
@@ -280,40 +229,41 @@ void sendHelloIfNeeded() {
   }
 }
 
-// =========================================================
-// Setup
-// =========================================================
 void setup() {
   Serial.begin(USB_DEBUG_BAUD);
   delay(500);
 
   Serial.println();
-  Serial.println("Showduino Portable Director 5in - ESP32-8048S050 starting...");
+  Serial.println("Showduino Portable Director starting...");
 
   pinMode(TFT_BL_PIN, OUTPUT);
   setBacklight(true);
+
+  touchDriver.begin();
 
   Serial.println("Display: starting RGB panel...");
   if (!gfx->begin()) Serial.println("Display: gfx->begin() failed.");
   else Serial.println("Display: RGB panel ready.");
 
-  gfx->fillScreen(BLACK);
-  gfx->setTextColor(WHITE);
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->setTextColor(RGB565_WHITE);
   gfx->setTextSize(2);
   gfx->setCursor(20, 20);
   gfx->println("Showduino portable booting...");
 
   initSdCard();
-  touchDriver.begin();
 
-  Serial.println("LVGL: starting...");
+  if (!touchDriver.isReady()) {
+    Serial.println("Touch: init failed - check panel variant.");
+  }
+
   lv_init();
 
   size_t bufferPixels = SCREEN_WIDTH * LVGL_BUFFER_LINES;
-  drawBuffer = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  drawBuffer = static_cast<lv_color_t *>(heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (drawBuffer == nullptr) {
     Serial.println("LVGL: PSRAM buffer failed, trying internal RAM...");
-    drawBuffer = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    drawBuffer = static_cast<lv_color_t *>(heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   }
 
   if (drawBuffer == nullptr) {
@@ -353,9 +303,6 @@ void setup() {
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
 }
 
-// =========================================================
-// Main loop
-// =========================================================
 void loop() {
   unsigned long now = millis();
   unsigned long elapsed = now - lastLvglTickMs;
