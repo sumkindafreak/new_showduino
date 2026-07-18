@@ -1,119 +1,75 @@
-# Showduino Portable Director 5in - ESP32-8048S050
-
-Clean Showduino/GoreFX base firmware for the 5.0 inch ESP32-8048S050 ESP32-S3 RGB display.
-
-This is now designed as a **portable detachable Showduino controller**:
+# Showduino Director — ESP32-8048S043 / 8048S050
 
 ```text
-5in ESP32-S3 Director  ->  ESP-NOW  ->  P4 board built-in ESP32-C6 bridge  ->  UART/internal link  ->  ESP32-P4 Stage Engine
+Status: ACTIVE
+Role: Showduino Director
 ```
 
-UART from the 5in Director is kept only as a bench/service fallback.
+Commands and displays only. Canonical active Director firmware.
 
-## What this firmware includes
+```text
+Director ESP32-S3
+    → ESP-NOW
+Communications Engine ESP32-C3
+    → UART
+Show Engine ESP32-P4 (Stage Controller)
+```
 
-- 800x480 ST7262 RGB display via Arduino_GFX
-- GT911 capacitive touch
-- LVGL 9 UI shell
-- SPI SD card initialisation
-- ESP-NOW portable controller transport
-- UART fallback/service mode
-- Emergency stop / clear buttons
-- Live control, show library, diagnostics and settings screens
-- Serial Monitor debug bridge
+This sketch does **not** host or proxy the primary Web UI. USB Serial is for flash/diagnostics only, not the normal show path.
 
-## Folder layout
+## Architectural notes
+
+- The Show Engine is the single source of truth. Director actions are **requests**.
+- Existing SD show/config helpers under `ShowduinoDirector8048S050/src/` are **temporary implementation details**, not the final authoritative project store.
+- Application policy: absolute relay states (ON/OFF), not distributed `TOGGLE` (firmware may still contain legacy TOGGLE — to be removed in a later stage).
+- Display of successful output state should follow Show Engine confirmation (ACK / state publish); that behaviour is a known follow-up, not claimed complete here.
+
+## What this firmware includes today
+
+- 800×480 ST7262 RGB + GT911 touch + LVGL 9 UI
+- ESP‑NOW transport to the Communications Engine (`EspNowTransport.h`)
+- Optional UART fallback flags in `BoardConfig.h` (keep off for normal use)
+- Emergency / live control / diagnostics screens
+- SD storage subsystem for UI assets and temporary data
+
+## Sketch location
 
 ```text
 firmware/director-esp32-8048s050/ShowduinoDirector8048S050/
-  ShowduinoDirector8048S050.ino
-  BoardConfig.h
-  TouchDriver.h
-  ShowduinoUi.h
-  EspNowTransport.h
-
-firmware/p4-c6-espnow-bridge/ShowduinoP4C6EspNowBridge/
-  ShowduinoP4C6EspNowBridge.ino
 ```
 
-## Arduino IDE settings for the 5in Director
+Diagnostic sibling (not product firmware):
 
-Try these first:
-
-- Board: `ESP32S3 Dev Module`
-- USB CDC On Boot: `Enabled`
-- CPU Frequency: `240MHz`
-- Flash Size: `16MB`
-- Flash Mode: `QIO 80MHz`
-- PSRAM: `OPI PSRAM` / `Enabled`
-- Partition Scheme: `16M Flash` or `Huge APP`
-- Serial Monitor: `115200 baud`
-
-## Required Director libraries
-
-Install these in Arduino IDE Library Manager:
-
-- `lvgl` 9.x
-- `Arduino_GFX_Library`
-- `TAMC_GT911`
-
-The ESP32 core provides `SPI`, `SD`, `FS`, `Wire`, `WiFi`, and ESP-NOW.
-
-## Important pin notes
-
-The manufacturer SDK uses GPIO19/GPIO20 for GT911 touch I2C. Because of that, the old Stage UART pins must not use 19/20 on this 5in board.
-
-Service UART fallback in `BoardConfig.h`:
-
-- RX: GPIO44
-- TX: GPIO43
-- Baud: 115200
-
-The live control path should be ESP-NOW to the P4 board's built-in C6.
-
-## ESP-NOW pairing flow
-
-1. Upload `ShowduinoP4C6EspNowBridge.ino` to the built-in ESP32-C6 side of the P4 board.
-2. Open Serial Monitor at 115200.
-3. Copy the printed C6 MAC address.
-4. Paste that MAC into the Director `BoardConfig.h` fields:
-
-```cpp
-#define SHOWDUINO_P4_C6_MAC_0 0xFF
-#define SHOWDUINO_P4_C6_MAC_1 0xFF
-#define SHOWDUINO_P4_C6_MAC_2 0xFF
-#define SHOWDUINO_P4_C6_MAC_3 0xFF
-#define SHOWDUINO_P4_C6_MAC_4 0xFF
-#define SHOWDUINO_P4_C6_MAC_5 0xFF
+```text
+firmware/director-esp32-8048s050/ShowduinoSdTouchTest/
 ```
 
-5. Upload the 5in Director firmware.
-6. Button commands should now travel wirelessly to the C6 bridge.
+## Pairing (current implementation)
 
-## SDK-derived hardware map
+1. Flash and run `firmware/c3-supermini-espnow-bridge/` (Communications Engine).
+2. Note the C3 MAC from Serial.
+3. Set peer MAC in `ShowduinoDirector8048S050/BoardConfig.h` (`SHOWDUINO_P4_C6_MAC_*` names are historical; values must be the **C3** Communications Engine MAC).
+4. Flash this Director.
+5. Confirm link READY via HELLO / HEARTBEAT.
 
-- LCD: ST7262 RGB, 800x480
-- Backlight: GPIO2
-- Touch: GT911, SDA GPIO19, SCL GPIO20, RST GPIO38
-- SD: CS GPIO10, MOSI GPIO11, SCK GPIO12, MISO GPIO13
-- Audio I2S documented ready: DOUT GPIO17, BCLK GPIO0, LRC GPIO18
+Logical device IDs (not raw MACs) are the long-term application addressing model; MAC fields remain a transport-layer concern until the ID map lands on the Show Engine / Communications Engine.
 
-## First Director test
+## Arduino IDE (Director)
 
-1. Open `ShowduinoDirector8048S050.ino` in Arduino IDE.
-2. Check the board settings above.
-3. Upload.
-4. Open Serial Monitor at 115200.
-5. You should see the Showduino OS UI and touchable buttons.
-6. Type `HELP` into Serial Monitor for bench commands.
+- Board: ESP32S3 Dev Module  
+- USB CDC On Boot: Enabled  
+- Flash: 16MB, QIO 80MHz  
+- **PSRAM: OPI PSRAM** (required)  
+- Serial: 115200  
 
-## Next build step
+Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`.
 
-The next sensible upgrade is to add reliable ACK/retry packets from the C6 bridge back to the portable Director, then add the real SD show browser for:
+## Related active stack
 
-- `/projects`
-- `/shows`
-- `/scenes`
-- `/assets`
+| Role | Path |
+|------|------|
+| Communications Engine | `firmware/c3-supermini-espnow-bridge/` |
+| Show Engine (Stage Controller) | `firmware/stage-engine-p4/` |
+| Relay Node | `firmware/relay-node-esp32/` |
 
-Then the UI can load `.shdo` show files directly from the 5 inch Director.
+See `docs/architecture.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).

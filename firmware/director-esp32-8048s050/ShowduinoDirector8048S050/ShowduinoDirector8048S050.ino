@@ -1,27 +1,26 @@
 /*
-  Showduino Director 5" - ESP32-8048S050 / ESP32-S3 RGB display
+  Showduino Director 5" - ESP32-S3 RGB (JC8048W550C / 8048S050)
 
-  Clean Showduino/GoreFX base firmware.
+  Display / touch bring-up follows BankOfDadLVGL landscape pattern:
+  - RGB bounce buffer
+  - TAMC_GT911 → LVGL
+  - DISPLAY_ROTATION 0 (landscape 800x480)
 
   Primary use:
-  - Portable 5" ESP32-S3 control surface
-  - Sends live commands over ESP-NOW to the P4 board's built-in ESP32-C6 bridge
-  - Optional UART remains available as a bench/service fallback
+  - Portable control surface
+  - ESP-NOW → Communications Engine (C3) → Show Engine (P4)
 
   Required Arduino libraries:
   - lvgl 9.x
   - Arduino_GFX_Library
   - TAMC_GT911
-  - ESP32 Arduino core libraries: SPI, SD, FS, Wire, WiFi, ESP-NOW
 
-  Recommended Arduino IDE settings:
+  Arduino IDE:
   - Board: ESP32S3 Dev Module
   - USB CDC On Boot: Enabled
-  - CPU Frequency: 240MHz
-  - Flash Size: 16MB
-  - Flash Mode: QIO 80MHz
-  - PSRAM: OPI PSRAM / Enabled
-  - Serial Monitor: 115200 baud
+  - Flash Size: 16MB | QIO 80MHz
+  - PSRAM: OPI PSRAM
+  - Partition: app3M_fat9M_16MB
 */
 
 #include <Arduino.h>
@@ -35,36 +34,36 @@
 #include <esp_heap_caps.h>
 
 #include "BoardConfig.h"
-#include "TouchDriver.h"
+#include "lvgl_port.h"
+#include "touch_lvgl.h"
+#include "backlight.h"
 #include "ShowduinoUi.h"
 #include "EspNowTransport.h"
+#include "src/StorageAPI.h"
+#include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_legacy_strings.h"
 
 // =========================================================
-// Display objects using the manufacturer's RGB pin map
+// RGB panel — BankOfDad bounce buffer, landscape rotation 0
 // =========================================================
-Arduino_ESP32RGBPanel *rgbBus = new Arduino_ESP32RGBPanel(
-  GFX_NOT_DEFINED, GFX_NOT_DEFINED, GFX_NOT_DEFINED,
+Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
   RGB_DE_PIN, RGB_VSYNC_PIN, RGB_HSYNC_PIN, RGB_PCLK_PIN,
   RGB_R0_PIN, RGB_R1_PIN, RGB_R2_PIN, RGB_R3_PIN, RGB_R4_PIN,
   RGB_G0_PIN, RGB_G1_PIN, RGB_G2_PIN, RGB_G3_PIN, RGB_G4_PIN, RGB_G5_PIN,
-  RGB_B0_PIN, RGB_B1_PIN, RGB_B2_PIN, RGB_B3_PIN, RGB_B4_PIN
+  RGB_B0_PIN, RGB_B1_PIN, RGB_B2_PIN, RGB_B3_PIN, RGB_B4_PIN,
+  RGB_HSYNC_POLARITY, RGB_HSYNC_FRONT, RGB_HSYNC_PULSE, RGB_HSYNC_BACK,
+  RGB_VSYNC_POLARITY, RGB_VSYNC_FRONT, RGB_VSYNC_PULSE, RGB_VSYNC_BACK,
+  RGB_PCLK_ACTIVE_NEG, RGB_PREFER_SPEED, false,
+  0, 0, RGB_BOUNCE_BUFFER
 );
 
-Arduino_RPi_DPI_RGBPanel *gfx = new Arduino_RPi_DPI_RGBPanel(
-  rgbBus,
-  SCREEN_WIDTH, RGB_HSYNC_POLARITY, RGB_HSYNC_FRONT, RGB_HSYNC_PULSE, RGB_HSYNC_BACK,
-  SCREEN_HEIGHT, RGB_VSYNC_POLARITY, RGB_VSYNC_FRONT, RGB_VSYNC_PULSE, RGB_VSYNC_BACK,
-  RGB_PCLK_ACTIVE_NEG, RGB_PREFER_SPEED, true
+Arduino_RGB_Display *panel = new Arduino_RGB_Display(
+  SCREEN_WIDTH, SCREEN_HEIGHT, rgbpanel, DISPLAY_ROTATION, true
 );
 
-// =========================================================
-// Global objects and variables
-// =========================================================
-static lv_display_t *displayHandle = nullptr;
-static lv_indev_t *touchInputHandle = nullptr;
-static lv_color_t *drawBuffer = nullptr;
+TAMC_GT911 touchDev(TOUCH_SDA_PIN, TOUCH_SCL_PIN, TOUCH_INT_PIN, TOUCH_RST_PIN,
+                    SCREEN_WIDTH, SCREEN_HEIGHT);
 
-ShowduinoTouchDriver touchDriver;
 ShowduinoUi ui;
 ShowduinoEspNowTransport espNowTransport;
 
@@ -75,85 +74,153 @@ unsigned long lastHeartbeatMs = 0;
 unsigned long lastHelloMs = 0;
 unsigned long lastUiRefreshMs = 0;
 unsigned long lastLvglTickMs = 0;
+unsigned long lastStageReplyMs = 0;
+unsigned long lastEspNowRecoverMs = 0;
 unsigned long bootMs = 0;
 
-bool stageReady = false;
+uint8_t linkState = LINK_SEARCHING;
 bool emergencyLocked = false;
 bool espNowReady = false;
+bool linkLostLogged = false;
+bool syncRequested = false;
 uint32_t txCount = 0;
 uint32_t rxCount = 0;
 
-// =========================================================
-// Backlight helper
-// =========================================================
-void setBacklight(bool on) {
-  digitalWrite(TFT_BL_PIN, on ? TFT_BL_ON : TFT_BL_OFF);
-  Serial.println(on ? "Backlight: ON" : "Backlight: OFF");
-}
-
-// =========================================================
-// SD card helper
-// =========================================================
-void initSdCard() {
-  Serial.println("SD: starting SPI bus...");
-  pinMode(SD_CS_PIN, OUTPUT);
-  digitalWrite(SD_CS_PIN, HIGH);
-  SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
-
-  if (!SD.begin(SD_CS_PIN, SPI, 10000000)) {
-    Serial.println("SD: no card mounted or mount failed.");
-    return;
+void markLinkDisconnected(const char *reason);
+void readEspNowReplies();
+void sendToStage(const String &command);
+void requestStateSync();
+void applyLinkState(uint8_t state) {
+  uint8_t prev = linkState;
+  if (linkState == state) return;
+  linkState = state;
+  ui.setLinkState(state);
+  if (state == LINK_DISCONNECTED) {
+    ui.markRelayStaleUnknown();
+    syncRequested = false;
+  } else if (state == LINK_READY && prev != LINK_READY) {
+    requestStateSync();
   }
-
-  uint8_t cardType = SD.cardType();
-  if (cardType == CARD_NONE) {
-    Serial.println("SD: no card attached.");
-    return;
-  }
-
-  Serial.print("SD: card type = ");
-  if (cardType == CARD_MMC) Serial.println("MMC");
-  else if (cardType == CARD_SD) Serial.println("SDSC");
-  else if (cardType == CARD_SDHC) Serial.println("SDHC");
-  else Serial.println("UNKNOWN");
-
-  uint64_t cardSizeMb = SD.cardSize() / (1024 * 1024);
-  Serial.printf("SD: card size = %llu MB\n", cardSizeMb);
+  ui.updateStatusWidgets(false);
 }
 
-// =========================================================
-// LVGL display flush callback
-// Sends LVGL's rendered pixels to the RGB panel.
-// =========================================================
-void lvglFlush(lv_display_t *display, const lv_area_t *area, uint8_t *pixelMap) {
-  uint32_t width = (uint32_t)(area->x2 - area->x1 + 1);
-  uint32_t height = (uint32_t)(area->y2 - area->y1 + 1);
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)pixelMap, width, height);
-  lv_display_flush_ready(display);
-}
-
-// =========================================================
-// LVGL touch read callback
-// Converts GT911 touch into LVGL pointer events.
-// =========================================================
-void lvglTouchRead(lv_indev_t *indev, lv_indev_data_t *data) {
-  uint16_t x = 0;
-  uint16_t y = 0;
-
-  if (touchDriver.read(x, y)) {
-    data->state = LV_INDEV_STATE_PRESSED;
-    data->point.x = x;
-    data->point.y = y;
-  } else {
-    data->state = LV_INDEV_STATE_RELEASED;
+void onStorageStatus(const StorageStatus &st) {
+  static StorageBootStage lastLogged = StorageBootStage::Idle;
+  if (st.stage != lastLogged) {
+    lastLogged = st.stage;
+    Serial.printf("[StorageUI] %s\n", st.bootMessage);
   }
 }
 
 // =========================================================
 // Stage Engine command sender
-// Primary route: ESP-NOW -> built-in ESP32-C6 bridge on the P4 board.
+// Primary route: ESP-NOW -> C3 bridge -> P4 UART.
 // Backup route: direct UART for bench/service testing.
 // =========================================================
+bool isQuietLinkTraffic(const String &msg) {
+  return msg == SHOWDUINO_LEGACY_HEARTBEAT ||
+         msg == SHOWDUINO_LEGACY_ACK_HEARTBEAT ||
+         msg == SHOWDUINO_LEGACY_HELLO ||
+         msg == SHOWDUINO_LEGACY_READY ||
+         msg == SHOWDUINO_LEGACY_SHOWDUINO_STAGE ||
+         msg == "BOOT:STAGE_ENGINE_READY" ||
+         msg == SHOWDUINO_WIRE_SNAPSHOT_BEGIN ||
+         msg == SHOWDUINO_WIRE_SNAPSHOT_END;
+}
+
+// =========================================================
+// Stage Engine response parser (UART fallback + ESP-NOW replies)
+// =========================================================
+void handleStageLine(String line) {
+  line.trim();
+  if (line.length() == 0) return;
+
+  rxCount++;
+  lastStageReplyMs = millis();
+  linkLostLogged = false;
+
+  // Any valid Stage reply proves the link is alive (reconnects from DISCONNECTED).
+  applyLinkState(LINK_READY);
+
+  if (line == SHOWDUINO_WIRE_SNAPSHOT_BEGIN) {
+    ui.beginSnapshot();
+    return;
+  }
+  if (line == SHOWDUINO_WIRE_SNAPSHOT_END) {
+    ui.endSnapshot();
+    syncRequested = false;
+    ui.appendLog("Sync complete");
+    return;
+  }
+
+  ShowduinoShowRuntimeWire showW = showduino_parse_state_show(line.c_str());
+  if (showW != SHOWDUINO_SHOW_WIRE_INVALID) {
+    if (showW == SHOWDUINO_SHOW_WIRE_PLAYING) ui.setShowView(DeskShowView::Playing);
+    else if (showW == SHOWDUINO_SHOW_WIRE_EMERGENCY) ui.setShowView(DeskShowView::Emergency);
+    else ui.setShowView(DeskShowView::Idle);
+    /* Do not treat show STATE as relay confirmation */
+  }
+
+  ShowduinoEmergencyWire emW = showduino_parse_state_emergency(line.c_str());
+  if (emW != SHOWDUINO_EMERGENCY_WIRE_INVALID) {
+    emergencyLocked = (emW == SHOWDUINO_EMERGENCY_WIRE_ACTIVE);
+    ui.setEmergencyLocked(emergencyLocked);
+  }
+
+  /* Legacy emergency companions */
+  if (line == SHOWDUINO_LEGACY_STATUS_ELOCKED) {
+    emergencyLocked = true;
+    ui.setEmergencyLocked(true);
+  }
+  if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
+    emergencyLocked = false;
+    ui.setEmergencyLocked(false);
+  }
+
+  int relayCh = 0;
+  ShowduinoRelayKnowledgeWire relayK = SHOWDUINO_RELAY_WIRE_INVALID;
+  if (showduino_parse_state_relay(line.c_str(), &relayCh, &relayK) == 0) {
+    if (relayK == SHOWDUINO_RELAY_WIRE_ON) ui.noteConfirmedSnapshot((uint8_t)relayCh, true);
+    else if (relayK == SHOWDUINO_RELAY_WIRE_OFF) ui.noteConfirmedSnapshot((uint8_t)relayCh, false);
+    else if (relayK == SHOWDUINO_RELAY_WIRE_UNKNOWN) ui.applyRelayUnknown((uint8_t)relayCh);
+    else if (relayK == SHOWDUINO_RELAY_WIRE_FAULT) ui.applyRelayFault((uint8_t)relayCh);
+  }
+
+  char reason[40];
+  if (showduino_parse_relay_outcome(line.c_str(), SHOWDUINO_WIRE_REJECTED_RELAY_PREFIX,
+                                    &relayCh, reason, sizeof(reason)) == 0) {
+    ui.clearRelayPendingKeepLast((uint8_t)relayCh);
+    ui.appendLog(String("Rejected R") + relayCh + ": " + reason);
+  }
+  if (showduino_parse_relay_outcome(line.c_str(), SHOWDUINO_WIRE_FAILED_RELAY_PREFIX,
+                                    &relayCh, reason, sizeof(reason)) == 0) {
+    ui.clearRelayPendingKeepLast((uint8_t)relayCh);
+    ui.appendLog(String("Failed R") + relayCh + ": " + reason);
+  }
+
+  /* ACCEPTED:RELAY — request accepted, not completed; leave pending visuals */
+  if (line.startsWith(SHOWDUINO_WIRE_ACCEPTED_RELAY_PREFIX)) {
+    /* no confirmed mutation */
+  }
+
+  /* Do NOT treat ACK:RELAY / OK:RELAY as confirmed Stage 3 state.
+     Confirmed display comes only from STATE:RELAY. */
+
+  if (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) ||
+      line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) ||
+      line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX)) {
+    /* Log only — honest failure paths */
+  }
+
+  if (!isQuietLinkTraffic(line)) {
+    ui.appendLog("RX <- Stage: " + line);
+  }
+
+  ui.setEmergencyLocked(emergencyLocked);
+  ui.setTraffic(txCount, rxCount);
+  ui.updateStatusWidgets(false);
+}
+
 void sendToStage(const String &command) {
   bool sentByEspNow = false;
 
@@ -171,39 +238,98 @@ void sendToStage(const String &command) {
 
   txCount++;
 
-  if (command == "EMERGENCY:STOP") emergencyLocked = true;
-  if (command == "EMERGENCY:CLEAR") emergencyLocked = false;
+  /* Emergency lock: E-STOP may set local activating feedback in UI;
+     CLEAR must wait for STATE:EMERGENCY:CLEAR (do not unlock here). */
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_STOP) {
+    emergencyLocked = true;
+    ui.setEmergencyLocked(true);
+  }
 
   ui.setTraffic(txCount, rxCount);
-  ui.setEmergencyLocked(emergencyLocked);
 
-  if (sentByEspNow) ui.appendLog("TX -> P4/C6 ESP-NOW: " + command);
-  else ui.appendLog("TX -> Stage UART fallback: " + command);
+  if (!isQuietLinkTraffic(command)) {
+    if (sentByEspNow) ui.appendLog("TX -> Stage: " + command);
+    else ui.appendLog("TX -> Stage UART: " + command);
+  }
+
+  // Drain any replies that arrived during the blocking send wait.
+  readEspNowReplies();
+}
+
+void requestStateSync() {
+  if (syncRequested) return;
+  syncRequested = true;
+  ui.setSynchronising(true);
+  ui.appendLog("Sync: STATUS:REQUEST");
+  sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
 }
 
 void handleUiCommand(const String &command) {
+  gStorage.setLastCommand(command.c_str());
+  // Do not SD-log every tap — keeps the UI responsive. Critical actions log below.
+  if (command.startsWith("EMERGENCY:") || command.startsWith("STORAGE:") ||
+      command.startsWith("SHOW:") || command == "STOPALL") {
+    logEvent(LogLevel::Event, LogCategory::UserAction, "UI", command.c_str());
+  }
+
+  if (command == "STORAGE:BACKUP") {
+    ui.appendLog(createManualBackup() ? "Backup created" : "Backup failed");
+    return;
+  }
+  if (command == "STORAGE:UNMOUNT") {
+    ui.appendLog(safelyUnmountSD() ? "SD safely unmounted" : "Unmount failed");
+    return;
+  }
+  if (command == "STORAGE:EXPORT") {
+    ui.appendLog(exportDiagnostics() ? "Diagnostics exported" : "Diagnostics export failed");
+    return;
+  }
+  if (command == "STORAGE:REPAIR") {
+    ui.appendLog(gStorage.repairFolders() ? "Folder structure repaired" : "Repair failed");
+    return;
+  }
+  if (command == "STORAGE:STATUS") {
+    const StorageStatus &st = getStorageStatus();
+    char line[160];
+    snprintf(line, sizeof(line), "SD %s %s  free=%lluMB  save=%u",
+             st.mounted ? "OK" : "DOWN",
+             st.cardType,
+             (unsigned long long)(st.freeBytes / (1024 * 1024)),
+             (unsigned)st.saveState);
+    ui.appendLog(line);
+    return;
+  }
+  if (command == "EMERGENCY:STOP") {
+    gStorage.logEmergency("UI", "EMERGENCY:STOP");
+  }
+
   sendToStage(command);
 }
 
-// =========================================================
-// Stage Engine response parser
-// UART responses are mainly for bench/service mode until C6 ACKs are added.
-// =========================================================
-void handleStageLine(String line) {
-  line.trim();
-  if (line.length() == 0) return;
+void markLinkDisconnected(const char *reason) {
+  static unsigned long lastLogMs = 0;
+  const bool alreadyDown = (linkState == LINK_DISCONNECTED);
+  applyLinkState(LINK_DISCONNECTED);
+  lastHelloMs = 0;
+  lastEspNowRecoverMs = 0;
 
-  rxCount++;
-  ui.appendLog("RX <- Stage: " + line);
+  // Rate-limit UI spam when the Stage / C3 bridge is offline.
+  unsigned long now = millis();
+  if (!alreadyDown || !linkLostLogged || (now - lastLogMs) > 30000UL) {
+    linkLostLogged = true;
+    lastLogMs = now;
+    ui.appendLog(String("Stage DISCONNECTED — ") + reason);
+  }
+}
 
-  if (line == "READY") stageReady = true;
-  if (line == "STATUS:READY") stageReady = true;
-  if (line == "STATUS:EMERGENCY_LOCKED") emergencyLocked = true;
-  if (line == "STATUS:EMERGENCY_CLEARED") emergencyLocked = false;
-
-  ui.setStageReady(stageReady);
-  ui.setEmergencyLocked(emergencyLocked);
-  ui.setTraffic(txCount, rxCount);
+void readEspNowReplies() {
+#if SHOWDUINO_USE_ESPNOW
+  if (!espNowReady) return;
+  String reply;
+  while (espNowTransport.popReply(reply)) {
+    handleStageLine(reply);
+  }
+#endif
 }
 
 void readStageSerial() {
@@ -263,6 +389,9 @@ void readUsbSerial() {
 // Automatic Stage Engine heartbeat / hello
 // =========================================================
 void sendHeartbeatIfDue() {
+  // Only probe with HEARTBEAT while linked. HELLO owns reconnect.
+  if (linkState != LINK_READY) return;
+
   unsigned long now = millis();
   if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
     lastHeartbeatMs = now;
@@ -271,13 +400,42 @@ void sendHeartbeatIfDue() {
 }
 
 void sendHelloIfNeeded() {
-  if (stageReady) return;
+  if (linkState == LINK_READY) return;
 
   unsigned long now = millis();
   if (now - lastHelloMs >= HELLO_RETRY_INTERVAL_MS) {
     lastHelloMs = now;
     sendToStage("HELLO");
+
+    // Brief wait for READY/ACK so reconnect isn't delayed a full loop cycle.
+    unsigned long t0 = millis();
+    while ((millis() - t0) < 300UL && linkState != LINK_READY) {
+      readEspNowReplies();
+      delay(5);
+    }
   }
+}
+
+void recoverEspNowIfNeeded() {
+#if SHOWDUINO_USE_ESPNOW
+  if (!espNowReady) return;
+  if (linkState == LINK_READY) return;
+
+  unsigned long now = millis();
+  if (now - lastEspNowRecoverMs < ESPNOW_RECOVER_MS) return;
+  lastEspNowRecoverMs = now;
+  espNowTransport.recover();
+#endif
+}
+
+void checkLinkWatchdog() {
+  if (linkState != LINK_READY) return;
+  if (lastStageReplyMs == 0) return;
+
+  unsigned long now = millis();
+  if (now - lastStageReplyMs < LINK_TIMEOUT_MS) return;
+
+  markLinkDisconnected("no heartbeat reply");
 }
 
 // =========================================================
@@ -288,51 +446,64 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("Showduino Portable Director 5in - ESP32-8048S050 starting...");
+  Serial.println("Showduino Portable Director 5in - JC8048W550C starting...");
 
-  pinMode(TFT_BL_PIN, OUTPUT);
-  setBacklight(true);
-
-  Serial.println("Display: starting RGB panel...");
-  if (!gfx->begin()) Serial.println("Display: gfx->begin() failed.");
-  else Serial.println("Display: RGB panel ready.");
-
-  gfx->fillScreen(BLACK);
-  gfx->setTextColor(WHITE);
-  gfx->setTextSize(2);
-  gfx->setCursor(20, 20);
-  gfx->println("Showduino portable booting...");
-
-  initSdCard();
-  touchDriver.begin();
-
-  Serial.println("LVGL: starting...");
-  lv_init();
-
-  size_t bufferPixels = SCREEN_WIDTH * LVGL_BUFFER_LINES;
-  drawBuffer = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (drawBuffer == nullptr) {
-    Serial.println("LVGL: PSRAM buffer failed, trying internal RAM...");
-    drawBuffer = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * bufferPixels, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (!psramFound() || ESP.getPsramSize() < 700000) {
+    Serial.println("FATAL: Enable OPI PSRAM + 16MB Flash + QIO 80MHz");
+    while (true) delay(2000);
   }
+  Serial.printf("PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
 
-  if (drawBuffer == nullptr) {
-    Serial.println("LVGL: draw buffer allocation failed. Halting.");
+  backlightInit(TFT_BL_PIN);
+
+  Serial.println("Display/LVGL: BankOfDad landscape bring-up...");
+  if (!lvglPortInit(panel, rgbpanel)) {
+    Serial.println("LVGL port init failed — check PSRAM / bounce buffer");
     while (true) delay(1000);
   }
 
-  displayHandle = lv_display_create(SCREEN_WIDTH, SCREEN_HEIGHT);
-  lv_display_set_flush_cb(displayHandle, lvglFlush);
-  lv_display_set_buffers(displayHandle, drawBuffer, nullptr, sizeof(lv_color_t) * bufferPixels, LV_DISPLAY_RENDER_MODE_PARTIAL);
+  touchLvglInit(touchDev, SCREEN_WIDTH, SCREEN_HEIGHT, DISPLAY_ROTATION);
+  Serial.printf("Display %ux%u rotation %d (landscape)\n",
+                gfx->width(), gfx->height(), DISPLAY_ROTATION);
 
-  touchInputHandle = lv_indev_create();
-  lv_indev_set_type(touchInputHandle, LV_INDEV_TYPE_POINTER);
-  lv_indev_set_read_cb(touchInputHandle, lvglTouchRead);
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setTextSize(2);
+  gfx->setCursor(20, 20);
+  gfx->println("SHOWDUINO DIRECTOR");
+  gfx->setCursor(20, 50);
+  gfx->println("Initialising storage...");
+
+  Serial.println("SHOWDUINO DIRECTOR");
+  bool storageOk = storageBegin(onStorageStatus);
+  if (!storageOk) {
+    Serial.println("SD CARD NOT AVAILABLE");
+    Serial.println("RECOVERY MODE ACTIVE");
+    gfx->setCursor(20, 90);
+    gfx->println("SD RECOVERY MODE");
+  } else {
+    Serial.println("Storage ready");
+  }
+
+  touchLvglRestoreAfterSd();
+  if (!touchLvglReady()) {
+    Serial.println("Touch: init failed — check GT911 wiring.");
+  }
 
   bootMs = millis();
   ui.setBootTime(bootMs);
   ui.begin(handleUiCommand);
   ui.appendLog("Showduino portable Director online.");
+  ui.appendLog("Panel: landscape 800x480 (BankOfDad bring-up)");
+  if (gStorage.isRecoveryMode()) {
+    ui.appendLog("SD CARD NOT AVAILABLE — recovery mode");
+  } else {
+    const StorageStatus &st = getStorageStatus();
+    char line[120];
+    snprintf(line, sizeof(line), "SD %s  %lluMB free", st.cardType,
+             (unsigned long long)(st.freeBytes / (1024 * 1024)));
+    ui.appendLog(line);
+    logEvent(LogLevel::Info, LogCategory::System, "Director", "Director ready");
+  }
 
 #if SHOWDUINO_USE_ESPNOW
   espNowReady = espNowTransport.begin();
@@ -353,9 +524,6 @@ void setup() {
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
 }
 
-// =========================================================
-// Main loop
-// =========================================================
 void loop() {
   unsigned long now = millis();
   unsigned long elapsed = now - lastLvglTickMs;
@@ -363,19 +531,25 @@ void loop() {
 
   lv_tick_inc(elapsed);
 
-  readUsbSerial();
-  readStageSerial();
-  sendHeartbeatIfDue();
-  sendHelloIfNeeded();
-
+  ui.setEmergencyLocked(emergencyLocked);
+  ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
     lastUiRefreshMs = now;
-    ui.setStageReady(stageReady);
-    ui.setEmergencyLocked(emergencyLocked);
-    ui.setTraffic(txCount, rxCount);
-    ui.updateStatusWidgets();
+    ui.updateStatusWidgets(true);
+  } else {
+    ui.updateStatusWidgets(false);
   }
+  lvglPortLoop();
 
-  lv_timer_handler();
-  delay(5);
+  readUsbSerial();
+  readEspNowReplies();
+  readStageSerial();
+  recoverEspNowIfNeeded();
+  sendHeartbeatIfDue();
+  sendHelloIfNeeded();
+  checkLinkWatchdog();
+  readEspNowReplies();
+  storageLoop();
+
+  delay(2);
 }

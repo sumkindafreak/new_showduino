@@ -4,9 +4,14 @@
 #include <Arduino.h>
 
 // =========================================================
-// Showduino Director - ESP32-8048S050 5.0" RGB board config
-// Manufacturer SDK source: 5.0inch_ESP32-8048S050 demo package
+// Showduino Director - Sunton ESP32-S3 RGB panel config
+// Same RGB pin map for ESP32-8048S043 and ESP32-8048S050 (800x480 ST7262)
 // =========================================================
+
+// Touch: capacitive GT911 first. Keep XPT2046 off unless you have the resistive (R) panel —
+// its CS pin is GPIO38, same as GT911 RST, and probing it can kill capacitive touch.
+#define SHOWDUINO_TOUCH_GT911    1
+#define SHOWDUINO_TOUCH_XPT2046  0
 
 // USB debug serial
 #define USB_DEBUG_BAUD 115200
@@ -56,15 +61,23 @@
 #define RGB_PCLK_ACTIVE_NEG 1
 #define RGB_PREFER_SPEED   16000000
 
-// GT911 capacitive touch from the SDK
+// GT911 capacitive touch (JC8048W550C / 8048S050C) — BankOfDad pin map
 #define TOUCH_SDA_PIN 19
 #define TOUCH_SCL_PIN 20
-#define TOUCH_INT_PIN -1
+#define TOUCH_INT_PIN 18
 #define TOUCH_RST_PIN 38
-#define TOUCH_MAP_X1  800
-#define TOUCH_MAP_X2  0
-#define TOUCH_MAP_Y1  480
-#define TOUCH_MAP_Y2  0
+// Landscape: no axis remap in touch_lvgl (DISPLAY_ROTATION 0).
+#define TOUCH_GT911_ROTATION 0
+
+// XPT2046 resistive (legacy R panels) — not used with new capacitive bring-up
+#define TOUCH_XPT_CS_PIN   38
+#define TOUCH_XPT_IRQ_PIN  18
+#define TOUCH_XPT_MOSI_PIN 11
+#define TOUCH_XPT_MISO_PIN 13
+#define TOUCH_XPT_SCK_PIN  12
+#define TOUCH_XPT_ROTATION 1
+#define TOUCH_XPT_RAW_MIN  200
+#define TOUCH_XPT_RAW_MAX  3900
 
 // SD card SPI from the SDK
 #define SD_CS_PIN   10
@@ -72,7 +85,8 @@
 #define SD_MISO_PIN 13
 #define SD_SCK_PIN  12
 
-// I2S audio pins from the SDK. Not used in this base yet, but documented ready.
+// I2S audio pins from the SDK. GPIO17/18 are now reserved for Stage UART,
+// so on-board I2S is deferred until alternate pins are assigned.
 #define I2S_DOUT_PIN 17
 #define I2S_BCLK_PIN 0
 #define I2S_LRC_PIN  18
@@ -80,34 +94,39 @@
 // =========================================================
 // Portable controller transport
 // =========================================================
-// Primary live link: ESP-NOW from the 5" ESP32-S3 Director to the P4 board's built-in ESP32-C6.
-// The C6 should receive these packets and forward the command to the P4 internally.
 #define SHOWDUINO_USE_ESPNOW 1
-#define SHOWDUINO_USE_UART_FALLBACK 1
+// Keep off while C3 owns P4 UART pins 5/6 (also avoids GT911 INT conflict on GPIO18).
+#define SHOWDUINO_USE_UART_FALLBACK 0
 #define SHOWDUINO_ESPNOW_CHANNEL 1
-#define SHOWDUINO_ESPNOW_MAGIC 0x5348444FUL  // "SHDO"
-#define SHOWDUINO_ESPNOW_VERSION 1
-#define SHOWDUINO_ESPNOW_COMMAND_MAX 96
+/* Magic / wire version / command max: protocol/showduino_protocol_version.h */
+#include "../../../protocol/showduino_protocol_version.h"
 
-// Replace this with the MAC address of the P4 board's built-in ESP32-C6 bridge.
-// Until confirmed, this is a broadcast-style placeholder and must be changed for reliable pairing.
-#define SHOWDUINO_P4_C6_MAC_0 0xFF
-#define SHOWDUINO_P4_C6_MAC_1 0xFF
-#define SHOWDUINO_P4_C6_MAC_2 0xFF
-#define SHOWDUINO_P4_C6_MAC_3 0xFF
-#define SHOWDUINO_P4_C6_MAC_4 0xFF
-#define SHOWDUINO_P4_C6_MAC_5 0xFF
+// C3 SuperMini ESP-NOW bridge peer MAC: 88:56:A6:6E:80:0C
+#define SHOWDUINO_P4_C6_MAC_0 0x88
+#define SHOWDUINO_P4_C6_MAC_1 0x56
+#define SHOWDUINO_P4_C6_MAC_2 0xA6
+#define SHOWDUINO_P4_C6_MAC_3 0x6E
+#define SHOWDUINO_P4_C6_MAC_4 0x80
+#define SHOWDUINO_P4_C6_MAC_5 0x0C
 
-// Service UART fallback. IMPORTANT: 19/20 are used by GT911 touch, so we do NOT use them here.
-// GPIO43/44 are left free by the LCD/touch/SD pins on this board and work well for a bench UART link.
+// Optional direct UART fallback to P4 (only if C3 is NOT using P4 pins 5/6).
+// Preferred wireless path: Director --ESP-NOW--> C3 --UART--> P4 GPIO5/6
 #define STAGE_ENGINE_BAUD   115200
-#define STAGE_ENGINE_RX_PIN 44
-#define STAGE_ENGINE_TX_PIN 43
+#define STAGE_ENGINE_RX_PIN 18
+#define STAGE_ENGINE_TX_PIN 17
 
-// UI / system timing
 #define LVGL_BUFFER_LINES       40
-#define HEARTBEAT_INTERVAL_MS   1000UL
-#define HELLO_RETRY_INTERVAL_MS 5000UL
-#define UI_REFRESH_INTERVAL_MS  250UL
+#define HEARTBEAT_INTERVAL_MS   2000UL
+#define HELLO_RETRY_INTERVAL_MS  2000UL
+#define UI_REFRESH_INTERVAL_MS  1000UL
+// Sustained silence before DISCONNECTED (~3 missed heartbeats).
+#define LINK_TIMEOUT_MS         7000UL
+#define ESPNOW_RECOVER_MS       5000UL
+
+enum ShowduinoLinkState : uint8_t {
+  LINK_SEARCHING = 0,
+  LINK_READY = 1,
+  LINK_DISCONNECTED = 2
+};
 
 #endif

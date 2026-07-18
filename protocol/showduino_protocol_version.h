@@ -1,0 +1,34 @@
+#ifndef SHOWDUINO_PROTOCOL_VERSION_H
+#define SHOWDUINO_PROTOCOL_VERSION_H
+
+/* Package semantic version (documentation + future negotiation). */
+#define SHOWDUINO_PROTOCOL_VERSION_MAJOR 1
+#define SHOWDUINO_PROTOCOL_VERSION_MINOR 0
+
+/*
+ * Desk ESP-NOW wire field `version` (uint16_t).
+ * Historically SHOWDUINO_ESPNOW_VERSION == 1.
+ * For protocol v1 this equals MAJOR. Minor is not yet encoded on the wire.
+ */
+#define SHOWDUINO_DESK_WIRE_VERSION 1
+
+/* Legacy alias used by existing sketches. */
+#ifndef SHOWDUINO_ESPNOW_VERSION
+#define SHOWDUINO_ESPNOW_VERSION SHOWDUINO_DESK_WIRE_VERSION
+#endif
+
+#define SHOWDUINO_ESPNOW_MAGIC 0x5348444FUL /* "SHDO" */
+
+#define SHOWDUINO_DESK_COMMAND_MAX 96
+#define SHOWDUINO_NODE_COMMAND_MAX 96
+#define SHOWDUINO_NODE_TYPE_MAX 16
+
+/* Legacy aliases */
+#ifndef SHOWDUINO_ESPNOW_COMMAND_MAX
+#define SHOWDUINO_ESPNOW_COMMAND_MAX SHOWDUINO_DESK_COMMAND_MAX
+#endif
+
+#define SHOWDUINO_DESK_PACKET_SIZE_EXPECTED 108u
+#define SHOWDUINO_NODE_PACKET_SIZE_EXPECTED 116u
+
+#endif /* SHOWDUINO_PROTOCOL_VERSION_H */

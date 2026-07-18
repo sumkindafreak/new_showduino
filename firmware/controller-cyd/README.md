@@ -1,6 +1,13 @@
 # Showduino v1 CYD Controller Firmware
 
-This folder will contain the ESP32 CYD touchscreen controller firmware.
+```text
+Status: ARCHIVE CANDIDATE
+Not part of the canonical runtime.
+```
+
+See [`docs/repository-status.md`](../../docs/repository-status.md).
+
+This folder contains ESP32 CYD touchscreen controller firmware from the Mega-era stack.
 
 ## Purpose
 

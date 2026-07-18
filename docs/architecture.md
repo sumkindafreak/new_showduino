@@ -1,292 +1,268 @@
-# Showduino v1 Architecture
+# Showduino Architecture
 
-Showduino v1 is built around a modular core system:
+## Architectural constitution
+
+> The Show Engine decides.  
+> The Communications Engine transports.  
+> The Director commands and displays.  
+> The Nodes act.
+
+### Naming
+
+| Term | Meaning |
+|------|---------|
+| **Show Engine** | Official role: single source of truth for show state and show services |
+| **Stage Controller** | Physical ESP32-P4 product that runs the Show Engine |
+| ~~Stage Engine~~ | **Retired** — do not use |
+
+Firmware path `firmware/stage-engine-p4/` is the current Show Engine sketch location. It is planned to be renamed later; documentation already uses **Show Engine**.
+
+### Non-negotiable ownership
+
+- The Show Engine owns authoritative show state, safety policy, primary project/configuration storage, Web UI, Web API, and WebSocket state.
+- The Communications Engine owns Wi‑Fi and ESP‑NOW transport (and UART to the Show Engine). It must **not** make show-level decisions, run the timeline, or invent output state.
+- The Director commands and displays. It does **not** host or proxy the primary Web UI. USB is not the normal Director link.
+- Nodes act. Application addressing uses **logical Showduino device IDs**, not MAC addresses at the application layer.
+- Relay requests use **absolute** ON/OFF (and timed pulse) states — not distributed `TOGGLE`.
+- Command **acceptance** and physical **action completion** are separate events.
+- A running show must not depend on an active Director, browser session, Wi‑Fi client association, or internet.
+
+### Maturity (do not overstate)
+
+The Show Engine now owns an explicit Stage 3 runtime state model (show IDLE/PLAYING/EMERGENCY, emergency CLEAR/ACTIVE, per-channel relay knowledge, relay-node availability) and publishes `STATE:*` / snapshots. It does **not** yet contain timeline execution, project storage migration, DMX, pixel, audio, or Web UI.
+
+Director display of relays/show/emergency follows confirmed `STATE:*` (and snapshot sync). Optimistic relay TOGGLE UI is removed.
+
+Director SD show/storage features that exist today are **current implementation details**, not the final home of authoritative projects.
+
+---
+
+## Canonical communication paths
+
+### Director path (current live design)
+
+```text
+Director ESP32-S3
+    → ESP-NOW
+Communications Engine ESP32-C3
+    → UART
+Show Engine ESP32-P4 (Stage Controller)
+```
+
+### Node path
+
+```text
+Showduino Node
+    → ESP-NOW
+Communications Engine ESP32-C3
+    → UART
+Show Engine ESP32-P4 (Stage Controller)
+```
+
+### Browser / phone path (conceptual target)
 
 ```text
 Phone / Tablet / Laptop
-        │
-        │ WiFi browser control
-        ▼
-┌─────────────────────────────┐
-│ Showduino Director          │
-│ ESP32-S3 + 5 inch display   │
-│ Touch UI + WebUI server     │
-└─────────────────────────────┘
-        │
-        │ UART command link
-        ▼
-┌─────────────────────────────┐
-│ Showduino Stage Engine      │
-│ ESP32-P4                    │
-│ Real-time hardware executor │
-└─────────────────────────────┘
-        │
-        │ UART bridge command link
-        ▼
-┌─────────────────────────────┐
-│ Showduino ESP-NOW Bridge    │
-│ ESP32-C6 / ESP32-C3 / ESP32 │
-└─────────────────────────────┘
-        │
-        │ ESP-NOW
-        ▼
-┌─────────────────────────────┐
-│ Showduino Relay Node        │
-│ ESP32 + relay module board  │
-└─────────────────────────────┘
+    → Wi-Fi
+Communications Engine ESP32-C3
+    → Show Engine services
 ```
 
-## Core decision
-
-The old Arduino Mega executor role is now replaced by the **ESP32-P4 Stage Engine**.
-
-Relays are **not** directly owned by the P4. Relay hardware lives on one or more wireless **ESP-NOW Relay Nodes**.
-
-The product roles are now:
-
-- **Director** — ESP32-S3 touchscreen and WebUI server
-- **Stage Engine** — ESP32-P4 deterministic show executor
-- **ESP-NOW Bridge** — ESP32-C6/C3/S3 wireless bridge between P4 and ESP-NOW nodes
-- **Relay Node** — ESP32 relay module board using ESP-NOW
-- **Nodes** — wireless props, puzzles, sensors and effects
-- **Studio** — browser editor served from the Director
-
-## 1. Showduino Director
-
-Target hardware:
-
-- ESP32-S3
-- 5 inch 800x480 touchscreen
-- WiFi AP/STA
-- SD card
-- UART link to the Stage Engine
-
-Main responsibilities:
-
-- Serve the GoreFX / Showduino Studio WebUI
-- Run the local touchscreen interface
-- Manage show files and project export/import
-- Send commands to the Stage Engine over UART
-- Display diagnostics and Stage Engine capability information
-- Provide OTA/update features where supported
-- Act as the human-facing control surface
-
-## 2. Showduino Stage Engine
-
-Target hardware:
-
-- ESP32-P4
-- UART command link from the Director
-- UART command link to the ESP-NOW Bridge
-- Local IO for DMX, audio, pixels, inputs, sensors, servos, motor outputs and safety devices
-
-Main responsibilities:
-
-- Execute commands immediately and reliably
-- Run timed show sequences
-- Route relay commands to ESP-NOW relay nodes
-- Handle DMX locally
-- Handle NeoPixels locally
-- Trigger audio locally
-- Read sensors and inputs locally
-- Handle servos/motors where fitted
-- Enforce emergency stop and safe states
-- Keep running even if the Director touchscreen or WebUI crashes
-
-The Stage Engine does **not** need WiFi itself. On the Waveshare ESP32-P4 board, the onboard ESP32-C6 can be used as the ESP-NOW bridge, or a separate ESP32-C3/C6 bridge can be connected by UART.
-
-## 3. ESP-NOW Relay Path
-
-Relay command route:
+Do **not** describe the Director as the normal Web UI host or proxy.
 
 ```text
-WebUI / Touchscreen
-        ↓
-ESP32-S3 Director
-        ↓ UART
-ESP32-P4 Stage Engine
-        ↓ UART
-ESP32-C6/C3 ESP-NOW Bridge
-        ↓ ESP-NOW
-ESP32 Relay Node
-        ↓ GPIO
-Relay module board
+┌──────────────────────────┐
+│ Director (ESP32-S3)      │
+│ Commands + displays      │
+└────────────┬─────────────┘
+             │ ESP-NOW
+             ▼
+┌──────────────────────────┐     Wi-Fi (planned)
+│ Communications Engine    │◄──────────────── Phone / tablet / laptop
+│ (ESP32-C3)               │
+│ ESP-NOW + UART (+ Wi-Fi) │
+└────────────┬─────────────┘
+             │ UART
+             ▼
+┌──────────────────────────┐
+│ Show Engine              │
+│ Stage Controller (P4)    │
+│ Decides + stores + serves│
+└────────────┬─────────────┘
+             │ UART (to Comms) then ESP-NOW
+             ▼
+┌──────────────────────────┐
+│ Nodes (relay, …)         │
+│ Act                      │
+└──────────────────────────┘
 ```
 
-A command such as:
+---
+
+## Role details
+
+### 1. Director (ESP32-S3)
+
+**Active firmware:** `firmware/director-esp32-8048s050/`
+
+Hardware: 5″ 800×480 touchscreen (e.g. ESP32-8048S043/S050), PSRAM, SD for UI assets and temporary local data.
+
+Responsibilities:
+
+- Operator touch UI (LVGL)
+- Emit **requests** (show control, cues, absolute relay states, emergency)
+- Display status only after authoritative Show Engine updates (target behaviour)
+- Diagnostics for link and local hardware
+
+Not responsibilities:
+
+- Primary Web UI / Web API
+- Authoritative project library (long-term)
+- Timeline execution
+- Direct control of node GPIOs
+
+UART from the Director to the P4 is **not** the normal product path (optional bench/service only).
+
+### 2. Communications Engine (ESP32-C3)
+
+**Active firmware:** `firmware/c3-supermini-espnow-bridge/`
+
+Responsibilities:
+
+- ESP‑NOW desk link to the Director
+- ESP‑NOW fabric to nodes
+- UART framing/forwarding to the Show Engine
+- Device connection monitoring and transport health
+- Planned: Wi‑Fi AP/STA so browsers reach Show Engine services
+
+Must not: run shows, own show state, control DMX/pixels/audio as an authority, or return **false success** for unimplemented routes.
+
+### 3. Show Engine on Stage Controller (ESP32-P4)
+
+**Active firmware:** `firmware/stage-engine-p4/` (folder name legacy; role = Show Engine)
+
+Responsibilities (target):
+
+- Authoritative show/runtime/emergency state
+- Timeline and cue scheduling
+- Project storage and configuration
+- Validate requests; publish state changes
+- Dispatch node commands by logical device ID
+- Local show outputs where fitted (DMX, pixels, audio) when implemented
+- Web UI / Web API / WebSocket
+
+**Today:** early command hub (parse requests, emergency gate, route relay work through the Communications Engine, return simple ACK/status lines). Treat deeper capabilities as **planned**.
+
+### 4. Nodes
+
+**Active example:** `firmware/relay-node-esp32/`
+
+Nodes execute absolute commands and report results. Expandable family: audio, lighting, sensor, motor, environmental, etc.
+
+---
+
+## Canonical active firmware
 
 ```text
-RELAY:1:ON
+firmware/director-esp32-8048s050/
+firmware/c3-supermini-espnow-bridge/
+firmware/stage-engine-p4/                 # Show Engine (rename planned)
+firmware/relay-node-esp32/
 ```
 
-means:
+### Other trees (not the active product path)
 
-1. Director sends `RELAY:1:ON` to Stage Engine.
-2. Stage Engine validates safety state.
-3. Stage Engine routes the relay command to the ESP-NOW Bridge.
-4. Bridge sends a wireless packet to the relay node.
-5. Relay node switches relay 1.
-6. Relay node replies with status/ACK.
-7. Bridge forwards the response back to the Stage Engine.
-8. Stage Engine reports status to the Director.
+| Path | Classification |
+|------|----------------|
+| `firmware/director-s3/` | Legacy / experimental |
+| `firmware/p4-c6-espnow-bridge/` | Experimental / incomplete |
+| `firmware/espnow-bridge/` | Legacy scaffold |
+| `firmware/controller-cyd/` | Legacy — archive candidate |
+| `firmware/executor-mega/` | Legacy — archive candidate |
+| `firmware/touch-probe-8048/` | Diagnostic |
+| `.../ShowduinoSdTouchTest/` | Diagnostic |
+| `firmware/sue-esp32s3-node/` | Incomplete |
 
-## 4. UART links
+---
 
-### Director to Stage Engine
+## Example request lifecycle (target)
 
 ```text
-Director ESP32-S3 TX → Stage Engine ESP32-P4 RX
-Director ESP32-S3 RX ← Stage Engine ESP32-P4 TX
-GND shared between both boards
+Director → SHOW_START_REQUEST (via ESP-NOW)
+Communications Engine → UART to Show Engine
+Show Engine validates → state PLAYING
+Show Engine publishes SHOW_STATE_CHANGED
+Communications Engine → Director (and Web clients when Wi-Fi exists)
+Director / browser display PLAYING
 ```
 
-### Stage Engine to ESP-NOW Bridge
+Relay example (absolute state):
 
 ```text
-Stage Engine ESP32-P4 TX → Bridge ESP32 RX
-Stage Engine ESP32-P4 RX ← Bridge ESP32 TX
-GND shared between both boards
+Director → relay channel N requested ON (by device ID)
+Show Engine accepts or rejects
+Communications Engine delivers node command
+Node completes action → result
+Show Engine publishes authoritative output/node state
+Director displays confirmed state
 ```
 
-Default baud rate for both links:
+Placeholder pixel/audio routes must **not** report success when no real action occurred.
+
+---
+
+## UART (Communications Engine ↔ Show Engine)
 
 ```text
-115200
+Communications Engine ESP32-C3  ↔  Show Engine ESP32-P4
+Baud: 115200 (current sketches)
+GND shared
 ```
 
-## 5. Starter command examples
+Pin details live in the active firmware READMEs / sketches. The Director does not sit on this UART in the normal product path.
 
-```text
-HELLO
-STATUS:REQUEST
-SHOW:LOAD:ZombieBurst
-SHOW:START
-SHOW:STOP
-RELAY:1:ON
-RELAY:1:OFF
-RELAY:4:PULSE:2500
-AUDIO:1:PLAY:014
-DMX:10:255
-PIXEL:HELLFIRE
-EMERGENCY:STOP
-EMERGENCY:CLEAR
-```
+---
 
-## 6. Capability handshake
+## Safety model
 
-On boot, the Director sends:
+Emergency stop overrides entertainment commands.
 
-```text
-HELLO
-```
+When the Show Engine accepts an emergency activate request it must:
 
-The Stage Engine replies with a capability block:
+- Enter emergency locked state
+- Stop or freeze show timelines (when implemented)
+- Command dangerous outputs and nodes toward safe states
+- Keep status reporting available
+- Require an explicit clear / authorised reset policy before normal operation
 
-```text
-SHOWDUINO_STAGE_ENGINE
-FW:0.1.0
-RELAYS:ESPNOW
-DMX:YES
-PIXELS:4
-AUDIO:2
-INPUTS:16
-OUTPUTS:8
-SD:YES
-READY
-```
+Nodes should fail safe and remain safe until a valid clear is applied per policy.
 
-The Stage Engine can also ask the ESP-NOW Bridge for relay-node status:
+A lost Director or browser must **not** by itself stop a running show, unless a configured safety policy says otherwise for that installation.
 
-```text
-BRIDGE:HELLO
-```
+---
 
-Bridge replies:
+## Storage (target vs today)
 
-```text
-SHOWDUINO_ESPNOW_BRIDGE
-FW:0.1.0
-MODE:RELAY_ROUTE
-READY
-```
+| Store | Target owner | Today |
+|-------|--------------|-------|
+| Projects, shows, configuration | Show Engine | Early / incomplete on P4; Director SD has temporary show/config helpers |
+| UI assets for the desk | Director | Director SD |
+| Runtime media for execution | Show Engine (+ nodes as needed) | Mostly unimplemented |
 
-## 7. Safety model
+---
 
-Emergency stop must override everything.
+## Why this architecture
 
-When the Stage Engine receives:
+- Deterministic show authority on one engine
+- Wireless operators and nodes without long cable plants
+- Transport failures degrade communications, not necessarily local show execution
+- Web and Director are clients of the same SoT
+- Hardware can change without rewriting show meaning
 
-```text
-EMERGENCY:STOP
-```
+---
 
-It should:
+## Development status relative to this document
 
-- Mark the system as emergency locked
-- Stop running show timelines
-- Stop local dangerous outputs
-- Blackout DMX where configured
-- Stop dangerous motion outputs
-- Forward `EMERGENCY:STOP` to all relay nodes via the ESP-NOW Bridge
-- Keep status reporting alive
+**Aligned:** role names in this doc; live Director→ESP‑NOW→C3→UART→P4 path; relay nodes off the P4; Comms must not own show logic.
 
-The Stage Engine only returns to normal after:
-
-```text
-EMERGENCY:CLEAR
-```
-
-Relay nodes should remain fail-safe until they receive a valid clear command.
-
-## 8. SD card roles
-
-### Director SD
-
-Creative/project storage:
-
-```text
-/projects/
-/shows/
-/scenes/
-/assets/
-/logs/
-/settings.json
-```
-
-### Stage Engine SD
-
-Runtime/execution storage:
-
-```text
-/audio/
-/runtime/
-/pixels/
-/logs/
-```
-
-The Director creates and manages shows. The Stage Engine only needs deployed runtime assets.
-
-## 9. Why this architecture
-
-This split keeps the system reliable and expandable:
-
-- The Director can be rich, visual, editable and networked.
-- The Stage Engine can be deterministic, simple and safe.
-- Relay boards can be placed where the props are, reducing long relay wiring runs.
-- Extra relay nodes can be added without changing the Director/WebUI command language.
-- The live show can continue even if the WebUI disconnects.
-- Future hardware can change without rewriting the whole platform.
-
-## Current development target
-
-The first concrete build should implement:
-
-1. Director S3 UART bridge scaffold
-2. Stage Engine P4 command parser scaffold
-3. P4-to-ESP-NOW-Bridge UART relay routing
-4. ESP-NOW Bridge scaffold
-5. ESP32 Relay Node scaffold
-6. HELLO/capability handshake
-7. Emergency stop state across Stage Engine and relay nodes
-8. Relay command parsing and ACK responses
-9. Later: DMX, pixels, audio, SD show playback and timeline engine
+**Still firmware debt (docs only — not fixed here):** optimistic Director relay UI; `TOGGLE` still present in places; MAC-centric node config; stub routes that can look like success; Show Engine Web UI not on P4; Director SD still holding show packages; folder still named `stage-engine-p4`.

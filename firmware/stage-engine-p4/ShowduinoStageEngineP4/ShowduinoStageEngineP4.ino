@@ -1,270 +1,550 @@
 /*
-  Showduino Stage Engine - ESP32-P4
+  Showduino Show Engine - ESP32-P4 (Stage Controller product)
 
-  Role:
-  - Replaces the old Arduino Mega executor role.
-  - Receives simple text commands from the ESP32-S3 Director over UART.
-  - Executes hardware actions safely and reports status back.
+  Role: authoritative runtime state + command validation.
+  Does NOT drive relays locally — routes to the Relay Node via C3.
 
-  Current starter features:
-  - HELLO capability handshake
-  - STATUS:REQUEST response
-  - EMERGENCY:STOP / EMERGENCY:CLEAR lockout
-  - RELAY:<channel>:ON
-  - RELAY:<channel>:OFF
-  - RELAY:<channel>:PULSE:<milliseconds>
-  - HEARTBEAT response
+  Path:
+      Director --ESP-NOW--> C3 --UART--> P4
+      P4 --UART ROUTE:RELAY:<cmd>--> C3 --ESP-NOW--> Relay ESP32
+      Relay --ESP-NOW--> C3 --UART NODE:<reply>--> P4 --UART--> C3 --ESP-NOW--> Director
 
-  Board note:
-  - ESP32-P4 Arduino support is still board-package dependent.
-  - Pin numbers below are starter placeholders for the Stage Engine PCB/pinout stage.
-  - Update these pin definitions once the real ESP32-P4 board wiring is chosen.
+  Arduino IDE:
+      Board: ESP32P4 Dev Module
+      Flash Size: 16MB
+      USB CDC On Boot: Enabled
 */
 
 #include <Arduino.h>
+#include "../../../protocol/showduino_protocol_version.h"
+#include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_state_wire.h"
+#include "ShowEngineState.h"
 
-// -----------------------------
-// Serial configuration
-// -----------------------------
 #define DEBUG_BAUD 115200
-#define DIRECTOR_BAUD 115200
+#define LINK_BAUD  115200
+#define LINK_RX_PIN 5
+#define LINK_TX_PIN 6
+#define LINK_DEBUG 0
+#define CMD_MAX_LEN SHOWDUINO_DESK_COMMAND_MAX
 
-// UART pins between Director ESP32-S3 and Stage Engine ESP32-P4.
-// Change these once the final wiring is chosen.
-#define DIRECTOR_RX_PIN 18
-#define DIRECTOR_TX_PIN 17
+ShowEngineState gState;
+String inputBuffer;
+uint32_t noiseBytes = 0;
+uint32_t goodCommands = 0;
 
-// -----------------------------
-// Stage Engine hardware config
-// -----------------------------
-#define RELAY_COUNT 8
+bool isQuietLinkMessage(const String &message) {
+  return message == SHOWDUINO_LEGACY_HEARTBEAT ||
+         message == SHOWDUINO_LEGACY_ACK_HEARTBEAT ||
+         message == SHOWDUINO_LEGACY_HELLO ||
+         message == SHOWDUINO_LEGACY_READY ||
+         message == SHOWDUINO_LEGACY_SHOWDUINO_STAGE ||
+         message == "BOOT:STAGE_ENGINE_READY";
+}
 
-// Starter relay pins. These must be changed to match the real ESP32-P4 board/PCB.
-const uint8_t RELAY_PINS[RELAY_COUNT] = { 2, 3, 4, 5, 6, 7, 8, 9 };
-
-// Most relay modules are active LOW. Set to false if your board uses active HIGH relays.
-#define RELAY_ACTIVE_LOW true
-
-// Status LED pin. Change when the final P4 board pinout is chosen.
-#define STATUS_LED_PIN 10
-
-// -----------------------------
-// Runtime state
-// -----------------------------
-bool emergencyLocked = false;
-bool relays[RELAY_COUNT] = { false, false, false, false, false, false, false, false };
-unsigned long lastHeartbeatMs = 0;
-
-String inputBuffer = "";
-
-// -----------------------------
-// Helper functions
-// -----------------------------
-void sendToDirector(const String &message) {
+void sendToLink(const String &message) {
   Serial1.println(message);
-  Serial.print("TX -> Director: ");
-  Serial.println(message);
-}
-
-void setRelay(uint8_t channel, bool on) {
-  if (channel < 1 || channel > RELAY_COUNT) {
-    sendToDirector("ERR:INVALID_RELAY_CHANNEL");
-    return;
+#if LINK_DEBUG
+  if (!isQuietLinkMessage(message)) {
+    Serial.print("TX -> link: ");
+    Serial.println(message);
   }
-
-  uint8_t index = channel - 1;
-  relays[index] = on;
-
-  bool outputLevel = RELAY_ACTIVE_LOW ? !on : on;
-  digitalWrite(RELAY_PINS[index], outputLevel ? HIGH : LOW);
-
-  sendToDirector(String("OK:RELAY:") + channel + (on ? ":ON" : ":OFF"));
+#endif
 }
 
-void allRelaysOff() {
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    relays[i] = false;
-    bool outputLevel = RELAY_ACTIVE_LOW ? true : false;
-    digitalWrite(RELAY_PINS[i], outputLevel ? HIGH : LOW);
+void flushLinkRx() {
+  while (Serial1.available() > 0) {
+    (void)Serial1.read();
   }
-  sendToDirector("OK:RELAY:ALL:OFF");
+  inputBuffer = "";
 }
 
-void pulseRelay(uint8_t channel, unsigned long pulseMs) {
-  if (channel < 1 || channel > RELAY_COUNT) {
-    sendToDirector("ERR:INVALID_RELAY_CHANNEL");
-    return;
+bool looksLikeNoise(const String &s) {
+  if (s.length() == 0) return true;
+  uint8_t bad = 0;
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    bool ok = (c >= 32 && c <= 126) || c == '\t';
+    if (!ok) bad++;
   }
-
-  if (pulseMs == 0 || pulseMs > 60000UL) {
-    sendToDirector("ERR:INVALID_PULSE_TIME");
-    return;
-  }
-
-  setRelay(channel, true);
-  delay(pulseMs);
-  setRelay(channel, false);
-  sendToDirector(String("OK:RELAY:") + channel + ":PULSE:" + pulseMs);
+  return bad > 0;
 }
 
-void enterEmergencyStop() {
-  emergencyLocked = true;
-  allRelaysOff();
-  digitalWrite(STATUS_LED_PIN, HIGH);
-  sendToDirector("STATUS:EMERGENCY_LOCKED");
+void publishShowState() {
+  sendToLink(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + showRuntimeWire(gState.show));
 }
 
-void clearEmergencyStop() {
-  emergencyLocked = false;
-  digitalWrite(STATUS_LED_PIN, LOW);
-  sendToDirector("STATUS:EMERGENCY_CLEARED");
-}
-
-void sendCapabilities() {
-  sendToDirector("SHOWDUINO_STAGE_ENGINE");
-  sendToDirector("FW:0.1.0");
-  sendToDirector(String("RELAYS:") + RELAY_COUNT);
-  sendToDirector("DMX:PLANNED");
-  sendToDirector("PIXELS:PLANNED");
-  sendToDirector("AUDIO:PLANNED");
-  sendToDirector("INPUTS:PLANNED");
-  sendToDirector("SD:PLANNED");
-  sendToDirector("READY");
-}
-
-void sendStatus() {
-  String status = emergencyLocked ? "STATUS:EMERGENCY_LOCKED" : "STATUS:READY";
-  sendToDirector(status);
-
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    sendToDirector(String("RELAY:") + (i + 1) + (relays[i] ? ":ON" : ":OFF"));
+void publishEmergencyState() {
+  sendToLink(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + emergencyWire(gState.emergency));
+  /* Legacy companions for older Director builds */
+  if (gState.emergency == EmergencyState::Active) {
+    sendToLink(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+  } else {
+    sendToLink(SHOWDUINO_LEGACY_STATUS_ECLEARED);
   }
 }
 
-int getTokenIndex(const String &command, uint8_t tokenIndex) {
-  int start = 0;
-  int currentToken = 0;
-
-  while (currentToken < tokenIndex) {
-    start = command.indexOf(':', start);
-    if (start < 0) return -1;
-    start++;
-    currentToken++;
-  }
-
-  return start;
+void publishNodeState() {
+  sendToLink(String(SHOWDUINO_WIRE_STATE_NODE_RELAY_PREFIX) + nodeAvailWire(gState.relayNode));
 }
 
-String getToken(const String &command, uint8_t tokenIndex) {
-  int start = getTokenIndex(command, tokenIndex);
-  if (start < 0) return "";
-
-  int end = command.indexOf(':', start);
-  if (end < 0) end = command.length();
-
-  return command.substring(start, end);
+void publishRelayState(uint8_t channel) {
+  if (channel < 1 || channel > SHOW_ENGINE_RELAY_COUNT) return;
+  RelayKnowledge k = gState.relays[channel - 1].confirmed;
+  sendToLink(String(SHOWDUINO_WIRE_STATE_RELAY_PREFIX) + channel + ":" + relayKnowledgeWire(k));
 }
 
-void handleRelayCommand(const String &command) {
-  String channelToken = getToken(command, 1);
-  String action = getToken(command, 2);
-
-  if (channelToken == "ALL" && action == "OFF") {
-    allRelaysOff();
-    return;
+void publishAllRelayStates() {
+  for (uint8_t i = 1; i <= SHOW_ENGINE_RELAY_COUNT; i++) {
+    publishRelayState(i);
   }
+}
 
-  uint8_t channel = channelToken.toInt();
+void routeToRelayNode(const String &command) {
+  gState.routedCommands++;
+  sendToLink(String(SHOWDUINO_LEGACY_ROUTE_RELAY) + command);
+}
 
+void setConfirmedRelay(uint8_t channel, RelayKnowledge k) {
+  if (channel < 1 || channel > SHOW_ENGINE_RELAY_COUNT) return;
+  RelayChannelState &ch = gState.relays[channel - 1];
+  ch.confirmed = k;
+  ch.pending = false;
+  showEngineBump(gState);
+  publishRelayState(channel);
+}
+
+void clearPending(uint8_t channel) {
+  if (channel < 1 || channel > SHOW_ENGINE_RELAY_COUNT) return;
+  gState.relays[channel - 1].pending = false;
+}
+
+void failPending(uint8_t channel, const char *reason) {
+  if (channel < 1 || channel > SHOW_ENGINE_RELAY_COUNT) return;
+  clearPending(channel);
+  sendToLink(String(SHOWDUINO_WIRE_FAILED_RELAY_PREFIX) + channel + ":" + reason);
+  publishRelayState(channel); /* reaffirm last confirmed */
+}
+
+void rejectRelay(uint8_t channel, const char *reason) {
+  sendToLink(String(SHOWDUINO_WIRE_REJECTED_RELAY_PREFIX) + channel + ":" + reason);
+}
+
+bool parseRelayAbsolute(const String &command, uint8_t *channelOut, bool *onOut) {
+  if (!command.startsWith("RELAY:")) return false;
+  int first = command.indexOf(':');
+  int second = command.indexOf(':', first + 1);
+  if (first < 0 || second < 0) return false;
+  String chTok = command.substring(first + 1, second);
+  String action = command.substring(second + 1);
+  if (chTok == "ALL") return false;
+  uint8_t ch = (uint8_t)chTok.toInt();
+  if (ch < 1 || ch > SHOW_ENGINE_RELAY_COUNT) return false;
   if (action == "ON") {
-    if (emergencyLocked) {
-      sendToDirector("ERR:EMERGENCY_LOCKED");
-      return;
-    }
-    setRelay(channel, true);
-    return;
+    *channelOut = ch;
+    *onOut = true;
+    return true;
   }
-
   if (action == "OFF") {
-    setRelay(channel, false);
-    return;
+    *channelOut = ch;
+    *onOut = false;
+    return true;
   }
+  return false;
+}
 
-  if (action == "PULSE") {
-    if (emergencyLocked) {
-      sendToDirector("ERR:EMERGENCY_LOCKED");
+void acceptAndRouteRelay(uint8_t channel, bool on) {
+  RelayChannelState &ch = gState.relays[channel - 1];
+  uint16_t seq = gState.nextRequestSeq++;
+  if (gState.nextRequestSeq == 0) gState.nextRequestSeq = 1;
+
+  ch.pending = true;
+  ch.pendingOn = on;
+  ch.pendingSeq = seq;
+  ch.pendingSinceMs = millis();
+
+  sendToLink(String(SHOWDUINO_WIRE_ACCEPTED_RELAY_PREFIX) + seq + ":" + channel +
+             (on ? ":ON" : ":OFF"));
+  routeToRelayNode(String("RELAY:") + channel + (on ? ":ON" : ":OFF"));
+}
+
+void handleRelaySetRequest(const String &command) {
+  uint8_t channel = 0;
+  bool on = false;
+
+  if (command == SHOWDUINO_LEGACY_RELAY_ALL_OFF) {
+    if (gState.emergency == EmergencyState::Active) {
+      rejectRelay(1, "EMERGENCY_ACTIVE");
       return;
     }
-    unsigned long pulseMs = getToken(command, 3).toInt();
-    pulseRelay(channel, pulseMs);
+    if (gState.relayNode == NodeAvailability::Offline) {
+      rejectRelay(1, "NODE_OFFLINE");
+      return;
+    }
+    for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+      gState.relays[i].pending = true;
+      gState.relays[i].pendingOn = false;
+      gState.relays[i].pendingSeq = gState.nextRequestSeq;
+      gState.relays[i].pendingSinceMs = millis();
+    }
+    uint16_t seq = gState.nextRequestSeq++;
+    if (gState.nextRequestSeq == 0) gState.nextRequestSeq = 1;
+    sendToLink(String(SHOWDUINO_WIRE_ACCEPTED_RELAY_PREFIX) + seq + ":ALL:OFF");
+    routeToRelayNode(SHOWDUINO_LEGACY_RELAY_ALL_OFF);
     return;
   }
 
-  sendToDirector("ERR:UNKNOWN_RELAY_ACTION");
+  if (command.indexOf(":TOGGLE") >= 0) {
+    /* Deprecated: convert only when confirmed ON/OFF known */
+    int first = command.indexOf(':');
+    int second = command.indexOf(':', first + 1);
+    uint8_t ch = (uint8_t)command.substring(first + 1, second).toInt();
+    if (ch < 1 || ch > SHOW_ENGINE_RELAY_COUNT) {
+      rejectRelay(ch ? ch : 1, "INVALID_CHANNEL");
+      return;
+    }
+    RelayKnowledge k = gState.relays[ch - 1].confirmed;
+    if (k != RelayKnowledge::On && k != RelayKnowledge::Off) {
+      rejectRelay(ch, "STATE_UNKNOWN");
+      return;
+    }
+    if (gState.relays[ch - 1].pending) {
+      rejectRelay(ch, "BUSY");
+      return;
+    }
+    if (gState.emergency == EmergencyState::Active) {
+      rejectRelay(ch, "EMERGENCY_ACTIVE");
+      return;
+    }
+    if (gState.relayNode == NodeAvailability::Offline) {
+      rejectRelay(ch, "NODE_OFFLINE");
+      return;
+    }
+    acceptAndRouteRelay(ch, k == RelayKnowledge::Off);
+    return;
+  }
+
+  if (!parseRelayAbsolute(command, &channel, &on)) {
+    if (command.indexOf(":PULSE:") >= 0) {
+      /* Keep pulse for selftest; treat as accepted route without pending model */
+      if (gState.emergency == EmergencyState::Active) {
+        rejectRelay(1, "EMERGENCY_ACTIVE");
+        return;
+      }
+      routeToRelayNode(command);
+      return;
+    }
+    rejectRelay(1, "INVALID_CHANNEL");
+    return;
+  }
+
+  if (gState.emergency == EmergencyState::Active && on) {
+    rejectRelay(channel, "EMERGENCY_ACTIVE");
+    return;
+  }
+  if (gState.relayNode == NodeAvailability::Offline) {
+    rejectRelay(channel, "NODE_OFFLINE");
+    return;
+  }
+  if (gState.relays[channel - 1].pending) {
+    rejectRelay(channel, "BUSY");
+    return;
+  }
+
+  acceptAndRouteRelay(channel, on);
+}
+
+void publishSnapshot() {
+  sendToLink(SHOWDUINO_WIRE_SNAPSHOT_BEGIN);
+  publishShowState();
+  sendToLink(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + emergencyWire(gState.emergency));
+  publishNodeState();
+  publishAllRelayStates();
+  sendToLink(SHOWDUINO_WIRE_SNAPSHOT_END);
+}
+
+void handleNodeReply(String reply) {
+  reply.trim();
+  if (reply.length() == 0) return;
+
+  showEngineMarkRelayNodeSeen(gState, millis());
+
+#if LINK_DEBUG
+  Serial.print("NODE reply: ");
+  Serial.println(reply);
+#endif
+
+  if (reply.startsWith(SHOWDUINO_LEGACY_OK_RELAY_PREFIX)) {
+    /* OK:RELAY:1:ON or OK:RELAY:ALL:OFF or OK:RELAY:1:PULSE:ms */
+    if (reply == "OK:RELAY:ALL:OFF") {
+      for (uint8_t i = 1; i <= SHOW_ENGINE_RELAY_COUNT; i++) {
+        setConfirmedRelay(i, RelayKnowledge::Off);
+      }
+      return;
+    }
+    if (reply.indexOf(":PULSE:") >= 0) {
+      /* Intermediate pulse ACKs also arrive as OK:RELAY:n:ON/OFF via setRelay */
+      return;
+    }
+    int numStart = 9; /* after OK:RELAY: */
+    int numEnd = reply.indexOf(':', numStart);
+    if (numEnd > numStart) {
+      uint8_t ch = (uint8_t)reply.substring(numStart, numEnd).toInt();
+      if (ch >= 1 && ch <= SHOW_ENGINE_RELAY_COUNT) {
+        bool on = reply.endsWith(":ON");
+        setConfirmedRelay(ch, on ? RelayKnowledge::On : RelayKnowledge::Off);
+      }
+    }
+    return;
+  }
+
+  if (reply == "STATUS:RELAY_NODE:EMERGENCY_LOCKED") {
+    /* Node local lock observed — Show Engine already owns emergency policy */
+    showEngineMarkRelayNodeSeen(gState, millis());
+    return;
+  }
+  if (reply == "STATUS:RELAY_NODE:EMERGENCY_CLEARED") {
+    showEngineMarkRelayNodeSeen(gState, millis());
+    return;
+  }
+  if (reply == "STATUS:RELAY_NODE:READY") {
+    showEngineMarkRelayNodeSeen(gState, millis());
+    publishNodeState();
+    return;
+  }
+
+  if (reply.startsWith("RELAY:") && (reply.endsWith(":ON") || reply.endsWith(":OFF"))) {
+    int first = reply.indexOf(':');
+    int second = reply.indexOf(':', first + 1);
+    if (first >= 0 && second > first) {
+      uint8_t ch = (uint8_t)reply.substring(first + 1, second).toInt();
+      if (ch >= 1 && ch <= SHOW_ENGINE_RELAY_COUNT) {
+        /* Status dump — update knowledge without requiring pending */
+        RelayKnowledge k = reply.endsWith(":ON") ? RelayKnowledge::On : RelayKnowledge::Off;
+        gState.relays[ch - 1].confirmed = k;
+        gState.relays[ch - 1].pending = false;
+        showEngineBump(gState);
+        publishRelayState(ch);
+      }
+    }
+    return;
+  }
+
+  if (reply.startsWith(SHOWDUINO_LEGACY_ERR_PREFIX)) {
+    /* ERR:RELAY_NODE:EMERGENCY_LOCKED / INVALID_CHANNEL / ... */
+    showEngineSetFault(gState, reply.c_str());
+    /* If a channel is pending, fail it */
+    for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+      if (gState.relays[i].pending) {
+        failPending((uint8_t)(i + 1), "NODE_ERROR");
+      }
+    }
+    sendToLink(reply);
+    return;
+  }
+
+  sendToLink(String(SHOWDUINO_LEGACY_NODE_PREFIX) + reply);
+}
+
+void handleRouteErrors(const String &command) {
+  if (command == "ERR:RELAY_NODE_MAC_NOT_SET" ||
+      command == "ERR:RELAY_NODE_SEND_FAILED") {
+    gState.relayNode = (command.indexOf("MAC") >= 0) ? NodeAvailability::Offline
+                                                     : NodeAvailability::Fault;
+    showEngineBump(gState);
+    publishNodeState();
+    for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+      if (gState.relays[i].pending) {
+        failPending((uint8_t)(i + 1), "ROUTE_ERROR");
+      }
+    }
+    sendToLink(command);
+  }
+}
+
+void enterEmergency() {
+  gState.emergency = EmergencyState::Active;
+  gState.show = ShowRuntimeState::Emergency;
+  showEngineBump(gState);
+  publishEmergencyState();
+  publishShowState();
+  routeToRelayNode(SHOWDUINO_LEGACY_EMERGENCY_STOP);
+  /* Pixel/audio: honest unsupported — no false success */
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:EMERGENCY:STOP");
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:EMERGENCY:STOP");
+}
+
+void clearEmergency() {
+  gState.emergency = EmergencyState::Clear;
+  if (gState.show == ShowRuntimeState::Emergency) {
+    gState.show = ShowRuntimeState::Idle;
+  }
+  showEngineBump(gState);
+  publishEmergencyState();
+  publishShowState();
+  routeToRelayNode(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:EMERGENCY:CLEAR");
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:EMERGENCY:CLEAR");
+}
+
+void handleShowStop() {
+  if (gState.emergency == EmergencyState::Active) {
+    sendToLink("REJECTED:SHOW:EMERGENCY_ACTIVE");
+    return;
+  }
+  gState.show = ShowRuntimeState::Idle;
+  showEngineBump(gState);
+  publishShowState();
+  /* Absolute safe-state request to relay node */
+  for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+    gState.relays[i].pending = true;
+    gState.relays[i].pendingOn = false;
+    gState.relays[i].pendingSinceMs = millis();
+  }
+  routeToRelayNode(SHOWDUINO_LEGACY_RELAY_ALL_OFF);
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:ALL:BLACKOUT");
+  sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:STOP");
+  /* Legacy companion */
+  sendToLink(SHOWDUINO_LEGACY_ACK_SHOW_STOP);
+}
+
+void handleShowStart() {
+  if (gState.emergency == EmergencyState::Active) {
+    sendToLink("REJECTED:SHOW:EMERGENCY_ACTIVE");
+    return;
+  }
+  gState.show = ShowRuntimeState::Playing;
+  showEngineBump(gState);
+  publishShowState();
+  sendToLink(SHOWDUINO_LEGACY_ACK_SHOW_START);
 }
 
 void handleCommand(String command) {
   command.trim();
   if (command.length() == 0) return;
 
-  Serial.print("RX <- Director: ");
+  if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
+    handleNodeReply(command.substring(5));
+    return;
+  }
+  if (command == "ERR:RELAY_NODE_MAC_NOT_SET" ||
+      command == "ERR:RELAY_NODE_SEND_FAILED") {
+    handleRouteErrors(command);
+    return;
+  }
+
+  if (looksLikeNoise(command)) {
+    noiseBytes += command.length();
+    return;
+  }
+
+  goodCommands++;
+
+  if (command == SHOWDUINO_LEGACY_HEARTBEAT) {
+    sendToLink(SHOWDUINO_LEGACY_ACK_HEARTBEAT);
+    return;
+  }
+  if (command == SHOWDUINO_LEGACY_HELLO) {
+    sendToLink(SHOWDUINO_LEGACY_READY);
+    sendToLink(SHOWDUINO_LEGACY_SHOWDUINO_STAGE);
+    return;
+  }
+
+#if LINK_DEBUG
+  Serial.print("RX <- link: ");
   Serial.println(command);
+#endif
 
-  if (command == "HELLO") {
-    sendCapabilities();
+  if (command == SHOWDUINO_LEGACY_STATUS_REQUEST) {
+    publishSnapshot();
+    /* Refresh from node asynchronously — incremental STATE:RELAY follows */
+    if (gState.relayNode != NodeAvailability::Offline) {
+      routeToRelayNode(SHOWDUINO_LEGACY_STATUS_REQUEST);
+    }
     return;
   }
 
-  if (command == "HEARTBEAT") {
-    lastHeartbeatMs = millis();
-    sendToDirector("OK:HEARTBEAT");
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_STOP) {
+    enterEmergency();
     return;
   }
 
-  if (command == "STATUS:REQUEST") {
-    sendStatus();
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR) {
+    clearEmergency();
     return;
   }
 
-  if (command == "EMERGENCY:STOP") {
-    enterEmergencyStop();
+  if (command == SHOWDUINO_LEGACY_STOP_ALL || command == SHOWDUINO_LEGACY_SHOW_STOP) {
+    handleShowStop();
     return;
   }
 
-  if (command == "EMERGENCY:CLEAR") {
-    clearEmergencyStop();
+  if (command == SHOWDUINO_LEGACY_SHOW_START) {
+    handleShowStart();
+    return;
+  }
+
+  if (command.startsWith("SHOW:PAUSE") || command.startsWith("SHOW:RESUME") ||
+      command.startsWith("SHOW:LOAD") || command == "SHOW:DEPLOY") {
+    sendToLink(String(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) + command);
     return;
   }
 
   if (command.startsWith("RELAY:")) {
-    handleRelayCommand(command);
-    return;
-  }
-
-  if (command.startsWith("SHOW:")) {
-    sendToDirector("OK:SHOW:COMMAND_RECEIVED");
-    return;
-  }
-
-  if (command.startsWith("AUDIO:")) {
-    sendToDirector("OK:AUDIO:COMMAND_STUBBED");
-    return;
-  }
-
-  if (command.startsWith("DMX:")) {
-    sendToDirector("OK:DMX:COMMAND_STUBBED");
+    handleRelaySetRequest(command);
     return;
   }
 
   if (command.startsWith("PIXEL:")) {
-    sendToDirector("OK:PIXEL:COMMAND_STUBBED");
+    sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + command);
     return;
   }
 
-  sendToDirector("ERR:UNKNOWN_COMMAND");
+  if (command.startsWith("AUDIO:")) {
+    sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + command);
+    return;
+  }
+
+  if (command == "SELFTEST:START") {
+    if (gState.emergency == EmergencyState::Active) {
+      sendToLink("REJECTED:SELFTEST:EMERGENCY_ACTIVE");
+      return;
+    }
+    routeToRelayNode("RELAY:1:PULSE:200");
+    sendToLink("ACK:SELFTEST:START");
+    return;
+  }
+
+  sendToLink("ERR:UNKNOWN_COMMAND");
 }
 
-void readDirectorSerial() {
+void serviceTimeouts() {
+  uint32_t now = millis();
+
+  for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+    RelayChannelState &ch = gState.relays[i];
+    if (!ch.pending) continue;
+    if ((now - ch.pendingSinceMs) >= SHOW_ENGINE_RELAY_PENDING_TIMEOUT_MS) {
+      failPending((uint8_t)(i + 1), "TIMEOUT");
+    }
+  }
+
+  if (gState.lastRelayNodeSeenMs != 0 &&
+      gState.relayNode == NodeAvailability::Online &&
+      (now - gState.lastRelayNodeSeenMs) >= SHOW_ENGINE_NODE_OFFLINE_TIMEOUT_MS) {
+    gState.relayNode = NodeAvailability::Offline;
+    showEngineBump(gState);
+    publishNodeState();
+    for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
+      if (gState.relays[i].pending) {
+        failPending((uint8_t)(i + 1), "TIMEOUT");
+      }
+      /* Do not invent OFF — leave confirmed as last known */
+    }
+  }
+}
+
+void readLinkSerial() {
   while (Serial1.available() > 0) {
     char c = (char)Serial1.read();
 
@@ -273,22 +553,20 @@ void readDirectorSerial() {
         handleCommand(inputBuffer);
         inputBuffer = "";
       }
-    } else {
-      inputBuffer += c;
-
-      if (inputBuffer.length() > 160) {
-        inputBuffer = "";
-        sendToDirector("ERR:COMMAND_TOO_LONG");
-      }
+      continue;
     }
-  }
-}
 
-void setupRelays() {
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    pinMode(RELAY_PINS[i], OUTPUT);
-    bool outputLevel = RELAY_ACTIVE_LOW ? true : false;
-    digitalWrite(RELAY_PINS[i], outputLevel ? HIGH : LOW);
+    if (c < 32 || c > 126) {
+      noiseBytes++;
+      if (inputBuffer.length() > 0) inputBuffer = "";
+      continue;
+    }
+
+    inputBuffer += c;
+    if (inputBuffer.length() > CMD_MAX_LEN) {
+      inputBuffer = "";
+      noiseBytes++;
+    }
   }
 }
 
@@ -297,26 +575,27 @@ void setup() {
   delay(500);
 
   Serial.println();
-  Serial.println("Showduino Stage Engine ESP32-P4 starting...");
+  Serial.println("========================================");
+  Serial.println(" Showduino Show Engine (ESP32-P4)");
+  Serial.println("========================================");
+  Serial.println("Mode: authoritative hub — relays via C3");
 
-  pinMode(STATUS_LED_PIN, OUTPUT);
-  digitalWrite(STATUS_LED_PIN, LOW);
+  Serial1.begin(LINK_BAUD, SERIAL_8N1, LINK_RX_PIN, LINK_TX_PIN);
+  delay(50);
+  flushLinkRx();
 
-  setupRelays();
+  Serial.printf("Link UART: RX=%d TX=%d baud=%d\n", LINK_RX_PIN, LINK_TX_PIN, LINK_BAUD);
+  Serial.println("Setup complete. Relay states UNKNOWN until confirmed.");
 
-  Serial1.begin(DIRECTOR_BAUD, SERIAL_8N1, DIRECTOR_RX_PIN, DIRECTOR_TX_PIN);
-
-  lastHeartbeatMs = millis();
-
-  Serial.println("Stage Engine ready. Waiting for Director HELLO...");
-  sendToDirector("BOOT:STAGE_ENGINE_READY");
+  sendToLink("BOOT:STAGE_ENGINE_READY");
+  sendToLink(SHOWDUINO_LEGACY_READY);
+  publishShowState();
+  sendToLink(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + emergencyWire(gState.emergency));
+  publishNodeState();
 }
 
 void loop() {
-  readDirectorSerial();
-
-  // Slow blink while emergency locked so it is obvious on the bench.
-  if (emergencyLocked) {
-    digitalWrite(STATUS_LED_PIN, (millis() / 250) % 2 == 0 ? HIGH : LOW);
-  }
+  readLinkSerial();
+  serviceTimeouts();
+  delay(2);
 }

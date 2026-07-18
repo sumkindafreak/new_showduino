@@ -1,0 +1,103 @@
+#ifndef SHOWDUINO_MESSAGE_TYPES_H
+#define SHOWDUINO_MESSAGE_TYPES_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Transport-independent application message identifiers.
+ * Wire encoding today remains legacy colon-text (see showduino_legacy_strings.h).
+ */
+typedef enum ShowduinoMessageType {
+  SHOWDUINO_MSG_UNKNOWN = 0,
+
+  /* System and link */
+  SHOWDUINO_MSG_HELLO,
+  SHOWDUINO_MSG_HELLO_ACK,
+  SHOWDUINO_MSG_HEARTBEAT,
+  SHOWDUINO_MSG_HEARTBEAT_ACK,
+  SHOWDUINO_MSG_STATUS_REQUEST,
+  SHOWDUINO_MSG_STATE_SNAPSHOT,
+  SHOWDUINO_MSG_SYSTEM_WARNING,
+  SHOWDUINO_MSG_SYSTEM_FAULT,
+
+  /* Show control */
+  SHOWDUINO_MSG_SHOW_START_REQUEST,
+  SHOWDUINO_MSG_SHOW_STOP_REQUEST,
+  SHOWDUINO_MSG_SHOW_PAUSE_REQUEST,
+  SHOWDUINO_MSG_SHOW_RESUME_REQUEST,
+  SHOWDUINO_MSG_SHOW_STATE_CHANGED,
+  SHOWDUINO_MSG_SHOW_POSITION_CHANGED,
+
+  /* Cue control */
+  SHOWDUINO_MSG_CUE_TRIGGER_REQUEST,
+  SHOWDUINO_MSG_CUE_TRIGGER_ACCEPTED,
+  SHOWDUINO_MSG_CUE_TRIGGER_REJECTED,
+  SHOWDUINO_MSG_CUE_STARTED,
+  SHOWDUINO_MSG_CUE_COMPLETED,
+  SHOWDUINO_MSG_CUE_FAILED,
+
+  /* Node control */
+  SHOWDUINO_MSG_NODE_COMMAND,
+  SHOWDUINO_MSG_NODE_COMMAND_ACCEPTED,
+  SHOWDUINO_MSG_NODE_COMMAND_REJECTED,
+  SHOWDUINO_MSG_NODE_COMMAND_STARTED,
+  SHOWDUINO_MSG_NODE_COMMAND_COMPLETED,
+  SHOWDUINO_MSG_NODE_COMMAND_FAILED,
+  SHOWDUINO_MSG_NODE_HEARTBEAT,
+  SHOWDUINO_MSG_NODE_STATE_CHANGED,
+  SHOWDUINO_MSG_NODE_UNAVAILABLE,
+
+  /* Relay control (absolute states preferred) */
+  SHOWDUINO_MSG_RELAY_SET_REQUEST,
+  SHOWDUINO_MSG_RELAY_STATE_CHANGED,
+  SHOWDUINO_MSG_RELAY_TOGGLE_DEPRECATED,
+
+  /* Emergency */
+  SHOWDUINO_MSG_EMERGENCY_ACTIVATE_REQUEST,
+  SHOWDUINO_MSG_EMERGENCY_CLEAR_REQUEST,
+  SHOWDUINO_MSG_EMERGENCY_STATE_CHANGED,
+
+  /* Capability / support */
+  SHOWDUINO_MSG_CAPABILITY_QUERY,
+  SHOWDUINO_MSG_CAPABILITY_REPORT,
+  SHOWDUINO_MSG_COMMAND_UNSUPPORTED,
+  SHOWDUINO_MSG_NOT_IMPLEMENTED
+} ShowduinoMessageType;
+
+/* Lifecycle markers for future structured framing (not on v1 wire). */
+typedef enum ShowduinoLifecyclePhase {
+  SHOWDUINO_LIFE_REQUEST_RECEIVED = 1,
+  SHOWDUINO_LIFE_REQUEST_ACCEPTED,
+  SHOWDUINO_LIFE_REQUEST_REJECTED,
+  SHOWDUINO_LIFE_ACTION_STARTED,
+  SHOWDUINO_LIFE_ACTION_COMPLETED,
+  SHOWDUINO_LIFE_ACTION_FAILED,
+  SHOWDUINO_LIFE_STATE_CHANGED
+} ShowduinoLifecyclePhase;
+
+typedef enum ShowduinoRelayState {
+  SHOWDUINO_RELAY_OFF = 0,
+  SHOWDUINO_RELAY_ON = 1
+} ShowduinoRelayState;
+
+/*
+ * Application-level request context (model only for protocol v1).
+ * Not serialized on the current desk/node ESP-NOW layouts.
+ */
+typedef struct ShowduinoRequestContext {
+  uint32_t requestId;
+  uint32_t sourceDeviceId;
+  uint32_t targetDeviceId;
+  ShowduinoMessageType messageType;
+  uint32_t sequence;
+} ShowduinoRequestContext;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* SHOWDUINO_MESSAGE_TYPES_H */

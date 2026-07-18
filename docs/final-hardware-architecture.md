@@ -1,451 +1,277 @@
 # Showduino Final Hardware Architecture
 
-This document describes the intended final Showduino hardware stack.
+This document describes the intended Showduino hardware stack and how boards map to **roles**.
 
-The goal is to make Showduino modular: one main touchscreen Director, one reliable Stage Engine, and expandable wireless nodes for relays, audio, NeoPixels/FastLED, sensors, and prop puzzles.
+## Architectural constitution
 
-## 1. Core Showduino System
+> The Show Engine decides.  
+> The Communications Engine transports.  
+> The Director commands and displays.  
+> The Nodes act.
+
+### Naming
+
+| Term | Meaning |
+|------|---------|
+| **Show Engine** | Software / processor role: single source of truth |
+| **Stage Controller** | Physical **ESP32-P4** product that runs the Show Engine |
+| **Communications Engine** | Physical **ESP32-C3** (active) providing ESP‑NOW and (planned) Wi‑Fi |
+| **Director** | Physical **ESP32-S3** touchscreen operator desk |
+| ~~Stage Engine~~ | **Retired** term |
+
+Firmware folder `firmware/stage-engine-p4/` hosts the Show Engine sketch temporarily; rename planned.
+
+---
+
+## 1. Core system topology
+
+### Operator desk
+
+```text
+Director ESP32-S3 (5" touch)
+        |
+        | ESP-NOW
+        v
+Communications Engine ESP32-C3
+        |
+        | UART 115200
+        v
+Show Engine on Stage Controller (ESP32-P4)
+```
+
+### Nodes
+
+```text
+Showduino Node (relay / audio / pixel / …)
+        |
+        | ESP-NOW
+        v
+Communications Engine ESP32-C3
+        |
+        | UART
+        v
+Show Engine on Stage Controller (ESP32-P4)
+```
+
+### Browser / phone (conceptual — Show Engine services)
 
 ```text
 Phone / tablet / laptop
         |
-        | WiFi WebUI / GoreFX Studio
+        | Wi-Fi
         v
-ESP32-S3 Showduino Director
-5 inch 800x480 touchscreen + LVGL Showduino OS
+Communications Engine ESP32-C3
         |
-        | UART command link, 115200 baud
+        | to Show Engine services
         v
-ESP32-P4 Stage Engine
-Real-time show executor and safety controller
-        |
-        | UART bridge link
-        v
-ESP32-C6 / ESP32-C3 ESP-NOW Bridge
-        |
-        | ESP-NOW wireless network
-        v
-Relay nodes / audio nodes / pixel nodes / prop nodes
+Web UI / Web API / WebSocket on Show Engine
 ```
 
-## 2. Main Director Hardware
+The Director does **not** host or proxy the primary Web UI. USB is not the normal Director path.
 
-### Recommended role
+---
 
-The Director is the human-facing controller.
+## 2. Director hardware (ESP32-S3)
 
-It runs:
+### Role
 
-- LVGL 9 Showduino OS touchscreen interface
-- Local show control screens
-- Diagnostics screens
-- Settings screens
-- WebUI / GoreFX Studio server
-- SD project storage
-- UART command link to the Stage Engine
+Human-facing control surface: command requests and status display only.
 
 ### Target board
 
 ```text
 ESP32-S3 with 5 inch 800x480 capacitive touchscreen
-Recommended: ESP32-S3 display board with PSRAM and SD card
+Recommended: Sunton / similar ESP32-8048S043C or ESP32-8048S050C
+PSRAM required for RGB panel framebuffer
+microSD for UI assets and temporary local data
 ```
 
-### Minimum useful spec
+### Active software
 
 ```text
-MCU: ESP32-S3
-RAM: PSRAM strongly recommended
-Flash: 16MB preferred
-Display: 800x480 RGB or SPI display
-Touch: capacitive preferred, resistive acceptable
-Storage: microSD
-WiFi: AP + STA
-USB: USB-C preferred
+firmware/director-esp32-8048s050/
 ```
 
-### Director connections
+(`firmware/director-s3/` is legacy / experimental.)
+
+### Connections (normal product)
 
 ```text
-UART TX -> Stage Engine RX
-UART RX <- Stage Engine TX
-GND shared with Stage Engine
-Optional SD card
-Optional backlight control
-Optional buzzer / status LED
+ESP-NOW only to Communications Engine
+Shared RF environment / channel configuration as documented in firmware
+Optional USB for flash and Serial diagnostics
 ```
 
-### Director software
+Direct UART Director↔P4 is **not** the normal architecture (bench/service only if ever enabled).
 
-```text
-firmware/director-s3/ShowduinoDirectorS3
-```
+### Director must not
 
-This is where the LVGL Showduino OS belongs.
+- Host the primary Web UI
+- Own authoritative project storage long-term
+- Drive relay/node GPIOs directly
 
-## 3. Stage Engine Hardware
+---
 
-### Recommended role
+## 3. Stage Controller / Show Engine hardware (ESP32-P4)
 
-The Stage Engine is the reliable executor.
+### Role
 
-It handles:
-
-- Show timeline execution
-- Safety state
-- Emergency stop
-- Command validation
-- DMX output
-- Pixel/audio command routing
-- Local sensors if required
-- UART routing to ESP-NOW bridge
-
-The Director can crash or reboot without the Stage Engine losing control of dangerous outputs.
+Runs the **Show Engine**: authoritative show state, safety, project store (target), Web services (target), and dispatch of node work through the Communications Engine.
 
 ### Target board
 
 ```text
-ESP32-P4 board
-Preferred: ESP32-P4 board with paired ESP32-C6 radio module where available
+ESP32-P4 Stage Controller
+Optional onboard ESP32-C6 radio is not the active Communications Engine in the current stack
 ```
 
-### Stage Engine connections
+### Active software
 
 ```text
-UART 1 <-> Director ESP32-S3
-UART 2 <-> ESP-NOW Bridge ESP32-C3/C6/S3
-DMX output through RS485 transceiver
-Optional SD card for deployed runtime assets
-Optional local IO expansion
-Optional I2S audio output
-Optional local pixel outputs
+firmware/stage-engine-p4/          # Show Engine (early implementation)
 ```
 
-### Stage Engine software
+### Connections
 
 ```text
-firmware/stage-engine-p4/ShowduinoStageEngineP4
+UART <-> Communications Engine ESP32-C3
+Optional local DMX / I2S / pixels / IO when implemented
+Optional local storage for projects and runtime assets (target)
 ```
 
-## 4. ESP-NOW Bridge
+### Maturity
 
-### Recommended role
+Current P4 firmware is an **early command hub**. Full timeline, storage, DMX, pixel, audio, and Web UI are **planned**, not claimed as complete.
 
-The bridge connects the Stage Engine to wireless nodes.
+---
 
-It receives simple text commands from the Stage Engine and sends compact ESP-NOW packets to nodes.
+## 4. Communications Engine hardware (ESP32-C3)
 
-### Target boards
+### Role
+
+Transport only: ESP‑NOW (Director + nodes), UART to Show Engine, planned Wi‑Fi for browser access to Show Engine services.
+
+### Active board / software
 
 ```text
-ESP32-C6 preferred for newer radio support
-ESP32-C3 acceptable
-ESP32-S3 acceptable
-Standard ESP32 acceptable for early testing
+ESP32-C3 SuperMini (or equivalent)
+firmware/c3-supermini-espnow-bridge/
 ```
 
-### Bridge responsibilities
+### Must not
 
-- Pair/register nodes
-- Route relay commands
-- Route audio commands
-- Route FastLED/NeoPixel commands
-- Forward node ACK/status messages back to Stage Engine
-- Keep wireless logic separate from the P4 executor
+- Run the show timeline
+- Own authoritative show state
+- Pretend unimplemented pixel/audio routes succeeded
 
-### Example commands from Stage Engine
+### Alternate / non-active bridges
 
 ```text
-BRIDGE:HELLO
-NODE:RELAY:01:RELAY:1:ON
-NODE:AUDIO:01:PLAY:014
-NODE:PIXEL:01:FX:HELLFIRE
-NODE:PIXEL:01:BRIGHTNESS:180
+firmware/p4-c6-espnow-bridge/    experimental / incomplete
+firmware/espnow-bridge/          legacy scaffold
 ```
 
-## 5. Relay Nodes
+---
 
-### Recommended role
+## 5. Relay nodes
 
-Relay nodes live near props, reducing long relay wiring runs.
+### Role
 
-Each relay node receives wireless commands and controls local relay outputs.
+Act on absolute relay commands near the prop. Report completion separately from command acceptance.
 
-### Recommended hardware options
+### Active software
 
 ```text
-Option A: ESP32 + 4 relay module
-Option B: ESP32 + 8 relay module
-Option C: ESP32-C3 Super Mini + external transistor/MOSFET relay driver board
-Option D: Custom Showduino relay node PCB
+firmware/relay-node-esp32/
 ```
 
-### Suggested relay node baseline
+### Hardware options
 
 ```text
-MCU: ESP32 or ESP32-C3
-Relay count: 4 or 8
-Power input: 5V logic, optional 12V relay/output rail
-Wireless: ESP-NOW
-Status LED: required
-Pair/config button: recommended
-Emergency safe state: required
+ESP32 + 4 or 8 relay module
+ESP32-C3 + driver board
+Custom Showduino relay PCB
 ```
 
-### Relay node behaviour
+### Behaviour
 
 - Boot with relays OFF
-- Announce READY over ESP-NOW
-- Accept relay ON/OFF/PULSE commands
-- Report ACK after every command
-- Enter safe state on emergency stop
-- Remain safe until emergency clear
+- Accept absolute ON / OFF / timed pulse (not distributed TOGGLE at application level)
+- Safe state on emergency
+- Remain safe until valid clear per policy
+- Application addressing by logical device ID (transport may use MAC internally until ID map lands)
 
-### Example relay node commands
+---
 
-```text
-RELAY:1:ON
-RELAY:1:OFF
-RELAY:1:PULSE:1000
-RELAY:ALL:OFF
-EMERGENCY:STOP
-EMERGENCY:CLEAR
-STATUS:REQUEST
-```
+## 6. Future node families (hardware direction)
 
-## 6. ESP32-C3 Audio Nodes
+Unchanged as hardware intent; all speak ESP‑NOW to the Communications Engine:
 
-### Recommended role
+- Audio nodes (e.g. ESP32-C3 + DFPlayer / I2S)
+- Pixel / FastLED nodes
+- Sensor, motor, environmental, combo prop nodes
+- R3-style puzzle terminals as optional integrated props
 
-Audio nodes allow separate props or zones to play sound locally without running long audio cables.
+Command examples in older drafts remain illustrative. Placeholder routes must not return false success in firmware.
 
-### Recommended hardware options
+---
 
-```text
-Option A: ESP32-C3 + DFPlayer Mini / DFPlayer Pro
-Option B: ESP32-C3 + MAX98357A I2S amplifier
-Option C: ESP32-S3 + SD card + I2S DAC for higher quality audio
-```
+## 7. Legacy / development hardware
 
-### Best early-build option
+Useful for labs; **not** the active product path:
 
-```text
-ESP32-C3 + DFPlayer Mini or DFPlayer Pro
-```
+| Hardware | Classification |
+|----------|----------------|
+| CYD 2.8″ (`firmware/controller-cyd/`) | Legacy — archive candidate |
+| Arduino Mega executor (`firmware/executor-mega/`) | Legacy — archive candidate |
+| Touch / SD probe sketches | Diagnostic |
 
-This is simple, cheap, and reliable for scare attraction props.
+---
 
-### Audio node features
+## 8. Power architecture
 
-- ESP-NOW command receiver
-- Local SD audio playback through DFPlayer or I2S
-- Volume control
-- Stop / pause / resume
-- Optional busy pin feedback
-- Optional local trigger input
-- Optional status LED
-
-### Example audio commands
+Unchanged engineering rules:
 
 ```text
-AUDIO:PLAY:001
-AUDIO:PLAY:014
-AUDIO:STOP
-AUDIO:PAUSE
-AUDIO:RESUME
-AUDIO:VOLUME:25
-AUDIO:LOOP:003
-STATUS:REQUEST
+5V  — logic boards, many relay modules, pixels, DFPlayers
+12V — props, solenoids, lamps, motors as required
+3.3V — ESP32 logic only
 ```
 
-## 7. ESP32-C3 FastLED / NeoPixel Nodes
+- Shared GND for all signal companions
+- No 5V into ESP32 GPIO
+- Fuse high-current groups
+- Inject pixel power properly; series resistor on data; bulk capacitance at strip
+- Emergency policy disables dangerous energy as designed per venue
+- Nodes boot outputs OFF
 
-### Recommended role
+---
 
-Pixel nodes control local LED strips, props, lanterns, signs, control panels, scare lighting, and scenic effects.
-
-These should use FastLED where possible for flexible effects and animation control.
-
-### Recommended hardware
+## 9. Minimum demo that matches this architecture
 
 ```text
-MCU: ESP32-C3, ESP32-S3, or standard ESP32
-LED library: FastLED
-Pixel type: WS2812B / SK6812 / compatible addressable LEDs
-Power: external 5V supply sized for LED count
-Data protection: 330R resistor on data line recommended
-Level shifting: recommended for long runs or unreliable strips
-Capacitor: 1000uF across 5V/GND at strip power input recommended
+1x ESP32-S3 5" Director          firmware/director-esp32-8048s050/
+1x ESP32-C3 Communications Engine firmware/c3-supermini-espnow-bridge/
+1x ESP32-P4 Stage Controller      firmware/stage-engine-p4/
+1x ESP32 Relay Node               firmware/relay-node-esp32/
+Shared 5V/12V power + GND
+Emergency stop path exercised end-to-end
 ```
 
-### Suggested C3 pixel node baseline
+Optional later: audio node, pixel node, browser via Communications Engine Wi‑Fi to Show Engine services.
 
-```text
-Board: ESP32-C3 Super Mini
-Pixel data pin: GPIO 4 or GPIO 5
-Config button: GPIO 9 if available and safe for board boot mode
-Status LED: onboard LED where available
-Default LED count: 30, configurable
-Wireless: ESP-NOW
-```
+---
 
-### Pixel node behaviour
-
-- Boot dark or low amber idle glow
-- Announce READY over ESP-NOW
-- Store last brightness setting
-- Accept named FX commands
-- Accept RGB colour and brightness commands
-- Stop all effects on emergency stop
-- Optional standalone fallback effect if wireless is unavailable
-
-### Example pixel commands
-
-```text
-PIXEL:FX:HELLFIRE
-PIXEL:FX:STROBE
-PIXEL:FX:GHOST_FADE
-PIXEL:FX:LIGHTNING
-PIXEL:FX:CHASER
-PIXEL:COLOR:255:40:0
-PIXEL:BRIGHTNESS:180
-PIXEL:CLEAR
-EMERGENCY:STOP
-STATUS:REQUEST
-```
-
-### Core FastLED effects to include
-
-```text
-HELLFIRE
-CANDLE_FLICKER
-GHOST_FADE
-LIGHTNING
-STROBE
-POLICE_RED_BLUE
-RADIOACTIVE_PULSE
-CONSOLE_GLITCH
-PORTAL_SPIN
-CHASE
-BREATHING
-BLACKOUT
-```
-
-## 8. Combo Prop Nodes
-
-Some props should use one ESP32 node for multiple jobs.
-
-### Example combo nodes
-
-```text
-ESP32-C3 relay + audio node
-ESP32-C3 audio + pixel node
-ESP32-S3 puzzle + relay + audio + pixel node
-ESP32 prop controller with local buttons/sensors
-```
-
-### Good use cases
-
-- Scare box with relay, sound, and LEDs
-- Puzzle panel with lights and audio feedback
-- Door controller with maglock relay and status pixels
-- Lantern with standalone animation and wireless trigger
-- R3 terminal-style prop
-
-## 9. R3 Terminal Node
-
-Current known R3 Terminal hardware:
-
-```text
-MCU: ESP32
-Pots: GPIO 27, 26, 25
-Relays: GPIO 4, 5, 18
-NeoPixels: GPIO 33, 6 pixels
-Reset button: GPIO 32
-Connect button: GPIO 35
-DFPlayer Pro: RX 16, TX 17
-Showduino Serial: RX 19, TX 23
-```
-
-Role:
-
-- Standalone puzzle terminal
-- Optional Showduino-integrated prop
-- Potentiometer puzzle
-- Relay latching
-- Pixel feedback
-- Audio feedback
-
-## 10. Optional Legacy / Development Hardware
-
-These are useful for testing but are not the final preferred architecture.
-
-### CYD controller
-
-```text
-ESP32-2432S028R CYD 2.8 inch touchscreen
-```
-
-Good for early UI tests, Bank of Dad, small controllers, and low-cost nodes.
-
-### Arduino Mega executor
-
-```text
-Arduino Mega 2560 + 8 relay board
-```
-
-Good as a proven executor during transition, but the final architecture moves execution to ESP32-P4.
-
-## 11. Power Architecture
-
-### Recommended rails
-
-```text
-5V rail: ESP32 boards, pixels, relay modules, DFPlayers
-12V rail: props, solenoids, lamps, motors, amplifiers, 12V relays
-3.3V rail: ESP32 logic only
-```
-
-### Rules
-
-- All boards sharing signal wires must share GND.
-- Never feed 5V logic into ESP32 GPIO.
-- Use level shifters where required.
-- Use proper fusing per output group.
-- Use separate high-current pixel power injection.
-- Put a 330R resistor on addressable LED data lines.
-- Put a large capacitor across LED strip power input.
-- Emergency stop should remove or disable dangerous power.
-- Relay nodes should boot with outputs OFF.
-
-## 12. Minimum Final Demo System
-
-This is the smallest system that proves the final architecture.
-
-```text
-1x ESP32-S3 5 inch Director running LVGL Showduino OS
-1x ESP32-P4 Stage Engine
-1x ESP32-C3/C6 ESP-NOW Bridge
-1x ESP32 relay node with 4 relays
-1x ESP32-C3 audio node with DFPlayer
-1x ESP32-C3 FastLED pixel node
-1x emergency stop input
-1x shared 5V/12V power setup
-```
-
-## 13. Final Product Direction
-
-The preferred final Showduino product family should be:
+## 10. Product family naming
 
 ```text
 Showduino Director
-Showduino Stage Engine
-Showduino Relay Node 4
-Showduino Relay Node 8
+Showduino Stage Controller   (runs Show Engine)
+Showduino Communications Engine
+Showduino Relay Node 4 / 8
 Showduino Audio Node
 Showduino Pixel Node
 Showduino Prop Node
-Showduino Bridge
 ```
 
-This gives the system a clean commercial structure while keeping each part cheap, replaceable, and expandable.
+Avoid shipping new materials that say “Stage Engine.”

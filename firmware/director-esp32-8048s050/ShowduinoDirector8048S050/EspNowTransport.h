@@ -4,28 +4,37 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
+#include <freertos/portmacro.h>
 #include "BoardConfig.h"
+#include "../../../protocol/showduino_desk_packet.h"
+#include "../../../protocol/showduino_validation.h"
 
 // =========================================================
 // Showduino ESP-NOW transport
-// Portable Director S3 -> P4 board built-in ESP32-C6 wireless bridge
+// Director S3 <-> C3 SuperMini bridge
+// Desk packet: protocol/showduino_desk_packet.h (wire-compatible)
 // =========================================================
-
-struct ShowduinoEspNowPacket {
-  uint32_t magic;
-  uint16_t version;
-  uint16_t sequence;
-  uint32_t sentMillis;
-  char command[SHOWDUINO_ESPNOW_COMMAND_MAX];
-};
 
 class ShowduinoEspNowTransport {
 public:
   bool begin() {
     Serial.println("ESP-NOW: starting portable Director transport...");
+
+    WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
-    WiFi.disconnect(true, true);
-    delay(100);
+    WiFi.disconnect(false, false);
+    delay(200);
+
+    // Critical on RGB S3 boards: modem sleep kills ESP-NOW within seconds.
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    delay(50);
+
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    esp_wifi_get_channel(&primary, &second);
+    Serial.printf("ESP-NOW: Wi-Fi channel = %u (PS=NONE)\n", primary);
 
     Serial.print("ESP-NOW: Director MAC = ");
     Serial.println(WiFi.macAddress());
@@ -37,27 +46,44 @@ public:
     }
 
     esp_now_register_send_cb(onSentStatic);
+    esp_now_register_recv_cb(onRecvStatic);
 
-    esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, stageBridgeMac, 6);
-    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
-    peerInfo.encrypt = false;
-
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-      Serial.println("ESP-NOW: failed to add P4/C6 bridge peer.");
+    if (!addBridgePeer()) {
       online = false;
       return false;
     }
 
     online = true;
-    Serial.print("ESP-NOW: P4/C6 bridge peer = ");
+    sendBusy = false;
+    portENTER_CRITICAL(&rxMux);
+    rxHead = 0;
+    rxTail = 0;
+    portEXIT_CRITICAL(&rxMux);
+
+    Serial.print("ESP-NOW: bridge peer = ");
     printMac(stageBridgeMac);
     Serial.println();
     return true;
   }
 
+  // Soft recover — only when stuck disconnected. Avoids per-packet churn.
+  bool recover() {
+    if (!online) return false;
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    if (esp_now_is_peer_exist(stageBridgeMac)) {
+      esp_now_del_peer(stageBridgeMac);
+    }
+    return addBridgePeer();
+  }
+
   bool sendCommand(const String &command) {
     if (!online) return false;
+
+    unsigned long startWait = millis();
+    while (sendBusy && (millis() - startWait) < 30) {
+      delay(1);
+    }
 
     ShowduinoEspNowPacket packet = {};
     packet.magic = SHOWDUINO_ESPNOW_MAGIC;
@@ -66,30 +92,63 @@ public:
     packet.sentMillis = millis();
     command.substring(0, SHOWDUINO_ESPNOW_COMMAND_MAX - 1).toCharArray(packet.command, SHOWDUINO_ESPNOW_COMMAND_MAX);
 
-    esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
-    lastSendOk = (result == ESP_OK);
     lastCommand = command;
     lastSequence = packet.sequence;
 
-    if (!lastSendOk) {
-      Serial.print("ESP-NOW: send failed for command: ");
-      Serial.println(command);
+    sendBusy = true;
+    lastCallbackOk = false;
+    callbackSeen = false;
+
+    esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
+    if (result != ESP_OK) {
+      sendBusy = false;
+      lastSendOk = false;
+      return false;
     }
 
+    unsigned long t0 = millis();
+    while (!callbackSeen && (millis() - t0) < 80) {
+      delay(1);
+    }
+
+    lastSendOk = (callbackSeen && lastCallbackOk);
     return lastSendOk;
+  }
+
+  bool popReply(String &outLine) {
+    portENTER_CRITICAL(&rxMux);
+    if (rxHead == rxTail) {
+      portEXIT_CRITICAL(&rxMux);
+      return false;
+    }
+    char local[SHOWDUINO_ESPNOW_COMMAND_MAX];
+    memcpy(local, rxQueue[rxTail], SHOWDUINO_ESPNOW_COMMAND_MAX);
+    rxTail = (uint8_t)((rxTail + 1) % RX_QUEUE_DEPTH);
+    portEXIT_CRITICAL(&rxMux);
+
+    outLine = String(local);
+    return true;
   }
 
   bool isOnline() const { return online; }
   bool wasLastSendOk() const { return lastSendOk; }
-  uint16_t getLastSequence() const { return lastSequence; }
-  String getLastCommand() const { return lastCommand; }
 
 private:
+  static const uint8_t RX_QUEUE_DEPTH = 16;
+
   bool online = false;
   bool lastSendOk = false;
   uint16_t nextSequence = 1;
   uint16_t lastSequence = 0;
   String lastCommand;
+
+  static portMUX_TYPE rxMux;
+  static volatile bool sendBusy;
+  static volatile bool callbackSeen;
+  static volatile bool lastCallbackOk;
+  static volatile uint8_t rxHead;
+  static volatile uint8_t rxTail;
+  static char rxQueue[RX_QUEUE_DEPTH][SHOWDUINO_ESPNOW_COMMAND_MAX];
 
   uint8_t stageBridgeMac[6] = {
     SHOWDUINO_P4_C6_MAC_0,
@@ -100,9 +159,59 @@ private:
     SHOWDUINO_P4_C6_MAC_5
   };
 
+  bool addBridgePeer() {
+    if (esp_now_is_peer_exist(stageBridgeMac)) {
+      // Already present — leave it alone (del/add churn breaks RX).
+      return true;
+    }
+
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, stageBridgeMac, 6);
+    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+    peerInfo.encrypt = false;
+    peerInfo.ifidx = WIFI_IF_STA;
+
+    esp_err_t peerErr = esp_now_add_peer(&peerInfo);
+    if (peerErr != ESP_OK && peerErr != ESP_ERR_ESPNOW_EXIST) {
+      Serial.printf("ESP-NOW: failed to add bridge peer (%d).\n", (int)peerErr);
+      return false;
+    }
+    return true;
+  }
+
+#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+  static void onSentStatic(const esp_now_send_info_t *txInfo, esp_now_send_status_t status) {
+    (void)txInfo;
+#else
   static void onSentStatic(const uint8_t *macAddr, esp_now_send_status_t status) {
-    Serial.print("ESP-NOW: send status = ");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "delivered" : "failed");
+    (void)macAddr;
+#endif
+    lastCallbackOk = (status == ESP_NOW_SEND_SUCCESS);
+    callbackSeen = true;
+    sendBusy = false;
+  }
+
+#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+  static void onRecvStatic(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData, int len) {
+    (void)recvInfo;
+#else
+  static void onRecvStatic(const uint8_t *macAddr, const uint8_t *incomingData, int len) {
+    (void)macAddr;
+#endif
+    ShowduinoValidateResult vr = showduino_validate_desk_rx(incomingData, (size_t)len);
+    if (vr != SHOWDUINO_VALID) return;
+
+    ShowduinoEspNowPacket packet = {};
+    memcpy(&packet, incomingData, sizeof(packet));
+
+    portENTER_CRITICAL(&rxMux);
+    uint8_t next = (uint8_t)((rxHead + 1) % RX_QUEUE_DEPTH);
+    if (next == rxTail) {
+      rxTail = (uint8_t)((rxTail + 1) % RX_QUEUE_DEPTH);
+    }
+    memcpy(rxQueue[rxHead], packet.command, SHOWDUINO_ESPNOW_COMMAND_MAX);
+    rxHead = next;
+    portEXIT_CRITICAL(&rxMux);
   }
 
   void printMac(const uint8_t *mac) {
@@ -113,5 +222,13 @@ private:
     }
   }
 };
+
+portMUX_TYPE ShowduinoEspNowTransport::rxMux = portMUX_INITIALIZER_UNLOCKED;
+volatile bool ShowduinoEspNowTransport::sendBusy = false;
+volatile bool ShowduinoEspNowTransport::callbackSeen = false;
+volatile bool ShowduinoEspNowTransport::lastCallbackOk = false;
+volatile uint8_t ShowduinoEspNowTransport::rxHead = 0;
+volatile uint8_t ShowduinoEspNowTransport::rxTail = 0;
+char ShowduinoEspNowTransport::rxQueue[ShowduinoEspNowTransport::RX_QUEUE_DEPTH][SHOWDUINO_ESPNOW_COMMAND_MAX];
 
 #endif

@@ -20,6 +20,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
+#include <esp_mac.h>
 
 // =========================================================
 // Pin and serial configuration
@@ -65,6 +67,15 @@ void printMac(const uint8_t *mac) {
     if (mac[i] < 16) Serial.print("0");
     Serial.print(mac[i], HEX);
   }
+}
+
+bool readStaMac(uint8_t *outMac) {
+  if (esp_read_mac(outMac, ESP_MAC_WIFI_STA) == ESP_OK) {
+    bool zero = true;
+    for (int i = 0; i < 6; i++) if (outMac[i] != 0) zero = false;
+    if (!zero) return true;
+  }
+  return false;
 }
 
 // =========================================================
@@ -174,13 +185,28 @@ void setup() {
   Serial1.begin(P4_UART_BAUD, SERIAL_8N1, P4_UART_RX_PIN, P4_UART_TX_PIN);
   Serial.printf("P4 UART: RX=%d TX=%d baud=%d\n", P4_UART_RX_PIN, P4_UART_TX_PIN, P4_UART_BAUD);
 
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true, true);
-  delay(100);
+  WiFi.disconnect(false, false);
+  delay(200);
+  esp_wifi_start();
+  esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  delay(50);
 
-  Serial.print("C6 MAC address: ");
-  Serial.println(WiFi.macAddress());
-  Serial.println("Copy this MAC into the Director BoardConfig.h P4/C6 peer fields.");
+  uint8_t mac[6] = {0};
+  Serial.print("Bridge MAC address: ");
+  if (readStaMac(mac)) {
+    printMac(mac);
+    Serial.println();
+  } else {
+    Serial.println(WiFi.macAddress());
+  }
+  if (mac[0] == 0 && mac[1] == 0 && mac[2] == 0 &&
+      mac[3] == 0 && mac[4] == 0 && mac[5] == 0) {
+    Serial.println("WARNING: MAC is all zeros — Wi-Fi radio not ready. ESP-NOW will fail.");
+  } else {
+    Serial.println("Copy this MAC into the Director BoardConfig.h peer fields.");
+  }
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW: init failed. Halting bridge.");

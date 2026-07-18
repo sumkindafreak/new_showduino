@@ -1,6 +1,13 @@
 # Showduino v1 Mega Executor Firmware
 
-This folder will contain the Arduino Mega 2560 executor firmware.
+```text
+Status: ARCHIVE CANDIDATE
+Not part of the canonical runtime.
+```
+
+See [`docs/repository-status.md`](../../docs/repository-status.md).
+
+This folder contains Arduino Mega 2560 executor firmware from the pre–Show Engine stack.
 
 ## Purpose
 

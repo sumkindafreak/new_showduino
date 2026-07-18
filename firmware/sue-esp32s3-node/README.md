@@ -1,6 +1,13 @@
 # Showduino v1 SUE ESP32-S3 Node Firmware
 
-This folder will contain the SUE / ESP32-S3 add-on node firmware.
+```text
+Status: INCOMPLETE
+Placeholder / stub; not operational production firmware.
+```
+
+See [`docs/repository-status.md`](../../docs/repository-status.md).
+
+This folder is reserved for SUE / ESP32-S3 add-on node firmware.
 
 ## Purpose
 
