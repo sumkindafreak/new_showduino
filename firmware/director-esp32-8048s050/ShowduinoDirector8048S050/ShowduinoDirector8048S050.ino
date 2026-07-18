@@ -299,10 +299,52 @@ void handleUiCommand(const String &command) {
     ui.appendLog(line);
     return;
   }
+
+  if (command.startsWith("SETTINGS:TIMEOUT:")) {
+    static const uint8_t kPresets[] = {0, 1, 3, 5, 10, 30};
+    DirectorConfig &cfg = gStorage.getConfig();
+    uint8_t next = cfg.screenTimeoutMinutes;
+
+    if (command == "SETTINGS:TIMEOUT:CYCLE") {
+      uint8_t idx = 0;
+      bool found = false;
+      for (uint8_t i = 0; i < sizeof(kPresets); i++) {
+        if (kPresets[i] == cfg.screenTimeoutMinutes) {
+          idx = (uint8_t)((i + 1) % sizeof(kPresets));
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        idx = 0;
+        for (uint8_t i = 0; i < sizeof(kPresets); i++) {
+          if (kPresets[i] > cfg.screenTimeoutMinutes) {
+            idx = i;
+            break;
+          }
+        }
+      }
+      next = kPresets[idx];
+    } else {
+      next = (uint8_t)command.substring(strlen("SETTINGS:TIMEOUT:")).toInt();
+    }
+
+    cfg.screenTimeoutMinutes = next;
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    backlightNotifyActivity();
+    ui.setScreenTimeoutMinutes(next);
+    if (next == 0) ui.appendLog("Auto backlight: NEVER");
+    else ui.appendLog(String("Auto backlight: ") + next + " min");
+    return;
+  }
+
   if (command == "EMERGENCY:STOP") {
     gStorage.logEmergency("UI", "EMERGENCY:STOP");
   }
 
+  backlightNotifyActivity();
   sendToStage(command);
 }
 
@@ -456,46 +498,60 @@ void setup() {
 
   backlightInit(TFT_BL_PIN);
 
+  /* SD before RGB: heavy SPI while the panel DMA is running trips Interrupt WDT. */
+  Serial.println("SHOWDUINO DIRECTOR");
+  Serial.println("Storage: mounting SD before display...");
+  bool storageOk = storageBegin(onStorageStatus);
+  if (!storageOk) {
+    Serial.println("SD CARD NOT AVAILABLE");
+    Serial.println("RECOVERY MODE ACTIVE");
+  } else {
+    Serial.println("Storage ready");
+  }
+
   Serial.println("Display/LVGL: BankOfDad landscape bring-up...");
   if (!lvglPortInit(panel, rgbpanel)) {
     Serial.println("LVGL port init failed — check PSRAM / bounce buffer");
     while (true) delay(1000);
   }
 
-  touchLvglInit(touchDev, SCREEN_WIDTH, SCREEN_HEIGHT, DISPLAY_ROTATION);
+  /* Match BankOfDad: pass gfx logical size after panel begin. */
+  touchLvglInit(touchDev, gfx->width(), gfx->height(), DISPLAY_ROTATION);
   Serial.printf("Display %ux%u rotation %d (landscape)\n",
                 gfx->width(), gfx->height(), DISPLAY_ROTATION);
 
-  gfx->setTextColor(RGB565_WHITE);
-  gfx->setTextSize(2);
-  gfx->setCursor(20, 20);
-  gfx->println("SHOWDUINO DIRECTOR");
-  gfx->setCursor(20, 50);
-  gfx->println("Initialising storage...");
-
-  Serial.println("SHOWDUINO DIRECTOR");
-  bool storageOk = storageBegin(onStorageStatus);
-  if (!storageOk) {
-    Serial.println("SD CARD NOT AVAILABLE");
-    Serial.println("RECOVERY MODE ACTIVE");
-    gfx->setCursor(20, 90);
-    gfx->println("SD RECOVERY MODE");
-  } else {
-    Serial.println("Storage ready");
-  }
-
+  /* SD ran before display — re-reset GT911 so I2C is clean. */
   touchLvglRestoreAfterSd();
   if (!touchLvglReady()) {
     Serial.println("Touch: init failed — check GT911 wiring.");
   }
 
+  if (!storageOk && gfx) {
+    gfx->setTextColor(RGB565_WHITE);
+    gfx->setTextSize(2);
+    gfx->setCursor(20, 20);
+    gfx->println("SHOWDUINO DIRECTOR");
+    gfx->setCursor(20, 50);
+    gfx->println("SD RECOVERY MODE");
+  }
+
   bootMs = millis();
   ui.setBootTime(bootMs);
   ui.begin(handleUiCommand);
+
+  {
+    const DirectorConfig &cfg = gStorage.getConfig();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    backlightNotifyActivity();
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+  }
+
   ui.appendLog("Showduino portable Director online.");
   ui.appendLog("Panel: landscape 800x480 (BankOfDad bring-up)");
   if (gStorage.isRecoveryMode()) {
     ui.appendLog("SD CARD NOT AVAILABLE — recovery mode");
+    backlightConfigure(10, 255);
+    ui.setScreenTimeoutMinutes(10);
   } else {
     const StorageStatus &st = getStorageStatus();
     char line[120];
@@ -531,6 +587,11 @@ void loop() {
 
   lv_tick_inc(elapsed);
 
+  /* While blanked, poll GT911 directly so a tap can wake without LVGL. */
+  if (!backlightIsOn()) {
+    touchLvglPollActivity();
+  }
+
   ui.setEmergencyLocked(emergencyLocked);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
@@ -540,6 +601,7 @@ void loop() {
     ui.updateStatusWidgets(false);
   }
   lvglPortLoop();
+  backlightTick(now);
 
   readUsbSerial();
   readEspNowReplies();

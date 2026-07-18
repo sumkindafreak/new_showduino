@@ -34,19 +34,37 @@ public:
   }
 
   bool interruptedStartup() const {
-    return bootAttempts > 2 || dirtyShutdown;
+    /* dirtyShutdown alone is normal for power-loss / USB reset.
+     * Treat as interrupted only after repeated failed boots or panic/WDT reset. */
+    if (bootAttempts > 2) return true;
+    if (lastResetReason == (int)ESP_RST_PANIC ||
+        lastResetReason == (int)ESP_RST_INT_WDT ||
+        lastResetReason == (int)ESP_RST_TASK_WDT ||
+        lastResetReason == (int)ESP_RST_WDT) {
+      return true;
+    }
+    return false;
   }
 
   bool recoverPendingWrites() {
     Serial.println("[Storage] Recovering temporary files");
     bool ok = true;
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_DIRECTOR_JSON);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_SETTINGS_JSON);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_NETWORK_JSON);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_PAIRED_DEVICES);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_SHOW_INDEX);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_STARTUP_JSON);
-    ok &= ShowduinoFileUtil::recoverAtomicFile(PATH_STORAGE_JSON);
+    const char *paths[] = {
+      PATH_DIRECTOR_JSON,
+      PATH_SETTINGS_JSON,
+      PATH_NETWORK_JSON,
+      PATH_PAIRED_DEVICES,
+      PATH_SHOW_INDEX,
+      PATH_STARTUP_JSON,
+      PATH_STORAGE_JSON,
+      nullptr
+    };
+    for (uint8_t i = 0; paths[i] != nullptr; i++) {
+      ok &= ShowduinoFileUtil::recoverAtomicFile(paths[i]);
+      /* Yield so RGB panel ISRs / IWDT stay healthy if display already started. */
+      delay(1);
+      yield();
+    }
     return ok;
   }
 

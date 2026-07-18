@@ -39,22 +39,30 @@ public:
     sd.setStage(StorageBootStage::RecoverWrites, "Recovering temporary files");
     sd.getStatus().recoveryRequired = recovery.interruptedStartup();
     recovery.recoverPendingWrites();
+    yield();
 
+    /* Crash reports are deferred — atomic SD writes under active RGB DMA
+     * have caused Interrupt WDT panics on JC8048W550C. */
     if (recovery.interruptedStartup()) {
-      recovery.writeCrashReport(sd, config.lastPage, config.lastShow, lastCommand);
+      Serial.println("[Storage] Prior abnormal reset noted — crash report deferred");
+      pendingCrashReport = true;
     }
 
     sd.setStage(StorageBootStage::LoadDirectorConfig, "Loading Director configuration");
     configMgr.load(config);
+    yield();
 
     sd.setStage(StorageBootStage::LoadAssetManifest, "Loading UI assets");
     assets.loadManifest();
+    yield();
 
     sd.setStage(StorageBootStage::LoadDevices, "Loading paired devices");
     devices.load();
+    yield();
 
     sd.setStage(StorageBootStage::LoadShowIndex, "Loading show library");
     shows.loadIndex();
+    yield();
 
     sd.setStage(StorageBootStage::StartLogging, "Logging started");
     logs.begin(&sd, config.saveLogMode);
@@ -72,6 +80,12 @@ public:
 
   void loop() {
     unsigned long now = millis();
+
+    if (pendingCrashReport && sd.getStatus().mounted && !recoveryMode) {
+      pendingCrashReport = false;
+      recovery.writeCrashReport(sd, config.lastPage, config.lastShow, lastCommand);
+      yield();
+    }
 
     if (recoveryMode) {
       if (now - lastMountRetryMs >= STORAGE_MOUNT_RETRY_MS) {
@@ -266,6 +280,7 @@ private:
 
   bool bootOk = false;
   bool recoveryMode = false;
+  bool pendingCrashReport = false;
   unsigned long lastMountRetryMs = 0;
   unsigned long lastStatusPushMs = 0;
   unsigned long lastSpaceRefreshMs = 0;

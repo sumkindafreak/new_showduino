@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include "BoardConfig.h"
+#include "backlight.h"
 #include "../../../protocol/showduino_state_wire.h"
 
 // =========================================================
@@ -150,6 +151,14 @@ public:
     }
   }
 
+  /** Refresh Settings auto-backlight readout (0 = never off). */
+  void setScreenTimeoutMinutes(uint8_t minutes) {
+    screenTimeoutMinutes = minutes;
+    refreshTimeoutLabel();
+  }
+
+  uint8_t getScreenTimeoutMinutes() const { return screenTimeoutMinutes; }
+
   // Call often from loop. Only touches LVGL when something actually changed.
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
     unsigned long now = millis();
@@ -223,6 +232,8 @@ private:
   lv_obj_t *showsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
+  lv_obj_t *timeoutLabel = nullptr;
+  uint8_t screenTimeoutMinutes = 10;
   lv_obj_t *stageStatusLabels[MAX_STATUS_WIDGET_SETS] = {};
   lv_obj_t *safetyStatusLabels[MAX_STATUS_WIDGET_SETS] = {};
   lv_obj_t *uptimeLabels[MAX_STATUS_WIDGET_SETS] = {};
@@ -256,6 +267,7 @@ private:
   }
 
   void runCommand(const String &command) {
+    backlightNotifyActivity();
     if (command == "SCREEN:DESKTOP") { showDesktop(); return; }
     if (command == "SCREEN:LIVE") { showLive(); return; }
     if (command == "SCREEN:SHOWS") { showShows(); return; }
@@ -536,15 +548,34 @@ private:
     createDock(settingsScreen);
     createLogPanel(settingsScreen);
     lv_obj_t *settings = makePanel(settingsScreen, 12, 86, 470, 292);
-    makeLabel(settings, "SHOWDUINO OS SETTINGS", 8, 8);
-    makeLabel(settings, "Storage: /showduino on SD", 8, 46);
-    makeLabel(settings, "Autosave + atomic JSON writes enabled", 8, 78);
-    makeLabel(settings, "NVS holds boot recovery markers only", 8, 110);
-    makeButton(settings, "HELLO STAGE", 12, 170, 190, 56, "HELLO");
-    makeButton(settings, "CLEAR E-STOP", 222, 170, 190, 56, "EMERGENCY:CLEAR");
-    makeButton(settings, "CREATE BACKUP", 12, 236, 140, 48, "STORAGE:BACKUP");
-    makeButton(settings, "EXPORT DIAG", 160, 236, 140, 48, "STORAGE:EXPORT");
-    makeButton(settings, "UNMOUNT SD", 308, 236, 140, 48, "STORAGE:UNMOUNT");
+    makeLabel(settings, "SHOWDUINO OS SETTINGS", 8, 4);
+    timeoutLabel = makeLabel(settings, "Auto backlight: 10 min", 8, 34);
+    makeLabel(settings, "Dim at half timeout, then off. Touch wakes.", 8, 58);
+    makeButton(settings, "NEVER", 8, 88, 70, 40, "SETTINGS:TIMEOUT:0");
+    makeButton(settings, "1m", 84, 88, 54, 40, "SETTINGS:TIMEOUT:1");
+    makeButton(settings, "3m", 144, 88, 54, 40, "SETTINGS:TIMEOUT:3");
+    makeButton(settings, "5m", 204, 88, 54, 40, "SETTINGS:TIMEOUT:5");
+    makeButton(settings, "10m", 264, 88, 62, 40, "SETTINGS:TIMEOUT:10");
+    makeButton(settings, "30m", 332, 88, 62, 40, "SETTINGS:TIMEOUT:30");
+    makeButton(settings, "CYCLE", 400, 88, 58, 40, "SETTINGS:TIMEOUT:CYCLE");
+    makeButton(settings, "HELLO STAGE", 12, 150, 190, 48, "HELLO");
+    makeButton(settings, "CLEAR E-STOP", 222, 150, 190, 48, "EMERGENCY:CLEAR");
+    makeButton(settings, "CREATE BACKUP", 12, 210, 140, 48, "STORAGE:BACKUP");
+    makeButton(settings, "EXPORT DIAG", 160, 210, 140, 48, "STORAGE:EXPORT");
+    makeButton(settings, "UNMOUNT SD", 308, 210, 140, 48, "STORAGE:UNMOUNT");
+    refreshTimeoutLabel();
+  }
+
+  void refreshTimeoutLabel() {
+    if (timeoutLabel == nullptr) return;
+    char buf[48];
+    if (screenTimeoutMinutes == 0) {
+      snprintf(buf, sizeof(buf), "Auto backlight: NEVER (always on)");
+    } else {
+      snprintf(buf, sizeof(buf), "Auto backlight: %u min (dim then off)",
+               (unsigned)screenTimeoutMinutes);
+    }
+    lv_label_set_text(timeoutLabel, buf);
   }
 
   void showDesktop() {

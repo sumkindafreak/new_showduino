@@ -66,8 +66,13 @@
 #define TOUCH_SCL_PIN 20
 #define TOUCH_INT_PIN 18
 #define TOUCH_RST_PIN 38
-// Landscape: no axis remap in touch_lvgl (DISPLAY_ROTATION 0).
-#define TOUCH_GT911_ROTATION 0
+/*
+ * TAMC_GT911::setRotation() uses library enums, NOT DISPLAY_ROTATION:
+ *   0=LEFT, 1=INVERTED, 2=RIGHT, 3=NORMAL
+ * Landscape desk uses 3 / NORMAL (matches ShowduinoSdTouchTest).
+ * BankOfDad portrait uses 1 / INVERTED + a manual 90° remap in its touch_lvgl.
+ */
+#define TOUCH_GT911_LIB_ROTATION 3
 
 // XPT2046 resistive (legacy R panels) — not used with new capacitive bring-up
 #define TOUCH_XPT_CS_PIN   38
