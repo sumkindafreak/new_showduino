@@ -7,17 +7,20 @@
 #include "DirectorStatusBar.h"
 
 /**
- * Showduino OS — unified design system (Stage 7.9).
- * Desktop is the canonical visual reference. Presentation only.
+ * Showduino OS — unified design system.
  *
- * Layout contract (every page):
+ * All Director pages inherit this visual language so the desktop, live view,
+ * show library, device pages and settings feel like one operating system.
+ * Presentation only: no transport, protocol or runtime behaviour is changed.
+ *
+ * Layout contract:
  *   Status Bar → Page Title → Summary → Primary → Optional Secondary → Dock
  */
 
 /* ---- Geometry ----------------------------------------------------------- */
 #define OS_MARGIN            12
 #define OS_GAP               8
-#define OS_PANEL_RADIUS      6
+#define OS_PANEL_RADIUS      8
 #define OS_BTN_RADIUS        8
 #define OS_PAD               8
 #define OS_TITLE_H           40
@@ -40,41 +43,47 @@
 #define OS_DESK_ACTIONS_Y    (OS_BODY_Y + OS_DESK_SUMMARY_H + OS_GAP)
 #define OS_DESK_ACTIONS_H    (OS_BODY_H - OS_DESK_SUMMARY_H - OS_GAP)
 
-/* Icon slot (reserved — not drawn yet) */
+/* Icon slot reserved beside page titles. */
 #define OS_ICON_SLOT_W       20
 
-/* ---- Colour language ---------------------------------------------------- */
+/* ---- Showduino OS colour language -------------------------------------- */
 namespace OsColor {
-  static const uint32_t Bg         = 0x000000;
-  static const uint32_t Panel      = 0x2A2A2A;
-  static const uint32_t PanelBorder= 0x4B5563;
-  static const uint32_t Button     = 0x3F3F46;
-  static const uint32_t ButtonBorder = 0x71717A;
-  static const uint32_t Danger     = 0x7F1D1D;
-  static const uint32_t DangerBorder = 0xEF4444;
-  static const uint32_t Text       = 0xF3F4F6;
-  static const uint32_t TextMuted  = 0xA1A1AA;
-  static const uint32_t TextDim    = 0xD1D5DB;
-  static const uint32_t Title      = 0xFFFFFF;
-  static const uint32_t Ok         = 0x4ADE80;  /* healthy */
-  static const uint32_t Warn       = 0xFBBF24;  /* warning */
-  static const uint32_t Fault      = 0xF87171;  /* fault */
-  static const uint32_t Unknown    = 0x71717A;  /* unknown */
-  static const uint32_t Accent     = 0xF87171;  /* brand red */
+  static const uint32_t Bg            = 0x020806;
+  static const uint32_t Panel         = 0x07130F;
+  static const uint32_t PanelRaised   = 0x0A1B15;
+  static const uint32_t PanelBorder   = 0x145C43;
+  static const uint32_t Button        = 0x0B241A;
+  static const uint32_t ButtonBorder  = 0x1F8A63;
+  static const uint32_t ButtonPressed = 0x124D38;
+  static const uint32_t Danger        = 0x3A0B0B;
+  static const uint32_t DangerBorder  = 0xFF4D4D;
+  static const uint32_t Text          = 0xE8FFF5;
+  static const uint32_t TextMuted     = 0x79A892;
+  static const uint32_t TextDim       = 0xA8CDBB;
+  static const uint32_t Title         = 0xEFFFF7;
+  static const uint32_t Ok            = 0x39FF9A;
+  static const uint32_t Warn          = 0xFFD166;
+  static const uint32_t Fault         = 0xFF5A5F;
+  static const uint32_t Unknown       = 0x557066;
+  static const uint32_t Accent        = 0x2CFF88;
+  static const uint32_t AccentSoft    = 0x18B96A;
+  static const uint32_t ScanLine      = 0x0D3B2B;
 }
 
 /**
- * Shared LVGL styles for Showduino OS. One instance owned by ShowduinoUi.
+ * Shared LVGL styles for Showduino OS. One instance is owned by ShowduinoUi.
  */
 struct ShowduinoOsTheme {
   lv_style_t screen;
   lv_style_t panel;
   lv_style_t button;
+  lv_style_t buttonPressed;
   lv_style_t buttonDanger;
-  lv_style_t title;      /* Large — page titles */
-  lv_style_t heading;    /* Medium — panel headings */
-  lv_style_t body;       /* Normal — content */
-  lv_style_t caption;    /* Small — secondary */
+  lv_style_t buttonDangerPressed;
+  lv_style_t title;
+  lv_style_t heading;
+  lv_style_t body;
+  lv_style_t caption;
   bool ready = false;
 
   void begin() {
@@ -93,6 +102,10 @@ struct ShowduinoOsTheme {
     lv_style_set_radius(&panel, OS_PANEL_RADIUS);
     lv_style_set_pad_all(&panel, OS_PAD);
     lv_style_set_text_color(&panel, lv_color_hex(OsColor::Text));
+    lv_style_set_shadow_color(&panel, lv_color_hex(OsColor::AccentSoft));
+    lv_style_set_shadow_width(&panel, 8);
+    lv_style_set_shadow_opa(&panel, LV_OPA_20);
+    lv_style_set_shadow_spread(&panel, 0);
 
     lv_style_init(&button);
     lv_style_set_bg_color(&button, lv_color_hex(OsColor::Button));
@@ -102,6 +115,19 @@ struct ShowduinoOsTheme {
     lv_style_set_radius(&button, OS_BTN_RADIUS);
     lv_style_set_text_color(&button, lv_color_hex(OsColor::Title));
     lv_style_set_pad_all(&button, 10);
+    lv_style_set_shadow_color(&button, lv_color_hex(OsColor::AccentSoft));
+    lv_style_set_shadow_width(&button, 6);
+    lv_style_set_shadow_opa(&button, LV_OPA_20);
+
+    lv_style_init(&buttonPressed);
+    lv_style_set_bg_color(&buttonPressed, lv_color_hex(OsColor::ButtonPressed));
+    lv_style_set_border_color(&buttonPressed, lv_color_hex(OsColor::Accent));
+    lv_style_set_border_width(&buttonPressed, 2);
+    lv_style_set_shadow_color(&buttonPressed, lv_color_hex(OsColor::Accent));
+    lv_style_set_shadow_width(&buttonPressed, 10);
+    lv_style_set_shadow_opa(&buttonPressed, LV_OPA_40);
+    lv_style_set_transform_width(&buttonPressed, -2);
+    lv_style_set_transform_height(&buttonPressed, -2);
 
     lv_style_init(&buttonDanger);
     lv_style_set_bg_color(&buttonDanger, lv_color_hex(OsColor::Danger));
@@ -111,10 +137,22 @@ struct ShowduinoOsTheme {
     lv_style_set_radius(&buttonDanger, OS_BTN_RADIUS);
     lv_style_set_text_color(&buttonDanger, lv_color_hex(OsColor::Title));
     lv_style_set_pad_all(&buttonDanger, 10);
+    lv_style_set_shadow_color(&buttonDanger, lv_color_hex(OsColor::DangerBorder));
+    lv_style_set_shadow_width(&buttonDanger, 8);
+    lv_style_set_shadow_opa(&buttonDanger, LV_OPA_30);
+
+    lv_style_init(&buttonDangerPressed);
+    lv_style_set_bg_color(&buttonDangerPressed, lv_color_hex(0x681313));
+    lv_style_set_border_color(&buttonDangerPressed, lv_color_hex(0xFF7777));
+    lv_style_set_shadow_color(&buttonDangerPressed, lv_color_hex(OsColor::DangerBorder));
+    lv_style_set_shadow_width(&buttonDangerPressed, 12);
+    lv_style_set_shadow_opa(&buttonDangerPressed, LV_OPA_50);
+    lv_style_set_transform_width(&buttonDangerPressed, -2);
+    lv_style_set_transform_height(&buttonDangerPressed, -2);
 
     lv_style_init(&title);
-    lv_style_set_text_color(&title, lv_color_hex(OsColor::Title));
-    lv_style_set_text_letter_space(&title, 1);
+    lv_style_set_text_color(&title, lv_color_hex(OsColor::Accent));
+    lv_style_set_text_letter_space(&title, 2);
     lv_style_set_text_font(&title, &lv_font_montserrat_16);
 
     lv_style_init(&heading);
@@ -143,6 +181,7 @@ struct ShowduinoOsTheme {
 
   lv_obj_t *makePanel(lv_obj_t *parent, int x, int y, int w, int h) {
     lv_obj_t *p = lv_obj_create(parent);
+    lv_obj_remove_style_all(p);
     lv_obj_add_style(p, &panel, 0);
     lv_obj_set_pos(p, x, y);
     lv_obj_set_size(p, w, h);
@@ -184,6 +223,7 @@ struct ShowduinoOsTheme {
     lv_obj_t *btn = lv_button_create(parent);
     lv_obj_remove_style_all(btn);
     lv_obj_add_style(btn, danger ? &buttonDanger : &button, 0);
+    lv_obj_add_style(btn, danger ? &buttonDangerPressed : &buttonPressed, LV_STATE_PRESSED);
     lv_obj_set_pos(btn, x, y);
     lv_obj_set_size(btn, w, h);
     if (cb) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user);
@@ -214,7 +254,6 @@ struct ShowduinoOsTheme {
   /**
    * Standard bottom navigation — identical on every page.
    * Desktop | Live | Shows | Settings | E-STOP
-   * Future pages (Nodes, DMX, …) insert via Quick Actions / Settings until promoted.
    */
   void makeDock(lv_obj_t *screen, lv_event_cb_t cb, void *user) {
     const int y = OS_DOCK_Y;
