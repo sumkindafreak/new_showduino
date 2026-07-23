@@ -92,8 +92,8 @@
 #define LV_USE_FONT_PLACEHOLDER 1
 
 #define LV_FONT_MONTSERRAT_8    0
-#define LV_FONT_MONTSERRAT_10   0
-#define LV_FONT_MONTSERRAT_12   0
+#define LV_FONT_MONTSERRAT_10   1
+#define LV_FONT_MONTSERRAT_12   1
 #define LV_FONT_MONTSERRAT_14   1
 #define LV_FONT_MONTSERRAT_16   1
 #define LV_FONT_MONTSERRAT_18   0
@@ -122,7 +122,7 @@
 
 #define LV_USE_ANIMIMG          0
 #define LV_USE_ANIMIMAGE        0
-#define LV_USE_ARC              0
+#define LV_USE_ARC              1
 #define LV_USE_BAR              1
 #define LV_USE_BUTTON           1
 #define LV_USE_BUTTONMATRIX     0
