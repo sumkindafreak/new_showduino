@@ -1,4 +1,11 @@
 #include "backlight.h"
+#include "DirectorUnlockScreen.h"
+
+/* These are owned by the main Director sketch.  The unlock screen only reads
+ * them; it never changes transport, runtime or emergency state. */
+extern bool espNowReady;
+extern uint8_t linkState;
+extern bool emergencyLocked;
 
 enum BlState : uint8_t {
   BL_STATE_FULL = 0,
@@ -130,6 +137,11 @@ void backlightSet(bool on) {
 }
 
 void backlightTick(uint32_t nowMs) {
+  /* backlightTick already runs once per Director loop after LVGL, the desktop,
+   * storage and communications have been initialised.  It is therefore a safe,
+   * non-blocking home for the one-shot startup verification overlay. */
+  gDirectorUnlockScreen.tick(nowMs, espNowReady, linkState, emergencyLocked);
+
   if (s_pin == 255) return;
   if (!s_autoEnabled) {
     if (s_state != BL_STATE_FULL) setState(BL_STATE_FULL);
