@@ -10,6 +10,7 @@
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
 #include "DirectorStatusBar.h"
+#include "DirectorAudioModel.h"
 #include "ShowduinoOsUi.h"
 
 // =========================================================
@@ -59,12 +60,13 @@ enum class DeskShowView : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, Nodes, Settings
+    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs
   };
 
   void begin(ShowduinoCommandCallback callback) {
     commandCallback = callback;
     ensureEventLogStorage();
+    audioModel_.resetPlaceholders();
     Serial.println("[UI] Showduino OS theme…");
     initTheme();
     Serial.println("[UI] status bar…");
@@ -457,20 +459,181 @@ public:
     eventSlot(0)[OPERATOR_EVENT_LINE_LEN - 1] = '\0';
     if (eventLogCount < OPERATOR_EVENT_LOG_MAX) eventLogCount++;
 
-    /* Build display text (newest first, capped for LVGL). */
+    refreshLogsDisplay();
+  }
+
+  static const char *logSeverityTag(const char *msg) {
+    if (!msg) return "INFO";
+    if (strstr(msg, "Emergency") || strstr(msg, "EMERGENCY") || strstr(msg, "E-STOP"))
+      return "EMERGENCY";
+    if (strstr(msg, "Error") || strstr(msg, "ERROR") || strstr(msg, "FAULT") || strstr(msg, "failed"))
+      return "ERROR";
+    if (strstr(msg, "Warn") || strstr(msg, "lost") || strstr(msg, "Lost") || strstr(msg, "Degraded"))
+      return "WARNING";
+    return "INFO";
+  }
+
+  bool logPassesFilter(const char *msg) const {
+    if (logsFilter_ == 0) return true; /* All */
+    /* Lightweight keyword filters — safe placeholders until typed log channels exist. */
+    if (!msg) return false;
+    if (logsFilter_ == 1) return true; /* System */
+    if (logsFilter_ == 2) return (strstr(msg, "Show") || strstr(msg, "Cue") || strstr(msg, "Runtime"));
+    if (logsFilter_ == 3) return (strstr(msg, "Audio") || strstr(msg, "AUDIO"));
+    if (logsFilter_ == 4) return (strstr(msg, "ESP-NOW") || strstr(msg, "Comms") || strstr(msg, "Node") || strstr(msg, "LINK"));
+    if (logsFilter_ == 5) return (strstr(msg, "Emergency") || strstr(msg, "E-STOP") || strstr(msg, "EMERGENCY"));
+    return true;
+  }
+
+  void refreshLogsDisplay() {
+    if (logsLivePaused_) return;
     uiLogText = "";
-    uint16_t showN = eventLogCount;
-    if (showN > 40) showN = 40;
-    for (uint16_t i = 0; i < showN; i++) {
-      uiLogText += eventSlot(i);
+    uint16_t shown = 0;
+    for (uint16_t i = 0; i < eventLogCount && shown < 60; i++) {
+      const char *line = eventSlot(i);
+      if (!logPassesFilter(line)) continue;
+      uiLogText += "[";
+      uiLogText += logSeverityTag(line);
+      uiLogText += "] ";
+      uiLogText += line;
       uiLogText += "\n";
+      shown++;
     }
     if (operatorLogLabel != nullptr) {
-      lv_label_set_text(operatorLogLabel, uiLogText.c_str());
-      if (operatorLogScroll != nullptr) {
-        lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
+      lv_label_set_text(operatorLogLabel, uiLogText.length() ? uiLogText.c_str() : "(no events)\n");
+      if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
+    }
+    if (logsCountLabel_) {
+      char buf[48];
+      snprintf(buf, sizeof(buf), "Events: %u", (unsigned)eventLogCount);
+      ShowduinoOsTheme::setTextIfChanged(logsCountLabel_, buf);
+    }
+    if (logsNewestLabel_) {
+      const char *newest = (eventLogCount > 0) ? eventSlot(0) : "—";
+      char buf[96];
+      snprintf(buf, sizeof(buf), "Newest: %.70s", newest);
+      ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+    }
+  }
+
+  void clearOperatorLogs() {
+    if (!eventLog) return;
+    memset(eventLog, 0, (size_t)OPERATOR_EVENT_LOG_MAX * OPERATOR_EVENT_LINE_LEN);
+    eventLogCount = 0;
+    uiLogText = "";
+    logsLivePaused_ = false;
+    refreshLogsDisplay();
+    pushOperatorEvent("Logs cleared");
+  }
+
+  void refreshAudioPresentation() {
+    if (audioLocalStatusLabel_) {
+      char line[96];
+      snprintf(line, sizeof(line), "Status: %s%s",
+               DeskAudioModel::playWord(audioModel_.local.play),
+               audioModel_.local.muted ? " (MUTED)" : "");
+      ShowduinoOsTheme::setTextIfChanged(audioLocalStatusLabel_, line);
+    }
+    if (audioLocalDetailLabel_) {
+      char et[16], rt[16];
+      formatClock(audioModel_.local.elapsedMs, et, sizeof(et));
+      formatClock(audioModel_.local.remainMs, rt, sizeof(rt));
+      char detail[320];
+      snprintf(detail, sizeof(detail),
+               "%s\nAsset: %s\nVol: %u  Loop: %s\nElapsed: %s  Remain: %s\nSD: %s  I2S: %s\n"
+               "Commands only — files play from local SD (no ESP-NOW audio stream).",
+               audioModel_.local.outputName,
+               audioModel_.local.assetName,
+               (unsigned)audioModel_.local.volume,
+               audioModel_.local.loop ? "ON" : "OFF",
+               et, rt,
+               DeskAudioModel::sdWord(audioModel_.local.sd),
+               DeskAudioModel::i2sWord(audioModel_.local.i2s));
+      ShowduinoOsTheme::setTextIfChanged(audioLocalDetailLabel_, detail);
+    }
+    if (audioNodesLabel_) {
+      if (audioModel_.nodeCount == 0) {
+        ShowduinoOsTheme::setTextIfChanged(
+            audioNodesLabel_,
+            "No audio nodes discovered.\n"
+            "Remote nodes = ESP32 + I2S + SD.\n"
+            "P4 sends PLAY/STOP/VOLUME over ESP-NOW (commands only).");
+      } else {
+        String body;
+        for (uint8_t i = 0; i < audioModel_.nodeCount && i < SHOWDUINO_AUDIO_NODE_MAX; i++) {
+          const DeskRemoteAudioNode &n = audioModel_.nodes[i];
+          if (!n.present) continue;
+          char row[220];
+          snprintf(row, sizeof(row),
+                   "%s (%s)\nESP-NOW:%s SD:%s I2S:%s\nASSET:%s STATE:%s SYNC:%s VOL:%u\n\n",
+                   n.name[0] ? n.name : "AUDIO NODE",
+                   n.nodeId[0] ? n.nodeId : "?",
+                   n.online ? "ONLINE" : "OFFLINE",
+                   DeskAudioModel::sdWord(n.sd),
+                   DeskAudioModel::i2sWord(n.i2s),
+                   n.assetName,
+                   DeskAudioModel::playWord(n.play),
+                   DeskAudioModel::syncWord(n.sync),
+                   (unsigned)n.volume);
+          body += row;
+        }
+        ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, body.c_str());
       }
     }
+    if (audioRoutingLabel_) {
+      String body = "Asset source = target device SD (not streamed).\n\n";
+      for (uint8_t i = 0; i < 8; i++) {
+        if (!audioModel_.routes[i].used) continue;
+        char row[96];
+        snprintf(row, sizeof(row), "%-14s → %s\n",
+                 audioModel_.routes[i].zone, audioModel_.routes[i].target);
+        body += row;
+      }
+      ShowduinoOsTheme::setTextIfChanged(audioRoutingLabel_, body.c_str());
+    }
+    if (audioCmdStatusLabel_) {
+      bool any = false;
+      String body;
+      for (uint8_t i = 0; i < 6; i++) {
+        if (!audioModel_.recentCmds[i].used) continue;
+        any = true;
+        char row[96];
+        snprintf(row, sizeof(row), "%s  %s  [%s]\n",
+                 audioModel_.recentCmds[i].commandId[0] ? audioModel_.recentCmds[i].commandId : "-",
+                 DeskAudioModel::cmdWord(audioModel_.recentCmds[i].phase),
+                 audioModel_.recentCmds[i].summary);
+        body += row;
+      }
+      if (!any) body = "No command status available.\n(Acks appear when Stage/nodes report them.)";
+      ShowduinoOsTheme::setTextIfChanged(audioCmdStatusLabel_, body.c_str());
+    }
+    if (deskAudioSummaryLabel_) {
+      char sum[128];
+      snprintf(sum, sizeof(sum),
+               "AUDIO\nLocal: %s\nNodes: %u ONLINE\nPlaying: %u",
+               DeskAudioModel::playWord(audioModel_.local.play),
+               (unsigned)audioModel_.onlineNodeCount(),
+               (unsigned)audioModel_.playingNodeCount());
+      ShowduinoOsTheme::setTextIfChanged(deskAudioSummaryLabel_, sum);
+    }
+  }
+
+  void refreshDesktopFabric() {
+    if (!deskFabricLabel_) return;
+    const char *esp = "UNKNOWN";
+    if (linkState == LINK_READY) esp = "ONLINE";
+    else if (linkState == LINK_SEARCHING) esp = "SEARCHING";
+    else if (linkState == LINK_DISCONNECTED) esp = "LOST";
+    const char *ian = liveStageConnected ? "LINKED" : "NOT AVAILABLE";
+    const char *em = (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) ? "ACTIVE" : "CLEAR";
+    char buf[220];
+    snprintf(buf, sizeof(buf),
+             "ESP-NOW: %s\nIAN / P4: %s\nNodes: %u / %u\nEmergency: %s\nTraffic: TX %lu / RX %lu",
+             esp, ian,
+             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES,
+             em,
+             (unsigned long)txCount, (unsigned long)rxCount);
+    ShowduinoOsTheme::setTextIfChanged(deskFabricLabel_, buf);
   }
 
   /** Refresh SHOWS list from ShowManager (SD scan results). */
@@ -650,6 +813,14 @@ public:
       lv_label_set_text(sumTrafficValue_, trafficText);
     }
 
+    if (statusDirty || drawTraffic) {
+      refreshDesktopFabric();
+      refreshAudioPresentation();
+      if (deskProgressBar_) {
+        lv_bar_set_value(deskProgressBar_, (int32_t)liveProgressPct, LV_ANIM_OFF);
+      }
+    }
+
     if (uptimeChanged) lastDrawnUptimeSec = uptimeSec;
     statusDirty = false;
     if (drawTraffic) trafficDirty = false;
@@ -787,6 +958,22 @@ private:
   lv_obj_t *sumSafetyValue_ = nullptr;
   lv_obj_t *sumUptimeValue_ = nullptr;
   lv_obj_t *sumTrafficValue_ = nullptr;
+  lv_obj_t *deskFabricLabel_ = nullptr;
+  lv_obj_t *deskAudioSummaryLabel_ = nullptr;
+  lv_obj_t *deskProgressBar_ = nullptr;
+  lv_obj_t *logsScreen = nullptr;
+  lv_obj_t *audioScreen = nullptr;
+  lv_obj_t *logsCountLabel_ = nullptr;
+  lv_obj_t *logsNewestLabel_ = nullptr;
+  lv_obj_t *logsFilterLabel_ = nullptr;
+  bool logsLivePaused_ = false;
+  uint8_t logsFilter_ = 0; /* 0=All placeholder */
+  DeskAudioModel audioModel_;
+  lv_obj_t *audioLocalStatusLabel_ = nullptr;
+  lv_obj_t *audioLocalDetailLabel_ = nullptr;
+  lv_obj_t *audioNodesLabel_ = nullptr;
+  lv_obj_t *audioRoutingLabel_ = nullptr;
+  lv_obj_t *audioCmdStatusLabel_ = nullptr;
   lv_obj_t *operatorLogRoot = nullptr;
   lv_obj_t *operatorLogScroll = nullptr;
   lv_obj_t *operatorLogLabel = nullptr;
@@ -928,6 +1115,52 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "SCREEN:AUDIO") {
+      notePage(DeskPage::Audio);
+      showAudio();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:LOGS") {
+      notePage(DeskPage::Logs);
+      showLogs();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+
+    if (command.startsWith("UI:LOGS:FILTER:")) {
+      logsFilter_ = (uint8_t)command.substring(strlen("UI:LOGS:FILTER:")).toInt();
+      static const char *names[] = {"All", "System", "Show", "Audio", "Network", "Emergency"};
+      if (logsFilterLabel_ && logsFilter_ < 6) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Filter: %s", names[logsFilter_]);
+        ShowduinoOsTheme::setTextIfChanged(logsFilterLabel_, buf);
+      }
+      const bool wasPaused = logsLivePaused_;
+      logsLivePaused_ = false;
+      refreshLogsDisplay();
+      logsLivePaused_ = wasPaused;
+      return;
+    }
+    if (command == "UI:LOGS:CLEAR") {
+      clearOperatorLogs();
+      return;
+    }
+    if (command == "UI:LOGS:EXPORT") {
+      pushOperatorEvent("Export Logs — placeholder (not available)");
+      return;
+    }
+    if (command == "UI:LOGS:PAUSE") {
+      logsLivePaused_ = true;
+      pushOperatorEvent("Log live updates paused");
+      return;
+    }
+    if (command == "UI:LOGS:RESUME") {
+      logsLivePaused_ = false;
+      refreshLogsDisplay();
+      pushOperatorEvent("Log live updates resumed");
+      return;
+    }
 
     if (command == "UI:SHOW:BACK") {
       notePage(DeskPage::Shows);
@@ -992,6 +1225,17 @@ private:
       outbound = "SHOW:RESUME";
     } else if (command == "UI:SHOW:REFRESH") {
       outbound = "UI:SHOW:REFRESH";
+    } else if (command == "AUDIO:LOCAL:VOLUME:+") {
+      outbound = "AUDIO:LOCAL:VOLUME:+";
+    } else if (command == "AUDIO:LOCAL:VOLUME:-") {
+      outbound = "AUDIO:LOCAL:VOLUME:-";
+    } else if (command.startsWith("AUDIO:LOCAL:") || command.startsWith("AUDIO:NODE:")) {
+      outbound = command; /* colon-text to Stage; no PCM over ESP-NOW */
+      {
+        char note[96];
+        snprintf(note, sizeof(note), "Audio cmd %.80s", command.c_str());
+        pushOperatorEvent(note);
+      }
     } else if (command == "EMERGENCY:STOP") {
       emergencyActivating = true;
       pageBeforeEmergency = currentPage;
@@ -1091,6 +1335,15 @@ private:
     os_.makeCaption(parent, "Traffic", 240, 124);
     sumTrafficValue_ = makeLabel(parent, "TX 0 / RX 0", 240, 142);
     lv_obj_add_style(sumTrafficValue_, &os_.caption, 0);
+
+    os_.makeCaption(parent, "Show Progress", 10, 168);
+    deskProgressBar_ = lv_bar_create(parent);
+    lv_obj_set_pos(deskProgressBar_, 10, 186);
+    lv_obj_set_size(deskProgressBar_, OS_CONTENT_LEFT_W - 36, 14);
+    lv_bar_set_range(deskProgressBar_, 0, 100);
+    lv_bar_set_value(deskProgressBar_, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(deskProgressBar_, lv_color_hex(0x14532D), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(deskProgressBar_, lv_color_hex(OsColor::Accent), LV_PART_INDICATOR);
   }
 
   void createQuickActions(lv_obj_t *parent) {
@@ -1103,7 +1356,7 @@ private:
     makeButton(parent, "Live Control", x0, y0, bw, bh, "SCREEN:LIVE");
     makeButton(parent, "Show Library", x0 + bw + gap, y0, bw, bh, "SCREEN:SHOWS");
     makeButton(parent, "Node Manager", x0, y0 + bh + gap, bw, bh, "SCREEN:NODES");
-    makeButton(parent, "Settings", x0 + bw + gap, y0 + bh + gap, bw, bh, "SCREEN:SETTINGS");
+    makeButton(parent, "Audio System", x0 + bw + gap, y0 + bh + gap, bw, bh, "SCREEN:AUDIO");
   }
 
   void uiBuildPump(const char *step = nullptr) {
@@ -1116,27 +1369,104 @@ private:
   }
 
   void createSharedOperatorLog() {
-    if (operatorLogRoot != nullptr) return;
-    lv_obj_t *layer = lv_layer_top();
-    operatorLogRoot = makePanel(layer, OS_CONTENT_RIGHT_X, OS_BODY_Y, OS_CONTENT_RIGHT_W, OS_BODY_H);
-    lv_obj_set_style_pad_all(operatorLogRoot, 6, 0);
-    os_.makeHeading(operatorLogRoot, "EVENT LOG", 6, 2);
-    operatorLogScroll = lv_obj_create(operatorLogRoot);
+    /* Operator log moved to Settings → Logs (no layer-top panel). */
+  }
+
+  void createLogPanel(lv_obj_t *screen) { (void)screen; }
+
+  void buildLogsPage() {
+    logsScreen = makeScreen();
+    createDock(logsScreen);
+    lv_obj_t *sum = os_.makePageChrome(logsScreen, "SYSTEM LOGS");
+    logsCountLabel_ = makeLabel(sum, "Events: 0", 10, 8);
+    lv_obj_add_style(logsCountLabel_, &os_.body, 0);
+    logsNewestLabel_ = makeLabel(sum, "Newest: —", 10, 28);
+    lv_obj_add_style(logsNewestLabel_, &os_.caption, 0);
+    lv_obj_set_width(logsNewestLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(logsNewestLabel_, LV_LABEL_LONG_CLIP);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(logsScreen);
+    os_.makeHeading(panel, "FILTERS", 8, 2);
+    makeButton(panel, "All", 8, 28, 70, 36, "UI:LOGS:FILTER:0");
+    makeButton(panel, "System", 84, 28, 86, 36, "UI:LOGS:FILTER:1");
+    makeButton(panel, "Show", 176, 28, 70, 36, "UI:LOGS:FILTER:2");
+    makeButton(panel, "Audio", 252, 28, 70, 36, "UI:LOGS:FILTER:3");
+    makeButton(panel, "Net", 328, 28, 64, 36, "UI:LOGS:FILTER:4");
+    makeButton(panel, "E-Stop", 398, 28, 80, 36, "UI:LOGS:FILTER:5");
+    logsFilterLabel_ = makeLabel(panel, "Filter: All", 490, 34);
+    lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
+
+    makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
+    makeButton(panel, "Export", 106, 72, 90, 36, "UI:LOGS:EXPORT");
+    makeButton(panel, "Pause", 204, 72, 90, 36, "UI:LOGS:PAUSE");
+    makeButton(panel, "Resume", 302, 72, 90, 36, "UI:LOGS:RESUME");
+    makeButton(panel, "Back", 400, 72, 90, 36, "SCREEN:SETTINGS");
+
+    operatorLogRoot = panel;
+    operatorLogScroll = lv_obj_create(panel);
     lv_obj_remove_style_all(operatorLogScroll);
-    lv_obj_set_pos(operatorLogScroll, 2, 26);
-    lv_obj_set_size(operatorLogScroll, OS_CONTENT_RIGHT_W - 12, OS_BODY_H - 34);
+    lv_obj_set_pos(operatorLogScroll, 8, 118);
+    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 130);
     lv_obj_set_style_bg_opa(operatorLogScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(operatorLogScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(operatorLogScroll, LV_SCROLLBAR_MODE_AUTO);
     operatorLogLabel = lv_label_create(operatorLogScroll);
     lv_obj_set_pos(operatorLogLabel, 2, 0);
-    lv_obj_set_width(operatorLogLabel, OS_CONTENT_RIGHT_W - 20);
+    lv_obj_set_width(operatorLogLabel, OS_CONTENT_FULL_W - 40);
     lv_obj_add_style(operatorLogLabel, &os_.body, 0);
     lv_label_set_long_mode(operatorLogLabel, LV_LABEL_LONG_WRAP);
-    lv_label_set_text(operatorLogLabel, "Showduino ready.\n");
+    lv_label_set_text(operatorLogLabel, "(no events)\n");
   }
 
-  void createLogPanel(lv_obj_t *screen) { (void)screen; }
+  void buildAudioPage() {
+    audioScreen = makeScreen();
+    createDock(audioScreen);
+    lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
+    makeLabel(sum, "1× local P4 output  ·  remote zones = ESP-NOW command nodes", 10, 10);
+    makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
+
+    lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
+    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_AUTO);
+
+    os_.makeHeading(panel, "LOCAL OUTPUT — IAN / P4 AUDIO 1", 8, 2);
+    audioLocalStatusLabel_ = makeLabel(panel, "Status: UNKNOWN", 8, 28);
+    lv_obj_add_style(audioLocalStatusLabel_, &os_.title, 0);
+    audioLocalDetailLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 54);
+    lv_obj_add_style(audioLocalDetailLabel_, &os_.caption, 0);
+    lv_obj_set_width(audioLocalDetailLabel_, OS_CONTENT_FULL_W - 40);
+    lv_label_set_long_mode(audioLocalDetailLabel_, LV_LABEL_LONG_WRAP);
+
+    makeButton(panel, "Play", 8, 150, 70, 36, "AUDIO:LOCAL:PLAY");
+    makeButton(panel, "Pause", 84, 150, 70, 36, "AUDIO:LOCAL:PAUSE");
+    makeButton(panel, "Stop", 160, 150, 70, 36, "AUDIO:LOCAL:STOP", true);
+    makeButton(panel, "Mute", 236, 150, 70, 36, "AUDIO:LOCAL:MUTE");
+    makeButton(panel, "Vol -", 312, 150, 64, 36, "AUDIO:LOCAL:VOLUME:-");
+    makeButton(panel, "Vol +", 382, 150, 64, 36, "AUDIO:LOCAL:VOLUME:+");
+    makeButton(panel, "Test", 452, 150, 70, 36, "AUDIO:LOCAL:TEST");
+
+    os_.makeHeading(panel, "REMOTE AUDIO NODES", 8, 198);
+    audioNodesLabel_ = makeLabel(panel, "Scanning…", 8, 224);
+    lv_obj_add_style(audioNodesLabel_, &os_.caption, 0);
+    lv_obj_set_width(audioNodesLabel_, OS_CONTENT_FULL_W - 40);
+    lv_label_set_long_mode(audioNodesLabel_, LV_LABEL_LONG_WRAP);
+    makeButton(panel, "Refresh", 8, 300, 100, 36, "AUDIO:NODE:STATUS");
+    makeButton(panel, "Stop All", 116, 300, 100, 36, "AUDIO:NODE:STOP", true);
+    makeButton(panel, "Mute All", 224, 300, 100, 36, "AUDIO:NODE:MUTE");
+    makeButton(panel, "Test", 332, 300, 80, 36, "AUDIO:NODE:TEST");
+
+    os_.makeHeading(panel, "AUDIO ROUTING", 8, 348);
+    audioRoutingLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 374);
+    lv_obj_add_style(audioRoutingLabel_, &os_.caption, 0);
+    lv_obj_set_width(audioRoutingLabel_, OS_CONTENT_FULL_W - 40);
+    lv_label_set_long_mode(audioRoutingLabel_, LV_LABEL_LONG_WRAP);
+
+    os_.makeHeading(panel, "COMMAND STATUS", 8, 440);
+    audioCmdStatusLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 466);
+    lv_obj_add_style(audioCmdStatusLabel_, &os_.caption, 0);
+    lv_obj_set_width(audioCmdStatusLabel_, OS_CONTENT_FULL_W - 40);
+    lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
+  }
 
   void buildScreens() {
     Serial.printf("[UI] heap=%u psram=%u\n",
@@ -1144,14 +1474,41 @@ private:
     createSharedOperatorLog();
     uiBuildPump();
 
-    /* ---- DESKTOP (design reference) ---- */
+    /* ---- DESKTOP (design reference) — full width, no event log ---- */
     Serial.println("[UI] desktop…");
     desktopScreen = makeScreen();
     uiBuildPump("[UI] desktop");
     createDock(desktopScreen);
-    lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, OS_CONTENT_LEFT_W, OS_DESK_SUMMARY_H);
+    const int deskLeftW = OS_CONTENT_LEFT_W;
+    const int deskRightW = OS_CONTENT_RIGHT_W;
+    const int deskRightX = OS_CONTENT_RIGHT_X;
+    const int deskSumH = 240;
+    const int deskActY = OS_BODY_Y + deskSumH + OS_GAP;
+    const int deskActH = OS_BODY_H - deskSumH - OS_GAP;
+
+    lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, deskLeftW, deskSumH);
     createSystemSummary(summary);
-    lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, OS_DESK_ACTIONS_Y, OS_CONTENT_LEFT_W, OS_DESK_ACTIONS_H);
+    makeButton(summary, "Start", 10, 204, 90, 36, "SHOW:START");
+    makeButton(summary, "Pause", 108, 204, 90, 36, "SHOW:PAUSE");
+    makeButton(summary, "Stop", 206, 204, 90, 36, "SHOW:STOP", true);
+
+    lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
+    os_.makeHeading(fabric, "FABRIC", 8, 2);
+    deskFabricLabel_ = makeLabel(fabric, "ESP-NOW: UNKNOWN", 8, 28);
+    lv_obj_add_style(deskFabricLabel_, &os_.caption, 0);
+    lv_obj_set_width(deskFabricLabel_, deskRightW - 20);
+    lv_label_set_long_mode(deskFabricLabel_, LV_LABEL_LONG_WRAP);
+
+    lv_obj_t *audioCard = makePanel(desktopScreen, deskRightX, OS_BODY_Y + 128 + OS_GAP, deskRightW,
+                                    deskSumH - 128 - OS_GAP);
+    os_.makeHeading(audioCard, "AUDIO", 8, 2);
+    deskAudioSummaryLabel_ = makeLabel(audioCard, "Local: UNKNOWN\nNodes: 0 ONLINE\nPlaying: 0", 8, 28);
+    lv_obj_add_style(deskAudioSummaryLabel_, &os_.caption, 0);
+    lv_obj_set_width(deskAudioSummaryLabel_, deskRightW - 20);
+    lv_label_set_long_mode(deskAudioSummaryLabel_, LV_LABEL_LONG_WRAP);
+    makeButton(audioCard, "Open", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
+
+    lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, deskActY, OS_CONTENT_FULL_W, deskActH);
     createQuickActions(actions);
     uiBuildPump();
 
@@ -1237,7 +1594,7 @@ private:
     showListScroll = lv_obj_create(showsListPanel);
     lv_obj_remove_style_all(showListScroll);
     lv_obj_set_pos(showListScroll, 4, 42);
-    lv_obj_set_size(showListScroll, OS_CONTENT_LEFT_W - 20, OS_PRIMARY_H - 52);
+    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 52);
     lv_obj_set_style_bg_opa(showListScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(showListScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(showListScroll, LV_SCROLLBAR_MODE_AUTO);
@@ -1309,25 +1666,39 @@ private:
     lv_obj_add_style(timeoutLabel, &os_.body, 0);
 
     lv_obj_t *settings = os_.makePrimaryPanel(settingsScreen);
-    os_.makeHeading(settings, "DISPLAY", 8, 2);
-    makeButton(settings, "Never", 8, 32, 70, 40, "SETTINGS:TIMEOUT:0");
-    makeButton(settings, "1m", 86, 32, 54, 40, "SETTINGS:TIMEOUT:1");
-    makeButton(settings, "3m", 148, 32, 54, 40, "SETTINGS:TIMEOUT:3");
-    makeButton(settings, "5m", 210, 32, 54, 40, "SETTINGS:TIMEOUT:5");
-    makeButton(settings, "10m", 272, 32, 62, 40, "SETTINGS:TIMEOUT:10");
-    makeButton(settings, "30m", 342, 32, 62, 40, "SETTINGS:TIMEOUT:30");
-    makeButton(settings, "Cycle", 412, 32, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
-    os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 80);
+    os_.makeHeading(settings, "MODULES", 8, 2);
+    makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
+    makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
+    os_.makeCaption(settings, "Audio: local P4 + remote nodes   ·   Logs: operator event history", 8, 86);
 
-    os_.makeHeading(settings, "SYSTEM", 8, 108);
-    makeButton(settings, "Clear E-Stop", 8, 136, 150, 48, "EMERGENCY:CLEAR");
-    makeButton(settings, "Create Backup", 168, 136, 150, 48, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 328, 136, 120, 48, "STORAGE:EXPORT");
-    makeButton(settings, "Unmount SD", 8, 196, 150, 48, "STORAGE:UNMOUNT");
-    makeButton(settings, "About", 168, 196, 120, 48, "SETTINGS:ABOUT");
-    /* Reserved: Network / Time / Audio sections */
+    os_.makeHeading(settings, "DISPLAY", 8, 112);
+    makeButton(settings, "Never", 8, 140, 70, 40, "SETTINGS:TIMEOUT:0");
+    makeButton(settings, "1m", 86, 140, 54, 40, "SETTINGS:TIMEOUT:1");
+    makeButton(settings, "3m", 148, 140, 54, 40, "SETTINGS:TIMEOUT:3");
+    makeButton(settings, "5m", 210, 140, 54, 40, "SETTINGS:TIMEOUT:5");
+    makeButton(settings, "10m", 272, 140, 62, 40, "SETTINGS:TIMEOUT:10");
+    makeButton(settings, "30m", 342, 140, 62, 40, "SETTINGS:TIMEOUT:30");
+    makeButton(settings, "Cycle", 412, 140, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
+    os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
+
+    os_.makeHeading(settings, "SYSTEM", 8, 210);
+    makeButton(settings, "Clear E-Stop", 8, 236, 150, 44, "EMERGENCY:CLEAR");
+    makeButton(settings, "Backup", 168, 236, 110, 44, "STORAGE:BACKUP");
+    makeButton(settings, "Export", 288, 236, 90, 44, "STORAGE:EXPORT");
+    makeButton(settings, "About", 388, 236, 90, 44, "SETTINGS:ABOUT");
+
     refreshTimeoutLabel();
     uiBuildPump();
+
+    Serial.println("[UI] logs…");
+    buildLogsPage();
+    uiBuildPump("[UI] logs");
+    Serial.println("[UI] audio…");
+    buildAudioPage();
+    uiBuildPump("[UI] audio");
+    refreshLogsDisplay();
+    refreshAudioPresentation();
+    refreshDesktopFabric();
 
     Serial.println("[UI] overlays…");
     buildPersistentBanner();
@@ -1638,6 +2009,8 @@ private:
       case DeskPage::Details: showShows(); break;
       case DeskPage::Nodes: showDiagnostics(); break;
       case DeskPage::Settings: showSettings(); break;
+      case DeskPage::Audio: showAudio(); break;
+      case DeskPage::Logs: showLogs(); break;
       default: showDesktop(); break;
     }
   }
@@ -1877,6 +2250,25 @@ private:
   void showSettings() {
     notePage(DeskPage::Settings);
     lv_screen_load(settingsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showAudio() {
+    notePage(DeskPage::Audio);
+    lv_screen_load(audioScreen);
+    refreshAudioPresentation();
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showLogs() {
+    notePage(DeskPage::Logs);
+    lv_screen_load(logsScreen);
+    const bool wasPaused = logsLivePaused_;
+    logsLivePaused_ = false;
+    refreshLogsDisplay();
+    logsLivePaused_ = wasPaused;
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);

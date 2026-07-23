@@ -90,8 +90,10 @@
 #define SD_MISO_PIN 13
 #define SD_SCK_PIN  12
 
-// I2S audio pins from the SDK. GPIO17/18 are now reserved for Stage UART,
-// so on-board I2S is deferred until alternate pins are assigned.
+// Director JC8048W550C — NOT the P4 local show audio path.
+// These SDK I2S pins conflict with Stage UART (17/18) and are deferred.
+// Authoritative single local audio output lives on ESP32-P4 / IAN
+// (see firmware/stage-engine-p4/.../BoardConfig.h — P4_AUDIO_I2S_*).
 #define I2S_DOUT_PIN 17
 #define I2S_BCLK_PIN 0
 #define I2S_LRC_PIN  18

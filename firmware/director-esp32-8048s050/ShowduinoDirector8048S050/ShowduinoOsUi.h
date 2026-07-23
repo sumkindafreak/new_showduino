@@ -27,6 +27,7 @@
 #define OS_CONTENT_LEFT_W    470
 #define OS_CONTENT_RIGHT_X   506
 #define OS_CONTENT_RIGHT_W   282
+#define OS_CONTENT_FULL_W    (SCREEN_WIDTH - (2 * OS_MARGIN))
 
 #define OS_BODY_Y            (10 + DirectorStatusBar::HEIGHT)
 #define OS_BODY_H            (OS_DOCK_Y - OS_BODY_Y - OS_GAP)
@@ -296,15 +297,15 @@ struct ShowduinoOsTheme {
   }
 
   lv_obj_t *makePageChrome(lv_obj_t *screen, const char *pageTitle, lv_obj_t **outTitleBar = nullptr) {
-    lv_obj_t *titleBar = makePanel(screen, OS_MARGIN, OS_TITLE_Y, OS_CONTENT_LEFT_W, OS_TITLE_H, true);
+    lv_obj_t *titleBar = makePanel(screen, OS_MARGIN, OS_TITLE_Y, OS_CONTENT_FULL_W, OS_TITLE_H, true);
     makePageTitle(titleBar, pageTitle);
-    makeChip(titleBar, "SHOWDUINO OS", 330, 0);
+    makeChip(titleBar, "SHOWDUINO OS", OS_CONTENT_FULL_W - 150, 0);
     if (outTitleBar) *outTitleBar = titleBar;
-    return makePanel(screen, OS_MARGIN, OS_SUMMARY_Y, OS_CONTENT_LEFT_W, OS_SUMMARY_H);
+    return makePanel(screen, OS_MARGIN, OS_SUMMARY_Y, OS_CONTENT_FULL_W, OS_SUMMARY_H);
   }
 
   lv_obj_t *makePrimaryPanel(lv_obj_t *screen) {
-    return makePanel(screen, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_LEFT_W, OS_PRIMARY_H);
+    return makePanel(screen, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, OS_PRIMARY_H);
   }
 
   void makeDock(lv_obj_t *screen, lv_event_cb_t cb, void *user) {

@@ -10,6 +10,23 @@
 #define SHOWDUINO_WEBUI_ENABLED 1
 
 // =========================================================
+// Link UART to Communications Engine (C3)
+// Canonical: C3 TX21 -> P4 RX, C3 RX20 <- P4 TX
+// Do not reuse these GPIOs for SD or I2S.
+// =========================================================
+#define SHOWDUINO_LINK_UART_BAUD  115200
+#define SHOWDUINO_LINK_RX_PIN     5
+#define SHOWDUINO_LINK_TX_PIN     6
+
+/* Legacy aliases used by existing Stage sketch */
+#ifndef LINK_RX_PIN
+#define LINK_RX_PIN SHOWDUINO_LINK_RX_PIN
+#endif
+#ifndef LINK_TX_PIN
+#define LINK_TX_PIN SHOWDUINO_LINK_TX_PIN
+#endif
+
+// =========================================================
 // Stage Controller microSD (SPI)
 // Defaults match Espressif / Waveshare ESP32-P4 Function EV
 // onboard microSD. Change these if you use a different board
@@ -30,6 +47,24 @@
 #define PATH_WEBUI_WWW           "/showduino/www"
 #define PATH_SHOW_PACKAGES       "/showduino/shows/packages"
 #define PATH_SHOW_INDEX          "/showduino/shows/index.json"
+
+// =========================================================
+// Local P4 audio — ONE output only (IAN main/local channel)
+// Remote zone audio is ESP-NOW command -> audio nodes (own ESP32+I2S+SD).
+// Do NOT stream PCM/WAV over ESP-NOW.
+//
+// Repository audit (2026-07): no Waveshare P4 I2S pin map is defined for
+// Stage Engine. SUE docs use BCLK=5/WS=6/DOUT=7 which CONFLICT with link UART.
+// Pins remain unassigned (-1) until hardware confirmation — do not invent.
+// =========================================================
+#define SHOWDUINO_P4_LOCAL_AUDIO_ENABLED  0
+#define P4_AUDIO_I2S_BCLK                 (-1)
+#define P4_AUDIO_I2S_WS                   (-1)
+#define P4_AUDIO_I2S_DOUT                 (-1)
+/* Optional aliases */
+#define SHOWDUINO_P4_I2S_BCLK_PIN         P4_AUDIO_I2S_BCLK
+#define SHOWDUINO_P4_I2S_WS_PIN           P4_AUDIO_I2S_WS
+#define SHOWDUINO_P4_I2S_DOUT_PIN         P4_AUDIO_I2S_DOUT
 
 // =========================================================
 // Emergency Neopixel line (local Stage Controller indicator)

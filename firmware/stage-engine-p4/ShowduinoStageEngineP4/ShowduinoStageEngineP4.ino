@@ -34,8 +34,8 @@
 
 #define DEBUG_BAUD 115200
 #define LINK_BAUD  115200
-#define LINK_RX_PIN 5
-#define LINK_TX_PIN 6
+/* LINK_RX_PIN from BoardConfig.h */
+/* LINK_TX_PIN from BoardConfig.h */
 #define LINK_DEBUG 0
 #define CMD_MAX_LEN SHOWDUINO_DESK_COMMAND_MAX
 
@@ -620,6 +620,23 @@ void handleCommand(String command) {
   }
 
   if (command.startsWith("AUDIO:")) {
+    /* Colon-text only — never PCM/WAV over UART/ESP-NOW.
+       Local: single P4 output when hardware pins are confirmed.
+       Node: ROUTE:AUDIO:… to C3 (remote ESP32+I2S+SD; assets on node SD). */
+    if (command.startsWith("AUDIO:LOCAL:")) {
+#if SHOWDUINO_P4_LOCAL_AUDIO_ENABLED
+      sendToLink(String("ACK:") + command);
+#else
+      sendToLink("REJECTED:AUDIO:LOCAL:DISABLED");
+#endif
+      return;
+    }
+    if (command.startsWith("AUDIO:NODE:")) {
+      /* Strip AUDIO: → ROUTE:AUDIO:NODE:… (C3 reports unavailable until node firmware exists). */
+      sendToLink(String(SHOWDUINO_LEGACY_ROUTE_AUDIO) + command.substring(6));
+      sendToLink(String("ACK:") + command);
+      return;
+    }
     sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + command);
     return;
   }
