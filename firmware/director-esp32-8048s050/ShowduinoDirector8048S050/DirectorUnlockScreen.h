@@ -12,6 +12,8 @@
  */
 class DirectorUnlockScreen {
 public:
+  static constexpr uint8_t STEP_COUNT = 9;
+
   /** Create the overlay on LVGL's top layer. Safe to call repeatedly. */
   void begin(uint32_t nowMs);
 
@@ -22,8 +24,6 @@ public:
   bool isFinished() const { return finished_; }
 
 private:
-  static constexpr uint8_t STEP_COUNT = 9;
-
   lv_obj_t *root_ = nullptr;
   lv_obj_t *scannerOuter_ = nullptr;
   lv_obj_t *scannerMiddle_ = nullptr;
