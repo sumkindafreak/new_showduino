@@ -3,6 +3,11 @@
 #include <Arduino.h>
 #include <lvgl.h>
 
+/* LVGL provides opacity steps in tens on some 9.x releases. */
+#ifndef LV_OPA_85
+#define LV_OPA_85 LV_OPA_80
+#endif
+
 /**
  * Showduino OS Director unlock / verification overlay.
  *
