@@ -92,7 +92,7 @@ void addBridgePeerIfNeeded(const uint8_t *macAddress) {
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, macAddress, 6);
-  peerInfo.channel = ESPNOW_CHANNEL;
+  peerInfo.channel = 0; /* current home channel — SoftAP-safe */
   peerInfo.encrypt = false;
   peerInfo.ifidx = WIFI_IF_STA;
 

@@ -361,6 +361,11 @@ static void setupWifiAp() {
   WiFi.softAP(SHOWDUINO_WEBUI_AP_SSID, SHOWDUINO_WEBUI_AP_PASSWORD,
               SHOWDUINO_ESPNOW_CHANNEL, 0, 4);
 
+  /* SoftAP can leave home_channel stale vs peer.channel — force fabric channel. */
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  delay(30);
+
   WiFi.setHostname(SHOWDUINO_WEBUI_MDNS);
 
   uint8_t primary = 0;

@@ -89,6 +89,63 @@ bool relayPeerReady = false;
 volatile bool pendingDirector = false;
 String usbBuffer;
 String p4Buffer;
+unsigned long lastEspNowChannelLockMs = 0;
+
+/* SoftAP / Wi-Fi can move the radio off SHOWDUINO_ESPNOW_CHANNEL.
+   Peers registered with a fixed channel then fail with:
+   "Peer channel is not equal to the home channel".
+   peer.channel=0 = use current home channel; we keep home locked to fabric ch. */
+uint8_t readWifiPrimaryChannel() {
+  uint8_t primary = 0;
+  wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+  esp_wifi_get_channel(&primary, &second);
+  return primary;
+}
+
+bool lockEspNowHomeChannel() {
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  esp_err_t err = esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  uint8_t primary = readWifiPrimaryChannel();
+  if (primary != (uint8_t)SHOWDUINO_ESPNOW_CHANNEL) {
+    delay(20);
+    err = esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    primary = readWifiPrimaryChannel();
+  }
+  lastEspNowChannelLockMs = millis();
+  return (err == ESP_OK || err == ESP_ERR_WIFI_NOT_INIT) &&
+         primary == (uint8_t)SHOWDUINO_ESPNOW_CHANNEL;
+}
+
+void refreshEspNowPeersAfterChannelLock() {
+  /* Re-add peers with channel=0 after SoftAP / home-channel changes. */
+  if (!macIsZero(directorMac)) {
+    if (esp_now_is_peer_exist(directorMac)) esp_now_del_peer(directorMac);
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, directorMac, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    peerInfo.ifidx = WIFI_IF_STA;
+    esp_err_t err = esp_now_add_peer(&peerInfo);
+    if (err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+      Serial.printf("ESP-NOW: Director peer refresh failed (%d)\n", (int)err);
+    }
+  }
+  if (!macIsBroadcast(relayNodeMac) && !macIsZero(relayNodeMac)) {
+    if (esp_now_is_peer_exist(relayNodeMac)) esp_now_del_peer(relayNodeMac);
+    relayPeerReady = false;
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, relayNodeMac, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    peerInfo.ifidx = WIFI_IF_STA;
+    esp_err_t err = esp_now_add_peer(&peerInfo);
+    if (err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST) {
+      relayPeerReady = true;
+    } else {
+      Serial.printf("ESP-NOW: Relay peer refresh failed (%d)\n", (int)err);
+    }
+  }
+}
 
 void printMac(const uint8_t *mac) {
   for (uint8_t i = 0; i < 6; i++) {
@@ -139,7 +196,7 @@ bool ensureDirectorPeer(const uint8_t *mac) {
   if (!esp_now_is_peer_exist(mac)) {
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, mac, 6);
-    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+    peerInfo.channel = 0; /* current home channel — avoids ESP_ERR_ESPNOW_CHAN */
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_STA;
     esp_err_t err = esp_now_add_peer(&peerInfo);
@@ -171,7 +228,7 @@ bool ensureRelayPeer() {
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, relayNodeMac, 6);
-  peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+  peerInfo.channel = 0; /* current home channel — avoids ESP_ERR_ESPNOW_CHAN */
   peerInfo.encrypt = false;
   peerInfo.ifidx = WIFI_IF_STA;
   esp_err_t err = esp_now_add_peer(&peerInfo);
@@ -198,6 +255,10 @@ void forwardToP4(const char *command) {
 
 bool forwardToDirector(const String &line) {
   if (!directorKnown) return false;
+  if (readWifiPrimaryChannel() != (uint8_t)SHOWDUINO_ESPNOW_CHANNEL) {
+    lockEspNowHomeChannel();
+    refreshEspNowPeersAfterChannelLock();
+  }
   if (!esp_now_is_peer_exist(directorMac)) ensureDirectorPeer(directorMac);
 
   ShowduinoDeskPacket packet = {};
@@ -208,6 +269,12 @@ bool forwardToDirector(const String &line) {
   line.substring(0, SHOWDUINO_ESPNOW_COMMAND_MAX - 1).toCharArray(packet.command, SHOWDUINO_ESPNOW_COMMAND_MAX);
 
   esp_err_t err = esp_now_send(directorMac, (uint8_t *)&packet, sizeof(packet));
+  if (err == ESP_ERR_ESPNOW_CHAN) {
+    Serial.println("ESP-NOW: CHAN mismatch → re-lock fabric channel");
+    lockEspNowHomeChannel();
+    refreshEspNowPeersAfterChannelLock();
+    err = esp_now_send(directorMac, (uint8_t *)&packet, sizeof(packet));
+  }
   if (err != ESP_OK) return false;
 
   forwardedToDirector++;
@@ -233,6 +300,11 @@ bool routeToRelayNode(const String &command) {
   packet.sequence = nodeSequence++;
 
   esp_err_t err = esp_now_send(relayNodeMac, (uint8_t *)&packet, sizeof(packet));
+  if (err == ESP_ERR_ESPNOW_CHAN) {
+    lockEspNowHomeChannel();
+    refreshEspNowPeersAfterChannelLock();
+    err = esp_now_send(relayNodeMac, (uint8_t *)&packet, sizeof(packet));
+  }
   if (err != ESP_OK) {
     forwardToP4("ERR:RELAY_NODE_SEND_FAILED");
     Serial.printf("ESP-NOW: relay send failed (%d)\n", (int)err);
@@ -306,7 +378,7 @@ void handleRelayNodeReply(const ShowduinoNodePacket &packet, const uint8_t *srcM
     if (!esp_now_is_peer_exist(srcMac)) {
       esp_now_peer_info_t peerInfo = {};
       memcpy(peerInfo.peer_addr, srcMac, 6);
-      peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+      peerInfo.channel = 0;
       peerInfo.encrypt = false;
       peerInfo.ifidx = WIFI_IF_STA;
       esp_now_add_peer(&peerInfo);
@@ -538,6 +610,7 @@ void setup() {
   }
 
   esp_now_register_recv_cb(onEspNowReceive);
+  lockEspNowHomeChannel();
   ensureRelayPeer();
   Serial.println("ESP-NOW: desk + relay bridge ready");
 
@@ -545,6 +618,13 @@ void setup() {
   p4WebTunnelBegin();
   p4WebTunnelSetPump(readP4Serial);
   webServerBegin(millis());
+  /* SoftAP can move home channel — re-lock fabric ch and refresh peers. */
+  if (!lockEspNowHomeChannel()) {
+    Serial.printf("ESP-NOW: WARN home channel=%u want=%u after SoftAP\n",
+                  (unsigned)readWifiPrimaryChannel(), (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
+  }
+  refreshEspNowPeersAfterChannelLock();
+  Serial.printf("ESP-NOW: fabric channel locked to %u\n", (unsigned)readWifiPrimaryChannel());
 
   /* Stage 5 — seed local inventory (does not change ESP-NOW wire). */
   if (!macIsZero(bridgeMac)) {
@@ -587,6 +667,16 @@ void loop() {
   readP4Serial();
 #if SHOWDUINO_WEBUI_ENABLED
   webServerLoop();
+  /* SoftAP clients / Wi-Fi stack can drift channel — reaffirm periodically. */
+  if (millis() - lastEspNowChannelLockMs >= 5000UL) {
+    if (readWifiPrimaryChannel() != (uint8_t)SHOWDUINO_ESPNOW_CHANNEL) {
+      Serial.println("ESP-NOW: home channel drifted — re-locking");
+      lockEspNowHomeChannel();
+      refreshEspNowPeersAfterChannelLock();
+    } else {
+      lastEspNowChannelLockMs = millis();
+    }
+  }
   /* Authoritative clock → Director (display client). No packet layout change. */
   static uint32_t lastDirectorTimePushMs = 0;
   if (directorKnown && gTimeService.ready() && (millis() - lastDirectorTimePushMs) >= RTC_UPDATE_INTERVAL_MS) {

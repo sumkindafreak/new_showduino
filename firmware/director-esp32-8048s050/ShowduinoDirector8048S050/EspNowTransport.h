@@ -66,11 +66,12 @@ public:
     return true;
   }
 
-  // Soft recover — only when stuck disconnected. Avoids per-packet churn.
+  // Soft recover — channel drift / SoftAP side-effects. Avoids per-packet churn.
   bool recover() {
     if (!online) return false;
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    delay(20);
     if (esp_now_is_peer_exist(stageBridgeMac)) {
       esp_now_del_peer(stageBridgeMac);
     }
@@ -95,11 +96,26 @@ public:
     lastCommand = command;
     lastSequence = packet.sequence;
 
+    uint8_t primary = 0;
+    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+    esp_wifi_get_channel(&primary, &second);
+    if (primary != (uint8_t)SHOWDUINO_ESPNOW_CHANNEL) {
+      recover();
+    }
+
     sendBusy = true;
     lastCallbackOk = false;
     callbackSeen = false;
 
     esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
+    if (result == ESP_ERR_ESPNOW_CHAN) {
+      Serial.println("ESP-NOW: CHAN mismatch → recover");
+      recover();
+      sendBusy = true;
+      lastCallbackOk = false;
+      callbackSeen = false;
+      result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
+    }
     if (result != ESP_OK) {
       sendBusy = false;
       lastSendOk = false;
@@ -167,7 +183,7 @@ private:
 
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, stageBridgeMac, 6);
-    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+    peerInfo.channel = 0; /* current home channel — SoftAP-safe */
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_STA;
 
