@@ -13,13 +13,24 @@
       Board: ESP32P4 Dev Module
       Flash Size: 16MB
       USB CDC On Boot: Enabled
+
+  microSD (optional): SPI pins in BoardConfig.h
+      Defaults: SCK=43 MISO=39 MOSI=44 CS=42 PWR=45
+      Layout: /showduino/www , /showduino/shows , ...
 */
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_protocol_version.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_show_runtime.h"
+#include "../../../protocol/showduino_web_tunnel.h"
+#include "BoardConfig.h"
 #include "ShowEngineState.h"
+#include "ShowRuntimeOwner.h"
+#include "src/StageStorage.h"
+#include "src/EmergencyPixels.h"
+#include "src/WebApiHandler.h"
 
 #define DEBUG_BAUD 115200
 #define LINK_BAUD  115200
@@ -29,9 +40,13 @@
 #define CMD_MAX_LEN SHOWDUINO_DESK_COMMAND_MAX
 
 ShowEngineState gState;
+ShowRuntimeOwner gRuntime;
 String inputBuffer;
 uint32_t noiseBytes = 0;
 uint32_t goodCommands = 0;
+
+void handleCommand(String command);
+void timelineCueDispatch(const char *command);
 
 bool isQuietLinkMessage(const String &message) {
   return message == SHOWDUINO_LEGACY_HEARTBEAT ||
@@ -50,6 +65,16 @@ void sendToLink(const String &message) {
     Serial.println(message);
   }
 #endif
+}
+
+void sendToLinkCStr(const char *message) {
+  if (!message || !message[0]) return;
+  sendToLink(String(message));
+}
+
+void timelineCueDispatch(const char *command) {
+  if (!command || !command[0]) return;
+  handleCommand(String(command));
 }
 
 void flushLinkRx() {
@@ -71,7 +96,9 @@ bool looksLikeNoise(const String &s) {
 }
 
 void publishShowState() {
+  gRuntime.syncLegacyShow(&gState);
   sendToLink(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + showRuntimeWire(gState.show));
+  gRuntime.broadcastAll();
 }
 
 void publishEmergencyState() {
@@ -363,38 +390,44 @@ void handleRouteErrors(const String &command) {
 }
 
 void enterEmergency() {
+  /* Existing safety path unchanged — runtime mirrors pause + EMERGENCY_STOP. */
   gState.emergency = EmergencyState::Active;
-  gState.show = ShowRuntimeState::Emergency;
   showEngineBump(gState);
+  gRuntime.onEmergencyStop(millis(), &gState);
   publishEmergencyState();
   publishShowState();
   routeToRelayNode(SHOWDUINO_LEGACY_EMERGENCY_STOP);
-  /* Pixel/audio: honest unsupported — no false success */
+
+  /* Local Stage indicator: single Neopixel line → solid white. */
+  emergencyPixelsSetWhite();
+
+  /* Remote pixel/audio nodes still honest-unsupported until those engines exist. */
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:EMERGENCY:STOP");
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:EMERGENCY:STOP");
 }
 
 void clearEmergency() {
   gState.emergency = EmergencyState::Clear;
-  if (gState.show == ShowRuntimeState::Emergency) {
-    gState.show = ShowRuntimeState::Idle;
-  }
   showEngineBump(gState);
+  gRuntime.onEmergencyCleared(millis(), &gState);
   publishEmergencyState();
   publishShowState();
   routeToRelayNode(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
+
+  emergencyPixelsBlackout();
+
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:EMERGENCY:CLEAR");
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:EMERGENCY:CLEAR");
 }
 
 void handleShowStop() {
-  if (gState.emergency == EmergencyState::Active) {
-    sendToLink("REJECTED:SHOW:EMERGENCY_ACTIVE");
-    return;
-  }
-  gState.show = ShowRuntimeState::Idle;
+  const bool abortFromEstop =
+      (gState.emergency == EmergencyState::Active) ||
+      (gRuntime.rt.state == SHOW_STATE_EMERGENCY_STOP);
+
+  if (!gRuntime.handleStop(millis(), &gState)) return;
   showEngineBump(gState);
-  publishShowState();
+
   /* Absolute safe-state request to relay node */
   for (uint8_t i = 0; i < SHOW_ENGINE_RELAY_COUNT; i++) {
     gState.relays[i].pending = true;
@@ -404,24 +437,88 @@ void handleShowStop() {
   routeToRelayNode(SHOWDUINO_LEGACY_RELAY_ALL_OFF);
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:ALL:BLACKOUT");
   sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:STOP");
-  /* Legacy companion */
-  sendToLink(SHOWDUINO_LEGACY_ACK_SHOW_STOP);
+
+  /* Abort Show from E-stop: publish CLEAR so Director can leave safe-mode UI. */
+  if (abortFromEstop) {
+    emergencyPixelsBlackout();
+    publishEmergencyState();
+    publishShowState();
+    routeToRelayNode(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
+    sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "PIXEL:EMERGENCY:CLEAR");
+    sendToLink(String(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) + "AUDIO:EMERGENCY:CLEAR");
+  }
 }
 
 void handleShowStart() {
-  if (gState.emergency == EmergencyState::Active) {
-    sendToLink("REJECTED:SHOW:EMERGENCY_ACTIVE");
+  gRuntime.handleRun(millis(), &gState);
+  showEngineBump(gState);
+}
+
+void handleShowLoad(const String &command) {
+  const char *name = "";
+  if (command.startsWith("SHOW:LOAD:")) {
+    name = command.c_str() + strlen("SHOW:LOAD:");
+  } else if (command == "SHOW:LOAD" || command == "SHOW:DEPLOY") {
+    name = gRuntime.rt.showName[0] ? gRuntime.rt.showName : "show";
+  }
+  gRuntime.handleLoadName(name, millis(), &gState);
+  showEngineBump(gState);
+}
+
+void handleTlCommand(const String &command) {
+  uint32_t now = millis();
+  if (command == "SHOW:TL:BEGIN") {
+    gRuntime.handleTlBegin();
     return;
   }
-  gState.show = ShowRuntimeState::Playing;
-  showEngineBump(gState);
-  publishShowState();
-  sendToLink(SHOWDUINO_LEGACY_ACK_SHOW_START);
+  if (command == "SHOW:TL:END") {
+    gRuntime.handleTlEnd(now, &gState);
+    showEngineBump(gState);
+    return;
+  }
+  if (command.startsWith("SHOW:TL:C:")) {
+    /* SHOW:TL:C:<ms>:<cmd> */
+    const char *p = command.c_str() + strlen("SHOW:TL:C:");
+    char *end = nullptr;
+    unsigned long ms = strtoul(p, &end, 10);
+    if (!end || *end != ':' || !end[1]) {
+      gRuntime.setError("bad_tl_cue", now);
+      return;
+    }
+    if (!gRuntime.handleTlCue((uint32_t)ms, end + 1)) {
+      sendToLink("REJECTED:SHOW:TL:C");
+    }
+    return;
+  }
+  sendToLink(String(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) + command);
+}
+
+/* Always answer WEB/ so C3 never HTTP-502s if WebApiHandler was stubbed. */
+static void sendWebTunnelFallback(const char *body) {
+  const size_t n = strlen(body);
+  Serial1.print(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX);
+  Serial1.print(200);
+  Serial1.print(':');
+  Serial1.print((unsigned)n);
+  Serial1.print('\n');
+  Serial1.print(body);
+  Serial1.flush();
 }
 
 void handleCommand(String command) {
   command.trim();
   if (command.length() == 0) return;
+
+  /* Studio API tunnel (C3 Wi-Fi → UART → here). Must run even if WebUI flag off. */
+  if (command.startsWith("WEB/")) {
+    Serial.print("[WebAPI] tunnel ");
+    Serial.println(command);
+#if SHOWDUINO_WEBUI_ENABLED
+    if (webApiHandleTunnelRequest(command)) return;
+#endif
+    sendWebTunnelFallback("{\"role\":\"show-engine\",\"webApi\":false,\"hint\":\"reflash P4 with WebAPI\"}\n");
+    return;
+  }
 
   if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
     handleNodeReply(command.substring(5));
@@ -457,10 +554,16 @@ void handleCommand(String command) {
 
   if (command == SHOWDUINO_LEGACY_STATUS_REQUEST) {
     publishSnapshot();
+    gRuntime.handleStateQuery();
     /* Refresh from node asynchronously — incremental STATE:RELAY follows */
     if (gState.relayNode != NodeAvailability::Offline) {
       routeToRelayNode(SHOWDUINO_LEGACY_STATUS_REQUEST);
     }
+    return;
+  }
+
+  if (command == SHOW_STATE_QUERY || command == "SHOW:STATE" || command == "SHOW:STATUS") {
+    gRuntime.handleStateQuery();
     return;
   }
 
@@ -474,19 +577,35 @@ void handleCommand(String command) {
     return;
   }
 
-  if (command == SHOWDUINO_LEGACY_STOP_ALL || command == SHOWDUINO_LEGACY_SHOW_STOP) {
+  /* STOP aliases — Abort Show must always hit handleShowStop. */
+  if (command == SHOWDUINO_LEGACY_STOP_ALL || command == SHOWDUINO_LEGACY_SHOW_STOP ||
+      command == "SHOW:ABORT" || command == "ABORT:SHOW") {
     handleShowStop();
     return;
   }
 
-  if (command == SHOWDUINO_LEGACY_SHOW_START) {
+  if (command == SHOWDUINO_LEGACY_SHOW_START || command == "SHOW:RUN" ||
+      command.startsWith("SHOW:RUN:")) {
     handleShowStart();
     return;
   }
 
-  if (command.startsWith("SHOW:PAUSE") || command.startsWith("SHOW:RESUME") ||
-      command.startsWith("SHOW:LOAD") || command == "SHOW:DEPLOY") {
-    sendToLink(String(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) + command);
+  if (command == "SHOW:PAUSE") {
+    gRuntime.handlePause(millis(), &gState);
+    return;
+  }
+  if (command == "SHOW:RESUME") {
+    gRuntime.handleResume(millis(), &gState);
+    return;
+  }
+
+  if (command.startsWith("SHOW:TL:")) {
+    handleTlCommand(command);
+    return;
+  }
+
+  if (command.startsWith("SHOW:LOAD") || command == "SHOW:DEPLOY") {
+    handleShowLoad(command);
     return;
   }
 
@@ -515,7 +634,9 @@ void handleCommand(String command) {
     return;
   }
 
-  sendToLink("ERR:UNKNOWN_COMMAND");
+  sendToLink(String("ERR:UNKNOWN_COMMAND:") + command);
+  Serial.print("[Stage] unknown cmd: ");
+  Serial.println(command);
 }
 
 void serviceTimeouts() {
@@ -563,28 +684,50 @@ void readLinkSerial() {
     }
 
     inputBuffer += c;
-    if (inputBuffer.length() > CMD_MAX_LEN) {
+    if (inputBuffer.length() > 160) {
       inputBuffer = "";
       noiseBytes++;
     }
   }
 }
 
+unsigned long bootMs = 0;
+
 void setup() {
   Serial.begin(DEBUG_BAUD);
   delay(500);
+  bootMs = millis();
 
   Serial.println();
   Serial.println("========================================");
   Serial.println(" Showduino Show Engine (ESP32-P4)");
   Serial.println("========================================");
-  Serial.println("Mode: authoritative hub — relays via C3");
+  Serial.println("Mode: authoritative hub — ShowRuntime + relays via C3");
 
+  Serial1.setRxBufferSize(4096);
   Serial1.begin(LINK_BAUD, SERIAL_8N1, LINK_RX_PIN, LINK_TX_PIN);
   delay(50);
   flushLinkRx();
 
+  gRuntime.begin(sendToLinkCStr);
+  gRuntime.setDispatch(timelineCueDispatch);
+  /* No interrupted-show recovery yet — boot IDLE. */
+  gRuntime.bootToIdle();
+
   Serial.printf("Link UART: RX=%d TX=%d baud=%d\n", LINK_RX_PIN, LINK_TX_PIN, LINK_BAUD);
+
+#if SHOWDUINO_SD_ENABLED
+  if (stageStorageBegin()) {
+    Serial.println("[Storage] Stage SD online");
+  } else {
+    Serial.println("[Storage] Continuing without SD (retry in loop)");
+  }
+#endif
+
+#if SHOWDUINO_EMERGENCY_PIXEL_ENABLED
+  emergencyPixelsBegin();
+#endif
+
   Serial.println("Setup complete. Relay states UNKNOWN until confirmed.");
 
   sendToLink("BOOT:STAGE_ENGINE_READY");
@@ -592,10 +735,18 @@ void setup() {
   publishShowState();
   sendToLink(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + emergencyWire(gState.emergency));
   publishNodeState();
+
+#if SHOWDUINO_WEBUI_ENABLED
+  webApiBegin(bootMs);
+  Serial.println("WebAPI: REST handlers ready (C3 Wi-Fi front door)");
+#endif
 }
 
 void loop() {
   readLinkSerial();
   serviceTimeouts();
-  delay(2);
+  gRuntime.service(millis(), &gState);
+#if SHOWDUINO_SD_ENABLED
+  stageStorageLoop();
+#endif
 }

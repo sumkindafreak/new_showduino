@@ -32,6 +32,7 @@ bool lvglPortInit(Arduino_RGB_Display *panel, Arduino_ESP32RGBPanel *rgbPanel) {
   gfx->fillScreen(RGB565_BLACK);
 
   lv_init();
+  Serial.println("LVGL: CLIB malloc (use lv_conf.h with LV_STDLIB_CLIB + PSRAM)");
 
   const uint32_t bufLines = LVGL_BUFFER_LINES;
   const size_t bufPx = (size_t)SCREEN_WIDTH * bufLines;

@@ -126,6 +126,8 @@
 #define UI_REFRESH_INTERVAL_MS  1000UL
 // Sustained silence before DISCONNECTED (~3 missed heartbeats).
 #define LINK_TIMEOUT_MS         7000UL
+/* Stage 7.7 — expected fabric nodes (relay today; expand later). */
+#define SHOWDUINO_EXPECTED_NODES  1
 #define ESPNOW_RECOVER_MS       5000UL
 
 enum ShowduinoLinkState : uint8_t {
@@ -133,5 +135,14 @@ enum ShowduinoLinkState : uint8_t {
   LINK_READY = 1,
   LINK_DISCONNECTED = 2
 };
+
+// =========================================================
+// Stage 4 WebUI (Studio browser desk)
+// =========================================================
+#define SHOWDUINO_WEBUI_ENABLED 0
+#define SHOWDUINO_WEBUI_AP_SSID "Showduino-Studio"
+#define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
+#define SHOWDUINO_WEBUI_MDNS "showduino-studio"
+#define SHOWDUINO_BOARD_NAME "ESP32-8048S050"
 
 #endif

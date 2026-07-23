@@ -10,7 +10,7 @@ Transports only. Canonical active bridge firmware.
 ```text
 Director  --ESP-NOW-->  this C3  --UART-->  Show Engine (P4)
 Node      --ESP-NOW-->  this C3  --UART-->  Show Engine (P4)
-Browser   --Wi-Fi-->    this C3  --> Show Engine services   (planned)
+Browser   --Wi-Fi-->    this C3  --UART tunnel-->  Show Engine REST API
 ```
 
 ## Constitution
@@ -36,13 +36,16 @@ firmware/c3-supermini-espnow-bridge/ShowduinoC3SuperMiniBridge/
 - Intercept Show Engine `ROUTE:RELAY:…` and forward via ESP‑NOW to the relay node
 - Forward node replies as `NODE:…` on UART
 - Learn Director MAC from inbound desk traffic
+- **Wi‑Fi AP front door** (`Showduino-Studio`) serves Studio WebUI static assets
+- Proxies `/api/*` to P4 via UART web tunnel (`protocol/showduino_web_tunnel.h`)
 
-Wi‑Fi AP/STA for browser access to Show Engine services is **planned**, not claimed complete in this sketch.
+Connect: join **`Showduino-Studio`** / **`showduino`**, open **`http://192.168.4.1/`**
 
 ## Configuration notes
 
 - Set relay peer MAC in the sketch for the current bring-up (transport detail).
 - Long-term, application code uses **logical Showduino device IDs**; the Communications Engine resolves transport addresses.
+- AP runs on ESP-NOW channel 1 so desk link stays stable.
 
 ## Not this project
 

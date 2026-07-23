@@ -61,7 +61,7 @@ public:
     yield();
 
     sd.setStage(StorageBootStage::LoadShowIndex, "Loading show library");
-    shows.loadIndex();
+    shows.refreshLibrary();
     yield();
 
     sd.setStage(StorageBootStage::StartLogging, "Logging started");
@@ -249,7 +249,7 @@ public:
     configMgr.load(config);
     assets.loadManifest();
     devices.load();
-    shows.loadIndex();
+    shows.refreshLibrary();
     logs.begin(&sd, config.saveLogMode);
     logs.flushRamQueueToSd();
     recoveryMode = false;

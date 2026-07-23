@@ -20,6 +20,13 @@
     C3 RX GPIO20  <-  P4 TX GPIO6
     GND           --  GND
 
+  DS3231 RTC (Stage 7.5 — SUE authoritative clock):
+    C3 GPIO4 (SDA) -> DS3231 SDA
+    C3 GPIO5 (SCL) -> DS3231 SCL
+    C3 GPIO6 (SQW) -> DS3231 SQW / INT / DS   (alarm for timed shows)
+    3V3 / GND      -> DS3231 VCC / GND
+    Leave 32K unconnected.
+
   Setup:
     1. Flash relay node, copy its MAC into RELAY_NODE_MAC_* below.
     2. Flash this C3 bridge.
@@ -31,6 +38,13 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <esp_mac.h>
+#include "BoardConfig.h"
+#include "src/P4WebTunnel.h"
+#include "src/WebServerManager.h"
+#include "src/DeviceManager.h"
+#if SHOWDUINO_WEBUI_ENABLED
+#include "src/time/TimeService.h"
+#endif
 #include "../../../protocol/showduino_desk_packet.h"
 #include "../../../protocol/showduino_node_packet.h"
 #include "../../../protocol/showduino_legacy_strings.h"
@@ -38,11 +52,8 @@
 #include "../../../protocol/showduino_state_wire.h"
 
 #define USB_DEBUG_BAUD 115200
-#define P4_UART_BAUD   115200
-#define P4_UART_RX_PIN 20
-#define P4_UART_TX_PIN 21
+#define MDNS_NAME SHOWDUINO_WEBUI_MDNS
 
-#define SHOWDUINO_ESPNOW_CHANNEL 1
 /* Magic / wire version / command max: protocol/showduino_protocol_version.h */
 
 // =========================================================
@@ -201,7 +212,8 @@ bool forwardToDirector(const String &line) {
 
   forwardedToDirector++;
   if (line != SHOWDUINO_LEGACY_ACK_HEARTBEAT && line != SHOWDUINO_LEGACY_READY &&
-      line != SHOWDUINO_LEGACY_SHOWDUINO_STAGE && line != "BOOT:STAGE_ENGINE_READY") {
+      line != SHOWDUINO_LEGACY_SHOWDUINO_STAGE && line != "BOOT:STAGE_ENGINE_READY" &&
+      !line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
     Serial.print("TX -> Director: ");
     Serial.println(packet.command);
   }
@@ -233,9 +245,20 @@ bool routeToRelayNode(const String &command) {
   return true;
 }
 
+static int8_t rssiFromRecvInfo(const esp_now_recv_info_t *recvInfo) {
+  if (!recvInfo || !recvInfo->rx_ctrl) return 0;
+  return (int8_t)recvInfo->rx_ctrl->rssi;
+}
+
 void handleP4Line(String line) {
   line.trim();
   if (line.length() == 0) return;
+
+#if SHOWDUINO_WEBUI_ENABLED
+  /* Stage 5 discovery — UART presence only; does not alter Stage behaviour. */
+  gDeviceManager.noteUartSighting("ian", SHOWDUINO_NODE_IAN_NAME, "ian-show-engine",
+                                  "SceneRuntime,Scheduler,RelayOutput,Lighting,AudioPlayback,PixelOutput,Temperature,Humidity,Logging");
+#endif
 
   // P4 asks C3 to deliver a command to the relay node.
   // Format: ROUTE:RELAY:<command...>
@@ -310,6 +333,12 @@ void onEspNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *incomin
     }
     ShowduinoNodePacket packet = {};
     memcpy(&packet, incomingData, sizeof(packet));
+#if SHOWDUINO_WEBUI_ENABLED
+    if (recvInfo && recvInfo->src_addr) {
+      gDeviceManager.noteEspNowSighting("relay", "Relay Node", recvInfo->src_addr,
+                                        rssiFromRecvInfo(recvInfo), "RelayOutput,GPIOInput");
+    }
+#endif
     handleRelayNodeReply(packet, recvInfo ? recvInfo->src_addr : nullptr);
     return;
   }
@@ -329,13 +358,31 @@ void onEspNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *incomin
   if (recvInfo != nullptr && !macIsZero(recvInfo->src_addr)) {
     memcpy(pendingDirectorMac, recvInfo->src_addr, 6);
     pendingDirector = true;
+#if SHOWDUINO_WEBUI_ENABLED
+    gDeviceManager.noteEspNowSighting("director", "Director", recvInfo->src_addr,
+                                      rssiFromRecvInfo(recvInfo), "Touchscreen,OLED,Logging");
+#endif
   }
 
   if (strcmp(packet.command, SHOWDUINO_LEGACY_HEARTBEAT) != 0 &&
-      strcmp(packet.command, SHOWDUINO_LEGACY_HELLO) != 0) {
+      strcmp(packet.command, SHOWDUINO_LEGACY_HELLO) != 0 &&
+      strcmp(packet.command, SHOWDUINO_LEGACY_TIME_REQUEST) != 0) {
     Serial.print("RX <- Director ");
     if (recvInfo != nullptr) printMac(recvInfo->src_addr);
     Serial.printf(" cmd=%s\n", packet.command);
+  }
+
+  /* Stage 7.5 — TimeService answers Director; do not forward to Stage Runtime. */
+  if (strcmp(packet.command, SHOWDUINO_LEGACY_TIME_REQUEST) == 0) {
+#if SHOWDUINO_WEBUI_ENABLED
+    char timeLine[96];
+    if (gTimeService.ready() && gTimeService.formatDirectorWire(timeLine, sizeof(timeLine))) {
+      forwardToDirector(timeLine);
+    } else {
+      forwardToDirector("TIME:0|--:--:--|Time Unavailable|offline|none");
+    }
+#endif
+    return;
   }
 
   forwardToP4(packet.command);
@@ -346,9 +393,26 @@ void handleUsbLine(String line) {
   if (line.length() == 0) return;
 
   if (line == "HELP") {
-    Serial.println("Commands: HELP, STATUS, MAC, TEST:HELLO, TEST:RELAY:1:ON, or any P4 command");
+    Serial.println("Commands: HELP, STATUS, MAC, WEBTEST, TEST:HELLO, TEST:RELAY:1:ON, or any P4 command");
     return;
   }
+
+#if SHOWDUINO_WEBUI_ENABLED
+  if (line == "WEBTEST") {
+    String body;
+    int status = 0;
+    Serial.println("[WEBTEST] GET /api/system via UART tunnel...");
+    if (p4WebTunnelGet("/api/system", body, status, 5000)) {
+      Serial.printf("[WEBTEST] OK status=%d bytes=%u\n", status, (unsigned)body.length());
+      Serial.println(body.substring(0, body.length() > 200 ? 200 : body.length()));
+    } else {
+      Serial.println("[WEBTEST] FAILED — no WEBR from P4");
+      Serial.println("Wire: C3 TX21 → P4 RX5 | C3 RX20 ← P4 TX6 | GND");
+      Serial.println("Reflash P4 ShowduinoStageEngineP4, watch P4 Serial for [WebAPI] tunnel");
+    }
+    return;
+  }
+#endif
 
   if (line == "MAC" || line == "STATUS") {
     Serial.println("--- C3 SuperMini Bridge ---");
@@ -396,9 +460,17 @@ void readUsbSerial() {
 void readP4Serial() {
   while (Serial1.available() > 0) {
     char c = (char)Serial1.read();
+
+    if (p4WebTunnelConsumingBytes()) {
+      p4WebTunnelOnByte(c);
+      continue;
+    }
+
     if (c == '\n' || c == '\r') {
       if (p4Buffer.length() > 0) {
-        handleP4Line(p4Buffer);
+        if (!p4WebTunnelOnLine(p4Buffer)) {
+          handleP4Line(p4Buffer);
+        }
         p4Buffer = "";
       }
     } else {
@@ -410,7 +482,11 @@ void readP4Serial() {
 
 bool beginWifiSta() {
   WiFi.persistent(false);
+#if SHOWDUINO_WEBUI_ENABLED
+  WiFi.mode(WIFI_AP_STA);
+#else
   WiFi.mode(WIFI_STA);
+#endif
   WiFi.disconnect(false, false);
   delay(200);
 
@@ -436,6 +512,7 @@ void setup() {
   Serial.println(" Showduino C3 Bridge (Desk + Relay Node)");
   Serial.println("========================================");
 
+  Serial1.setRxBufferSize(4096);
   Serial1.begin(P4_UART_BAUD, SERIAL_8N1, P4_UART_RX_PIN, P4_UART_TX_PIN);
   Serial.printf("P4 UART: RX=%d TX=%d baud=%d\n", P4_UART_RX_PIN, P4_UART_TX_PIN, P4_UART_BAUD);
 
@@ -463,6 +540,29 @@ void setup() {
   esp_now_register_recv_cb(onEspNowReceive);
   ensureRelayPeer();
   Serial.println("ESP-NOW: desk + relay bridge ready");
+
+#if SHOWDUINO_WEBUI_ENABLED
+  p4WebTunnelBegin();
+  p4WebTunnelSetPump(readP4Serial);
+  webServerBegin(millis());
+
+  /* Stage 5 — seed local inventory (does not change ESP-NOW wire). */
+  if (!macIsZero(bridgeMac)) {
+    char ip[16];
+    snprintf(ip, sizeof(ip), "%s", WiFi.softAPIP().toString().c_str());
+    char proto[12];
+    snprintf(proto, sizeof(proto), "%d.%d",
+             SHOWDUINO_PROTOCOL_VERSION_MAJOR, SHOWDUINO_PROTOCOL_VERSION_MINOR);
+    gDeviceManager.registerLocal("sue", SHOWDUINO_NODE_SUE_NAME, bridgeMac,
+                                 SHOWDUINO_C3_FW_VERSION, proto,
+                                 "NetworkBridge,Logging,OTA,MediaStorage", ip);
+  }
+  gDeviceManager.noteUartSighting("ian", SHOWDUINO_NODE_IAN_NAME, "ian-show-engine",
+                                  "SceneRuntime,Scheduler,RelayOutput,Lighting,AudioPlayback,PixelOutput,Temperature,Humidity,Logging");
+
+  Serial.println("WebUI: http://192.168.4.1/  ws://192.168.4.1:81/");
+#endif
+
   Serial.println("Type HELP / STATUS");
 }
 
@@ -485,5 +585,17 @@ void loop() {
     ensureDirectorPeer(pendingDirectorMac);
   }
   readP4Serial();
+#if SHOWDUINO_WEBUI_ENABLED
+  webServerLoop();
+  /* Authoritative clock → Director (display client). No packet layout change. */
+  static uint32_t lastDirectorTimePushMs = 0;
+  if (directorKnown && gTimeService.ready() && (millis() - lastDirectorTimePushMs) >= RTC_UPDATE_INTERVAL_MS) {
+    lastDirectorTimePushMs = millis();
+    char timeLine[96];
+    if (gTimeService.formatDirectorWire(timeLine, sizeof(timeLine))) {
+      forwardToDirector(timeLine);
+    }
+  }
+#endif
   delay(5);
 }

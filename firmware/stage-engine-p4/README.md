@@ -28,7 +28,13 @@ Current sketch is an **early command hub**:
 - Routes relay (and stub) work through the Communications Engine
 - Returns basic ACK / status lines
 
-It does **not** yet implement the full timeline engine, primary project store, DMX, real pixel/audio engines, or Web UI/API.
+It does **not** yet implement the full timeline engine, primary project store, DMX, or real pixel/audio engines.
+
+**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. Browser access is via the C3 Wi-Fi front door (static assets on C3, API proxied over UART). See `web/showduino-studio/README.md`.
+
+**Stage Controller SD:** Optional SPI microSD mount (`SHOWDUINO_SD_ENABLED`). Creates `/showduino/...` folders, reports mount status in `/api/system`. Defaults target Espressif/Waveshare P4 Function EV pins — edit `BoardConfig.h` for your board. Boot continues if the card is missing.
+
+**Emergency Neopixel:** optional local strip on the Stage Controller turns solid white on E-stop (`BoardConfig.h`: pin/count/brightness). Requires **Adafruit NeoPixel** library. Remote PIXEL nodes remain unsupported until that engine exists.
 
 ## Sketch
 
@@ -36,6 +42,23 @@ It does **not** yet implement the full timeline engine, primary project store, D
 firmware/stage-engine-p4/ShowduinoStageEngineP4/
 ```
 
+### SD card layout (FAT32)
+
+```text
+/showduino/www/           Studio WebUI (optional on card)
+/showduino/shows/packages/
+/showduino/logs/
+/showduino/system/
+...
+```
+
+Pins (defaults in `BoardConfig.h`):
+
+```text
+SCK=43  MISO=39  MOSI=44  CS=42  POWER=45 (active LOW)
+```
+
+Link UART remains GPIO5 (RX) / GPIO6 (TX) to the C3.
 ## Policy reminders for later firmware work
 
 - Absolute relay states only (no distributed `TOGGLE`)

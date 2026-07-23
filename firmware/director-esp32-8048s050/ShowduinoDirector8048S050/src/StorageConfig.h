@@ -86,6 +86,7 @@ static const char *const STORAGE_REQUIRED_DIRS[] = {
   "/showduino/exports/shows",
   "/showduino/exports/configuration",
   "/showduino/temp",
+  "/showduino/www",
   nullptr
 };
 
@@ -102,5 +103,6 @@ static const char *const STORAGE_REQUIRED_DIRS[] = {
 #define PATH_PAIRED_DEVICES  "/showduino/devices/paired_devices.json"
 #define PATH_STAGE_CONTROLLERS "/showduino/devices/stage_controllers.json"
 #define PATH_NODES_JSON      "/showduino/devices/nodes.json"
+#define PATH_WEBUI_WWW       "/showduino/www"
 
 #endif

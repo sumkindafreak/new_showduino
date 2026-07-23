@@ -21,6 +21,7 @@
 #include "showduino_legacy_strings.h"
 #include "showduino_message_types.h"
 #include "showduino_state_wire.h"
+#include "showduino_show_runtime.h"
 
 static int g_failures = 0;
 
@@ -257,6 +258,48 @@ int main() {
     strcpy(bad.command, "HELLO");
     expect_eq_int(showduino_validate_desk_rx(&bad, sizeof(bad)), SHOWDUINO_INVALID_MAGIC,
                   "invalid desk rejected before parse");
+  }
+
+  /* ---- Stage 6 ShowRuntime ---- */
+  {
+    expect(showRuntimeCanTransition(SHOW_STATE_BOOTING, SHOW_STATE_IDLE) != 0,
+           "BOOTING→IDLE allowed");
+    expect(showRuntimeCanTransition(SHOW_STATE_IDLE, SHOW_STATE_RUNNING) == 0,
+           "IDLE→RUNNING rejected");
+    expect(showRuntimeCanTransition(SHOW_STATE_SHOW_LOADED, SHOW_STATE_RUNNING) != 0,
+           "SHOW_LOADED→RUNNING allowed");
+    expect(showRuntimeCanTransition(SHOW_STATE_RUNNING, SHOW_STATE_PAUSED) != 0,
+           "RUNNING→PAUSED allowed");
+    expect(showRuntimeCanTransition(SHOW_STATE_EMERGENCY_STOP, SHOW_STATE_RUNNING) != 0,
+           "EMERGENCY_STOP→RUNNING allowed");
+
+    ShowRuntime rt;
+    showRuntimeClear(&rt);
+    expect(showRuntimeTransition(&rt, SHOW_STATE_IDLE, 1) != 0, "to IDLE");
+    expect(showRuntimeTransition(&rt, SHOW_STATE_SHOW_LOADED, 2) != 0, "to SHOW_LOADED");
+    rt.elapsedMs = 42000;
+    rt.remainingMs = 138000;
+    rt.totalDurationMs = 180000;
+    rt.currentCue = 3;
+    rt.totalCues = 42;
+    strncpy(rt.showName, "ZombieBurst", sizeof(rt.showName) - 1);
+    showRuntimeSyncFlags(&rt);
+
+    char wire[96];
+    expect(showRuntimeSerialize(&rt, wire, sizeof(wire)) != 0, "serialize runtime");
+    expect(strlen(wire) < 96, "runtime wire fits desk cmd");
+
+    ShowRuntime parsed;
+    expect(showRuntimeParse(wire, &parsed) != 0, "parse runtime");
+    expect_eq_int((int)parsed.state, (int)SHOW_STATE_SHOW_LOADED, "parsed state");
+    expect(strcmp(parsed.showName, "ZombieBurst") == 0, "parsed name");
+    expect(parsed.elapsedMs == 42000 && parsed.totalCues == 42, "parsed clocks/cues");
+
+    char stbuf[48];
+    expect(showStateSerialize(SHOW_STATE_RUNNING, stbuf, sizeof(stbuf)) != 0, "SHOW:STATE ser");
+    expect(strcmp(stbuf, "SHOW:STATE:RUNNING") == 0, "SHOW:STATE:RUNNING token");
+    expect(strcmp(showStateLegacyToken(SHOW_STATE_RUNNING), "PLAYING") == 0, "legacy PLAYING");
+    expect(strcmp(SHOW_STATE_QUERY, "SHOW:STATE?") == 0, "SHOW:STATE? token");
   }
 
   std::printf("\n");
