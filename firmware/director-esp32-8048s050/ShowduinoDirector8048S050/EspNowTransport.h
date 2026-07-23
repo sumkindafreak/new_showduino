@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <nvs_flash.h>
 #include <freertos/portmacro.h>
 #include "BoardConfig.h"
 #include "../../../protocol/showduino_desk_packet.h"
@@ -20,7 +21,18 @@ class ShowduinoEspNowTransport {
 public:
   bool begin() {
     Serial.println("ESP-NOW: starting portable Director transport...");
+    Serial.println("ESP-NOW: build stamp = early-wifi-v2");
     Serial.printf("ESP-NOW: free heap before Wi-Fi = %u\n", (unsigned)ESP.getFreeHeap());
+
+    /* WiFi init often fails with 0x3001 noise if NVS was never opened. */
+    esp_err_t nvsErr = nvs_flash_init();
+    if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      nvs_flash_erase();
+      nvsErr = nvs_flash_init();
+    }
+    if (nvsErr != ESP_OK) {
+      Serial.printf("ESP-NOW: nvs_flash_init failed: %s\n", esp_err_to_name(nvsErr));
+    }
 
     if (!bringUpWifiSta()) {
       online = false;
@@ -194,8 +206,13 @@ private:
     /* Arduino WiFi.mode() may log ESP_ERR_WIFI_NOT_INIT(0x3001) during a
        failed re-init when internal heap is exhausted — call this early. */
     if (!WiFi.mode(WIFI_STA)) {
-      Serial.println("ESP-NOW: WiFi.mode(WIFI_STA) failed");
-      return false;
+      Serial.println("ESP-NOW: WiFi.mode(WIFI_STA) failed — retry OFF→STA");
+      WiFi.mode(WIFI_OFF);
+      delay(100);
+      if (!WiFi.mode(WIFI_STA)) {
+        Serial.println("ESP-NOW: WiFi.mode(WIFI_STA) failed again");
+        return false;
+      }
     }
     WiFi.disconnect(false, false);
     delay(100);
@@ -214,11 +231,12 @@ private:
                     (unsigned)SHOWDUINO_ESPNOW_CHANNEL, esp_err_to_name(chErr));
       return false;
     }
-    delay(50);
+    delay(80);
 
     uint8_t primary = 0;
     wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
     esp_wifi_get_channel(&primary, &second);
+    Serial.printf("ESP-NOW: mode=%d primary_ch=%u\n", (int)WiFi.getMode(), (unsigned)primary);
     return primary == (uint8_t)SHOWDUINO_ESPNOW_CHANNEL;
   }
 
