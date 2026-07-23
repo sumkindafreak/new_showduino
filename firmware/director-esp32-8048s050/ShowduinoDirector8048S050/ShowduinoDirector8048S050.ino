@@ -826,12 +826,15 @@ void sendHelloIfNeeded() {
 
 void recoverEspNowIfNeeded() {
 #if SHOWDUINO_USE_ESPNOW
-  if (!espNowReady) return;
-  if (linkState == LINK_READY) return;
-
   unsigned long now = millis();
   if (now - lastEspNowRecoverMs < ESPNOW_RECOVER_MS) return;
   lastEspNowRecoverMs = now;
+
+  if (!espNowReady) {
+    espNowReady = espNowTransport.recover();
+    return;
+  }
+  if (linkState == LINK_READY) return;
   espNowTransport.recover();
 #endif
 }
@@ -861,6 +864,19 @@ void setup() {
     while (true) delay(2000);
   }
   Serial.printf("PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
+
+  /* ESP-NOW / Wi-Fi MUST start before LVGL screens consume internal DRAM.
+     After full UI build heap can drop to ~40KB — wifi_init then fails with
+     channel=0 and MAC 00:00:00:00:00:00, causing ESP_ERR_ESPNOW_CHAN. */
+#if SHOWDUINO_USE_ESPNOW
+  Serial.printf("ESP-NOW: early bring-up (heap=%u)\n", (unsigned)ESP.getFreeHeap());
+  espNowReady = espNowTransport.begin();
+  if (espNowReady) {
+    Serial.println("ESP-NOW: radio online (early)");
+  } else {
+    Serial.println("ESP-NOW: early bring-up FAILED — link will be offline until recover");
+  }
+#endif
 
   backlightInit(TFT_BL_PIN);
 
@@ -931,8 +947,12 @@ void setup() {
   }
 
 #if SHOWDUINO_USE_ESPNOW
-  espNowReady = espNowTransport.begin();
-  ui.appendLog(espNowReady ? "ESP-NOW ready: targeting P4/C6 bridge." : "ESP-NOW failed: using UART fallback if wired.");
+  if (!espNowReady) {
+    Serial.printf("ESP-NOW: late retry (heap=%u)\n", (unsigned)ESP.getFreeHeap());
+    espNowReady = espNowTransport.begin();
+  }
+  ui.appendLog(espNowReady ? "ESP-NOW ready: targeting P4/C6 bridge."
+                           : "ESP-NOW failed: Wi-Fi radio not up (check heap).");
 #endif
 
 #if SHOWDUINO_WEBUI_ENABLED
