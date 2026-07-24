@@ -81,6 +81,7 @@ unsigned long lastUiRefreshMs = 0;
 unsigned long lastLvglTickMs = 0;
 unsigned long lastStageReplyMs = 0;
 unsigned long lastEspNowRecoverMs = 0;
+unsigned long lastNodeSnapshotSyncMs = 0;
 unsigned long bootMs = 0;
 
 uint8_t linkState = LINK_SEARCHING;
@@ -122,6 +123,8 @@ void onStorageStatus(const StorageStatus &st) {
     lastLogged = st.stage;
     Serial.printf("[StorageUI] %s\n", st.bootMessage);
   }
+  ui.setStorageStatusSnapshot(st);
+  ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
 }
 
 // =========================================================
@@ -157,6 +160,7 @@ void handleStageLine(String line) {
 
   // Any valid Stage reply proves the link is alive (reconnects from DISCONNECTED).
   applyLinkState(LINK_READY);
+  ui.noteNodeResponse(line.c_str());
 
   /* SUE TimeService — display only; do not invent a local clock. */
   if (line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
@@ -218,6 +222,7 @@ void handleStageLine(String line) {
 
   ShowduinoNodeAvailWire nodeW = showduino_parse_state_node_relay(line.c_str());
   if (nodeW != SHOWDUINO_NODE_WIRE_INVALID) {
+    ui.setNodeAvailability(nodeW);
     ui.setNodeCount(nodeW == SHOWDUINO_NODE_WIRE_ONLINE ? 1 : 0);
   }
 
@@ -288,6 +293,7 @@ void handleStageLine(String line) {
 }
 
 void sendToStage(const String &command) {
+  ui.noteNodeCommandSent(command.c_str());
   bool sentByEspNow = false;
 
 #if SHOWDUINO_USE_ESPNOW
@@ -613,6 +619,13 @@ void handleUiCommand(const String &command) {
     ui.refreshShowLibrary(gStorage.showManager(), &st, true, ok,
                           ok ? "Scan complete" : "Scan failed");
     ui.appendLog(ok ? "Show library rescanned from SD" : "Show library rescan failed");
+    return;
+  }
+
+  if (command == "UI:NODES:REFRESH") {
+    ui.appendLog("Discovery: STATUS:REQUEST + HELLO");
+    sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
+    sendToStage(SHOWDUINO_LEGACY_HELLO);
     return;
   }
 
@@ -1001,11 +1014,14 @@ void setup() {
   lastHelloMs = 0;
   lastUiRefreshMs = millis();
   lastLvglTickMs = millis();
+  lastNodeSnapshotSyncMs = millis();
 
   showRuntimeClear(&gShowMirror);
   gShowMirror.state = SHOW_STATE_BOOTING;
 
   sendToStage("HELLO");
+  ui.setStorageStatusSnapshot(getStorageStatus());
+  ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
 }
 
@@ -1029,6 +1045,11 @@ void loop() {
     ui.updateStatusWidgets(true);
   } else {
     ui.updateStatusWidgets(false);
+  }
+  if (now - lastNodeSnapshotSyncMs >= 1000UL) {
+    lastNodeSnapshotSyncMs = now;
+    ui.setStorageStatusSnapshot(getStorageStatus());
+    ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
   }
   lvglPortLoop();
 #if SHOWDUINO_WEBUI_ENABLED

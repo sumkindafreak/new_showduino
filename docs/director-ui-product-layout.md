@@ -16,6 +16,13 @@ Status: production implementation reference for the post-beta Director UI overha
   - Selection opens Show Details without auto-load or auto-run
   - Show Details presents identity, metadata, requirements, validation, and explicit load status
   - Load flow is request -> awaiting Stage confirmation -> loaded/open Live (without auto-start)
+- Phase 3 (nodes + diagnostics separation) is implemented:
+  - Nodes is now a dedicated device-health page with grouped roles and an explicit discovery workflow
+  - Node Details is a separate view with identity/connection/runtime sections and safe actions only
+  - Diagnostics is now a separate technical screen (transport/storage/self-test/telemetry), no longer merged into Nodes
+  - More launcher routes Nodes and Diagnostics to different screens
+  - Desktop node card remains compact (online count, expected count, health, critical warning)
+  - Node UI is honest about current protocol limits: individual CHILDREN/GRANDCHILDREN/SAVIOUR live records are not streamed by Stage yet
 
 The beta interface proved the ESP32-S3 display, LVGL 9 rendering, GT911 touch input, SD assets, navigation, runtime mirroring, ESP-NOW command paths and emergency handling. This document defines the production information architecture. It is intentionally operator-led: every item has one primary home, live-operation controls remain easy to reach, and diagnostic detail is separated from normal show operation.
 
@@ -164,23 +171,56 @@ Purpose: network and device health.
 
 Contains:
 
-- SUE
-- IAN nodes
-- CHILDREN
-- GRANDCHILDREN
-- SAVIOUR controllers
-- Device name and role
-- Online/offline state
-- Last seen
-- Signal strength where available
-- Firmware version
-- Battery state where applicable
-- Active warning/fault
-- Rediscovery/rescan
+- Summary strip: expected nodes, online count, offline count, warning/fault count
+- Discovery state and last discovery result
+- Stage/SUE connection state
+- Grouped list in fixed role order:
+  - Director
+  - SUE
+  - IAN
+  - CHILDREN
+  - GRANDCHILDREN
+  - SAVIOUR
+- Within-group sorting by severity (Fault, Offline, Warning/Degraded, Online, Unknown) then name/ID
+- Readable per-node cards (name, role, ID, state, last seen, connection path)
+- Explicit empty states for role groups without reported records
+- Safe actions only: Discover/Refresh, Open Diagnostics, Node Details
 
 Selecting a node opens progressively disclosed technical details such as MAC/device ID, IP address, uptime, sensors, outputs, last command and last response.
 
-## 6. Audio
+### Node Details behaviour
+
+- Identity section: name, role, ID, MAC, firmware, hardware/transport
+- Connection section: online/offline, last seen, signal (if reported), transport/path, discovery status, last command/response, packet counters
+- Runtime section: uptime, active show/runtime state/cue and honest "Not reported" placeholders for unavailable fields
+- Actions are non-destructive: refresh status, rediscover, open diagnostics, back to nodes
+
+### Known data limitations (current protocol/runtime)
+
+- Director currently receives reliable aggregate node availability/count and link/runtime mirrors.
+- Stage does **not** yet stream a full live per-node registry (role-tagged device records with live RSSI/battery/firmware/uptime for all remote nodes).
+- Stored paired-device records are available from Director SD and are shown as historical/known records, not fabricated live telemetry.
+- Future protocol requirement: add a compact, backward-compatible Stage node-registry/status payload so Director can show full per-node live health for CHILDREN/GRANDCHILDREN/SAVIOUR without inference.
+
+## 6. Diagnostics
+
+Purpose: technical health checks and maintenance actions, separate from normal node operations.
+
+Contains:
+
+- Stage status request
+- Stage hello/test request
+- Discovery trigger
+- SD status
+- Backup
+- Export diagnostics
+- Repair directories
+- Self test
+- Packet counters, memory snapshots, and last command/response telemetry
+
+Diagnostics is intentionally not the normal show-operation surface.
+
+## 7. Audio
 
 Purpose: Director-facing audio engine and zone control.
 
@@ -198,7 +238,7 @@ Contains:
 
 The Live page may display the current track, but detailed controls live here.
 
-## 7. Logs
+## 8. Logs
 
 Purpose: operator and diagnostic history.
 
@@ -215,7 +255,7 @@ Contains:
 
 Desktop shows only a compact recent-events summary.
 
-## 8. Settings
+## 9. Settings
 
 Purpose: configuration and maintenance, never routine show operation.
 
@@ -263,7 +303,7 @@ Sections:
 
 Dangerous actions require confirmation and must not appear on the first settings view.
 
-## 9. More launcher
+## 10. More launcher
 
 Purpose: keep the permanent dock uncluttered.
 
@@ -276,9 +316,11 @@ Contains large destinations for:
 - Diagnostics
 - About
 
+Nodes and Diagnostics are separate destinations and must not share the same screen route.
+
 The launcher contains navigation only, not duplicate status cards.
 
-## 10. Emergency overlay
+## 11. Emergency overlay
 
 Purpose: unmistakable system-level safety state.
 

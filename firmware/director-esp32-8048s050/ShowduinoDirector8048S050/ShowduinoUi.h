@@ -6,6 +6,7 @@
 #include "BoardConfig.h"
 #include "backlight.h"
 #include "src/ShowManager.h"
+#include "src/DeviceDatabase.h"
 #include "src/ShowThumb.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
@@ -59,6 +60,35 @@ enum class ShowLoadUiState : uint8_t {
   TimedOut
 };
 
+enum class NodeDiscoveryUiState : uint8_t {
+  Idle = 0,
+  Requested,
+  Discovering,
+  Found,
+  Completed,
+  TimedOut,
+  Failed
+};
+
+enum class UiNodeRole : uint8_t {
+  Director = 0,
+  Sue,
+  Ian,
+  Children,
+  Grandchildren,
+  Saviour
+};
+
+enum class UiNodeHealth : uint8_t {
+  Fault = 0,
+  Offline,
+  Warning,
+  Degraded,
+  Online,
+  Discovering,
+  Unknown
+};
+
 #ifndef OPERATOR_EVENT_LOG_MAX
 #define OPERATOR_EVENT_LOG_MAX 250
 #endif
@@ -71,7 +101,7 @@ enum class ShowLoadUiState : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, More, Nodes, Settings, Audio, Logs
+    Desktop = 0, Live, Shows, Details, More, Nodes, NodeDetails, Diagnostics, Settings, Audio, Logs
   };
 
   void begin(ShowduinoCommandCallback callback) {
@@ -99,6 +129,18 @@ public:
     statusDirty = true;
     if (state == LINK_DISCONNECTED) statusBar_.noteLinkDown();
     else statusBar_.noteWaitingForSue();
+    if (state == LINK_READY) {
+      lastNodeSignalMs_ = millis();
+      if (nodeDiscoveryPending_) nodeDiscoveryState_ = NodeDiscoveryUiState::Discovering;
+    } else if (state == LINK_DISCONNECTED && nodeDiscoveryPending_) {
+      nodeDiscoveryPending_ = false;
+      nodeDiscoveryState_ = NodeDiscoveryUiState::Failed;
+      strncpy(nodeDiscoveryResult_, "Discovery failed — link disconnected",
+              sizeof(nodeDiscoveryResult_) - 1);
+      nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    }
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
     syncStatusBarHealth();
   }
   uint8_t getLinkState() const { return linkState; }
@@ -169,8 +211,95 @@ public:
   void setNodeCount(uint8_t n) {
     if (nodeCount == n) return;
     nodeCount = n;
+    nodeViewDirty_ = true;
     liveStatusDirty = true;
     syncStatusBarHealth();
+  }
+
+  void setNodeAvailability(ShowduinoNodeAvailWire wireState) {
+    if (nodeAvailWire_ == wireState && nodeAvailKnown_) return;
+    nodeAvailWire_ = wireState;
+    nodeAvailKnown_ = true;
+    if (wireState == SHOWDUINO_NODE_WIRE_FAULT) {
+      strncpy(nodeDiscoveryResult_, "Node fault reported by Stage", sizeof(nodeDiscoveryResult_) - 1);
+    } else if (wireState == SHOWDUINO_NODE_WIRE_OFFLINE) {
+      strncpy(nodeDiscoveryResult_, "Node reported offline", sizeof(nodeDiscoveryResult_) - 1);
+    } else if (wireState == SHOWDUINO_NODE_WIRE_ONLINE) {
+      strncpy(nodeDiscoveryResult_, "Node availability updated", sizeof(nodeDiscoveryResult_) - 1);
+    } else {
+      strncpy(nodeDiscoveryResult_, "Node availability unknown", sizeof(nodeDiscoveryResult_) - 1);
+    }
+    nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    lastNodeSignalMs_ = millis();
+    if (nodeDiscoveryPending_) {
+      nodeDiscoveryState_ = (wireState == SHOWDUINO_NODE_WIRE_ONLINE) ? NodeDiscoveryUiState::Found
+                                                                       : NodeDiscoveryUiState::Completed;
+      nodeDiscoveryPending_ = false;
+    }
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
+  }
+
+  void syncPairedDeviceSnapshot(const DeviceDatabase &db) {
+    uint8_t nextCount = db.size();
+    if (nextCount > DEVICE_DB_MAX) nextCount = DEVICE_DB_MAX;
+    bool changed = (pairedDeviceCount_ != nextCount);
+    pairedDeviceCount_ = nextCount;
+    for (uint8_t i = 0; i < pairedDeviceCount_; i++) {
+      const DeviceRecord *src = db.get(i);
+      if (!src) continue;
+      if (memcmp(&pairedDeviceCache_[i], src, sizeof(DeviceRecord)) != 0) {
+        changed = true;
+      }
+      pairedDeviceCache_[i] = *src;
+    }
+    if (changed) {
+      nodeViewDirty_ = true;
+      refreshNodesPresentationIfActive();
+    }
+  }
+
+  void setStorageStatusSnapshot(const StorageStatus &st) {
+    nodeStorageStatus_ = st;
+    refreshDiagnosticsSummary();
+  }
+
+  void beginNodeDiscoveryRequest() {
+    nodeDiscoveryPending_ = true;
+    nodeDiscoveryRequestMs_ = millis();
+    nodeDiscoveryState_ = NodeDiscoveryUiState::Requested;
+    strncpy(nodeDiscoveryResult_, "Discovery requested — awaiting network response",
+            sizeof(nodeDiscoveryResult_) - 1);
+    nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
+  }
+
+  bool nodeDiscoveryPending() const { return nodeDiscoveryPending_; }
+
+  void noteNodeCommandSent(const char *command) {
+    if (command && command[0]) {
+      strncpy(nodeLastCommand_, command, sizeof(nodeLastCommand_) - 1);
+      nodeLastCommand_[sizeof(nodeLastCommand_) - 1] = '\0';
+    }
+    nodeViewDirty_ = true;
+    refreshDiagnosticsSummary();
+  }
+
+  void noteNodeResponse(const char *response) {
+    if (!response || !response[0]) return;
+    strncpy(nodeLastResponse_, response, sizeof(nodeLastResponse_) - 1);
+    nodeLastResponse_[sizeof(nodeLastResponse_) - 1] = '\0';
+    lastNodeSignalMs_ = millis();
+    if (nodeDiscoveryPending_) {
+      nodeDiscoveryState_ = NodeDiscoveryUiState::Completed;
+      nodeDiscoveryPending_ = false;
+      strncpy(nodeDiscoveryResult_, "Discovery completed — network responded",
+              sizeof(nodeDiscoveryResult_) - 1);
+      nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    }
+    refreshDiagnosticsSummary();
+    refreshNodesPresentationIfActive();
   }
 
   /**
@@ -198,10 +327,12 @@ public:
     liveRemainMs = rt.remainingMs;
     liveProgressPct = pct;
     liveStageConnected = (rt.stageConnected != 0) || (linkState == LINK_READY);
+    lastRuntimeMirrorMs_ = millis();
     strncpy(liveStateName, showStateName(rt.state), sizeof(liveStateName) - 1);
     liveStateName[sizeof(liveStateName) - 1] = '\0';
     liveStatusDirty = true;
     statusDirty = true;
+    nodeViewDirty_ = true;
 
     setTimelinePlayback(rt.showName[0] ? rt.showName : "-", liveStateName,
                         rt.elapsedMs, rt.remainingMs, pct);
@@ -354,6 +485,26 @@ public:
       }
     }
 
+    if (nodeDiscoveryPending_) {
+      const unsigned long elapsedMs = nowMs - nodeDiscoveryRequestMs_;
+      if (elapsedMs > 9000UL) {
+        nodeDiscoveryPending_ = false;
+        nodeDiscoveryState_ = NodeDiscoveryUiState::TimedOut;
+        strncpy(nodeDiscoveryResult_, "Discovery requested — awaiting network response",
+                sizeof(nodeDiscoveryResult_) - 1);
+        nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+        nodeViewDirty_ = true;
+      } else if (elapsedMs > 1400UL && nodeDiscoveryState_ == NodeDiscoveryUiState::Requested) {
+        nodeDiscoveryState_ = NodeDiscoveryUiState::Discovering;
+        nodeViewDirty_ = true;
+      }
+    }
+
+    if (nodeViewDirty_) {
+      refreshNodesPresentationIfActive();
+      refreshDiagnosticsSummary();
+    }
+
     if (liveProgressBar && liveStatusDirty) {
       refreshLiveStatusPanel();
     }
@@ -374,6 +525,7 @@ public:
     txCount = tx;
     rxCount = rx;
     trafficDirty = true;
+    refreshDiagnosticsSummary();
   }
 
   void setSynchronising(bool on) {
@@ -647,19 +799,24 @@ public:
 
   void refreshDesktopFabric() {
     if (!deskFabricLabel_) return;
-    const char *esp = "UNKNOWN";
-    if (linkState == LINK_READY) esp = "ONLINE";
-    else if (linkState == LINK_SEARCHING) esp = "SEARCHING";
-    else if (linkState == LINK_DISCONNECTED) esp = "LOST";
-    const char *ian = liveStageConnected ? "LINKED" : "NOT AVAILABLE";
-    const char *em = (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) ? "ACTIVE" : "CLEAR";
-    char buf[220];
+    const char *health = "UNKNOWN";
+    if (nodeAvailKnown_) {
+      if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT) health = "FAULT";
+      else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_OFFLINE) health = "OFFLINE";
+      else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE) health = "HEALTHY";
+      else health = "UNKNOWN";
+    } else if (nodeCount >= SHOWDUINO_EXPECTED_NODES && linkState == LINK_READY) {
+      health = "HEALTHY";
+    } else if (linkState == LINK_DISCONNECTED) {
+      health = "OFFLINE";
+    }
+    const char *warn = (nodeAvailKnown_ && nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT)
+                         ? "Critical warning: relay node fault"
+                         : ((linkState == LINK_DISCONNECTED) ? "Critical warning: fabric link lost" : "Critical warning: none");
+    char buf[200];
     snprintf(buf, sizeof(buf),
-             "ESP-NOW: %s\nIAN / P4: %s\nNodes: %u / %u\nEmergency: %s\nTraffic: TX %lu / RX %lu",
-             esp, ian,
-             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES,
-             em,
-             (unsigned long)txCount, (unsigned long)rxCount);
+             "Online nodes: %u\nExpected nodes: %u\nOverall health: %s\n%s",
+             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES, health, warn);
     ShowduinoOsTheme::setTextIfChanged(deskFabricLabel_, buf);
   }
 
@@ -935,6 +1092,8 @@ private:
   lv_obj_t *showsScreen = nullptr;
   lv_obj_t *showDetailsScreen = nullptr;
   lv_obj_t *moreScreen = nullptr;
+  lv_obj_t *nodesScreen = nullptr;
+  lv_obj_t *nodeDetailsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
   lv_obj_t *timeoutLabel = nullptr;
@@ -953,6 +1112,21 @@ private:
   lv_obj_t *detailsOpenLiveBtn_ = nullptr;
   lv_obj_t *detailsIconHost = nullptr;
   lv_obj_t *detailsCanvas = nullptr;
+  lv_obj_t *nodesSummaryLabel_ = nullptr;
+  lv_obj_t *nodesDiscoveryLabel_ = nullptr;
+  lv_obj_t *nodesLinkLabel_ = nullptr;
+  lv_obj_t *nodesRefreshBtn_ = nullptr;
+  lv_obj_t *nodesListScroll_ = nullptr;
+  lv_obj_t *nodesMissingDataLabel_ = nullptr;
+  lv_obj_t *nodeDetailsTitleLabel_ = nullptr;
+  lv_obj_t *nodeDetailsIdentityLabel_ = nullptr;
+  lv_obj_t *nodeDetailsConnectionLabel_ = nullptr;
+  lv_obj_t *nodeDetailsRuntimeLabel_ = nullptr;
+  lv_obj_t *diagTransportLabel_ = nullptr;
+  lv_obj_t *diagStorageLabel_ = nullptr;
+  lv_obj_t *diagPacketLabel_ = nullptr;
+  lv_obj_t *diagLastCommandLabel_ = nullptr;
+  lv_obj_t *diagLastResponseLabel_ = nullptr;
   lv_obj_t *timelineStatusLabel = nullptr;
   lv_obj_t *timelineDetailLabel = nullptr;
   lv_obj_t *liveStatusLabel = nullptr;
@@ -980,6 +1154,47 @@ private:
   char showStorageLastError_[128] = {};
   char showLibraryScanNote_[96] = "Not scanned";
   char showLoadStatusText_[128] = "Ready to load";
+
+  struct UiNodeEntry {
+    bool used = false;
+    UiNodeRole role = UiNodeRole::Children;
+    UiNodeHealth health = UiNodeHealth::Unknown;
+    bool online = false;
+    bool onlineKnown = false;
+    bool everSeen = false;
+    char name[48] = {};
+    char id[32] = {};
+    char mac[24] = {};
+    char firmware[20] = {};
+    char lastSeen[32] = {};
+    char roleText[20] = {};
+    char activity[64] = {};
+    char path[64] = {};
+    char transport[20] = {};
+    int16_t rssi = 0;
+    bool hasRssi = false;
+    char capabilities[96] = {};
+  };
+
+  static constexpr uint8_t NODE_VIEW_MAX = 32;
+  UiNodeEntry nodeView_[NODE_VIEW_MAX] = {};
+  uint8_t nodeViewCount_ = 0;
+  char nodeOpenCmds_[NODE_VIEW_MAX][24] = {};
+  int16_t selectedNodeIndex_ = -1;
+  bool nodeViewDirty_ = true;
+  DeviceRecord pairedDeviceCache_[DEVICE_DB_MAX] = {};
+  uint8_t pairedDeviceCount_ = 0;
+  ShowduinoNodeAvailWire nodeAvailWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  bool nodeAvailKnown_ = false;
+  NodeDiscoveryUiState nodeDiscoveryState_ = NodeDiscoveryUiState::Idle;
+  bool nodeDiscoveryPending_ = false;
+  unsigned long nodeDiscoveryRequestMs_ = 0;
+  unsigned long lastNodeSignalMs_ = 0;
+  unsigned long lastRuntimeMirrorMs_ = 0;
+  char nodeDiscoveryResult_[96] = "Not requested";
+  char nodeLastCommand_[96] = "Not sent";
+  char nodeLastResponse_[96] = "Not received";
+  StorageStatus nodeStorageStatus_ = {};
 
   DeskPage currentPage = DeskPage::Desktop;
   DeskPage pageBeforeEmergency = DeskPage::Desktop;
@@ -1215,8 +1430,14 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
-    if (command == "SCREEN:DIAG" || command == "SCREEN:NODES") {
+    if (command == "SCREEN:NODES") {
       notePage(DeskPage::Nodes);
+      showNodes();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:DIAG") {
+      notePage(DeskPage::Diagnostics);
       showDiagnostics();
       maybeRestoreEmergencyOverlay();
       return;
@@ -1289,6 +1510,38 @@ private:
     if (command.startsWith("UI:SHOW:OPEN:")) {
       notePage(DeskPage::Details);
       openShowDetails(command.substring(strlen("UI:SHOW:OPEN:")).c_str());
+      return;
+    }
+    if (command == "UI:NODE:BACK") {
+      notePage(DeskPage::Nodes);
+      showNodes();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "UI:NODE:DIAG") {
+      notePage(DeskPage::Diagnostics);
+      showDiagnostics();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command.startsWith("UI:NODE:OPEN:")) {
+      int idx = command.substring(strlen("UI:NODE:OPEN:")).toInt();
+      if (idx >= 0 && idx < (int)nodeViewCount_) {
+        openNodeDetails((uint8_t)idx);
+      }
+      return;
+    }
+    if (command == "UI:NODES:REFRESH") {
+      if (emergencyOverlayVisible || emergencyLocked) {
+        pushOperatorEvent("Discovery blocked during emergency");
+        return;
+      }
+      if (nodeDiscoveryPending_) {
+        pushOperatorEvent("Discovery already pending");
+        return;
+      }
+      beginNodeDiscoveryRequest();
+      if (commandCallback != nullptr) commandCallback("UI:NODES:REFRESH");
       return;
     }
 
@@ -1586,6 +1839,637 @@ private:
     lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
   }
 
+  static const char *nodeRoleName(UiNodeRole role) {
+    switch (role) {
+      case UiNodeRole::Director: return "DIRECTOR";
+      case UiNodeRole::Sue: return "SUE";
+      case UiNodeRole::Ian: return "IAN";
+      case UiNodeRole::Children: return "CHILDREN";
+      case UiNodeRole::Grandchildren: return "GRANDCHILDREN";
+      case UiNodeRole::Saviour: return "SAVIOUR";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static const char *nodeHealthName(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return "FAULT";
+      case UiNodeHealth::Offline: return "OFFLINE";
+      case UiNodeHealth::Warning: return "WARNING";
+      case UiNodeHealth::Degraded: return "DEGRADED";
+      case UiNodeHealth::Online: return "ONLINE";
+      case UiNodeHealth::Discovering: return "DISCOVERING";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static uint8_t nodeHealthSortRank(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return 0;
+      case UiNodeHealth::Offline: return 1;
+      case UiNodeHealth::Warning:
+      case UiNodeHealth::Degraded: return 2;
+      case UiNodeHealth::Online: return 3;
+      case UiNodeHealth::Discovering: return 4;
+      default: return 5;
+    }
+  }
+
+  static uint32_t nodeHealthColor(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return OsColor::Danger;
+      case UiNodeHealth::Offline: return 0x334155;
+      case UiNodeHealth::Warning: return 0xB45309;
+      case UiNodeHealth::Degraded: return 0x92400E;
+      case UiNodeHealth::Online: return OsColor::Ok;
+      case UiNodeHealth::Discovering: return OsColor::Accent;
+      default: return OsColor::TextMuted;
+    }
+  }
+
+  static const char *nodeDiscoveryStateName(NodeDiscoveryUiState st) {
+    switch (st) {
+      case NodeDiscoveryUiState::Idle: return "Idle";
+      case NodeDiscoveryUiState::Requested: return "Discovery requested";
+      case NodeDiscoveryUiState::Discovering: return "Discovering";
+      case NodeDiscoveryUiState::Found: return "Devices found";
+      case NodeDiscoveryUiState::Completed: return "Completed";
+      case NodeDiscoveryUiState::TimedOut: return "Timed out";
+      case NodeDiscoveryUiState::Failed: return "Failed";
+      default: return "Unknown";
+    }
+  }
+
+  static UiNodeRole roleFromDeviceRecord(const DeviceRecord &d) {
+    String type = String(d.type);
+    String id = String(d.id);
+    String caps = String(d.capabilities);
+    type.toLowerCase();
+    id.toLowerCase();
+    caps.toLowerCase();
+    if (type.indexOf("director") >= 0 || id.indexOf("director") >= 0) return UiNodeRole::Director;
+    if (type.indexOf("sue") >= 0 || id.indexOf("sue") >= 0) return UiNodeRole::Sue;
+    if (type.indexOf("ian") >= 0 || type.indexOf("stage") >= 0 ||
+        id.indexOf("ian") >= 0 || id.indexOf("stage") >= 0) return UiNodeRole::Ian;
+    if (type.indexOf("grandchild") >= 0 || caps.indexOf("grandchild") >= 0) return UiNodeRole::Grandchildren;
+    if (type.indexOf("saviour") >= 0 || caps.indexOf("saviour") >= 0) return UiNodeRole::Saviour;
+    return UiNodeRole::Children;
+  }
+
+  static bool stringsEqualCaseInsensitive(const char *a, const char *b) {
+    if (!a || !b) return false;
+    return strcasecmp(a, b) == 0;
+  }
+
+  bool nodeIdExists(const char *id) const {
+    if (!id || !id[0]) return false;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (!nodeView_[i].used) continue;
+      if (stringsEqualCaseInsensitive(nodeView_[i].id, id)) return true;
+    }
+    return false;
+  }
+
+  UiNodeEntry *appendNodeEntry() {
+    if (nodeViewCount_ >= NODE_VIEW_MAX) return nullptr;
+    UiNodeEntry *entry = &nodeView_[nodeViewCount_++];
+    memset(entry, 0, sizeof(UiNodeEntry));
+    entry->used = true;
+    entry->health = UiNodeHealth::Unknown;
+    return entry;
+  }
+
+  void addCoreNodeEntries() {
+    UiNodeEntry *director = appendNodeEntry();
+    if (director) {
+      director->role = UiNodeRole::Director;
+      strncpy(director->name, "Showduino Director UI", sizeof(director->name) - 1);
+      strncpy(director->id, "director-ui", sizeof(director->id) - 1);
+      strncpy(director->roleText, nodeRoleName(director->role), sizeof(director->roleText) - 1);
+      strncpy(director->activity, "Touchscreen control surface", sizeof(director->activity) - 1);
+      strncpy(director->transport, "local", sizeof(director->transport) - 1);
+      strncpy(director->path, "Local", sizeof(director->path) - 1);
+      director->onlineKnown = true;
+      director->online = true;
+      director->health = UiNodeHealth::Online;
+      director->everSeen = true;
+      strncpy(director->firmware, STORAGE_FW_VERSION, sizeof(director->firmware) - 1);
+    }
+
+    UiNodeEntry *sue = appendNodeEntry();
+    if (sue) {
+      char sueMac[24];
+      snprintf(sueMac, sizeof(sueMac), "%02X:%02X:%02X:%02X:%02X:%02X",
+               SHOWDUINO_P4_C6_MAC_0, SHOWDUINO_P4_C6_MAC_1, SHOWDUINO_P4_C6_MAC_2,
+               SHOWDUINO_P4_C6_MAC_3, SHOWDUINO_P4_C6_MAC_4, SHOWDUINO_P4_C6_MAC_5);
+      sue->role = UiNodeRole::Sue;
+      strncpy(sue->name, "SUE Communications Engine", sizeof(sue->name) - 1);
+      strncpy(sue->id, "sue-bridge", sizeof(sue->id) - 1);
+      strncpy(sue->mac, sueMac, sizeof(sue->mac) - 1);
+      strncpy(sue->roleText, nodeRoleName(sue->role), sizeof(sue->roleText) - 1);
+      strncpy(sue->transport, "esp-now", sizeof(sue->transport) - 1);
+      strncpy(sue->path, "Director -> SUE", sizeof(sue->path) - 1);
+      if (linkState == LINK_READY) {
+        sue->onlineKnown = true;
+        sue->online = true;
+        sue->health = UiNodeHealth::Online;
+        sue->everSeen = true;
+      } else if (linkState == LINK_SEARCHING) {
+        sue->onlineKnown = false;
+        sue->online = false;
+        sue->health = UiNodeHealth::Discovering;
+      } else {
+        sue->onlineKnown = true;
+        sue->online = false;
+        sue->health = UiNodeHealth::Offline;
+      }
+      strncpy(sue->activity, linkState == LINK_READY ? "Bridge responding" : "Awaiting bridge response",
+              sizeof(sue->activity) - 1);
+    }
+
+    UiNodeEntry *ian = appendNodeEntry();
+    if (ian) {
+      ian->role = UiNodeRole::Ian;
+      strncpy(ian->name, "IAN Show Engine", sizeof(ian->name) - 1);
+      strncpy(ian->id, "ian-show-engine", sizeof(ian->id) - 1);
+      strncpy(ian->roleText, nodeRoleName(ian->role), sizeof(ian->roleText) - 1);
+      strncpy(ian->transport, "uart-via-sue", sizeof(ian->transport) - 1);
+      strncpy(ian->path, "Director -> SUE -> IAN", sizeof(ian->path) - 1);
+      ian->everSeen = (lastRuntimeMirrorMs_ > 0 || liveStageConnected);
+      if (liveStageConnected) {
+        ian->onlineKnown = true;
+        ian->online = true;
+        ian->health = UiNodeHealth::Online;
+      } else if (linkState == LINK_SEARCHING) {
+        ian->onlineKnown = false;
+        ian->online = false;
+        ian->health = UiNodeHealth::Discovering;
+      } else if (linkState == LINK_DISCONNECTED) {
+        ian->onlineKnown = true;
+        ian->online = false;
+        ian->health = UiNodeHealth::Offline;
+      } else {
+        ian->onlineKnown = false;
+        ian->online = false;
+        ian->health = UiNodeHealth::Unknown;
+      }
+      strncpy(ian->activity, liveStateName, sizeof(ian->activity) - 1);
+    }
+
+    if (nodeAvailKnown_) {
+      UiNodeEntry *relayFabric = appendNodeEntry();
+      if (relayFabric) {
+        relayFabric->role = UiNodeRole::Children;
+        strncpy(relayFabric->name, "Relay Fabric", sizeof(relayFabric->name) - 1);
+        strncpy(relayFabric->id, "relay-fabric", sizeof(relayFabric->id) - 1);
+        strncpy(relayFabric->roleText, nodeRoleName(relayFabric->role), sizeof(relayFabric->roleText) - 1);
+        strncpy(relayFabric->transport, "stage-runtime", sizeof(relayFabric->transport) - 1);
+        strncpy(relayFabric->path, "Director -> SUE -> IAN -> Relay", sizeof(relayFabric->path) - 1);
+        relayFabric->onlineKnown = true;
+        relayFabric->online = (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE);
+        relayFabric->everSeen = true;
+        if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE) relayFabric->health = UiNodeHealth::Online;
+        else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT) relayFabric->health = UiNodeHealth::Fault;
+        else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_OFFLINE) relayFabric->health = UiNodeHealth::Offline;
+        else relayFabric->health = UiNodeHealth::Unknown;
+        strncpy(relayFabric->activity, "Availability mirrored from Stage", sizeof(relayFabric->activity) - 1);
+      }
+    }
+  }
+
+  void addPairedDeviceEntries() {
+    for (uint8_t i = 0; i < pairedDeviceCount_ && i < DEVICE_DB_MAX; i++) {
+      const DeviceRecord &src = pairedDeviceCache_[i];
+      if (!src.id[0] && !src.mac[0]) continue;
+      if (src.id[0] && nodeIdExists(src.id)) continue;
+      UiNodeEntry *entry = appendNodeEntry();
+      if (!entry) return;
+      entry->role = roleFromDeviceRecord(src);
+      strncpy(entry->roleText, nodeRoleName(entry->role), sizeof(entry->roleText) - 1);
+      if (src.name[0]) strncpy(entry->name, src.name, sizeof(entry->name) - 1);
+      else strncpy(entry->name, "Unnamed device", sizeof(entry->name) - 1);
+      if (src.id[0]) strncpy(entry->id, src.id, sizeof(entry->id) - 1);
+      else strncpy(entry->id, src.mac, sizeof(entry->id) - 1);
+      strncpy(entry->mac, src.mac, sizeof(entry->mac) - 1);
+      strncpy(entry->firmware, src.firmware, sizeof(entry->firmware) - 1);
+      strncpy(entry->capabilities, src.capabilities, sizeof(entry->capabilities) - 1);
+      strncpy(entry->transport, "paired-db", sizeof(entry->transport) - 1);
+      strncpy(entry->path, "Stored paired record", sizeof(entry->path) - 1);
+      if (src.lastSeen[0]) {
+        entry->everSeen = true;
+        strncpy(entry->lastSeen, src.lastSeen, sizeof(entry->lastSeen) - 1);
+        entry->onlineKnown = true;
+        entry->online = false;
+        entry->health = UiNodeHealth::Offline;
+        strncpy(entry->activity, "Previously seen (not live-reported)", sizeof(entry->activity) - 1);
+      } else {
+        entry->everSeen = false;
+        entry->onlineKnown = false;
+        entry->online = false;
+        entry->health = UiNodeHealth::Unknown;
+        strncpy(entry->activity, "Never seen on this runtime", sizeof(entry->activity) - 1);
+      }
+    }
+  }
+
+  void sortNodeView() {
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      for (uint8_t j = i + 1; j < nodeViewCount_; j++) {
+        UiNodeEntry &a = nodeView_[i];
+        UiNodeEntry &b = nodeView_[j];
+        bool swap = false;
+        if ((uint8_t)b.role < (uint8_t)a.role) swap = true;
+        else if (a.role == b.role) {
+          uint8_t ra = nodeHealthSortRank(a.health);
+          uint8_t rb = nodeHealthSortRank(b.health);
+          if (rb < ra) swap = true;
+          else if (ra == rb) {
+            const char *an = a.name[0] ? a.name : a.id;
+            const char *bn = b.name[0] ? b.name : b.id;
+            if (strcasecmp(bn, an) < 0) swap = true;
+          }
+        }
+        if (swap) {
+          UiNodeEntry tmp = a;
+          a = b;
+          b = tmp;
+        }
+      }
+    }
+  }
+
+  void rebuildNodeViewModel() {
+    nodeViewCount_ = 0;
+    memset(nodeView_, 0, sizeof(nodeView_));
+    addCoreNodeEntries();
+    addPairedDeviceEntries();
+    sortNodeView();
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      snprintf(nodeOpenCmds_[i], sizeof(nodeOpenCmds_[i]), "UI:NODE:OPEN:%u", (unsigned)i);
+    }
+    if (selectedNodeIndex_ >= (int16_t)nodeViewCount_) selectedNodeIndex_ = -1;
+    nodeViewDirty_ = false;
+  }
+
+  void refreshNodesSummary() {
+    if (!nodesSummaryLabel_) return;
+    uint8_t warningFault = 0;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (nodeView_[i].health == UiNodeHealth::Fault ||
+          nodeView_[i].health == UiNodeHealth::Warning ||
+          nodeView_[i].health == UiNodeHealth::Degraded) {
+        warningFault++;
+      }
+    }
+    uint8_t expected = (uint8_t)SHOWDUINO_EXPECTED_NODES;
+    uint8_t online = nodeCount;
+    uint8_t offline = (online >= expected) ? 0 : (uint8_t)(expected - online);
+
+    char summary[200];
+    snprintf(summary, sizeof(summary),
+             "Expected: %u  |  Online: %u  |  Offline: %u  |  Warning/Fault: %u",
+             (unsigned)expected, (unsigned)online, (unsigned)offline, (unsigned)warningFault);
+    ShowduinoOsTheme::setTextIfChanged(nodesSummaryLabel_, summary);
+
+    char discovery[200];
+    snprintf(discovery, sizeof(discovery), "Discovery: %s\nLast result: %s",
+             nodeDiscoveryStateName(nodeDiscoveryState_), nodeDiscoveryResult_);
+    ShowduinoOsTheme::setTextIfChanged(nodesDiscoveryLabel_, discovery);
+
+    const char *sue = (linkState == LINK_READY) ? "Connected" :
+                      (linkState == LINK_SEARCHING) ? "Searching" : "Disconnected";
+    const char *ian = liveStageConnected ? "Connected" : "Not reported";
+    char linkLine[180];
+    snprintf(linkLine, sizeof(linkLine), "SUE link: %s   |   IAN link: %s", sue, ian);
+    ShowduinoOsTheme::setTextIfChanged(nodesLinkLabel_, linkLine);
+
+    if (nodesMissingDataLabel_) {
+      ShowduinoOsTheme::setTextIfChanged(
+          nodesMissingDataLabel_,
+          "Individual CHILDREN / GRANDCHILDREN / SAVIOUR live records are not currently streamed by Stage."
+      );
+    }
+
+    if (nodesRefreshBtn_) {
+      if (nodeDiscoveryPending_) {
+        lv_obj_add_state(nodesRefreshBtn_, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_opa(nodesRefreshBtn_, LV_OPA_50, 0);
+      } else {
+        lv_obj_clear_state(nodesRefreshBtn_, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_opa(nodesRefreshBtn_, LV_OPA_COVER, 0);
+      }
+    }
+  }
+
+  void renderNodeGroup(UiNodeRole role, int &y, int w) {
+    char heading[48];
+    snprintf(heading, sizeof(heading), "%s", nodeRoleName(role));
+    lv_obj_t *h = makeLabel(nodesListScroll_, heading, 8, y);
+    lv_obj_add_style(h, &os_.title, 0);
+    y += 24;
+
+    bool any = false;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (nodeView_[i].role != role) continue;
+      any = true;
+      const UiNodeEntry &n = nodeView_[i];
+      const int cardH = 88;
+      lv_obj_t *card = lv_obj_create(nodesListScroll_);
+      lv_obj_add_style(card, &os_.panel, 0);
+      lv_obj_set_pos(card, 6, y);
+      lv_obj_set_size(card, w - 12, cardH);
+      lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
+
+      lv_obj_t *name = makeLabel(card, n.name[0] ? n.name : "Unnamed", 10, 8);
+      lv_obj_add_style(name, &os_.body, 0);
+      lv_obj_set_width(name, w - 170);
+      lv_label_set_long_mode(name, LV_LABEL_LONG_CLIP);
+
+      char stateChip[26];
+      snprintf(stateChip, sizeof(stateChip), "[%s]", nodeHealthName(n.health));
+      lv_obj_t *chip = makeLabel(card, stateChip, 10, 30);
+      lv_obj_add_style(chip, &os_.caption, 0);
+      lv_obj_set_style_text_color(chip, lv_color_hex(nodeHealthColor(n.health)), 0);
+
+      char sub[196];
+      snprintf(sub, sizeof(sub),
+               "ID: %s\nLast seen: %s\nPath: %s",
+               n.id[0] ? n.id : "Not reported",
+               n.lastSeen[0] ? n.lastSeen : (n.everSeen ? "Previously seen" : "Never seen"),
+               n.path[0] ? n.path : "Not available");
+      lv_obj_t *detail = makeLabel(card, sub, 126, 8);
+      lv_obj_add_style(detail, &os_.caption, 0);
+      lv_obj_set_width(detail, w - 250);
+      lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+
+      makeButton(card, "Details", w - 122, 24, 102, 38, nodeOpenCmds_[i]);
+      y += cardH + 8;
+    }
+
+    if (!any) {
+      lv_obj_t *empty = makeLabel(nodesListScroll_, "No live records reported for this role.", 12, y);
+      lv_obj_add_style(empty, &os_.caption, 0);
+      lv_obj_set_style_text_color(empty, lv_color_hex(OsColor::TextMuted), 0);
+      y += 26;
+    }
+    y += 8;
+  }
+
+  void rebuildNodesList() {
+    if (!nodesListScroll_) return;
+    lv_obj_clean(nodesListScroll_);
+    int y = 4;
+    const int w = OS_CONTENT_FULL_W - 40;
+    renderNodeGroup(UiNodeRole::Director, y, w);
+    renderNodeGroup(UiNodeRole::Sue, y, w);
+    renderNodeGroup(UiNodeRole::Ian, y, w);
+    renderNodeGroup(UiNodeRole::Children, y, w);
+    renderNodeGroup(UiNodeRole::Grandchildren, y, w);
+    renderNodeGroup(UiNodeRole::Saviour, y, w);
+  }
+
+  void refreshNodeDetailsPresentation() {
+    if (!nodeDetailsScreen || !nodeDetailsTitleLabel_) return;
+    if (selectedNodeIndex_ < 0 || selectedNodeIndex_ >= (int16_t)nodeViewCount_) {
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsTitleLabel_, "No node selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsIdentityLabel_, "Identity\nNot selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsConnectionLabel_, "Connection\nNot selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsRuntimeLabel_, "Runtime\nNot selected");
+      return;
+    }
+
+    const UiNodeEntry &n = nodeView_[(uint8_t)selectedNodeIndex_];
+    char title[80];
+    snprintf(title, sizeof(title), "%s  •  %s", n.name[0] ? n.name : "Unnamed", nodeRoleName(n.role));
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsTitleLabel_, title);
+
+    char identity[320];
+    snprintf(identity, sizeof(identity),
+             "Identity\n"
+             "Name: %s\n"
+             "Role: %s\n"
+             "Device ID: %s\n"
+             "MAC: %s\n"
+             "IP: Not reported\n"
+             "Firmware: %s\n"
+             "Hardware: %s",
+             n.name[0] ? n.name : "Not reported",
+             nodeRoleName(n.role),
+             n.id[0] ? n.id : "Not reported",
+             n.mac[0] ? n.mac : "Not reported",
+             n.firmware[0] ? n.firmware : "Not reported",
+             n.transport[0] ? n.transport : "Not reported");
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsIdentityLabel_, identity);
+
+    char rssiText[20];
+    if (n.hasRssi) snprintf(rssiText, sizeof(rssiText), "%d dBm", (int)n.rssi);
+    else strncpy(rssiText, "Not reported", sizeof(rssiText) - 1);
+    rssiText[sizeof(rssiText) - 1] = '\0';
+
+    char connection[420];
+    snprintf(connection, sizeof(connection),
+             "Connection\n"
+             "State: %s\n"
+             "Last seen: %s\n"
+             "Signal: %s\n"
+             "Transport: %s\n"
+             "Connection path: %s\n"
+             "Discovery: %s\n"
+             "Last command: %s\n"
+             "Last response: %s\n"
+             "Packet counters: TX %lu / RX %lu\n"
+             "Error counters: Not reported",
+             nodeHealthName(n.health),
+             n.lastSeen[0] ? n.lastSeen : (n.everSeen ? "Previously seen" : "Never seen"),
+             rssiText,
+             n.transport[0] ? n.transport : "Not reported",
+             n.path[0] ? n.path : "Not reported",
+             nodeDiscoveryStateName(nodeDiscoveryState_),
+             nodeLastCommand_,
+             nodeLastResponse_,
+             (unsigned long)txCount, (unsigned long)rxCount);
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsConnectionLabel_, connection);
+
+    char runtime[420];
+    snprintf(runtime, sizeof(runtime),
+             "Runtime\n"
+             "Uptime: %lus\n"
+             "Active show: %s\n"
+             "Current state: %s\n"
+             "Current cue: %lu / %lu\n"
+             "Output state: Not reported\n"
+             "Audio state: Not reported\n"
+             "Sensor values: Not reported\n"
+             "Battery level: Not reported",
+             (unsigned long)(millis() / 1000UL),
+             loadedShowNameBuf[0] ? loadedShowNameBuf : "Not loaded",
+             liveStateName[0] ? liveStateName : "Unknown",
+             (unsigned long)liveCue,
+             (unsigned long)liveCueTotal);
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsRuntimeLabel_, runtime);
+  }
+
+  void refreshDiagnosticsSummary() {
+    if (!diagTransportLabel_) return;
+    const char *link = (linkState == LINK_READY) ? "READY" :
+                       (linkState == LINK_SEARCHING) ? "SEARCHING" : "DISCONNECTED";
+    char transport[200];
+    snprintf(transport, sizeof(transport),
+             "Transport\nESP-NOW link: %s\nIAN / Stage: %s\nDiscovery: %s",
+             link,
+             liveStageConnected ? "CONNECTED" : "NOT REPORTED",
+             nodeDiscoveryStateName(nodeDiscoveryState_));
+    ShowduinoOsTheme::setTextIfChanged(diagTransportLabel_, transport);
+
+    char storage[220];
+    snprintf(storage, sizeof(storage),
+             "Storage\nSD: %s (%s)\nFree: %llu MB\nLast error: %s",
+             nodeStorageStatus_.mounted ? "READY" : "UNAVAILABLE",
+             nodeStorageStatus_.cardType,
+             (unsigned long long)(nodeStorageStatus_.freeBytes / (1024ULL * 1024ULL)),
+             nodeStorageStatus_.lastError[0] ? nodeStorageStatus_.lastError : "None");
+    ShowduinoOsTheme::setTextIfChanged(diagStorageLabel_, storage);
+
+    char packet[180];
+    snprintf(packet, sizeof(packet),
+             "Telemetry\nTX %lu  RX %lu\nHeap %u  PSRAM %u",
+             (unsigned long)txCount, (unsigned long)rxCount,
+             (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+    ShowduinoOsTheme::setTextIfChanged(diagPacketLabel_, packet);
+
+    char lastCmd[120];
+    snprintf(lastCmd, sizeof(lastCmd), "Last command: %.90s", nodeLastCommand_);
+    ShowduinoOsTheme::setTextIfChanged(diagLastCommandLabel_, lastCmd);
+
+    char lastRsp[120];
+    snprintf(lastRsp, sizeof(lastRsp), "Last response: %.90s", nodeLastResponse_);
+    ShowduinoOsTheme::setTextIfChanged(diagLastResponseLabel_, lastRsp);
+  }
+
+  void refreshNodesPresentationIfActive() {
+    if (!nodesScreen) return;
+    if (nodeViewDirty_) rebuildNodeViewModel();
+    refreshNodesSummary();
+    if (currentPage == DeskPage::Nodes) rebuildNodesList();
+    if (currentPage == DeskPage::NodeDetails) refreshNodeDetailsPresentation();
+  }
+
+  void openNodeDetails(uint8_t idx) {
+    if (idx >= nodeViewCount_) return;
+    selectedNodeIndex_ = idx;
+    refreshNodeDetailsPresentation();
+    showNodeDetails();
+  }
+
+  void buildNodesPage() {
+    nodesScreen = makeScreen();
+    createDock(nodesScreen);
+    lv_obj_t *sum = os_.makePageChrome(nodesScreen, "NODES");
+    nodesSummaryLabel_ = makeLabel(sum, "Expected: 0  |  Online: 0  |  Offline: 0  |  Warning/Fault: 0", 10, 8);
+    lv_obj_add_style(nodesSummaryLabel_, &os_.body, 0);
+    lv_obj_set_width(nodesSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesSummaryLabel_, LV_LABEL_LONG_CLIP);
+    nodesDiscoveryLabel_ = makeLabel(sum, "Discovery: Idle", 10, 28);
+    lv_obj_add_style(nodesDiscoveryLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesDiscoveryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesDiscoveryLabel_, LV_LABEL_LONG_CLIP);
+    nodesLinkLabel_ = makeLabel(sum, "SUE link: Unknown   |   IAN link: Unknown", 10, 48);
+    lv_obj_add_style(nodesLinkLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesLinkLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesLinkLabel_, LV_LABEL_LONG_CLIP);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(nodesScreen);
+    os_.makeHeading(panel, "SHOWDUINO FABRIC", 8, 2);
+    nodesRefreshBtn_ = makeButton(panel, "Discover / Refresh", 8, 30, 170, 40, "UI:NODES:REFRESH");
+    makeButton(panel, "Open Diagnostics", 186, 30, 170, 40, "SCREEN:DIAG");
+    nodesMissingDataLabel_ = makeLabel(panel, "", 366, 34);
+    lv_obj_add_style(nodesMissingDataLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesMissingDataLabel_, OS_CONTENT_FULL_W - 392);
+    lv_label_set_long_mode(nodesMissingDataLabel_, LV_LABEL_LONG_WRAP);
+
+    nodesListScroll_ = lv_obj_create(panel);
+    lv_obj_remove_style_all(nodesListScroll_);
+    lv_obj_set_pos(nodesListScroll_, 4, 78);
+    lv_obj_set_size(nodesListScroll_, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 88);
+    lv_obj_set_style_bg_opa(nodesListScroll_, LV_OPA_TRANSP, 0);
+    lv_obj_set_scroll_dir(nodesListScroll_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(nodesListScroll_, LV_SCROLLBAR_MODE_AUTO);
+  }
+
+  void buildNodeDetailsPage() {
+    nodeDetailsScreen = makeScreen();
+    createDock(nodeDetailsScreen);
+    lv_obj_t *sum = os_.makePageChrome(nodeDetailsScreen, "NODE DETAILS");
+    nodeDetailsTitleLabel_ = makeLabel(sum, "No node selected", 10, 8);
+    lv_obj_add_style(nodeDetailsTitleLabel_, &os_.title, 0);
+    lv_obj_set_width(nodeDetailsTitleLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodeDetailsTitleLabel_, LV_LABEL_LONG_CLIP);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(nodeDetailsScreen);
+    nodeDetailsIdentityLabel_ = makeLabel(panel, "Identity", 8, 8);
+    lv_obj_set_width(nodeDetailsIdentityLabel_, 252);
+    lv_obj_add_style(nodeDetailsIdentityLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsIdentityLabel_, LV_LABEL_LONG_WRAP);
+
+    nodeDetailsConnectionLabel_ = makeLabel(panel, "Connection", 268, 8);
+    lv_obj_set_width(nodeDetailsConnectionLabel_, 252);
+    lv_obj_add_style(nodeDetailsConnectionLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsConnectionLabel_, LV_LABEL_LONG_WRAP);
+
+    nodeDetailsRuntimeLabel_ = makeLabel(panel, "Runtime", 528, 8);
+    lv_obj_set_width(nodeDetailsRuntimeLabel_, 240);
+    lv_obj_add_style(nodeDetailsRuntimeLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsRuntimeLabel_, LV_LABEL_LONG_WRAP);
+
+    makeButton(panel, "Refresh Status", 8, OS_PRIMARY_H - 48, 130, 38, "STATUS:REQUEST");
+    makeButton(panel, "Rediscover", 146, OS_PRIMARY_H - 48, 110, 38, "UI:NODES:REFRESH");
+    makeButton(panel, "Diagnostics", 264, OS_PRIMARY_H - 48, 120, 38, "UI:NODE:DIAG");
+    makeButton(panel, "Back to Nodes", 392, OS_PRIMARY_H - 48, 130, 38, "UI:NODE:BACK");
+  }
+
+  void buildDiagnosticsPage() {
+    diagnosticsScreen = makeScreen();
+    createDock(diagnosticsScreen);
+    lv_obj_t *sum = os_.makePageChrome(diagnosticsScreen, "DIAGNOSTICS");
+    makeLabel(sum, "Technical diagnostics and maintenance tools", 10, 14);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(diagnosticsScreen);
+    os_.makeHeading(panel, "TRANSPORT", 8, 2);
+    makeButton(panel, "Stage Status", 8, 28, 128, 38, "STATUS:REQUEST");
+    makeButton(panel, "Stage Hello", 142, 28, 118, 38, "HELLO");
+    makeButton(panel, "Rediscover", 266, 28, 110, 38, "UI:NODES:REFRESH");
+    makeButton(panel, "Open Nodes", 382, 28, 110, 38, "SCREEN:NODES");
+    diagTransportLabel_ = makeLabel(panel, "Transport", 8, 72);
+    lv_obj_add_style(diagTransportLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagTransportLabel_, 360);
+    lv_label_set_long_mode(diagTransportLabel_, LV_LABEL_LONG_WRAP);
+
+    os_.makeHeading(panel, "STORAGE & MAINTENANCE", 8, 132);
+    makeButton(panel, "SD Status", 8, 158, 110, 38, "STORAGE:STATUS");
+    makeButton(panel, "Backup", 124, 158, 96, 38, "STORAGE:BACKUP");
+    makeButton(panel, "Export", 226, 158, 90, 38, "STORAGE:EXPORT");
+    makeButton(panel, "Repair Dirs", 322, 158, 118, 38, "STORAGE:REPAIR");
+    makeButton(panel, "Self Test", 446, 158, 96, 38, "SELFTEST:START");
+    diagStorageLabel_ = makeLabel(panel, "Storage", 8, 202);
+    lv_obj_add_style(diagStorageLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagStorageLabel_, 360);
+    lv_label_set_long_mode(diagStorageLabel_, LV_LABEL_LONG_WRAP);
+
+    os_.makeHeading(panel, "TELEMETRY", 390, 72);
+    diagPacketLabel_ = makeLabel(panel, "Telemetry", 390, 98);
+    lv_obj_add_style(diagPacketLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagPacketLabel_, 380);
+    lv_label_set_long_mode(diagPacketLabel_, LV_LABEL_LONG_WRAP);
+    diagLastCommandLabel_ = makeLabel(panel, "Last command: Not sent", 390, 174);
+    lv_obj_add_style(diagLastCommandLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagLastCommandLabel_, 380);
+    lv_label_set_long_mode(diagLastCommandLabel_, LV_LABEL_LONG_CLIP);
+    diagLastResponseLabel_ = makeLabel(panel, "Last response: Not received", 390, 194);
+    lv_obj_add_style(diagLastResponseLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagLastResponseLabel_, 380);
+    lv_label_set_long_mode(diagLastResponseLabel_, LV_LABEL_LONG_CLIP);
+  }
+
   void buildScreens() {
     Serial.printf("[UI] heap=%u psram=%u\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
@@ -1608,11 +2492,12 @@ private:
     createSystemSummary(summary);
 
     lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
-    os_.makeHeading(fabric, "FABRIC", 8, 2);
-    deskFabricLabel_ = makeLabel(fabric, "ESP-NOW: UNKNOWN", 8, 28);
+    os_.makeHeading(fabric, "NODE HEALTH", 8, 2);
+    deskFabricLabel_ = makeLabel(fabric, "Online nodes: 0", 8, 28);
     lv_obj_add_style(deskFabricLabel_, &os_.caption, 0);
-    lv_obj_set_width(deskFabricLabel_, deskRightW - 20);
+    lv_obj_set_width(deskFabricLabel_, deskRightW - 132);
     lv_label_set_long_mode(deskFabricLabel_, LV_LABEL_LONG_WRAP);
+    makeButton(fabric, "Open", deskRightW - 110, 40, 94, 40, "SCREEN:NODES");
 
     lv_obj_t *audioCard = makePanel(desktopScreen, deskRightX, OS_BODY_Y + 128 + OS_GAP, deskRightW,
                                     deskSumH - 128 - OS_GAP);
@@ -1799,24 +2684,16 @@ private:
                     12, 244);
     uiBuildPump();
 
-    /* ---- NODES (Quick Actions / future nav) ---- */
+    /* ---- NODES + NODE DETAILS + DIAGNOSTICS ---- */
     Serial.println("[UI] nodes…");
-    diagnosticsScreen = makeScreen();
+    buildNodesPage();
     uiBuildPump("[UI] nodes");
-    createDock(diagnosticsScreen);
-    lv_obj_t *nodeSum = os_.makePageChrome(diagnosticsScreen, "NODES");
-    os_.makeCaption(nodeSum, "Fabric", 10, 8);
-    makeLabel(nodeSum, "Director → C3 → Stage → Nodes", 10, 28);
-    lv_obj_t *nodes = os_.makePrimaryPanel(diagnosticsScreen);
-    os_.makeHeading(nodes, "TOOLS", 8, 2);
-    makeButton(nodes, "SD Status", 12, 36, 140, 48, "STORAGE:STATUS");
-    makeButton(nodes, "Backup", 160, 36, 140, 48, "STORAGE:BACKUP");
-    makeButton(nodes, "Export", 308, 36, 140, 48, "STORAGE:EXPORT");
-    makeButton(nodes, "Repair Dirs", 12, 96, 140, 48, "STORAGE:REPAIR");
-    makeButton(nodes, "Stage Status", 160, 96, 140, 48, "STATUS:REQUEST");
-    makeButton(nodes, "Self Test", 308, 96, 140, 48, "SELFTEST:START");
-    makeButton(nodes, "Stage Hello", 12, 156, 140, 48, "HELLO");
-    uiBuildPump();
+    Serial.println("[UI] node details…");
+    buildNodeDetailsPage();
+    uiBuildPump("[UI] node details");
+    Serial.println("[UI] diagnostics…");
+    buildDiagnosticsPage();
+    uiBuildPump("[UI] diagnostics");
 
     /* ---- SETTINGS — How is the system configured? ---- */
     Serial.println("[UI] settings…");
@@ -1862,6 +2739,8 @@ private:
     refreshLogsDisplay();
     refreshAudioPresentation();
     refreshDesktopFabric();
+    refreshNodesPresentationIfActive();
+    refreshDiagnosticsSummary();
 
     Serial.println("[UI] overlays…");
     buildPersistentBanner();
@@ -2171,7 +3050,9 @@ private:
       case DeskPage::Shows: showShows(); break;
       case DeskPage::Details: showDetails(); break;
       case DeskPage::More: showMore(); break;
-      case DeskPage::Nodes: showDiagnostics(); break;
+      case DeskPage::Nodes: showNodes(); break;
+      case DeskPage::NodeDetails: showNodeDetails(); break;
+      case DeskPage::Diagnostics: showDiagnostics(); break;
       case DeskPage::Settings: showSettings(); break;
       case DeskPage::Audio: showAudio(); break;
       case DeskPage::Logs: showLogs(); break;
@@ -2818,8 +3699,25 @@ private:
     trafficDirty = true;
     updateStatusWidgets(true);
   }
-  void showDiagnostics() {
+  void showNodes() {
     notePage(DeskPage::Nodes);
+    refreshNodesPresentationIfActive();
+    lv_screen_load(nodesScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showNodeDetails() {
+    notePage(DeskPage::NodeDetails);
+    refreshNodeDetailsPresentation();
+    lv_screen_load(nodeDetailsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showDiagnostics() {
+    notePage(DeskPage::Diagnostics);
+    refreshDiagnosticsSummary();
     lv_screen_load(diagnosticsScreen);
     statusDirty = true;
     trafficDirty = true;
