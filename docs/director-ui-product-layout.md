@@ -442,3 +442,80 @@ The first production Live pass is complete when:
 - Emergency remains permanently accessible.
 - No library, settings or full diagnostics content is present.
 - Existing runtime mirrors and commands remain compatible.
+
+---
+
+## Phase 5 implementation notes (completed)
+
+### Ownership summary
+
+| Screen | Owns |
+|--------|------|
+| Logs | Operator history, filters (8 categories), pause/resume, clear (confirmed), export |
+| Settings | Display prefs (timeout + brightness), navigation hub, system identity |
+| Maintenance | Storage ops, backup/export, repair (confirmed), factory reset (confirmed) |
+| About | Product identity, firmware/protocol/LVGL version, architecture summary |
+| Diagnostics | Technical tools, transport status (Phase 3), P4 audio diagnostics (Phase 4) |
+
+### Logs improvements
+
+- **System filter fixed**: now excludes audio/emergency/show entries rather than passing all
+- **Added Warnings (6) and Errors (7)** filter buttons
+- Clear Logs uses `showActionConfirm()` modal before clearing
+- Export forwarded to `.ino` `exportDiagnostics()` (writes diagnostics JSON to SD)
+- Pause shows live/paused state in filter label
+- `logsPausedUnseen_` counter tracks new entries while paused
+
+### Settings rebuild
+
+Two-row Display section: timeout presets + brightness ▲▼ buttons (0-255, persists immediately).
+System identity: director name readout.
+Navigation section: Audio, Logs, Nodes, Diagnostics, Maintenance, About, E-Stop Clear.
+
+### Maintenance enhancements
+
+Existing `buildMaintenancePage()` enhanced with:
+- Last operation result label (`maintStatusLabel_`) updated by all STORAGE:* handlers
+- Factory Reset button → confirmation dialog → `MAINTENANCE:FACTORY:RESET` → resets config, saves, updates backlight and About/Settings labels
+- Clear documentation of safe vs confirmed actions
+
+### About enhancements
+
+`buildAboutPage()` enhanced with:
+- `aboutNameLabel_` for the director name (updated from config at startup and after reset)
+- Protocol version (`SHOWDUINO_PROTOCOL_VERSION_MAJOR.MINOR`)
+- LVGL version (major.minor only — `LVGL_VERSION_MAJOR.MINOR`)
+
+### Public API additions
+
+- `setMaintenanceStatus(msg)` — set Maintenance page last-op label from .ino
+- `setAboutDirectorName(name)` — update About + Settings identity labels
+- `refreshSettingsDisplayValues_()` — refresh brightness readout
+
+### Settings persistence
+
+- Screen timeout: persists to `DirectorConfig.screenTimeoutMinutes` immediately
+- Brightness: persists to `DirectorConfig.brightness` immediately, applies via `backlightConfigure()`
+- Both use `markConfigDirty()` + `saveAllConfiguration()` (SD atomic JSON write)
+- Factory reset: calls `configManager().resetToDefaults()` + full save
+
+### Emergency interaction
+
+- `hideActionConfirm()` called on emergency activation (already in remote since dc3bb1c)
+- Confirmation dialog cannot execute during emergency (showActionConfirm checks `emergencyLocked`)
+- `restorePageAfterEmergency()` handles About (stay) and Maintenance (→ Settings)
+
+### Build results
+
+Phase 5 on Phase 3+4+dc3bb1c+dc79a8f base:
+- 1401058 bytes (44%) flash
+- 141244 bytes (43%) SRAM
+- No C++ errors
+
+### Known limitations
+
+- Director name editing via UI not implemented (read-only display)
+- Network configuration section not present (ESP-NOW peer is compile-time)
+- Log export writes diagnostics JSON, not a plain-text log
+- P4 firmware version not shown on About (not reported by P4)
+- Hardware testing on physical Director still required

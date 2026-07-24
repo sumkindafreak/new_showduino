@@ -671,13 +671,40 @@ public:
 
   bool logPassesFilter(const char *msg) const {
     if (logsFilter_ == 0) return true; /* All */
-    /* Lightweight keyword filters — safe placeholders until typed log channels exist. */
     if (!msg) return false;
-    if (logsFilter_ == 1) return true; /* System */
-    if (logsFilter_ == 2) return (strstr(msg, "Show") || strstr(msg, "Cue") || strstr(msg, "Runtime"));
-    if (logsFilter_ == 3) return (strstr(msg, "Audio") || strstr(msg, "AUDIO"));
-    if (logsFilter_ == 4) return (strstr(msg, "ESP-NOW") || strstr(msg, "Comms") || strstr(msg, "Node") || strstr(msg, "LINK"));
-    if (logsFilter_ == 5) return (strstr(msg, "Emergency") || strstr(msg, "E-STOP") || strstr(msg, "EMERGENCY"));
+    /* 1=System, 2=Show, 3=Audio, 4=Network, 5=Emergency, 6=Warnings, 7=Errors */
+    switch (logsFilter_) {
+      case 1: /* System — exclude clearly show/audio/network/emergency entries */
+        return !strstr(msg, "AUDIO") && !strstr(msg, "Audio") &&
+               !strstr(msg, "ESP-NOW") && !strstr(msg, "Emergency") &&
+               !strstr(msg, "E-STOP") && !strstr(msg, "Show Started") &&
+               !strstr(msg, "Show Loaded") && !strstr(msg, "Show Finished");
+      case 2: /* Show */
+        return strstr(msg, "Show") || strstr(msg, "Cue") ||
+               strstr(msg, "Runtime") || strstr(msg, "SHOW:") ||
+               strstr(msg, "Loaded") || strstr(msg, "Running");
+      case 3: /* Audio */
+        return strstr(msg, "Audio") || strstr(msg, "AUDIO") ||
+               strstr(msg, "P4 AUDIO");
+      case 4: /* Network */
+        return strstr(msg, "ESP-NOW") || strstr(msg, "Comms") ||
+               strstr(msg, "Stage link") || strstr(msg, "LINK") ||
+               strstr(msg, "HELLO") || strstr(msg, "disconnected") ||
+               strstr(msg, "Stage DISCONNECTED");
+      case 5: /* Emergency */
+        return strstr(msg, "Emergency") || strstr(msg, "E-STOP") ||
+               strstr(msg, "EMERGENCY") || strstr(msg, "Abort");
+      case 6: /* Warnings */
+        return strstr(msg, "Warn") || strstr(msg, "WARN") ||
+               strstr(msg, "lost") || strstr(msg, "Lost") ||
+               strstr(msg, "Degraded") || strstr(msg, "timeout") ||
+               strstr(msg, "Timeout") || strstr(msg, "blocked");
+      case 7: /* Errors */
+        return strstr(msg, "Error") || strstr(msg, "ERROR") ||
+               strstr(msg, "FAULT") || strstr(msg, "failed") ||
+               strstr(msg, "Failed") || strstr(msg, "ERR:") ||
+               strstr(msg, "rejected") || strstr(msg, "LOAD failed");
+    }
     return true;
   }
 
@@ -813,6 +840,25 @@ public:
     p4Audio_.setEmergencyAudio(active);
     if (currentPage == DeskPage::Audio) {
       DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+    }
+  }
+
+  /** Show a maintenance operation result on the Maintenance page. */
+  void setMaintenanceStatus(const char *msg) {
+    if (maintStatusLabel_ && msg) {
+      ShowduinoOsTheme::setTextIfChanged(maintStatusLabel_, msg);
+    }
+  }
+
+  /** Update the About director name label and Settings identity. */
+  void setAboutDirectorName(const char *name) {
+    if (aboutNameLabel_ && name && name[0]) {
+      ShowduinoOsTheme::setTextIfChanged(aboutNameLabel_, name);
+    }
+    if (settingsDirNameLabel_ && name && name[0]) {
+      char buf[64];
+      snprintf(buf, sizeof(buf), "Director: %.50s", name);
+      ShowduinoOsTheme::setTextIfChanged(settingsDirNameLabel_, buf);
     }
   }
 
@@ -1122,6 +1168,10 @@ private:
   lv_obj_t *settingsScreen = nullptr;
   lv_obj_t *maintenanceScreen = nullptr;
   lv_obj_t *aboutScreen = nullptr;
+  lv_obj_t *maintStatusLabel_ = nullptr;     /* last maintenance op result */
+  lv_obj_t *aboutNameLabel_ = nullptr;       /* director name on About page */
+  lv_obj_t *settingsDirNameLabel_ = nullptr; /* director name on Settings page */
+  lv_obj_t *brightnessLabel_ = nullptr;      /* brightness readout on Settings */
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
@@ -1516,6 +1566,22 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "MAINTENANCE:FACTORY:RESET:CONFIRM") {
+      showActionConfirm("FACTORY RESET — CONFIRM?",
+                        "This will reset ALL Director configuration to defaults.\n"
+                        "Director name, backlight settings and all preferences will be lost.\n"
+                        "The running show on the Stage Engine is NOT affected.",
+                        "MAINTENANCE:FACTORY:RESET");
+      return;
+    }
+    if (command == "UI:SETTINGS:BRIGHTNESS:UP") {
+      if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:UP");
+      return;
+    }
+    if (command == "UI:SETTINGS:BRIGHTNESS:DOWN") {
+      if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:DOWN");
+      return;
+    }
     if (command == "SCREEN:AUDIO") {
       notePage(DeskPage::Audio);
       showAudio();
@@ -1531,8 +1597,10 @@ private:
 
     if (command.startsWith("UI:LOGS:FILTER:")) {
       logsFilter_ = (uint8_t)command.substring(strlen("UI:LOGS:FILTER:")).toInt();
-      static const char *names[] = {"All", "System", "Show", "Audio", "Network", "Emergency"};
-      if (logsFilterLabel_ && logsFilter_ < 6) {
+      static const char *names[] = {
+        "All", "System", "Show", "Audio", "Network", "Emergency", "Warnings", "Errors"};
+      static const uint8_t namesCount = 8;
+      if (logsFilterLabel_ && logsFilter_ < namesCount) {
         char buf[32];
         snprintf(buf, sizeof(buf), "Filter: %s", names[logsFilter_]);
         ShowduinoOsTheme::setTextIfChanged(logsFilterLabel_, buf);
@@ -1556,7 +1624,8 @@ private:
       return;
     }
     if (command == "UI:LOGS:EXPORT") {
-      pushOperatorEvent("Export Logs — placeholder (not available)");
+      /* Forward to .ino for actual export via exportDiagnostics() */
+      if (commandCallback) commandCallback("UI:LOGS:EXPORT");
       return;
     }
     if (command == "UI:LOGS:PAUSE") {
@@ -1903,30 +1972,36 @@ private:
     lv_label_set_long_mode(logsNewestLabel_, LV_LABEL_LONG_CLIP);
 
     lv_obj_t *panel = os_.makePrimaryPanel(logsScreen);
+    /* Filter row 1: All, System, Show, Audio, Net, E-Stop */
     os_.makeHeading(panel, "FILTERS", 8, 2);
-    makeButton(panel, "All", 8, 28, 70, 36, "UI:LOGS:FILTER:0");
-    makeButton(panel, "System", 84, 28, 86, 36, "UI:LOGS:FILTER:1");
-    makeButton(panel, "Show", 176, 28, 70, 36, "UI:LOGS:FILTER:2");
-    makeButton(panel, "Audio", 252, 28, 70, 36, "UI:LOGS:FILTER:3");
-    makeButton(panel, "Net", 328, 28, 64, 36, "UI:LOGS:FILTER:4");
-    makeButton(panel, "E-Stop", 398, 28, 80, 36, "UI:LOGS:FILTER:5");
-    logsFilterLabel_ = makeLabel(panel, "Filter: All", 490, 34);
+    makeButton(panel, "All",    8, 24, 60, 32, "UI:LOGS:FILTER:0");
+    makeButton(panel, "System",74, 24, 78, 32, "UI:LOGS:FILTER:1");
+    makeButton(panel, "Show", 158, 24, 64, 32, "UI:LOGS:FILTER:2");
+    makeButton(panel, "Audio", 228, 24, 66, 32, "UI:LOGS:FILTER:3");
+    makeButton(panel, "Net",   300, 24, 56, 32, "UI:LOGS:FILTER:4");
+    makeButton(panel, "E-Stop",362, 24, 74, 32, "UI:LOGS:FILTER:5");
+    /* Filter row: Warnings and Errors (expanded severity filters) */
+    makeButton(panel, "Warnings", 442, 24, 88, 32, "UI:LOGS:FILTER:6");
+    makeButton(panel, "Errors",   536, 24, 72, 32, "UI:LOGS:FILTER:7");
+    logsFilterLabel_ = makeLabel(panel, "Filter: All", 616, 28);
     lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
-    logsPauseStateLabel_ = makeLabel(panel, "Live updates: ON", 490, 52);
+    lv_obj_set_width(logsFilterLabel_, OS_CONTENT_FULL_W - 626);
+    logsPauseStateLabel_ = makeLabel(panel, "Live: ON", 616, 44);
     lv_obj_add_style(logsPauseStateLabel_, &os_.caption, 0);
+    lv_obj_set_width(logsPauseStateLabel_, OS_CONTENT_FULL_W - 626);
 
-    makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
-    makeButton(panel, "Export", 106, 72, 90, 36, "UI:LOGS:EXPORT");
-    makeButton(panel, "Pause", 204, 72, 90, 36, "UI:LOGS:PAUSE");
-    makeButton(panel, "Resume", 302, 72, 90, 36, "UI:LOGS:RESUME");
-    makeButton(panel, "Latest", 400, 72, 90, 36, "UI:LOGS:LATEST");
-    makeButton(panel, "Back", 498, 72, 90, 36, "SCREEN:MORE");
+    makeButton(panel, "Clear",  8, 62, 86, 34, "UI:LOGS:CLEAR", true);
+    makeButton(panel, "Export",100, 62, 86, 34, "UI:LOGS:EXPORT");
+    makeButton(panel, "Pause", 192, 62, 86, 34, "UI:LOGS:PAUSE");
+    makeButton(panel, "Resume",284, 62, 86, 34, "UI:LOGS:RESUME");
+    makeButton(panel, "Latest",376, 62, 86, 34, "UI:LOGS:LATEST");
+    makeButton(panel, "Back",  468, 62, 86, 34, "SCREEN:MORE");
 
     operatorLogRoot = panel;
     operatorLogScroll = lv_obj_create(panel);
     lv_obj_remove_style_all(operatorLogScroll);
-    lv_obj_set_pos(operatorLogScroll, 8, 118);
-    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 130);
+    lv_obj_set_pos(operatorLogScroll, 8, 104);
+    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 114);
     lv_obj_set_style_bg_opa(operatorLogScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(operatorLogScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(operatorLogScroll, LV_SCROLLBAR_MODE_AUTO);
@@ -2580,28 +2655,36 @@ private:
     maintenanceScreen = makeScreen();
     createDock(maintenanceScreen);
     lv_obj_t *sum = os_.makePageChrome(maintenanceScreen, "MAINTENANCE");
-    makeLabel(sum, "Service operations and recovery tools", 10, 14);
+    os_.makeCaption(sum, "Service operations and recovery tools", 10, 8);
+    os_.makeCaption(sum, "Dangerous actions require confirmation.", 10, 28);
 
     lv_obj_t *panel = os_.makePrimaryPanel(maintenanceScreen);
-    os_.makeHeading(panel, "STORAGE", 8, 2);
-    makeButton(panel, "SD Status", 8, 30, 110, 40, "STORAGE:STATUS");
-    makeButton(panel, "Backup", 124, 30, 100, 40, "STORAGE:BACKUP");
-    makeButton(panel, "Export", 230, 30, 96, 40, "STORAGE:EXPORT");
-    makeButton(panel, "Repair Dirs", 332, 30, 128, 40, "STORAGE:REPAIR");
-    os_.makeCaption(panel, "Repair and self-test are blocked during active show and emergency.", 8, 78);
+    const int pW = OS_CONTENT_FULL_W - 24;
 
-    os_.makeHeading(panel, "LOGS & REPORTS", 8, 112);
-    makeButton(panel, "Open Logs", 8, 140, 120, 40, "SCREEN:LOGS");
-    makeButton(panel, "Export Logs", 134, 140, 130, 40, "UI:LOGS:EXPORT");
-    makeButton(panel, "Diagnostics", 270, 140, 126, 40, "SCREEN:DIAG");
-    makeButton(panel, "Back to Settings", 402, 140, 170, 40, "SCREEN:SETTINGS");
+    os_.makeHeading(panel, "STORAGE", OS_PAD, 2);
+    makeButton(panel, "SD Status",   OS_PAD,       28, 110, 40, "STORAGE:STATUS");
+    makeButton(panel, "Backup",      OS_PAD+118,   28, 100, 40, "STORAGE:BACKUP");
+    makeButton(panel, "Export Diag", OS_PAD+226,   28,  96, 40, "STORAGE:EXPORT");
+    makeButton(panel, "Repair Dirs", OS_PAD+330,   28, 118, 40, "STORAGE:REPAIR");
+    os_.makeCaption(panel, "Repair: safe — creates missing dirs only. Backup: copies config to SD.", OS_PAD, 76);
 
-    os_.makeHeading(panel, "DANGEROUS ACTION POLICY", 8, 194);
-    makeLabel(panel,
-              "Destructive actions require confirmation.\n"
-              "Emergency overlay always interrupts these actions.\n"
-              "No automatic retry after emergency clear.",
-              8, 220);
+    os_.makeHeading(panel, "LOGS & REPORTS", OS_PAD, 96);
+    makeButton(panel, "Open Logs",        OS_PAD,       122, 120, 40, "SCREEN:LOGS");
+    makeButton(panel, "Export Logs",      OS_PAD+128,   122, 130, 40, "UI:LOGS:EXPORT");
+    makeButton(panel, "Diagnostics",      OS_PAD+266,   122, 126, 40, "SCREEN:DIAG");
+    makeButton(panel, "Back to Settings", OS_PAD+400,   122, 170, 40, "SCREEN:SETTINGS");
+
+    /* Last operation status */
+    os_.makeHeading(panel, "LAST OPERATION", OS_PAD, 172);
+    maintStatusLabel_ = makeLabel(panel, "No operation run this session", OS_PAD, 192);
+    lv_obj_add_style(maintStatusLabel_, &os_.caption, 0);
+    lv_obj_set_width(maintStatusLabel_, pW - OS_PAD);
+    lv_label_set_long_mode(maintStatusLabel_, LV_LABEL_LONG_WRAP);
+
+    /* Factory reset — confirmed only */
+    os_.makeHeading(panel, "CONFIGURATION RESET", OS_PAD, 220);
+    os_.makeCaption(panel, "Resets all Director configuration to factory defaults. Stage show is not stopped.", OS_PAD, 240);
+    makeButton(panel, "Factory Reset", OS_PAD, 260, 160, 42, "MAINTENANCE:FACTORY:RESET:CONFIRM", true);
   }
 
   void buildAboutPage() {
@@ -2613,6 +2696,13 @@ private:
     lv_obj_t *panel = os_.makePrimaryPanel(aboutScreen);
     os_.makeHeading(panel, "SHOWDUINO DIRECTOR", 8, 2);
 
+    /* Director name — updated at runtime from DirectorConfig */
+    os_.makeCaption(panel, "Director name", OS_PAD, 28);
+    aboutNameLabel_ = makeLabel(panel, "Loading\xe2\x80\xa6", OS_PAD + 130, 28);
+    lv_obj_add_style(aboutNameLabel_, &os_.body, 0);
+    lv_obj_set_width(aboutNameLabel_, OS_CONTENT_FULL_W - OS_PAD - 140);
+    lv_label_set_long_mode(aboutNameLabel_, LV_LABEL_LONG_WRAP);
+
     char info[768];
     snprintf(info, sizeof(info),
              "Product: Showduino Director\n"
@@ -2620,17 +2710,19 @@ private:
              "Firmware: %s\n"
              "Board: %s\n"
              "Display: 800x480 RGB + GT911 touch\n"
-             "LVGL: %d.%d.%d\n"
+             "LVGL: %d.%d\n"
+             "Protocol: %d.%d\n"
              "Show Runtime Owner: IAN / P4 Stage Engine\n"
              "Audio Engine Owner: IAN / P4 (Director is monitor/control only)\n"
-             "Comms Path: Director -> SUE bridge -> IAN\n"
-             "Build info: unavailable in runtime image\n"
+             "Comms Path: Director \xe2\x86\x92 SUE bridge \xe2\x86\x92 IAN\n"
+             "Build info: see STORAGE_FW_VERSION in firmware\n"
              "Repository: sumkindafreak/new_showduino\n"
              "License/Credits: see repository documentation.",
              STORAGE_FW_VERSION,
              SHOWDUINO_BOARD_NAME,
-             LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
-    lv_obj_t *label = makeLabel(panel, info, 8, 28);
+             LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR,
+             SHOWDUINO_PROTOCOL_VERSION_MAJOR, SHOWDUINO_PROTOCOL_VERSION_MINOR);
+    lv_obj_t *label = makeLabel(panel, info, 8, 56);
     lv_obj_add_style(label, &os_.caption, 0);
     lv_obj_set_width(label, OS_CONTENT_FULL_W - 30);
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
@@ -2878,35 +2970,54 @@ private:
     uiBuildPump("[UI] settings");
     createDock(settingsScreen);
     lv_obj_t *setSum = os_.makePageChrome(settingsScreen, "SETTINGS");
-    os_.makeCaption(setSum, "Display", 10, 8);
+    os_.makeCaption(setSum, "Configuration and preferences", 10, 6);
     timeoutLabel = makeLabel(setSum, "Auto backlight: 10 min", 10, 28);
     lv_obj_add_style(timeoutLabel, &os_.body, 0);
 
     lv_obj_t *settings = os_.makePrimaryPanel(settingsScreen);
-    os_.makeHeading(settings, "MODULES", 8, 2);
-    makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
-    makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
-    os_.makeCaption(settings, "Audio: local P4 + remote nodes   ·   Logs: operator event history", 8, 86);
+    os_.makeHeading(settings, "DISPLAY", OS_PAD, 2);
+    makeButton(settings, "Never",  OS_PAD,       24, 68, 36, "SETTINGS:TIMEOUT:0");
+    makeButton(settings, "1m",     OS_PAD+ 76,   24, 50, 36, "SETTINGS:TIMEOUT:1");
+    makeButton(settings, "3m",     OS_PAD+134,   24, 50, 36, "SETTINGS:TIMEOUT:3");
+    makeButton(settings, "5m",     OS_PAD+192,   24, 50, 36, "SETTINGS:TIMEOUT:5");
+    makeButton(settings, "10m",    OS_PAD+250,   24, 58, 36, "SETTINGS:TIMEOUT:10");
+    makeButton(settings, "30m",    OS_PAD+316,   24, 58, 36, "SETTINGS:TIMEOUT:30");
+    makeButton(settings, "Cycle",  OS_PAD+382,   24, 52, 36, "SETTINGS:TIMEOUT:CYCLE");
+    os_.makeCaption(settings, "Timeout: dim at half, off at limit.", OS_PAD, 66);
 
-    os_.makeHeading(settings, "DISPLAY", 8, 112);
-    makeButton(settings, "Never", 8, 140, 70, 40, "SETTINGS:TIMEOUT:0");
-    makeButton(settings, "1m", 86, 140, 54, 40, "SETTINGS:TIMEOUT:1");
-    makeButton(settings, "3m", 148, 140, 54, 40, "SETTINGS:TIMEOUT:3");
-    makeButton(settings, "5m", 210, 140, 54, 40, "SETTINGS:TIMEOUT:5");
-    makeButton(settings, "10m", 272, 140, 62, 40, "SETTINGS:TIMEOUT:10");
-    makeButton(settings, "30m", 342, 140, 62, 40, "SETTINGS:TIMEOUT:30");
-    makeButton(settings, "Cycle", 412, 140, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
-    os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
+    /* Brightness controls */
+    os_.makeCaption(settings, "Brightness", OS_PAD + 470, 4);
+    brightnessLabel_ = makeLabel(settings, "255", OS_PAD + 470, 22);
+    lv_obj_add_style(brightnessLabel_, &os_.body, 0);
+    makeButton(settings, "\xe2\x96\xbd", OS_PAD + 516, 16, 40, 34, "UI:SETTINGS:BRIGHTNESS:DOWN");
+    makeButton(settings, "\xe2\x96\xb2", OS_PAD + 562, 16, 40, 34, "UI:SETTINGS:BRIGHTNESS:UP");
 
-    os_.makeHeading(settings, "SYSTEM", 8, 210);
-    makeButton(settings, "Clear E-STOP", 8, 236, 150, 44, "EMERGENCY:CLEAR");
-    makeButton(settings, "Maintenance", 168, 236, 140, 44, "SCREEN:MAINT");
-    makeButton(settings, "Diagnostics", 316, 236, 140, 44, "SCREEN:DIAG");
-    makeButton(settings, "About", 464, 236, 90, 44, "SCREEN:ABOUT");
+    /* System identity */
+    os_.makeHeading(settings, "SYSTEM", OS_PAD, 82);
+    settingsDirNameLabel_ = makeLabel(settings, "Director: —", OS_PAD, 104);
+    lv_obj_add_style(settingsDirNameLabel_, &os_.caption, 0);
+    lv_obj_set_width(settingsDirNameLabel_, OS_CONTENT_FULL_W - OS_PAD * 2 - 24);
+
+    /* Navigation */
+    os_.makeHeading(settings, "SECTIONS", OS_PAD, 122);
+    makeButton(settings, "Audio",       OS_PAD,       148, 120, 44, "SCREEN:AUDIO");
+    makeButton(settings, "Logs",        OS_PAD+128,   148, 120, 44, "SCREEN:LOGS");
+    makeButton(settings, "Nodes",       OS_PAD+256,   148, 120, 44, "SCREEN:NODES");
+    makeButton(settings, "Diagnostics", OS_PAD+384,   148, 140, 44, "SCREEN:DIAG");
+    makeButton(settings, "Maintenance", OS_PAD,       200, 160, 44, "SCREEN:MAINT");
+    makeButton(settings, "About",       OS_PAD+168,   200, 120, 44, "SCREEN:ABOUT");
+    makeButton(settings, "E-Stop Clear",OS_PAD+396,   200, 168, 44, "EMERGENCY:CLEAR");
 
     refreshTimeoutLabel();
+    refreshSettingsDisplayValues_();
     uiBuildPump();
 
+    Serial.println("[UI] about…");
+    buildAboutPage();
+    uiBuildPump("[UI] about");
+    Serial.println("[UI] maintenance…");
+    buildMaintenancePage();
+    uiBuildPump("[UI] maintenance");
     Serial.println("[UI] logs…");
     buildLogsPage();
     uiBuildPump("[UI] logs");
@@ -3375,6 +3486,15 @@ private:
                (unsigned)screenTimeoutMinutes);
     }
     lv_label_set_text(timeoutLabel, buf);
+    refreshSettingsDisplayValues_();
+  }
+
+  void refreshSettingsDisplayValues_() {
+    if (brightnessLabel_) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "%u", (unsigned)backlightBrightness());
+      ShowduinoOsTheme::setTextIfChanged(brightnessLabel_, buf);
+    }
   }
 
   void clearShowListChildren() {

@@ -602,7 +602,9 @@ void handleUiCommand(const String &command) {
   }
 
   if (command == "STORAGE:BACKUP") {
-    ui.appendLog(createManualBackup() ? "Backup created" : "Backup failed");
+    bool ok = createManualBackup();
+    ui.appendLog(ok ? "Backup created" : "Backup failed");
+    ui.setMaintenanceStatus(ok ? "Backup created successfully" : "Backup failed — check SD card");
     return;
   }
   if (command == "STORAGE:UNMOUNT") {
@@ -610,11 +612,15 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "STORAGE:EXPORT") {
-    ui.appendLog(exportDiagnostics() ? "Diagnostics exported" : "Diagnostics export failed");
+    bool ok = exportDiagnostics();
+    ui.appendLog(ok ? "Diagnostics exported" : "Diagnostics export failed");
+    ui.setMaintenanceStatus(ok ? "Diagnostics exported to SD" : "Export failed — check SD card");
     return;
   }
   if (command == "STORAGE:REPAIR") {
-    ui.appendLog(gStorage.repairFolders() ? "Folder structure repaired" : "Repair failed");
+    bool ok = gStorage.repairFolders();
+    ui.appendLog(ok ? "Folder structure repaired" : "Repair failed");
+    ui.setMaintenanceStatus(ok ? "Storage directories repaired" : "Repair failed — check SD");
     return;
   }
   if (command == "STORAGE:STATUS") {
@@ -626,6 +632,52 @@ void handleUiCommand(const String &command) {
              (unsigned long long)(st.freeBytes / (1024 * 1024)),
              (unsigned)st.saveState);
     ui.appendLog(line);
+    ui.setMaintenanceStatus(line);
+    return;
+  }
+
+  /* Maintenance: factory reset (after confirmation dialog) */
+  if (command == "MAINTENANCE:FACTORY:RESET") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    gStorage.configManager().resetToDefaults(cfg);
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    ui.setAboutDirectorName(cfg.directorName);
+    ui.appendLog("Configuration reset to factory defaults");
+    ui.setMaintenanceStatus("Factory reset complete — defaults applied");
+    return;
+  }
+
+  /* Settings: brightness control */
+  if (command == "SETTINGS:BRIGHTNESS:UP") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    uint8_t b = cfg.brightness;
+    if (b < 245) b = (uint8_t)(b + 10); else b = 255;
+    cfg.brightness = b;
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    return;
+  }
+  if (command == "SETTINGS:BRIGHTNESS:DOWN") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    uint8_t b = cfg.brightness;
+    if (b > 15) b = (uint8_t)(b - 10); else b = 5;
+    cfg.brightness = b;
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    return;
+  }
+
+  /* Logs: export via diagnostics */
+  if (command == "UI:LOGS:EXPORT") {
+    bool ok = exportDiagnostics();
+    ui.appendLog(ok ? "Log export done (diagnostics JSON written to SD)" : "Log export failed — check SD");
     return;
   }
 
@@ -992,6 +1044,8 @@ void setup() {
     backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
     backlightNotifyActivity();
     ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    /* Populate About + Settings identity with stored director name */
+    ui.setAboutDirectorName(cfg.directorName);
   }
 
   ui.appendLog("Showduino portable Director online.");
