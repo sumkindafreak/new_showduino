@@ -60,7 +60,7 @@ enum class DeskShowView : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs
+    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs, More
   };
 
   void begin(ShowduinoCommandCallback callback) {
@@ -854,6 +854,7 @@ private:
   lv_obj_t *showDetailsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
+  lv_obj_t *moreScreen = nullptr;
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
@@ -1112,6 +1113,12 @@ private:
     if (command == "SCREEN:SETTINGS") {
       notePage(DeskPage::Settings);
       showSettings();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:MORE") {
+      notePage(DeskPage::More);
+      showMore();
       maybeRestoreEmergencyOverlay();
       return;
     }
@@ -1468,8 +1475,31 @@ private:
     lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
   }
 
-  void buildScreens() {
-    Serial.printf("[UI] heap=%u psram=%u\n",
+  void buildMorePage() {
+    moreScreen = makeScreen();
+    createDock(moreScreen);
+    lv_obj_t *sum = os_.makePageChrome(moreScreen, "MORE");
+    os_.makeCaption(sum, "Tools & Configuration", 10, 8);
+    lv_obj_t *subLbl = makeLabel(sum, "Nodes  ·  Audio  ·  Logs  ·  Settings  ·  Diagnostics  ·  About", 10, 28);
+    lv_obj_add_style(subLbl, &os_.caption, 0);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(moreScreen);
+    os_.makeHeading(panel, "LAUNCH", 8, 2);
+    const int bw = 140;
+    const int bh = 56;
+    const int gap = 12;
+    const int x0 = 10;
+    const int y0 = 36;
+    const int row2 = y0 + bh + gap;
+    makeButton(panel, "Nodes",       x0,                   y0,   bw, bh, "SCREEN:NODES");
+    makeButton(panel, "Audio",       x0 + (bw + gap),      y0,   bw, bh, "SCREEN:AUDIO");
+    makeButton(panel, "Logs",        x0 + 2 * (bw + gap),  y0,   bw, bh, "SCREEN:LOGS");
+    makeButton(panel, "Settings",    x0 + 3 * (bw + gap),  y0,   bw, bh, "SCREEN:SETTINGS");
+    makeButton(panel, "Diagnostics", x0,                   row2, bw, bh, "SCREEN:DIAG");
+    makeButton(panel, "About",       x0 + (bw + gap),      row2, bw, bh, "SETTINGS:ABOUT");
+  }
+
+  void buildScreens() {    Serial.printf("[UI] heap=%u psram=%u\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
     createSharedOperatorLog();
     uiBuildPump();
@@ -1488,9 +1518,6 @@ private:
 
     lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, deskLeftW, deskSumH);
     createSystemSummary(summary);
-    makeButton(summary, "Start", 10, 204, 90, 36, "SHOW:START");
-    makeButton(summary, "Pause", 108, 204, 90, 36, "SHOW:PAUSE");
-    makeButton(summary, "Stop", 206, 204, 90, 36, "SHOW:STOP", true);
 
     lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
     os_.makeHeading(fabric, "FABRIC", 8, 2);
@@ -1696,6 +1723,9 @@ private:
     Serial.println("[UI] audio…");
     buildAudioPage();
     uiBuildPump("[UI] audio");
+    Serial.println("[UI] more…");
+    buildMorePage();
+    uiBuildPump("[UI] more");
     refreshLogsDisplay();
     refreshAudioPresentation();
     refreshDesktopFabric();
@@ -2011,6 +2041,7 @@ private:
       case DeskPage::Settings: showSettings(); break;
       case DeskPage::Audio: showAudio(); break;
       case DeskPage::Logs: showLogs(); break;
+      case DeskPage::More: showMore(); break;
       default: showDesktop(); break;
     }
   }
@@ -2269,6 +2300,13 @@ private:
     logsLivePaused_ = false;
     refreshLogsDisplay();
     logsLivePaused_ = wasPaused;
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showMore() {
+    notePage(DeskPage::More);
+    lv_screen_load(moreScreen);
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
