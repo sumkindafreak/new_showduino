@@ -301,7 +301,7 @@ inline void updateState(PageHandles &h, ShowduinoOsTheme &os,
     if (h.trackSourceLabel) {
         char tsBuf[48];
         if (m.trackKnown && m.trackSource[0]) {
-            snprintf(tsBuf, sizeof(tsBuf), "Show: %s", m.trackSource);
+            snprintf(tsBuf, sizeof(tsBuf), "Show: %.40s", m.trackSource);
         } else {
             tsBuf[0] = '\0';
         }
