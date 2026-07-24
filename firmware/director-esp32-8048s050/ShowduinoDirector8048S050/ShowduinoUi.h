@@ -6,6 +6,7 @@
 #include "BoardConfig.h"
 #include "backlight.h"
 #include "src/ShowManager.h"
+#include "src/StorageConfig.h"
 #include "src/DeviceDatabase.h"
 #include "src/ShowThumb.h"
 #include "../../../protocol/showduino_state_wire.h"
@@ -103,7 +104,7 @@ enum class UiNodeHealth : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, More, Nodes, NodeDetails, Diagnostics, Settings, Audio, Logs
+    Desktop = 0, Live, Shows, Details, More, Nodes, NodeDetails, Diagnostics, Settings, Maintenance, About, Audio, Logs
   };
 
   void begin(ShowduinoCommandCallback callback) {
@@ -158,16 +159,24 @@ public:
     statusDirty = true;
 
     if (locked && !wasLocked) {
+      hideActionConfirm();   /* Emergency must cancel pending destructive confirmations. */
+      hideAbortConfirm();
       emergencyOverlayDismissed = false;
       emergencyAcknowledged = false;
+      pendingClearAwait_ = false;
       emergencySessionOpen = true;
       emergencyActiveSinceMs = millis();
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
       sessionEmergencyCount++;
       captureEmergencySnapshot();
       showEmergencyOverlay();
       pushOperatorEvent("Emergency Activated");
       emergencyAlarmOnHook();
     } else if (!locked && wasLocked) {
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
+      pendingClearAwait_ = false;
       pushOperatorEvent("Emergency Cleared");
       emergencyAlarmOffHook();
       updateEmergencyResumeButton();
@@ -370,7 +379,6 @@ public:
     }
 
     bool justConfirmedResume = false;
-    bool justConfirmedAbort = false;
 
     /* Pending RESUME: dismiss only after Stage confirms RUNNING */
     if (pendingResumeAwait && rt.state == SHOW_STATE_RUNNING) {
@@ -396,7 +404,6 @@ public:
       showDesktop();
       pushOperatorEvent("Show Aborted");
       setShowView(DeskShowView::Idle);
-      justConfirmedAbort = true;
     }
 
     /* State-transition operator events */
@@ -420,8 +427,6 @@ public:
           pushOperatorEvent(rt.lastError[0] ? rt.lastError : "Error");
           break;
         case SHOW_STATE_IDLE:
-          if (!justConfirmedAbort && prev == SHOW_STATE_FINISHED)
-            /* menu return path */;
           break;
         default: break;
       }
@@ -485,6 +490,13 @@ public:
         showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
         refreshShowDetailsPresentation();
       }
+    }
+
+    if (emergencyActivating && !emergencyLocked &&
+        (nowMs - emergencyRequestMs_) > 5000UL) {
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
+      pushOperatorEvent("Emergency requested — awaiting Stage confirmation");
     }
 
     if (nodeDiscoveryPending_) {
@@ -640,6 +652,9 @@ public:
     eventSlot(0)[OPERATOR_EVENT_LINE_LEN - 1] = '\0';
     if (eventLogCount < OPERATOR_EVENT_LOG_MAX) eventLogCount++;
 
+    if (logsLivePaused_ && logsPausedUnseen_ < OPERATOR_EVENT_LOG_MAX) {
+      logsPausedUnseen_++;
+    }
     refreshLogsDisplay();
   }
 
@@ -667,7 +682,18 @@ public:
   }
 
   void refreshLogsDisplay() {
+    if (logsPauseStateLabel_) {
+      char state[64];
+      if (logsLivePaused_) {
+        snprintf(state, sizeof(state), "Live updates: PAUSED  (new %u)",
+                 (unsigned)logsPausedUnseen_);
+      } else {
+        snprintf(state, sizeof(state), "Live updates: ON");
+      }
+      ShowduinoOsTheme::setTextIfChanged(logsPauseStateLabel_, state);
+    }
     if (logsLivePaused_) return;
+
     uiLogText = "";
     uint16_t shown = 0;
     for (uint16_t i = 0; i < eventLogCount && shown < 60; i++) {
@@ -703,6 +729,7 @@ public:
     eventLogCount = 0;
     uiLogText = "";
     logsLivePaused_ = false;
+    logsPausedUnseen_ = 0;
     refreshLogsDisplay();
     pushOperatorEvent("Logs cleared");
   }
@@ -1079,6 +1106,11 @@ private:
       default: return "IDLE";
     }
   }
+  bool isShowActiveForMaintenance() const {
+    return mirroredState == SHOW_STATE_RUNNING ||
+           mirroredState == SHOW_STATE_PAUSED ||
+           mirroredState == SHOW_STATE_EMERGENCY_STOP;
+  }
   lv_obj_t *desktopScreen = nullptr;
   lv_obj_t *liveScreen = nullptr;
   lv_obj_t *showsScreen = nullptr;
@@ -1088,6 +1120,8 @@ private:
   lv_obj_t *nodeDetailsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
+  lv_obj_t *maintenanceScreen = nullptr;
+  lv_obj_t *aboutScreen = nullptr;
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
@@ -1203,11 +1237,17 @@ private:
   lv_obj_t *abortConfirmRoot = nullptr;
   lv_obj_t *completeOverlayRoot = nullptr;
   lv_obj_t *completeDetailLabel = nullptr;
+  lv_obj_t *actionConfirmRoot = nullptr;
+  lv_obj_t *actionConfirmTitleLabel_ = nullptr;
+  lv_obj_t *actionConfirmBodyLabel_ = nullptr;
+  char actionConfirmCommand_[48] = {};
+  bool actionConfirmVisible_ = false;
   bool emergencyOverlayBuilt = false;
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
   bool emergencyVisitingDiag = false;
   bool emergencyAcknowledged = false;
+  bool pendingClearAwait_ = false;
   bool pendingResumeAwait = false;
   bool pendingAbortAwait = false;
   bool emergencySessionOpen = false;
@@ -1279,7 +1319,9 @@ private:
   lv_obj_t *logsCountLabel_ = nullptr;
   lv_obj_t *logsNewestLabel_ = nullptr;
   lv_obj_t *logsFilterLabel_ = nullptr;
+  lv_obj_t *logsPauseStateLabel_ = nullptr;
   bool logsLivePaused_ = false;
+  uint16_t logsPausedUnseen_ = 0;
   uint8_t logsFilter_ = 0; /* 0=All placeholder */
   DeskAudioModel audioModel_;                          /* legacy; retained for compatibility */
   DirectorP4AudioModel p4Audio_;                       /* P4-mirrored audio state             */
@@ -1309,6 +1351,7 @@ private:
   bool synchronising = false;
   bool snapshotActive = false;
   bool emergencyActivating = false;
+  unsigned long emergencyRequestMs_ = 0;
   bool statusDirty = true;
   bool trafficDirty = true;
   uint32_t txCount = 0;
@@ -1325,6 +1368,21 @@ private:
 
   void runCommand(const String &command) {
     backlightNotifyActivity();
+
+    if (command == "UI:CONFIRM:CANCEL") {
+      hideActionConfirm();
+      pushOperatorEvent("Action cancelled");
+      return;
+    }
+    if (command == "UI:CONFIRM:OK") {
+      if (!actionConfirmVisible_ || !actionConfirmCommand_[0]) return;
+      char confirmed[48];
+      strncpy(confirmed, actionConfirmCommand_, sizeof(confirmed) - 1);
+      confirmed[sizeof(confirmed) - 1] = '\0';
+      hideActionConfirm();
+      runCommand(String(confirmed));
+      return;
+    }
 
     /* Emergency overlay actions — handled even while overlay blocks the desk. */
     if (command == "UI:ESTOP:RESUME") {
@@ -1355,6 +1413,7 @@ private:
     if (command == "UI:ESTOP:DIAG") {
       emergencyVisitingDiag = true;
       hideEmergencyOverlay();
+      hideActionConfirm();
       /* Persistent banner stays while EMERGENCY_STOP. */
       showDiagnostics();
       if (commandCallback) commandCallback("UI:ESTOP:DIAG");
@@ -1368,12 +1427,14 @@ private:
         emergencyOverlayDismissed = true;
         hideEmergencyOverlay();
         hideAbortConfirm();
+        hideActionConfirm();
         showDesktop();
         setShowView(DeskShowView::Idle);
         pushOperatorEvent("Returned to Desktop");
       } else {
         emergencyVisitingDiag = true;
         hideEmergencyOverlay();
+        hideActionConfirm();
         showDesktop();
         pushOperatorEvent("Desktop — banner active until E-Stop cleared");
       }
@@ -1443,6 +1504,18 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "SCREEN:MAINT") {
+      notePage(DeskPage::Maintenance);
+      showMaintenance();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:ABOUT" || command == "SETTINGS:ABOUT") {
+      notePage(DeskPage::About);
+      showAbout();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
     if (command == "SCREEN:AUDIO") {
       notePage(DeskPage::Audio);
       showAudio();
@@ -1471,6 +1544,14 @@ private:
       return;
     }
     if (command == "UI:LOGS:CLEAR") {
+      showActionConfirm("CLEAR LOG HISTORY?",
+                        "This removes operator log history from memory.\n"
+                        "Running show state is not changed.\n"
+                        "You can cancel to keep all current logs.",
+                        "UI:LOGS:CLEAR:CONFIRMED");
+      return;
+    }
+    if (command == "UI:LOGS:CLEAR:CONFIRMED") {
       clearOperatorLogs();
       return;
     }
@@ -1479,14 +1560,25 @@ private:
       return;
     }
     if (command == "UI:LOGS:PAUSE") {
-      logsLivePaused_ = true;
       pushOperatorEvent("Log live updates paused");
+      logsLivePaused_ = true;
+      logsPausedUnseen_ = 0;
+      refreshLogsDisplay();
       return;
     }
     if (command == "UI:LOGS:RESUME") {
       logsLivePaused_ = false;
+      logsPausedUnseen_ = 0;
       refreshLogsDisplay();
       pushOperatorEvent("Log live updates resumed");
+      return;
+    }
+    if (command == "UI:LOGS:LATEST") {
+      logsLivePaused_ = false;
+      logsPausedUnseen_ = 0;
+      refreshLogsDisplay();
+      if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
+      pushOperatorEvent("Logs jumped to latest");
       return;
     }
 
@@ -1537,6 +1629,48 @@ private:
       }
       beginNodeDiscoveryRequest();
       if (commandCallback != nullptr) commandCallback("UI:NODES:REFRESH");
+      return;
+    }
+
+    if (command == "STORAGE:REPAIR") {
+      if (emergencyLocked || emergencyOverlayVisible) {
+        pushOperatorEvent("Repair blocked during emergency");
+        return;
+      }
+      if (isShowActiveForMaintenance()) {
+        pushOperatorEvent("Repair blocked while show is active");
+        return;
+      }
+      showActionConfirm("REPAIR STORAGE DIRECTORIES?",
+                        "Repairs folder structure on SD.\n"
+                        "This can interrupt maintenance workflows.\n"
+                        "Confirm to continue.",
+                        "STORAGE:REPAIR:CONFIRMED");
+      return;
+    }
+    if (command == "STORAGE:REPAIR:CONFIRMED") {
+      if (commandCallback) commandCallback("STORAGE:REPAIR");
+      pushOperatorEvent("Storage repair requested");
+      return;
+    }
+    if (command == "SELFTEST:START") {
+      if (emergencyLocked || emergencyOverlayVisible) {
+        pushOperatorEvent("Self-test blocked during emergency");
+        return;
+      }
+      if (isShowActiveForMaintenance()) {
+        pushOperatorEvent("Self-test blocked while show is active");
+        return;
+      }
+      showActionConfirm("START SELF-TEST?",
+                        "Self-test may pulse outputs for diagnostics.\n"
+                        "Confirm only when the stage is safe.",
+                        "SELFTEST:START:CONFIRMED");
+      return;
+    }
+    if (command == "SELFTEST:START:CONFIRMED") {
+      if (commandCallback) commandCallback("SELFTEST:START");
+      pushOperatorEvent("Self-test requested");
       return;
     }
 
@@ -1612,7 +1746,14 @@ private:
         pushOperatorEvent(note);
       }
     } else if (command == "EMERGENCY:STOP") {
+      if ((emergencyActivating && (millis() - emergencyRequestMs_) < 2000UL) ||
+          emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+        pushOperatorEvent("Emergency already active/requested");
+        return;
+      }
       emergencyActivating = true;
+      emergencyRequestMs_ = millis();
+      hideActionConfirm();
       pageBeforeEmergency = currentPage;
       for (uint8_t i = 0; i < 8; i++) {
         relayView[i] = DeskRelayView::PendingOff;
@@ -1621,6 +1762,7 @@ private:
       /* Overlay + timeline pause applied in handleUiCommand / Stage STATE path. */
     } else if (command == "EMERGENCY:CLEAR") {
       /* Do not clear lock until STATE:EMERGENCY:CLEAR */
+      pendingClearAwait_ = true;
       appendLog("E-CLEAR requested…");
     }
 
@@ -1770,12 +1912,15 @@ private:
     makeButton(panel, "E-Stop", 398, 28, 80, 36, "UI:LOGS:FILTER:5");
     logsFilterLabel_ = makeLabel(panel, "Filter: All", 490, 34);
     lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
+    logsPauseStateLabel_ = makeLabel(panel, "Live updates: ON", 490, 52);
+    lv_obj_add_style(logsPauseStateLabel_, &os_.caption, 0);
 
     makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
     makeButton(panel, "Export", 106, 72, 90, 36, "UI:LOGS:EXPORT");
     makeButton(panel, "Pause", 204, 72, 90, 36, "UI:LOGS:PAUSE");
     makeButton(panel, "Resume", 302, 72, 90, 36, "UI:LOGS:RESUME");
-    makeButton(panel, "Back", 400, 72, 90, 36, "SCREEN:SETTINGS");
+    makeButton(panel, "Latest", 400, 72, 90, 36, "UI:LOGS:LATEST");
+    makeButton(panel, "Back", 498, 72, 90, 36, "SCREEN:MORE");
 
     operatorLogRoot = panel;
     operatorLogScroll = lv_obj_create(panel);
@@ -2393,7 +2538,7 @@ private:
     diagnosticsScreen = makeScreen();
     createDock(diagnosticsScreen);
     lv_obj_t *sum = os_.makePageChrome(diagnosticsScreen, "DIAGNOSTICS");
-    makeLabel(sum, "Technical diagnostics and maintenance tools", 10, 14);
+    makeLabel(sum, "Technical status and protocol checks", 10, 14);
 
     lv_obj_t *panel = os_.makePrimaryPanel(diagnosticsScreen);
     os_.makeHeading(panel, "TRANSPORT", 8, 2);
@@ -2401,17 +2546,16 @@ private:
     makeButton(panel, "Stage Hello", 142, 28, 118, 38, "HELLO");
     makeButton(panel, "Rediscover", 266, 28, 110, 38, "UI:NODES:REFRESH");
     makeButton(panel, "Open Nodes", 382, 28, 110, 38, "SCREEN:NODES");
+    makeButton(panel, "Back", 498, 28, 90, 38, "SCREEN:MORE");
     diagTransportLabel_ = makeLabel(panel, "Transport", 8, 72);
     lv_obj_add_style(diagTransportLabel_, &os_.caption, 0);
     lv_obj_set_width(diagTransportLabel_, 360);
     lv_label_set_long_mode(diagTransportLabel_, LV_LABEL_LONG_WRAP);
 
-    os_.makeHeading(panel, "STORAGE & MAINTENANCE", 8, 132);
+    os_.makeHeading(panel, "SERVICE TESTS", 8, 132);
     makeButton(panel, "SD Status", 8, 158, 110, 38, "STORAGE:STATUS");
-    makeButton(panel, "Backup", 124, 158, 96, 38, "STORAGE:BACKUP");
-    makeButton(panel, "Export", 226, 158, 90, 38, "STORAGE:EXPORT");
-    makeButton(panel, "Repair Dirs", 322, 158, 118, 38, "STORAGE:REPAIR");
-    makeButton(panel, "Self Test", 446, 158, 96, 38, "SELFTEST:START");
+    makeButton(panel, "Self Test", 124, 158, 96, 38, "SELFTEST:START");
+    makeButton(panel, "Maintenance", 226, 158, 128, 38, "SCREEN:MAINT");
     diagStorageLabel_ = makeLabel(panel, "Storage", 8, 202);
     lv_obj_add_style(diagStorageLabel_, &os_.caption, 0);
     lv_obj_set_width(diagStorageLabel_, 360);
@@ -2430,6 +2574,66 @@ private:
     lv_obj_add_style(diagLastResponseLabel_, &os_.caption, 0);
     lv_obj_set_width(diagLastResponseLabel_, 380);
     lv_label_set_long_mode(diagLastResponseLabel_, LV_LABEL_LONG_CLIP);
+  }
+
+  void buildMaintenancePage() {
+    maintenanceScreen = makeScreen();
+    createDock(maintenanceScreen);
+    lv_obj_t *sum = os_.makePageChrome(maintenanceScreen, "MAINTENANCE");
+    makeLabel(sum, "Service operations and recovery tools", 10, 14);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(maintenanceScreen);
+    os_.makeHeading(panel, "STORAGE", 8, 2);
+    makeButton(panel, "SD Status", 8, 30, 110, 40, "STORAGE:STATUS");
+    makeButton(panel, "Backup", 124, 30, 100, 40, "STORAGE:BACKUP");
+    makeButton(panel, "Export", 230, 30, 96, 40, "STORAGE:EXPORT");
+    makeButton(panel, "Repair Dirs", 332, 30, 128, 40, "STORAGE:REPAIR");
+    os_.makeCaption(panel, "Repair and self-test are blocked during active show and emergency.", 8, 78);
+
+    os_.makeHeading(panel, "LOGS & REPORTS", 8, 112);
+    makeButton(panel, "Open Logs", 8, 140, 120, 40, "SCREEN:LOGS");
+    makeButton(panel, "Export Logs", 134, 140, 130, 40, "UI:LOGS:EXPORT");
+    makeButton(panel, "Diagnostics", 270, 140, 126, 40, "SCREEN:DIAG");
+    makeButton(panel, "Back to Settings", 402, 140, 170, 40, "SCREEN:SETTINGS");
+
+    os_.makeHeading(panel, "DANGEROUS ACTION POLICY", 8, 194);
+    makeLabel(panel,
+              "Destructive actions require confirmation.\n"
+              "Emergency overlay always interrupts these actions.\n"
+              "No automatic retry after emergency clear.",
+              8, 220);
+  }
+
+  void buildAboutPage() {
+    aboutScreen = makeScreen();
+    createDock(aboutScreen);
+    lv_obj_t *sum = os_.makePageChrome(aboutScreen, "ABOUT");
+    makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
+
+    lv_obj_t *panel = os_.makePrimaryPanel(aboutScreen);
+    os_.makeHeading(panel, "SHOWDUINO DIRECTOR", 8, 2);
+
+    char info[768];
+    snprintf(info, sizeof(info),
+             "Product: Showduino Director\n"
+             "Role: Operator UI (LVGL touchscreen)\n"
+             "Firmware: %s\n"
+             "Board: %s\n"
+             "Display: 800x480 RGB + GT911 touch\n"
+             "LVGL: %d.%d.%d\n"
+             "Show Runtime Owner: IAN / P4 Stage Engine\n"
+             "Audio Engine Owner: IAN / P4 (Director is monitor/control only)\n"
+             "Comms Path: Director -> SUE bridge -> IAN\n"
+             "Build info: unavailable in runtime image\n"
+             "Repository: sumkindafreak/new_showduino\n"
+             "License/Credits: see repository documentation.",
+             STORAGE_FW_VERSION,
+             SHOWDUINO_BOARD_NAME,
+             LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    lv_obj_t *label = makeLabel(panel, info, 8, 28);
+    lv_obj_add_style(label, &os_.caption, 0);
+    lv_obj_set_width(label, OS_CONTENT_FULL_W - 30);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   }
 
   void buildScreens() {
@@ -2645,7 +2849,7 @@ private:
     makeButton(more, "Logs", 12, 106, 210, 58, "SCREEN:LOGS");
     makeButton(more, "Settings", 234, 106, 210, 58, "SCREEN:SETTINGS");
     makeButton(more, "Diagnostics", 12, 176, 210, 58, "SCREEN:DIAG");
-    makeButton(more, "About", 234, 176, 210, 58, "SETTINGS:ABOUT");
+    makeButton(more, "Maintenance", 234, 176, 210, 58, "SCREEN:MAINT");
     os_.makeCaption(more,
                     "Playback remains in Live. Show selection remains in Shows.",
                     12, 244);
@@ -2661,6 +2865,12 @@ private:
     Serial.println("[UI] diagnostics…");
     buildDiagnosticsPage();
     uiBuildPump("[UI] diagnostics");
+    Serial.println("[UI] maintenance…");
+    buildMaintenancePage();
+    uiBuildPump("[UI] maintenance");
+    Serial.println("[UI] about…");
+    buildAboutPage();
+    uiBuildPump("[UI] about");
 
     /* ---- SETTINGS — How is the system configured? ---- */
     Serial.println("[UI] settings…");
@@ -2689,10 +2899,10 @@ private:
     os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
 
     os_.makeHeading(settings, "SYSTEM", 8, 210);
-    makeButton(settings, "Clear E-Stop", 8, 236, 150, 44, "EMERGENCY:CLEAR");
-    makeButton(settings, "Backup", 168, 236, 110, 44, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 288, 236, 90, 44, "STORAGE:EXPORT");
-    makeButton(settings, "About", 388, 236, 90, 44, "SETTINGS:ABOUT");
+    makeButton(settings, "Clear E-STOP", 8, 236, 150, 44, "EMERGENCY:CLEAR");
+    makeButton(settings, "Maintenance", 168, 236, 140, 44, "SCREEN:MAINT");
+    makeButton(settings, "Diagnostics", 316, 236, 140, 44, "SCREEN:DIAG");
+    makeButton(settings, "About", 464, 236, 90, 44, "SCREEN:ABOUT");
 
     refreshTimeoutLabel();
     uiBuildPump();
@@ -2768,8 +2978,11 @@ private:
       if (emergencyOverlayRoot && emergencyOverlayVisible) {
         lv_obj_move_foreground(emergencyOverlayRoot);
       }
-      if (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) {
+      if (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN) &&
+          !emergencyOverlayVisible) {
         lv_obj_move_foreground(abortConfirmRoot);
+      } else if (emergencyOverlayVisible) {
+        hideAbortConfirm();
       }
     } else {
       lv_obj_add_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
@@ -2896,6 +3109,73 @@ private:
     if (abortConfirmRoot) lv_obj_add_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN);
   }
 
+  void buildActionConfirm() {
+    if (actionConfirmRoot) return;
+    lv_obj_t *top = lv_layer_top();
+    actionConfirmRoot = lv_obj_create(top);
+    lv_obj_remove_style_all(actionConfirmRoot);
+    lv_obj_set_size(actionConfirmRoot, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(actionConfirmRoot, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(actionConfirmRoot, LV_OPA_70, 0);
+    lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *box = lv_obj_create(actionConfirmRoot);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_size(box, 520, 240);
+    lv_obj_center(box);
+    lv_obj_set_style_bg_color(box, lv_color_hex(OsColor::Panel), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(OsColor::DangerBorder), 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_radius(box, 12, 0);
+
+    actionConfirmTitleLabel_ = lv_label_create(box);
+    lv_label_set_text(actionConfirmTitleLabel_, "CONFIRM ACTION");
+    lv_obj_add_style(actionConfirmTitleLabel_, &os_.title, 0);
+    lv_obj_set_style_text_color(actionConfirmTitleLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_pos(actionConfirmTitleLabel_, 20, 18);
+    lv_obj_set_width(actionConfirmTitleLabel_, 480);
+
+    actionConfirmBodyLabel_ = lv_label_create(box);
+    lv_label_set_text(actionConfirmBodyLabel_, "This action can affect operation.");
+    lv_obj_add_style(actionConfirmBodyLabel_, &os_.caption, 0);
+    lv_obj_set_style_text_color(actionConfirmBodyLabel_, lv_color_hex(0xD1D5DB), 0);
+    lv_obj_set_pos(actionConfirmBodyLabel_, 20, 62);
+    lv_obj_set_width(actionConfirmBodyLabel_, 480);
+    lv_label_set_long_mode(actionConfirmBodyLabel_, LV_LABEL_LONG_WRAP);
+
+    makeButton(box, "Cancel", 20, 178, 180, 44, "UI:CONFIRM:CANCEL");
+    makeButton(box, "Confirm", 320, 178, 180, 44, "UI:CONFIRM:OK", true);
+  }
+
+  void hideActionConfirm() {
+    if (actionConfirmRoot) lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+    actionConfirmVisible_ = false;
+    actionConfirmCommand_[0] = '\0';
+  }
+
+  void showActionConfirm(const char *title, const char *body, const char *confirmCommand) {
+    if (!confirmCommand || !confirmCommand[0]) return;
+    if (emergencyLocked || emergencyOverlayVisible || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+      pushOperatorEvent("Action blocked — emergency active");
+      return;
+    }
+    if (!actionConfirmRoot) buildActionConfirm();
+    if (!actionConfirmRoot) return;
+    strncpy(actionConfirmCommand_, confirmCommand, sizeof(actionConfirmCommand_) - 1);
+    actionConfirmCommand_[sizeof(actionConfirmCommand_) - 1] = '\0';
+    if (actionConfirmTitleLabel_) {
+      lv_label_set_text(actionConfirmTitleLabel_, title && title[0] ? title : "CONFIRM ACTION");
+    }
+    if (actionConfirmBodyLabel_) {
+      lv_label_set_text(actionConfirmBodyLabel_, body && body[0] ? body : "Confirm this action.");
+    }
+    lv_obj_clear_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(actionConfirmRoot);
+    actionConfirmVisible_ = true;
+  }
+
   void buildCompleteOverlay() {
     if (completeOverlayRoot) return;
     lv_obj_t *top = lv_layer_top();
@@ -2973,7 +3253,7 @@ private:
       ShowduinoOsTheme::setTextIfChanged(liveStatusLabel, line);
     }
     if (liveProgressBar) {
-      lv_bar_set_value(liveProgressBar, liveProgressPct, LV_ANIM_ON);
+      lv_bar_set_value(liveProgressBar, liveProgressPct, LV_ANIM_OFF);
     }
     if (liveEmergencyDot) {
       bool em = (mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked;
@@ -2985,6 +3265,7 @@ private:
   void showEmergencyOverlay() {
     if (!emergencyOverlayBuilt) buildEmergencyOverlay();
     if (!emergencyOverlayRoot || emergencyOverlayDismissed) return;
+    hideActionConfirm();
     emergencySessionOpen = true;
     refreshEmergencyOverlayContent();
     updateEmergencyResumeButton();
@@ -3021,6 +3302,8 @@ private:
       case DeskPage::NodeDetails: showNodeDetails(); break;
       case DeskPage::Diagnostics: showDiagnostics(); break;
       case DeskPage::Settings: showSettings(); break;
+      case DeskPage::Maintenance: showMaintenance(); break;
+      case DeskPage::About: showAbout(); break;
       case DeskPage::Audio: showAudio(); break;
       case DeskPage::Logs: showLogs(); break;
       default: showDesktop(); break;
@@ -3047,18 +3330,36 @@ private:
     formatClock(estopElapsedMs, clock, sizeof(clock));
     formatClock(estopRemainMs, rem, sizeof(rem));
     formatClock(estopOccurredMs > bootMs ? (estopOccurredMs - bootMs) : 0, occurred, sizeof(occurred));
-    char detail[360];
+    const char *audioEmergency = (mirroredState == SHOW_STATE_EMERGENCY_STOP || emergencyLocked)
+                                   ? "ACTIVE"
+                                   : "Not reported";
+    const char *safeState = emergencyLocked
+                              ? "Awaiting Stage confirmation"
+                              : "Stage reported clear";
+    char detail[520];
     snprintf(detail, sizeof(detail),
-             "Show: %s\nPlayback before stop: %s\nCurrent cue: %u / %u\nElapsed: %s    Remaining: %s\nStage link: %s\nEmergency occurred: T+%s%s%s%s",
+             "Show: %s\n"
+             "Source: Not reported\n"
+             "Reason: Not reported\n"
+             "Playback before stop: %s\n"
+             "Current cue: %u / %u\n"
+             "Elapsed: %s    Remaining: %s\n"
+             "Stage link: %s\n"
+             "Audio emergency: %s\n"
+             "Output safe-state: %s\n"
+             "Emergency occurred: T+%s%s%s%s%s",
              estopShowName,
              estopPlayStateBefore,
              (unsigned)estopCueIndex,
              (unsigned)estopCueTotal,
              clock, rem,
              estopStageConnected ? "CONNECTED" : "DISCONNECTED",
+             audioEmergency,
+             safeState,
              occurred,
              emergencyAcknowledged ? "\nAcknowledged: YES" : "\nAcknowledged: NO",
              emergencyLocked ? "\nStage: LOCKED — press CLEAR E-STOP" : "\nStage: CLEARED — Resume or Abort",
+             pendingClearAwait_ ? "\nClear requested — awaiting Stage confirmation" : "",
              pendingResumeAwait ? "\nWaiting for Stage RESUME…" :
              (pendingAbortAwait ? "\nWaiting for Stage STOP…" : ""));
     lv_label_set_text(estopDetailLabel, detail);
@@ -3578,15 +3879,19 @@ private:
       bool showedBmp = false;
       if (selectedShowEntry_.hasThumbnail) {
         char thumb[STORAGE_MAX_PATH_LEN];
-        snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", selectedShowEntry_.folder);
-        detailsCanvas = lv_canvas_create(detailsIconHost);
-        lv_obj_set_pos(detailsCanvas, 4, 4);
-        if (ShowduinoShowThumb::loadBmpToCanvas(detailsCanvas, thumb, 96, 64)) {
-          showedBmp = true;
+        const int pathLen = snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", selectedShowEntry_.folder);
+        if (pathLen > 0 && pathLen < (int)sizeof(thumb)) {
+          detailsCanvas = lv_canvas_create(detailsIconHost);
+          lv_obj_set_pos(detailsCanvas, 4, 4);
+          if (ShowduinoShowThumb::loadBmpToCanvas(detailsCanvas, thumb, 96, 64)) {
+            showedBmp = true;
+          } else {
+            ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
+            lv_obj_delete(detailsCanvas);
+            detailsCanvas = nullptr;
+          }
         } else {
-          ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
-          lv_obj_delete(detailsCanvas);
-          detailsCanvas = nullptr;
+          pushOperatorEvent("Thumbnail path too long");
         }
       }
       if (!showedBmp) ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
@@ -3697,6 +4002,20 @@ private:
     trafficDirty = true;
     updateStatusWidgets(true);
   }
+  void showMaintenance() {
+    notePage(DeskPage::Maintenance);
+    lv_screen_load(maintenanceScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showAbout() {
+    notePage(DeskPage::About);
+    lv_screen_load(aboutScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
   void showAudio() {
     notePage(DeskPage::Audio);
     lv_screen_load(audioScreen);
@@ -3708,10 +4027,7 @@ private:
   void showLogs() {
     notePage(DeskPage::Logs);
     lv_screen_load(logsScreen);
-    const bool wasPaused = logsLivePaused_;
-    logsLivePaused_ = false;
     refreshLogsDisplay();
-    logsLivePaused_ = wasPaused;
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);

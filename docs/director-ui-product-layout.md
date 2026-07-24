@@ -23,6 +23,20 @@ Status: production implementation reference for the post-beta Director UI overha
   - More launcher routes Nodes and Diagnostics to different screens
   - Desktop node card remains compact (online count, expected count, health, critical warning)
   - Node UI is honest about current protocol limits: individual CHILDREN/GRANDCHILDREN/SAVIOUR live records are not streamed by Stage yet
+- Phase 4 (P4 / IAN audio ownership clarity) is implemented in current production UI language:
+  - Director is monitoring/control only for audio commands and mirrored status
+  - IAN / P4 remains authoritative for show audio and runtime-linked audio state
+  - UI copy no longer describes the Director as an independent audio engine
+- Phase 5 (system-screen consolidation) is implemented as a practical production pass:
+  - Logs supports pause/resume plus latest jump and clear confirmation
+  - Settings routes maintenance and about to dedicated destinations
+  - Maintenance is separated from normal settings cards
+  - About is informational only and includes build/role identity context
+- Phase 6 (hardening pass) is implemented:
+  - Emergency overlay now cancels pending destructive confirmations and stays top-priority
+  - Shared destructive-action confirmation pattern added for high-impact maintenance actions
+  - Navigation consistency updated for Logs/Diagnostics/Maintenance/About paths
+  - Runtime update churn reduced in key widgets and terminology consistency tightened
 
 The beta interface proved the ESP32-S3 display, LVGL 9 rendering, GT911 touch input, SD assets, navigation, runtime mirroring, ESP-NOW command paths and emergency handling. This document defines the production information architecture. It is intentionally operator-led: every item has one primary home, live-operation controls remain easy to reach, and diagnostic detail is separated from normal show operation.
 
@@ -64,7 +78,7 @@ Production target:
 - More
 - E-STOP
 
-`More` opens a launcher for Nodes, Audio, Logs, Settings, Diagnostics and About. The launcher is implemented and serves as the primary path to secondary destinations so the dock remains uncluttered.
+`More` opens a launcher for Nodes, Audio, Logs, Settings, Diagnostics and Maintenance. About is reached from Settings. The launcher is implemented and serves as the primary path to secondary destinations so the dock remains uncluttered.
 
 ### Emergency control
 
@@ -204,7 +218,7 @@ Selecting a node opens progressively disclosed technical details such as MAC/dev
 
 ## 6. Diagnostics
 
-Purpose: technical health checks and maintenance actions, separate from normal node operations.
+Purpose: technical health checks and protocol/service visibility, separate from normal node operations.
 
 Contains:
 
@@ -212,9 +226,6 @@ Contains:
 - Stage hello/test request
 - Discovery trigger
 - SD status
-- Backup
-- Export diagnostics
-- Repair directories
 - Self test
 - Packet counters, memory snapshots, and last command/response telemetry
 
@@ -222,21 +233,18 @@ Diagnostics is intentionally not the normal show-operation surface.
 
 ## 7. Audio
 
-Purpose: Director-facing audio engine and zone control.
+Purpose: Director monitoring/control surface for the IAN/P4 audio engine.
 
 Contains:
 
-- Local audio engine state
-- Current track and playback position
-- Master level
-- Output connection state
-- Level meters where available
-- Play test, stop, mute and volume
-- Remote audio node state
-- Asset validation
-- Safe audio-engine restart where supported
+- P4 / IAN reported playback state
+- Current track/asset information where reported
+- Master command controls (play/pause/stop/mute/volume requests)
+- Output connection and readiness indicators where reported
+- Remote-node command path status where available
+- Explicit pending/awaiting-status messaging for command confirmation
 
-The Live page may display the current track, but detailed controls live here.
+The Director does not decode or output show audio locally; IAN/P4 remains authoritative.
 
 ## 8. Logs
 
@@ -250,6 +258,7 @@ Contains:
 - Event message
 - Filters: All, System, Show, Audio, Network, Emergency
 - Pause/resume live updates
+- Latest jump while paused/active
 - Clear and export actions
 - Scrollable history
 
@@ -295,15 +304,41 @@ Sections:
 
 ### Maintenance
 
-- Rescan SD
-- Export/clear logs
-- Firmware update
-- Diagnostics
-- Factory reset
+- Open Maintenance screen
+- Open Diagnostics screen
+- About and product information access
 
 Dangerous actions require confirmation and must not appear on the first settings view.
 
-## 10. More launcher
+## 10. Maintenance
+
+Purpose: service operations and recovery tools with explicit confirmation requirements.
+
+Contains:
+
+- SD status
+- Backup
+- Export diagnostics package
+- Repair directories (confirmed action)
+- Links to Logs and Diagnostics
+
+Unsafe operations are blocked during emergency and while show playback is active.
+
+## 11. About
+
+Purpose: product identity and role ownership reference.
+
+Contains:
+
+- Showduino Director identity
+- Firmware version and board target
+- LVGL version
+- Role ownership summary (Director UI vs IAN/P4 runtime/audio authority)
+- Repository/license reference
+
+No destructive controls are exposed on About.
+
+## 12. More launcher
 
 Purpose: keep the permanent dock uncluttered.
 
@@ -314,28 +349,33 @@ Contains large destinations for:
 - Logs
 - Settings
 - Diagnostics
-- About
+- Maintenance
 
 Nodes and Diagnostics are separate destinations and must not share the same screen route.
 
 The launcher contains navigation only, not duplicate status cards.
 
-## 11. Emergency overlay
+## 13. Emergency overlay
 
-Purpose: unmistakable system-level safety state.
+Purpose: unmistakable system-level safety state with highest interaction priority.
 
 Contains:
 
-- EMERGENCY STOPPED
+- EMERGENCY STOP ACTIVE
 - Show name
+- Source/reason (or explicit "not reported")
 - State before emergency
 - Current cue
 - Elapsed and remaining time
 - Stage connection
+- Audio emergency state
+- Safe-state confirmation status
 - Activation time
 - Acknowledge
 - Diagnostics
 - Clear-state guidance
+
+When emergency activates, pending destructive confirmation dialogs are cancelled and must be re-confirmed after clear.
 
 After Stage confirms the emergency has cleared during playback:
 
@@ -353,8 +393,10 @@ After clearing while idle, return to the previous safe page. Never resume automa
 | Available packages | Shows |
 | Selected package requirements | Show Details |
 | Device connectivity | Nodes |
-| Audio engine and zones | Audio |
+| Audio monitoring/control (IAN/P4 authoritative) | Audio |
 | Configuration | Settings |
+| Service operations | Maintenance |
+| Product identity/build info | About |
 | Historical events | Logs |
 | Emergency condition | Emergency overlay |
 | Time and basic fabric health | Status bar |

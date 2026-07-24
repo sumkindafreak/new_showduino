@@ -318,8 +318,14 @@ struct ShowduinoOsTheme {
                        lv_event_cb_t cb, void *user, const char *command, bool danger = false) {
     lv_obj_t *btn = lv_button_create(parent);
     lv_obj_remove_style_all(btn);
-    lv_obj_add_style(btn, danger ? &buttonDanger : &button, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_add_style(btn, danger ? &buttonDangerPressed : &buttonPressed, LV_PART_MAIN | LV_STATE_PRESSED);
+    const lv_style_selector_t buttonDefaultSel =
+        ((lv_style_selector_t)LV_PART_MAIN) | ((lv_style_selector_t)LV_STATE_DEFAULT);
+    const lv_style_selector_t buttonPressedSel =
+        ((lv_style_selector_t)LV_PART_MAIN) | ((lv_style_selector_t)LV_STATE_PRESSED);
+    lv_obj_add_style(btn, danger ? &buttonDanger : &button,
+                     buttonDefaultSel);
+    lv_obj_add_style(btn, danger ? &buttonDangerPressed : &buttonPressed,
+                     buttonPressedSel);
     lv_obj_set_pos(btn, x, y);
     lv_obj_set_size(btn, w, h);
     if (cb) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user);
