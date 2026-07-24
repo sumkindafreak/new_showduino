@@ -2,6 +2,8 @@
 
 Status: production implementation reference for the post-beta Director UI overhaul.
 
+Related validation artifact: `docs/director-hardware-readiness-checklist.md`
+
 ## Implementation status (agent/director-ui-overhaul)
 
 - Phase 1 (permanent shell) is implemented in source:
