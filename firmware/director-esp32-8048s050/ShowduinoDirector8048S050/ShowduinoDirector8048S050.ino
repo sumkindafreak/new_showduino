@@ -99,6 +99,7 @@ void sendToStage(const String &command);
 void requestStateSync();
 void applyMirroredRuntime(const ShowRuntime &rt);
 void onEmergencyActivatedDirectorUx();
+void onEmergencyClearedDirectorUx();
 void pushEmergencyTimelineSnapshot();
 bool uploadShowTimelineToStage(const char *idOrName);
 void applyLinkState(uint8_t state) {
@@ -106,6 +107,8 @@ void applyLinkState(uint8_t state) {
   if (linkState == state) return;
   linkState = state;
   ui.setLinkState(state);
+  /* Propagate link state to P4 audio model */
+  ui.setP4AudioLinkState(state == LINK_READY);
   if (state == LINK_DISCONNECTED) {
     ui.markRelayStaleUnknown();
     syncRequested = false;
@@ -113,6 +116,9 @@ void applyLinkState(uint8_t state) {
     gShowMirror.stageConnected = 0;
   } else if (state == LINK_READY && prev != LINK_READY) {
     requestStateSync();
+    /* Request audio status when P4 reconnects */
+    sendToStage("AUDIO:LOCAL:STATUS");
+    ui.noteAudioCommandSent("AUDIO:LOCAL:STATUS");
   }
   ui.updateStatusWidgets(false);
 }
@@ -236,6 +242,7 @@ void handleStageLine(String line) {
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
     ui.pushOperatorEvent("Stage cleared emergency");
+    onEmergencyClearedDirectorUx();
   }
 
   /* Fingerprint: early Stage Engine (pre-ShowRuntime) — operator must reflash P4. */
@@ -277,10 +284,19 @@ void handleStageLine(String line) {
   /* Do NOT treat ACK:RELAY / OK:RELAY as confirmed Stage 3 state.
      Confirmed display comes only from STATE:RELAY. */
 
+  /* P4 audio response routing */
+  if (line.startsWith("REJECTED:AUDIO:") ||
+      line.startsWith("ACK:AUDIO:") ||
+      (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) && line.indexOf("AUDIO") >= 0) ||
+      (line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) && line.indexOf("AUDIO") >= 0) ||
+      (line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX) && line.indexOf("AUDIO") >= 0)) {
+    ui.applyP4AudioResponse(line);
+  }
+
   if (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX)) {
-    /* Log only — honest failure paths */
+    /* Logged below */
   }
 
   if (!isQuietLinkTraffic(line)) {
@@ -544,6 +560,11 @@ void onEmergencyActivatedDirectorUx() {
   /* Overlay only — Stage pauses timeline & owns ShowRuntime.emergency. */
   pushEmergencyTimelineSnapshot();
   refreshTimelineUi();
+  ui.setP4AudioEmergency(true);
+}
+
+void onEmergencyClearedDirectorUx() {
+  ui.setP4AudioEmergency(false);
 }
 
 void handleUiCommand(const String &command) {
@@ -1067,6 +1088,7 @@ void loop() {
   checkLinkWatchdog();
   readEspNowReplies();
   storageLoop();
+  ui.tickAudioModel();
 
   delay(2);
 }

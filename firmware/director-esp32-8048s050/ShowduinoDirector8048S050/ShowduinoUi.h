@@ -12,6 +12,8 @@
 #include "../../../protocol/showduino_show_runtime.h"
 #include "DirectorStatusBar.h"
 #include "DirectorAudioModel.h"
+#include "DirectorP4AudioModel.h"
+#include "DirectorP4AudioView.h"
 #include "ShowduinoOsUi.h"
 
 // =========================================================
@@ -706,94 +708,84 @@ public:
   }
 
   void refreshAudioPresentation() {
-    if (audioLocalStatusLabel_) {
-      char line[96];
-      snprintf(line, sizeof(line), "Status: %s%s",
-               DeskAudioModel::playWord(audioModel_.local.play),
-               audioModel_.local.muted ? " (MUTED)" : "");
-      ShowduinoOsTheme::setTextIfChanged(audioLocalStatusLabel_, line);
-    }
-    if (audioLocalDetailLabel_) {
-      char et[16], rt[16];
-      formatClock(audioModel_.local.elapsedMs, et, sizeof(et));
-      formatClock(audioModel_.local.remainMs, rt, sizeof(rt));
-      char detail[320];
-      snprintf(detail, sizeof(detail),
-               "%s\nAsset: %s\nVol: %u  Loop: %s\nElapsed: %s  Remain: %s\nSD: %s  I2S: %s\n"
-               "Commands only — files play from local SD (no ESP-NOW audio stream).",
-               audioModel_.local.outputName,
-               audioModel_.local.assetName,
-               (unsigned)audioModel_.local.volume,
-               audioModel_.local.loop ? "ON" : "OFF",
-               et, rt,
-               DeskAudioModel::sdWord(audioModel_.local.sd),
-               DeskAudioModel::i2sWord(audioModel_.local.i2s));
-      ShowduinoOsTheme::setTextIfChanged(audioLocalDetailLabel_, detail);
-    }
-    if (audioNodesLabel_) {
-      if (audioModel_.nodeCount == 0) {
-        ShowduinoOsTheme::setTextIfChanged(
-            audioNodesLabel_,
-            "No audio nodes discovered.\n"
-            "Remote nodes = ESP32 + I2S + SD.\n"
-            "P4 sends PLAY/STOP/VOLUME over ESP-NOW (commands only).");
-      } else {
-        String body;
-        for (uint8_t i = 0; i < audioModel_.nodeCount && i < SHOWDUINO_AUDIO_NODE_MAX; i++) {
-          const DeskRemoteAudioNode &n = audioModel_.nodes[i];
-          if (!n.present) continue;
-          char row[220];
-          snprintf(row, sizeof(row),
-                   "%s (%s)\nESP-NOW:%s SD:%s I2S:%s\nASSET:%s STATE:%s SYNC:%s VOL:%u\n\n",
-                   n.name[0] ? n.name : "AUDIO NODE",
-                   n.nodeId[0] ? n.nodeId : "?",
-                   n.online ? "ONLINE" : "OFFLINE",
-                   DeskAudioModel::sdWord(n.sd),
-                   DeskAudioModel::i2sWord(n.i2s),
-                   n.assetName,
-                   DeskAudioModel::playWord(n.play),
-                   DeskAudioModel::syncWord(n.sync),
-                   (unsigned)n.volume);
-          body += row;
-        }
-        ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, body.c_str());
-      }
-    }
-    if (audioRoutingLabel_) {
-      String body = "Asset source = target device SD (not streamed).\n\n";
-      for (uint8_t i = 0; i < 8; i++) {
-        if (!audioModel_.routes[i].used) continue;
-        char row[96];
-        snprintf(row, sizeof(row), "%-14s → %s\n",
-                 audioModel_.routes[i].zone, audioModel_.routes[i].target);
-        body += row;
-      }
-      ShowduinoOsTheme::setTextIfChanged(audioRoutingLabel_, body.c_str());
-    }
-    if (audioCmdStatusLabel_) {
-      bool any = false;
-      String body;
-      for (uint8_t i = 0; i < 6; i++) {
-        if (!audioModel_.recentCmds[i].used) continue;
-        any = true;
-        char row[96];
-        snprintf(row, sizeof(row), "%s  %s  [%s]\n",
-                 audioModel_.recentCmds[i].commandId[0] ? audioModel_.recentCmds[i].commandId : "-",
-                 DeskAudioModel::cmdWord(audioModel_.recentCmds[i].phase),
-                 audioModel_.recentCmds[i].summary);
-        body += row;
-      }
-      if (!any) body = "No command status available.\n(Acks appear when Stage/nodes report them.)";
-      ShowduinoOsTheme::setTextIfChanged(audioCmdStatusLabel_, body.c_str());
-    }
+    /* Update Audio page from P4 model */
+    DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+
+    /* Update Desktop audio summary card */
     if (deskAudioSummaryLabel_) {
       char sum[128];
-      snprintf(sum, sizeof(sum),
-               "AUDIO\nLocal: %s\nNodes: %u ONLINE\nPlaying: %u",
-               DeskAudioModel::playWord(audioModel_.local.play),
-               (unsigned)audioModel_.onlineNodeCount(),
-               (unsigned)audioModel_.playingNodeCount());
+      const char *engWord = p4Audio_.engineStateText();
+      if (p4Audio_.emergencyAudio) {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\nEMERGENCY AUDIO\n%s", engWord);
+      } else if (!p4Audio_.p4LinkOnline) {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\nP4 OFFLINE\nAwaiting link");
+      } else if (p4Audio_.trackKnown && p4Audio_.trackName[0]) {
+        char tname[40];
+        strncpy(tname, p4Audio_.trackName, sizeof(tname) - 1);
+        tname[sizeof(tname) - 1] = '\0';
+        snprintf(sum, sizeof(sum), "P4 AUDIO\n%s\n%.38s", engWord, tname);
+      } else {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\n%s\nAwaiting status", engWord);
+      }
       ShowduinoOsTheme::setTextIfChanged(deskAudioSummaryLabel_, sum);
+    }
+
+    /* Update Live page compact audio summary */
+    if (liveAudioStateLabel_) {
+      char liveAudio[64];
+      if (p4Audio_.emergencyAudio) {
+        strncpy(liveAudio, "EMERGENCY AUDIO", sizeof(liveAudio) - 1);
+      } else if (!p4Audio_.p4LinkOnline) {
+        strncpy(liveAudio, "P4 Offline", sizeof(liveAudio) - 1);
+      } else {
+        strncpy(liveAudio, p4Audio_.engineStateText(), sizeof(liveAudio) - 1);
+      }
+      liveAudio[sizeof(liveAudio) - 1] = '\0';
+      ShowduinoOsTheme::setTextIfChanged(liveAudioStateLabel_, liveAudio);
+      lv_obj_set_style_text_color(liveAudioStateLabel_,
+                                   lv_color_hex(p4Audio_.engineStateColor()), 0);
+    }
+  }
+
+  /** Apply a P4 audio response line from Stage. Call from handleStageLine. */
+  void applyP4AudioResponse(const String &line) {
+    const bool rejected = line.startsWith("REJECTED:AUDIO:LOCAL:DISABLED");
+    const bool ack      = line.startsWith("ACK:AUDIO:");
+    const bool unsupp   = line.startsWith("UNSUPPORTED:AUDIO:") ||
+                          line.startsWith("NOT_IMPLEMENTED:AUDIO:");
+    const bool unavail  = line.startsWith("NODE_UNAVAILABLE:AUDIO");
+
+    if (rejected)       p4Audio_.applyLocalDisabled();
+    else if (ack)       p4Audio_.applyAck(line.c_str());
+    else if (unsupp)    p4Audio_.applyUnsupported(line.c_str());
+    else if (unavail)   p4Audio_.applyNodeUnavailable(line.c_str());
+
+    if (currentPage == DeskPage::Audio) {
+      DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+    }
+  }
+
+  /** Track an outgoing audio command for pending state. */
+  void noteAudioCommandSent(const char *cmd) {
+    if (cmd) p4Audio_.trackCommand(cmd);
+  }
+
+  /** Tick audio model — call from loop to detect timeouts. */
+  void tickAudioModel() {
+    p4Audio_.tick();
+  }
+
+  /** Propagate Stage link state to P4 audio model. */
+  void setP4AudioLinkState(bool online) {
+    p4Audio_.setLinkState(online);
+    statusDirty = true;
+  }
+
+  /** Update audio emergency state from Stage emergency. */
+  void setP4AudioEmergency(bool active) {
+    p4Audio_.setEmergencyAudio(active);
+    if (currentPage == DeskPage::Audio) {
+      DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
     }
   }
 
@@ -1289,12 +1281,15 @@ private:
   lv_obj_t *logsFilterLabel_ = nullptr;
   bool logsLivePaused_ = false;
   uint8_t logsFilter_ = 0; /* 0=All placeholder */
-  DeskAudioModel audioModel_;
+  DeskAudioModel audioModel_;                          /* legacy; retained for compatibility */
+  DirectorP4AudioModel p4Audio_;                       /* P4-mirrored audio state             */
+  DirectorP4AudioView::PageHandles audioVH_;           /* Audio page LVGL handles             */
   lv_obj_t *audioLocalStatusLabel_ = nullptr;
   lv_obj_t *audioLocalDetailLabel_ = nullptr;
   lv_obj_t *audioNodesLabel_ = nullptr;
   lv_obj_t *audioRoutingLabel_ = nullptr;
   lv_obj_t *audioCmdStatusLabel_ = nullptr;
+  lv_obj_t *liveAudioStateLabel_ = nullptr;  /* compact P4 audio summary on Live */
   lv_obj_t *operatorLogRoot = nullptr;
   lv_obj_t *operatorLogScroll = nullptr;
   lv_obj_t *operatorLogLabel = nullptr;
@@ -1598,10 +1593,19 @@ private:
       outbound = "UI:SHOW:REFRESH";
     } else if (command == "AUDIO:LOCAL:VOLUME:+") {
       outbound = "AUDIO:LOCAL:VOLUME:+";
+      p4Audio_.trackCommand(outbound.c_str());
     } else if (command == "AUDIO:LOCAL:VOLUME:-") {
       outbound = "AUDIO:LOCAL:VOLUME:-";
+      p4Audio_.trackCommand(outbound.c_str());
     } else if (command.startsWith("AUDIO:LOCAL:") || command.startsWith("AUDIO:NODE:")) {
+      /* Emergency blocks audio controls (except status requests) */
+      if (emergencyLocked && !command.startsWith("AUDIO:LOCAL:STATUS") &&
+          !command.startsWith("AUDIO:NODE:STATUS")) {
+        pushOperatorEvent("Audio cmd blocked: emergency active");
+        return;
+      }
       outbound = command; /* colon-text to Stage; no PCM over ESP-NOW */
+      p4Audio_.trackCommand(command.c_str());
       {
         char note[96];
         snprintf(note, sizeof(note), "Audio cmd %.80s", command.c_str());
@@ -1792,51 +1796,9 @@ private:
   void buildAudioPage() {
     audioScreen = makeScreen();
     createDock(audioScreen);
-    lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
-    makeLabel(sum, "1× local P4 output  ·  remote zones = ESP-NOW command nodes", 10, 10);
-    makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
-
-    lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
-    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_AUTO);
-
-    os_.makeHeading(panel, "LOCAL OUTPUT — IAN / P4 AUDIO 1", 8, 2);
-    audioLocalStatusLabel_ = makeLabel(panel, "Status: UNKNOWN", 8, 28);
-    lv_obj_add_style(audioLocalStatusLabel_, &os_.title, 0);
-    audioLocalDetailLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 54);
-    lv_obj_add_style(audioLocalDetailLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioLocalDetailLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioLocalDetailLabel_, LV_LABEL_LONG_WRAP);
-
-    makeButton(panel, "Play", 8, 150, 70, 36, "AUDIO:LOCAL:PLAY");
-    makeButton(panel, "Pause", 84, 150, 70, 36, "AUDIO:LOCAL:PAUSE");
-    makeButton(panel, "Stop", 160, 150, 70, 36, "AUDIO:LOCAL:STOP", true);
-    makeButton(panel, "Mute", 236, 150, 70, 36, "AUDIO:LOCAL:MUTE");
-    makeButton(panel, "Vol -", 312, 150, 64, 36, "AUDIO:LOCAL:VOLUME:-");
-    makeButton(panel, "Vol +", 382, 150, 64, 36, "AUDIO:LOCAL:VOLUME:+");
-    makeButton(panel, "Test", 452, 150, 70, 36, "AUDIO:LOCAL:TEST");
-
-    os_.makeHeading(panel, "REMOTE AUDIO NODES", 8, 198);
-    audioNodesLabel_ = makeLabel(panel, "Scanning…", 8, 224);
-    lv_obj_add_style(audioNodesLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioNodesLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioNodesLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(panel, "Refresh", 8, 300, 100, 36, "AUDIO:NODE:STATUS");
-    makeButton(panel, "Stop All", 116, 300, 100, 36, "AUDIO:NODE:STOP", true);
-    makeButton(panel, "Mute All", 224, 300, 100, 36, "AUDIO:NODE:MUTE");
-    makeButton(panel, "Test", 332, 300, 80, 36, "AUDIO:NODE:TEST");
-
-    os_.makeHeading(panel, "AUDIO ROUTING", 8, 348);
-    audioRoutingLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 374);
-    lv_obj_add_style(audioRoutingLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioRoutingLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioRoutingLabel_, LV_LABEL_LONG_WRAP);
-
-    os_.makeHeading(panel, "COMMAND STATUS", 8, 440);
-    audioCmdStatusLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 466);
-    lv_obj_add_style(audioCmdStatusLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioCmdStatusLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
+    /* Build Audio page using P4-aware view builder */
+    audioVH_ = DirectorP4AudioView::buildChrome(audioScreen, os_, staticEventHandler, this);
+    DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
   }
 
   static const char *nodeRoleName(UiNodeRole role) {
@@ -2501,12 +2463,12 @@ private:
 
     lv_obj_t *audioCard = makePanel(desktopScreen, deskRightX, OS_BODY_Y + 128 + OS_GAP, deskRightW,
                                     deskSumH - 128 - OS_GAP);
-    os_.makeHeading(audioCard, "AUDIO", 8, 2);
-    deskAudioSummaryLabel_ = makeLabel(audioCard, "Local: UNKNOWN\nNodes: 0 ONLINE\nPlaying: 0", 8, 28);
+    os_.makeHeading(audioCard, "P4 AUDIO", 8, 2);
+    deskAudioSummaryLabel_ = makeLabel(audioCard, "P4 AUDIO\nAwaiting status\nP4 link: Unknown", 8, 28);
     lv_obj_add_style(deskAudioSummaryLabel_, &os_.caption, 0);
     lv_obj_set_width(deskAudioSummaryLabel_, deskRightW - 20);
     lv_label_set_long_mode(deskAudioSummaryLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(audioCard, "Open", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
+    makeButton(audioCard, "Open Audio", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
 
     lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, deskActY, OS_CONTENT_FULL_W, deskActH);
     createQuickActions(actions);
@@ -2528,7 +2490,12 @@ private:
     os_.makeCaption(liveSum, "Remaining", 300, 8);
     liveRemainLabel_ = makeLabel(liveSum, "0:00", 300, 28);
     lv_obj_add_style(liveRemainLabel_, &os_.body, 0);
-    /* Reserved icon/scene slots — no placeholder text */
+    /* Compact P4 audio state (right side of summary bar) */
+    os_.makeCaption(liveSum, "P4 Audio", 490, 8);
+    liveAudioStateLabel_ = makeLabel(liveSum, "Awaiting P4", 490, 28);
+    lv_obj_add_style(liveAudioStateLabel_, &os_.caption, 0);
+    lv_obj_set_width(liveAudioStateLabel_, 270);
+    lv_label_set_long_mode(liveAudioStateLabel_, LV_LABEL_LONG_WRAP);
 
     lv_obj_t *live = os_.makePrimaryPanel(liveScreen);
     os_.makeHeading(live, "SHOW CONTROL", 8, 2);
