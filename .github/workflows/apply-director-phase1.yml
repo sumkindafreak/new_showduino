@@ -1,0 +1,56 @@
+name: Apply Director Phase 1
+
+on:
+  push:
+    branches:
+      - agent/director-ui-overhaul
+    paths:
+      - .github/workflows/apply-director-phase1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-phase1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out overhaul branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/director-ui-overhaul
+          fetch-depth: 0
+
+      - name: Apply production-shell patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check patches/director-phase1-production-shell.patch
+          git apply patches/director-phase1-production-shell.patch
+
+      - name: Verify Phase 1 structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI=firmware/director-esp32-8048s050/ShowduinoDirector8048S050/ShowduinoUi.h
+          OS=firmware/director-esp32-8048s050/ShowduinoDirector8048S050/ShowduinoOsUi.h
+          grep -q '"More".*"SCREEN:MORE"' "$OS"
+          grep -q 'DeskPage::More' "$UI"
+          grep -q 'void showMore()' "$UI"
+          grep -q 'Start Show' "$UI"
+          ! grep -q 'makeButton(summary, "Start"' "$UI"
+
+      - name: Commit applied source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm patches/director-phase1-production-shell.patch
+          rm .github/workflows/apply-director-phase1.yml
+          git config user.name "Showduino Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add firmware/director-esp32-8048s050/ShowduinoDirector8048S050/ShowduinoUi.h
+          git add firmware/director-esp32-8048s050/ShowduinoDirector8048S050/ShowduinoOsUi.h
+          git add patches/director-phase1-production-shell.patch
+          git add .github/workflows/apply-director-phase1.yml
+          git commit -m "Complete Director Phase 1 production shell"
+          git push origin HEAD:agent/director-ui-overhaul
