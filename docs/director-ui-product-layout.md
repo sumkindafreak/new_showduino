@@ -519,3 +519,56 @@ Phase 5 on Phase 3+4+dc3bb1c+dc79a8f base:
 - Log export writes diagnostics JSON, not a plain-text log
 - P4 firmware version not shown on About (not reported by P4)
 - Hardware testing on physical Director still required
+
+---
+
+## Phase 6 implementation notes (completed)
+
+### Summary
+
+Phase 6 is a targeted hardening pass — no new feature areas added. All changes are defensive and correctness-focused.
+
+### Critical: Duplicate page builder memory leak fixed
+
+`buildAboutPage()` and `buildMaintenancePage()` were called twice in `buildScreens()` — once before Settings, once after. Both builders lacked guards, so the second call created new LVGL screens, orphaned the first pair, and overwrote the member pointers (`aboutScreen`, `maintenanceScreen`, `maintStatusLabel_`, etc.).
+
+**Fix:** Added `if (aboutScreen) return;` / `if (maintenanceScreen) return;` guards. The second call site now becomes a no-op. This prevents LVGL heap waste on every boot.
+
+### Emergency overlay hardening
+
+**EMERGENCY:CLEAR debounce:** The Clear button now checks `pendingClearAwait_` before sending. If a Clear is already in flight, the operator sees "Clear already requested — awaiting Stage" and no duplicate command is sent. `pendingClearRequestMs_` tracks when the Clear was sent. After 12 seconds without Stage response, `pendingClearAwait_` resets, allowing a retry. This timeout resets again when emergency actually clears.
+
+**Safe-state subtitle:** Updated static subtitle in the overlay to read "Stage halted. Clear the emergency, then Resume show or Abort. All outputs are in safe-state pending Stage confirmation."
+
+### Navigation: More launcher
+
+About button re-added to the More launcher alongside Diagnostics and Maintenance (all three fit at reduced width: 140px per button). More now routes to: Nodes, Audio, Logs, Settings, Diagnostics, Maintenance, About.
+
+### UI:COMPLETE:EXPORT stub
+
+The "Export Log — coming soon" placeholder in the Show Complete overlay is now wired to `commandCallback("UI:LOGS:EXPORT")`, which calls real `exportDiagnostics()` in the .ino.
+
+### Code quality
+
+- `logsFilter_` comment corrected from "0=All placeholder" to the full filter index description
+- Emergency and P4 audio ownership unchanged
+
+### Build results
+
+- 1,401,442 bytes (44%) flash — +384 bytes over Phase 5 baseline
+- 141,252 bytes (43%) SRAM — +8 bytes over Phase 5 baseline
+- No C++ errors; only standard linker warnings from pre-built ESP32 library objects
+
+### Static validation: all clean
+
+- E-STOP present on every screen (via `createDock()` → `makeDock()` which always appends E-STOP)
+- No LVGL 8 APIs (`lv_obj_del`, `lv_btn_create`, etc.) found
+- All 13 DeskPage values handled in `restorePageAfterEmergency()`
+- Emergency overlay on `lv_layer_top()` with `lv_obj_move_foreground()` in `showEmergencyOverlay()`
+- `hideActionConfirm()` called in 7 locations before emergency overlay appears
+- Log display uses single label (`lv_label_set_text`) — no LVGL object growth on refresh
+- Node and show card lists call `lv_obj_clean()` before rebuild
+
+### Hardware validation still required
+
+All items in `docs/director-hardware-readiness-checklist.md` require physical Director hardware. No hardware tests were run.

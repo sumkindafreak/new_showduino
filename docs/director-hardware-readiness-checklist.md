@@ -88,3 +88,38 @@ Use this checklist on the physical 800x480 Director touchscreen hardware (JC8048
   - `arduino-cli compile --fqbn esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashMode=qio,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi firmware/director-esp32-8048s050/ShowduinoDirector8048S050`
 - Record firmware size, RAM usage, board revision, and test firmware SHA.
 - Attach photos/videos for emergency overlay and route regression checks.
+
+---
+
+## Phase 6 firmware hardening status
+
+### Fixed in Phase 6
+
+- **CRITICAL: Duplicate screen build** — `buildAboutPage()` and `buildMaintenancePage()` were called twice in `buildScreens()`, creating orphaned LVGL objects and overwriting member pointers. Guards added: `if (aboutScreen) return;` / `if (maintenanceScreen) return;`
+- **EMERGENCY:CLEAR debounce** — repeated Clear commands no longer flood the Stage; `pendingClearAwait_` prevents resend; 12-second timeout resets it if Stage does not respond
+- **Emergency overlay safe-state text** — subtitle updated to mention "safe-state pending Stage confirmation"
+- **More launcher** — About button restored alongside Diagnostics and Maintenance
+- **`UI:COMPLETE:EXPORT` stub** — now forwards to real `exportDiagnostics()` via `commandCallback`
+- **`logsFilter_` comment** — stale "placeholder" annotation corrected
+
+### Phase 6 build sizes (baseline comparison)
+
+| Build | Flash | SRAM |
+|-------|-------|------|
+| Phase 5 baseline | 1,401,058 (44%) | 141,244 (43%) |
+| Phase 6 hardened | 1,401,442 (44%) | 141,252 (43%) |
+
+Delta: +384 bytes flash, +8 bytes SRAM — minimal as expected for a hardening pass.
+
+### Remaining items for hardware validation (cannot be confirmed without physical device)
+
+- Touchscreen accuracy under low-light conditions
+- E-STOP touch target reliability across full surface
+- Scroll gesture vs card-tap separation
+- 800x480 text legibility at operator distance
+- Emergency overlay visibility and contrast
+- Dock button sizing on actual touch display
+- Show load→Live transition on real hardware
+- Emergency activation and clear cycle on real hardware
+- Brightness control visual feedback on real display
+- SD card hot-swap detection behaviour

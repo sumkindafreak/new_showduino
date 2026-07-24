@@ -164,6 +164,7 @@ public:
       emergencyOverlayDismissed = false;
       emergencyAcknowledged = false;
       pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
       emergencySessionOpen = true;
       emergencyActiveSinceMs = millis();
       emergencyActivating = false;
@@ -177,6 +178,7 @@ public:
       emergencyActivating = false;
       emergencyRequestMs_ = 0;
       pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
       pushOperatorEvent("Emergency Cleared");
       emergencyAlarmOffHook();
       updateEmergencyResumeButton();
@@ -497,6 +499,16 @@ public:
       emergencyActivating = false;
       emergencyRequestMs_ = 0;
       pushOperatorEvent("Emergency requested — awaiting Stage confirmation");
+    }
+
+    /* Clear-await timeout: allow retry if Stage doesn't respond in 12 s */
+    if (pendingClearAwait_ && emergencyLocked &&
+        pendingClearRequestMs_ > 0 &&
+        (nowMs - pendingClearRequestMs_) > 12000UL) {
+      pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
+      pushOperatorEvent("Clear timed out — Stage did not confirm");
+      if (emergencyOverlayVisible) refreshEmergencyOverlayContent();
     }
 
     if (nodeDiscoveryPending_) {
@@ -1298,6 +1310,7 @@ private:
   bool emergencyVisitingDiag = false;
   bool emergencyAcknowledged = false;
   bool pendingClearAwait_ = false;
+  unsigned long pendingClearRequestMs_ = 0;
   bool pendingResumeAwait = false;
   bool pendingAbortAwait = false;
   bool emergencySessionOpen = false;
@@ -1372,7 +1385,7 @@ private:
   lv_obj_t *logsPauseStateLabel_ = nullptr;
   bool logsLivePaused_ = false;
   uint16_t logsPausedUnseen_ = 0;
-  uint8_t logsFilter_ = 0; /* 0=All placeholder */
+  uint8_t logsFilter_ = 0; /* 0=All, 1=System, 2=Show, 3=Audio, 4=Net, 5=E-Stop, 6=Warnings, 7=Errors */
   DeskAudioModel audioModel_;                          /* legacy; retained for compatibility */
   DirectorP4AudioModel p4Audio_;                       /* P4-mirrored audio state             */
   DirectorP4AudioView::PageHandles audioVH_;           /* Audio page LVGL handles             */
@@ -1508,7 +1521,8 @@ private:
       return;
     }
     if (command == "UI:COMPLETE:EXPORT") {
-      pushOperatorEvent("Export Log — coming soon");
+      /* Forward to .ino for exportDiagnostics() */
+      if (commandCallback) commandCallback("UI:LOGS:EXPORT");
       return;
     }
 
@@ -1830,9 +1844,16 @@ private:
       }
       /* Overlay + timeline pause applied in handleUiCommand / Stage STATE path. */
     } else if (command == "EMERGENCY:CLEAR") {
-      /* Do not clear lock until STATE:EMERGENCY:CLEAR */
+      /* Do not clear lock until STATE:EMERGENCY:CLEAR.
+         Debounce: do not resend if already awaiting Stage confirmation. */
+      if (pendingClearAwait_) {
+        pushOperatorEvent("Clear already requested — awaiting Stage");
+        return;
+      }
       pendingClearAwait_ = true;
-      appendLog("E-CLEAR requested…");
+      pendingClearRequestMs_ = millis();
+      appendLog("E-CLEAR requested — awaiting Stage");
+      refreshEmergencyOverlayContent();
     }
 
     statusDirty = true;
@@ -2652,6 +2673,7 @@ private:
   }
 
   void buildMaintenancePage() {
+    if (maintenanceScreen) return; /* Guard: prevent duplicate build and LVGL object leak */
     maintenanceScreen = makeScreen();
     createDock(maintenanceScreen);
     lv_obj_t *sum = os_.makePageChrome(maintenanceScreen, "MAINTENANCE");
@@ -2688,6 +2710,7 @@ private:
   }
 
   void buildAboutPage() {
+    if (aboutScreen) return; /* Guard: prevent duplicate build and LVGL object leak */
     aboutScreen = makeScreen();
     createDock(aboutScreen);
     lv_obj_t *sum = os_.makePageChrome(aboutScreen, "ABOUT");
@@ -2936,12 +2959,13 @@ private:
 
     lv_obj_t *more = os_.makePrimaryPanel(moreScreen);
     os_.makeHeading(more, "DESTINATIONS", 8, 2);
-    makeButton(more, "Nodes", 12, 36, 210, 58, "SCREEN:NODES");
-    makeButton(more, "Audio", 234, 36, 210, 58, "SCREEN:AUDIO");
-    makeButton(more, "Logs", 12, 106, 210, 58, "SCREEN:LOGS");
-    makeButton(more, "Settings", 234, 106, 210, 58, "SCREEN:SETTINGS");
-    makeButton(more, "Diagnostics", 12, 176, 210, 58, "SCREEN:DIAG");
-    makeButton(more, "Maintenance", 234, 176, 210, 58, "SCREEN:MAINT");
+    makeButton(more, "Nodes",       12, 36, 210, 58, "SCREEN:NODES");
+    makeButton(more, "Audio",      234, 36, 210, 58, "SCREEN:AUDIO");
+    makeButton(more, "Logs",        12, 106, 210, 58, "SCREEN:LOGS");
+    makeButton(more, "Settings",   234, 106, 210, 58, "SCREEN:SETTINGS");
+    makeButton(more, "Diagnostics", 12, 176, 140, 58, "SCREEN:DIAG");
+    makeButton(more, "Maintenance",162, 176, 140, 58, "SCREEN:MAINT");
+    makeButton(more, "About",      312, 176, 140, 58, "SCREEN:ABOUT");
     os_.makeCaption(more,
                     "Playback remains in Live. Show selection remains in Shows.",
                     12, 244);
@@ -3143,9 +3167,11 @@ private:
     lv_obj_set_style_text_align(estopTitleLabel, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_obj_t *sub = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(sub, "Show halted. Press CLEAR E-STOP, then Resume or Abort.");
+    lv_label_set_text(sub,
+        "Stage halted. Clear the emergency, then Resume show or Abort.\n"
+        "All outputs are in safe-state pending Stage confirmation.");
     lv_obj_set_style_text_color(sub, lv_color_hex(0xFECACA), 0);
-    lv_obj_set_pos(sub, 40, 188);
+    lv_obj_set_pos(sub, 40, 183);
     lv_obj_set_width(sub, SCREEN_WIDTH - 80);
     lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
 
