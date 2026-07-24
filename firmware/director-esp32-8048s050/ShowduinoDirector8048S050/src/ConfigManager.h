@@ -28,6 +28,9 @@ public:
     cfg.commsLogMode = CommsLogMode::CommandsAndAcks;
     cfg.maxLogAgeDays = STORAGE_LOG_MAX_AGE_DAYS;
     cfg.maxLogStorageMb = 100;
+    cfg.confirmBeforeStart    = false;
+    cfg.confirmBeforeStop     = false;
+    cfg.autoOpenLiveAfterLoad = false;
   }
 
   bool load(DirectorConfig &cfg) {
@@ -57,6 +60,10 @@ public:
     cfg.commsLogMode = (CommsLogMode)ShowduinoFileUtil::jsonGetLong(json, "commsLogMode", (long)CommsLogMode::CommandsAndAcks);
     cfg.maxLogAgeDays = (uint16_t)ShowduinoFileUtil::jsonGetLong(json, "maxLogAgeDays", STORAGE_LOG_MAX_AGE_DAYS);
     cfg.maxLogStorageMb = (uint32_t)ShowduinoFileUtil::jsonGetLong(json, "maxLogStorageMb", 100);
+    /* Show-operation preferences — safe defaults if absent (backward-compatible) */
+    cfg.confirmBeforeStart    = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStart",    false);
+    cfg.confirmBeforeStop     = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStop",     false);
+    cfg.autoOpenLiveAfterLoad = ShowduinoFileUtil::jsonGetBool(json, "autoOpenLiveAfterLoad", false);
 
     if (cfg.schemaVersion < STORAGE_SCHEMA_VERSION) {
       Serial.printf("[Config] migrating schema %u -> %u\n", cfg.schemaVersion, STORAGE_SCHEMA_VERSION);
@@ -143,7 +150,10 @@ private:
     j += "  \"saveLogMode\": " + String((int)cfg.saveLogMode) + ",\n";
     j += "  \"commsLogMode\": " + String((int)cfg.commsLogMode) + ",\n";
     j += "  \"maxLogAgeDays\": " + String(cfg.maxLogAgeDays) + ",\n";
-    j += "  \"maxLogStorageMb\": " + String(cfg.maxLogStorageMb) + "\n";
+    j += "  \"maxLogStorageMb\": " + String(cfg.maxLogStorageMb) + ",\n";
+    j += "  \"confirmBeforeStart\": " + String(cfg.confirmBeforeStart ? "true" : "false") + ",\n";
+    j += "  \"confirmBeforeStop\": " + String(cfg.confirmBeforeStop ? "true" : "false") + ",\n";
+    j += "  \"autoOpenLiveAfterLoad\": " + String(cfg.autoOpenLiveAfterLoad ? "true" : "false") + "\n";
     j += "}\n";
     return j;
   }

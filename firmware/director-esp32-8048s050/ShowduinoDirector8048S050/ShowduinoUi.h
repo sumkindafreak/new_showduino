@@ -411,7 +411,13 @@ public:
     /* State-transition operator events */
     if (prev != rt.state) {
       switch (rt.state) {
-        case SHOW_STATE_SHOW_LOADED: pushOperatorEvent("Show Loaded"); break;
+        case SHOW_STATE_SHOW_LOADED:
+          pushOperatorEvent("Show Loaded");
+          /* Auto-navigate to Live if operator preference is set */
+          if (showAutoOpenLive_ && !emergencyLocked && !emergencyOverlayVisible) {
+            showLive();
+          }
+          break;
         case SHOW_STATE_RUNNING:
           if (prev == SHOW_STATE_PAUSED && !justConfirmedResume) pushOperatorEvent("Resumed");
           else if (prev != SHOW_STATE_EMERGENCY_STOP && prev != SHOW_STATE_PAUSED)
@@ -670,15 +676,20 @@ public:
     refreshLogsDisplay();
   }
 
+  /* Returns a fixed-width severity prefix for visual scanning in the log display.
+     Format: "!! EMRG" / " X ERR " / " * WARN" / "    ... " (7 chars + space)
+     Kept concise so entries wrap minimally at 80 chars. */
   static const char *logSeverityTag(const char *msg) {
-    if (!msg) return "INFO";
+    if (!msg) return "      ";
     if (strstr(msg, "Emergency") || strstr(msg, "EMERGENCY") || strstr(msg, "E-STOP"))
-      return "EMERGENCY";
-    if (strstr(msg, "Error") || strstr(msg, "ERROR") || strstr(msg, "FAULT") || strstr(msg, "failed"))
-      return "ERROR";
-    if (strstr(msg, "Warn") || strstr(msg, "lost") || strstr(msg, "Lost") || strstr(msg, "Degraded"))
-      return "WARNING";
-    return "INFO";
+      return "!!EMRG";
+    if (strstr(msg, "Error") || strstr(msg, "ERROR") || strstr(msg, "FAULT") ||
+        strstr(msg, "failed") || strstr(msg, "Failed") || strstr(msg, "ERR:"))
+      return " XERR ";
+    if (strstr(msg, "Warn") || strstr(msg, "WARN") || strstr(msg, "lost") ||
+        strstr(msg, "Lost") || strstr(msg, "Degraded") || strstr(msg, "timeout"))
+      return " WARN ";
+    return "      ";
   }
 
   bool logPassesFilter(const char *msg) const {
@@ -735,30 +746,52 @@ public:
 
     uiLogText = "";
     uint16_t shown = 0;
+    uint16_t total = 0;
     for (uint16_t i = 0; i < eventLogCount && shown < 60; i++) {
       const char *line = eventSlot(i);
       if (!logPassesFilter(line)) continue;
-      uiLogText += "[";
-      uiLogText += logSeverityTag(line);
-      uiLogText += "] ";
+      total++;
+      const char *sev = logSeverityTag(line);
+      uiLogText += sev;
+      uiLogText += "  ";
       uiLogText += line;
       uiLogText += "\n";
       shown++;
     }
     if (operatorLogLabel != nullptr) {
-      lv_label_set_text(operatorLogLabel, uiLogText.length() ? uiLogText.c_str() : "(no events)\n");
+      if (uiLogText.length() == 0) {
+        /* Deliberate empty state — explain why no entries are shown */
+        if (eventLogCount == 0) {
+          lv_label_set_text(operatorLogLabel,
+              "No log entries yet.\n"
+              "Events will appear here as the Director operates.");
+        } else {
+          lv_label_set_text(operatorLogLabel,
+              "No entries match the current filter.\n"
+              "Tap 'All' to see all events.");
+        }
+      } else {
+        lv_label_set_text(operatorLogLabel, uiLogText.c_str());
+      }
       if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
     }
     if (logsCountLabel_) {
-      char buf[48];
-      snprintf(buf, sizeof(buf), "Events: %u", (unsigned)eventLogCount);
+      char buf[64];
+      if (logsFilter_ == 0) {
+        snprintf(buf, sizeof(buf), "Events: %u  (max %u)", (unsigned)eventLogCount, (unsigned)OPERATOR_EVENT_LOG_MAX);
+      } else {
+        snprintf(buf, sizeof(buf), "Events: %u  (showing %u filtered)", (unsigned)eventLogCount, (unsigned)shown);
+      }
       ShowduinoOsTheme::setTextIfChanged(logsCountLabel_, buf);
     }
     if (logsNewestLabel_) {
-      const char *newest = (eventLogCount > 0) ? eventSlot(0) : "—";
-      char buf[96];
-      snprintf(buf, sizeof(buf), "Newest: %.70s", newest);
-      ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+      if (eventLogCount > 0) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "Latest: %.68s", eventSlot(0));
+        ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+      } else {
+        ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, "Latest: \xe2\x80\x94");
+      }
     }
   }
 
@@ -872,6 +905,35 @@ public:
       snprintf(buf, sizeof(buf), "Director: %.50s", name);
       ShowduinoOsTheme::setTextIfChanged(settingsDirNameLabel_, buf);
     }
+  }
+
+  /** Apply show-operation preferences from DirectorConfig (call after config loads). */
+  void setShowOpPreferences(bool confirmStart, bool confirmStop, bool autoLive) {
+    showCfmBeforeStart_ = confirmStart;
+    showCfmBeforeStop_  = confirmStop;
+    showAutoOpenLive_   = autoLive;
+    refreshShowOpToggles_();
+  }
+
+  /** Refresh network status labels on the Settings page. */
+  void refreshNetworkStatus() {
+    if (!settingsNetStatusLabel_) return;
+    const char *linkWord;
+    switch (linkState) {
+      case LINK_READY:        linkWord = "ONLINE";        break;
+      case LINK_SEARCHING:    linkWord = "SEARCHING";     break;
+      case LINK_DISCONNECTED: linkWord = "DISCONNECTED";  break;
+      default:                linkWord = "UNKNOWN";       break;
+    }
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "Stage: %s  \xc2\xb7  Nodes: %u  \xc2\xb7  P4: %s",
+             linkWord,
+             (unsigned)nodeCount,
+             liveStageConnected ? "LINKED" : "NOT REPORTED");
+    ShowduinoOsTheme::setTextIfChanged(settingsNetStatusLabel_, buf);
+    uint32_t col = (linkState == LINK_READY) ? 0x3CFFB0u : (linkState == LINK_DISCONNECTED ? 0xFF5A6Au : 0xFFD166u);
+    lv_obj_set_style_text_color(settingsNetStatusLabel_, lv_color_hex(col), 0);
   }
 
   void refreshDesktopFabric() {
@@ -1184,6 +1246,15 @@ private:
   lv_obj_t *aboutNameLabel_ = nullptr;       /* director name on About page */
   lv_obj_t *settingsDirNameLabel_ = nullptr; /* director name on Settings page */
   lv_obj_t *brightnessLabel_ = nullptr;      /* brightness readout on Settings */
+  lv_obj_t *settingsNetStatusLabel_ = nullptr; /* network status in Settings */
+  lv_obj_t *settingsCfmStartLabel_ = nullptr;  /* confirm-before-start toggle state */
+  lv_obj_t *settingsCfmStopLabel_  = nullptr;  /* confirm-before-stop toggle state */
+  lv_obj_t *settingsAutoLiveLabel_ = nullptr;  /* auto-open-live toggle state */
+
+  /* Show-operation preferences (mirrored from DirectorConfig) */
+  bool showCfmBeforeStart_    = false;
+  bool showCfmBeforeStop_     = false;
+  bool showAutoOpenLive_      = false;
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
@@ -1588,12 +1659,38 @@ private:
                         "MAINTENANCE:FACTORY:RESET");
       return;
     }
+    if (command == "MAINTENANCE:RESTORE:LATEST:CONFIRM") {
+      showActionConfirm("RESTORE LATEST BACKUP?",
+                        "This will replace the current Director configuration\n"
+                        "with the most recent saved backup.\n"
+                        "The current config will be backed up before restore.",
+                        "MAINTENANCE:RESTORE:LATEST");
+      return;
+    }
     if (command == "UI:SETTINGS:BRIGHTNESS:UP") {
       if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:UP");
       return;
     }
     if (command == "UI:SETTINGS:BRIGHTNESS:DOWN") {
       if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:DOWN");
+      return;
+    }
+    /* Show-op preference toggles — forward to .ino for persistence */
+    if (command == "SETTINGS:SHOWOP:CFMSTART:1" || command == "SETTINGS:SHOWOP:CFMSTART:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    if (command == "SETTINGS:SHOWOP:CFMSTOP:1" || command == "SETTINGS:SHOWOP:CFMSTOP:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    if (command == "SETTINGS:SHOWOP:AUTOLIVE:1" || command == "SETTINGS:SHOWOP:AUTOLIVE:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    /* Director name presets — forward to .ino for persistence */
+    if (command.startsWith("SETTINGS:NAME:")) {
+      if (commandCallback) commandCallback(command);
       return;
     }
     if (command == "SCREEN:AUDIO") {
@@ -1787,8 +1884,28 @@ private:
       relayView[ch - 1] = wantOn ? DeskRelayView::PendingOn : DeskRelayView::PendingOff;
       refreshRelayButton(ch - 1);
       outbound = String("RELAY:") + ch + (wantOn ? ":ON" : ":OFF");
+    } else if (command == "SHOW:START") {
+      /* Optional confirmation before starting the show */
+      if (showCfmBeforeStart_) {
+        showActionConfirm("START SHOW?",
+                          "This will start playback on the Stage Engine.\n"
+                          "Confirm to proceed or Cancel to return to Live.",
+                          "SHOW:START");
+        return;
+      }
+      /* Fall through: outbound = "SHOW:START" (default) */
     } else if (command == "RELAY:ALL:OFF" || command == "STOP:ALL" || command == "SHOW:STOP" ||
                command == "UI:SHOW:STOP") {
+      /* Optional confirmation before stopping the show */
+      const bool isStop = (command == "SHOW:STOP" || command == "UI:SHOW:STOP");
+      if (isStop && showCfmBeforeStop_ &&
+          mirroredState == SHOW_STATE_RUNNING) {
+        showActionConfirm("STOP SHOW?",
+                          "This will stop the running show on the Stage Engine.\n"
+                          "The show can be restarted from Live.",
+                          command == "UI:SHOW:STOP" ? "UI:SHOW:STOP" : "SHOW:STOP");
+        return;
+      }
       for (uint8_t i = 0; i < 8; i++) {
         if (relayView[i] == DeskRelayView::ConfirmedOn ||
             relayView[i] == DeskRelayView::ConfirmedOff) {
@@ -2684,11 +2801,16 @@ private:
     const int pW = OS_CONTENT_FULL_W - 24;
 
     os_.makeHeading(panel, "STORAGE", OS_PAD, 2);
-    makeButton(panel, "SD Status",   OS_PAD,       28, 110, 40, "STORAGE:STATUS");
-    makeButton(panel, "Backup",      OS_PAD+118,   28, 100, 40, "STORAGE:BACKUP");
-    makeButton(panel, "Export Diag", OS_PAD+226,   28,  96, 40, "STORAGE:EXPORT");
-    makeButton(panel, "Repair Dirs", OS_PAD+330,   28, 118, 40, "STORAGE:REPAIR");
-    os_.makeCaption(panel, "Repair: safe — creates missing dirs only. Backup: copies config to SD.", OS_PAD, 76);
+    makeButton(panel, "SD Status",       OS_PAD,       28, 110, 40, "STORAGE:STATUS");
+    makeButton(panel, "Backup Config",   OS_PAD+118,   28, 130, 40, "STORAGE:BACKUP");
+    makeButton(panel, "Restore Latest",  OS_PAD+256,   28, 140, 40, "MAINTENANCE:RESTORE:LATEST:CONFIRM");
+    makeButton(panel, "Export Diag",     OS_PAD+404,   28,  96, 40, "STORAGE:EXPORT");
+    makeButton(panel, "Repair Dirs",     OS_PAD,       76, 130, 36, "STORAGE:REPAIR");
+    os_.makeCaption(panel,
+                    "Backup: copies current config to SD  \xc2\xb7  "
+                    "Restore: reverts to most recent backup  \xc2\xb7  "
+                    "Repair: creates missing dirs",
+                    OS_PAD+140, 80);
 
     os_.makeHeading(panel, "LOGS & REPORTS", OS_PAD, 96);
     makeButton(panel, "Open Logs",        OS_PAD,       122, 120, 40, "SCREEN:LOGS");
@@ -3020,17 +3142,53 @@ private:
     os_.makeHeading(settings, "SYSTEM", OS_PAD, 82);
     settingsDirNameLabel_ = makeLabel(settings, "Director: —", OS_PAD, 104);
     lv_obj_add_style(settingsDirNameLabel_, &os_.caption, 0);
-    lv_obj_set_width(settingsDirNameLabel_, OS_CONTENT_FULL_W - OS_PAD * 2 - 24);
+    lv_obj_set_width(settingsDirNameLabel_, 450);
+
+    /* Director name presets (Phase 5: no on-screen keyboard) */
+    const int presetY = 104, presetH = 24;
+    os_.makeCaption(settings, "Name:", 460, 104);
+    makeButton(settings, "Main",     540, presetY, 56, presetH, "SETTINGS:NAME:Main Director");
+    makeButton(settings, "FOH",      602, presetY, 50, presetH, "SETTINGS:NAME:FOH Director");
+    makeButton(settings, "Stage",    658, presetY, 58, presetH, "SETTINGS:NAME:Stage Director");
+    makeButton(settings, "Backup",   722, presetY, 60, presetH, "SETTINGS:NAME:Backup Director");
+
+    /* Network & fabric status (read-only) */
+    os_.makeHeading(settings, "NETWORK & FABRIC", OS_PAD, 136);
+    settingsNetStatusLabel_ = makeLabel(settings, "Stage: Unknown  \xc2\xb7  Nodes: 0  \xc2\xb7  P4: Not reported", OS_PAD, 156);
+    lv_obj_add_style(settingsNetStatusLabel_, &os_.caption, 0);
+    lv_obj_set_width(settingsNetStatusLabel_, OS_CONTENT_FULL_W - OS_PAD * 2 - 24);
+    lv_label_set_long_mode(settingsNetStatusLabel_, LV_LABEL_LONG_WRAP);
+    os_.makeCaption(settings, "Read-only. Raw diagnostics are on the Diagnostics page.", OS_PAD, 178);
+
+    /* Show-operation preferences */
+    os_.makeHeading(settings, "SHOW OPERATION", OS_PAD, 198);
+    os_.makeCaption(settings, "Confirm Start:", OS_PAD, 220);
+    settingsCfmStartLabel_ = makeLabel(settings, "OFF", OS_PAD + 130, 218);
+    lv_obj_add_style(settingsCfmStartLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+160, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTART:1");
+    makeButton(settings, "OFF", OS_PAD+206, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTART:0");
+
+    os_.makeCaption(settings, "Confirm Stop:", OS_PAD + 260, 220);
+    settingsCfmStopLabel_ = makeLabel(settings, "OFF", OS_PAD + 390, 218);
+    lv_obj_add_style(settingsCfmStopLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+420, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTOP:1");
+    makeButton(settings, "OFF", OS_PAD+466, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTOP:0");
+
+    os_.makeCaption(settings, "Auto-open Live after load:", OS_PAD, 252);
+    settingsAutoLiveLabel_ = makeLabel(settings, "OFF", OS_PAD + 205, 250);
+    lv_obj_add_style(settingsAutoLiveLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+238, 250, 40, 26, "SETTINGS:SHOWOP:AUTOLIVE:1");
+    makeButton(settings, "OFF", OS_PAD+284, 250, 40, 26, "SETTINGS:SHOWOP:AUTOLIVE:0");
 
     /* Navigation */
-    os_.makeHeading(settings, "SECTIONS", OS_PAD, 122);
-    makeButton(settings, "Audio",       OS_PAD,       148, 120, 44, "SCREEN:AUDIO");
-    makeButton(settings, "Logs",        OS_PAD+128,   148, 120, 44, "SCREEN:LOGS");
-    makeButton(settings, "Nodes",       OS_PAD+256,   148, 120, 44, "SCREEN:NODES");
-    makeButton(settings, "Diagnostics", OS_PAD+384,   148, 140, 44, "SCREEN:DIAG");
-    makeButton(settings, "Maintenance", OS_PAD,       200, 160, 44, "SCREEN:MAINT");
-    makeButton(settings, "About",       OS_PAD+168,   200, 120, 44, "SCREEN:ABOUT");
-    makeButton(settings, "E-Stop Clear",OS_PAD+396,   200, 168, 44, "EMERGENCY:CLEAR");
+    os_.makeHeading(settings, "SECTIONS", OS_PAD, 286);
+    makeButton(settings, "Audio",       OS_PAD,       308, 120, 40, "SCREEN:AUDIO");
+    makeButton(settings, "Logs",        OS_PAD+128,   308, 120, 40, "SCREEN:LOGS");
+    makeButton(settings, "Nodes",       OS_PAD+256,   308, 120, 40, "SCREEN:NODES");
+    makeButton(settings, "Diagnostics", OS_PAD+384,   308, 140, 40, "SCREEN:DIAG");
+    makeButton(settings, "Maintenance", OS_PAD,       356, 160, 40, "SCREEN:MAINT");
+    makeButton(settings, "About",       OS_PAD+168,   356, 120, 40, "SCREEN:ABOUT");
+    makeButton(settings, "E-Stop Clear",OS_PAD+396,   356, 168, 40, "EMERGENCY:CLEAR");
 
     refreshTimeoutLabel();
     refreshSettingsDisplayValues_();
@@ -3521,6 +3679,19 @@ private:
       snprintf(buf, sizeof(buf), "%u", (unsigned)backlightBrightness());
       ShowduinoOsTheme::setTextIfChanged(brightnessLabel_, buf);
     }
+    refreshShowOpToggles_();
+  }
+
+  void refreshShowOpToggles_() {
+    auto applyToggle = [](lv_obj_t *lbl, bool val) {
+      if (!lbl) return;
+      ShowduinoOsTheme::setTextIfChanged(lbl, val ? "ON" : "OFF");
+      lv_obj_set_style_text_color(lbl,
+          lv_color_hex(val ? 0x3CFFB0u : 0x75A0ADu), 0);
+    };
+    applyToggle(settingsCfmStartLabel_, showCfmBeforeStart_);
+    applyToggle(settingsCfmStopLabel_,  showCfmBeforeStop_);
+    applyToggle(settingsAutoLiveLabel_, showAutoOpenLive_);
   }
 
   void clearShowListChildren() {
@@ -4144,6 +4315,8 @@ private:
   void showSettings() {
     notePage(DeskPage::Settings);
     lv_screen_load(settingsScreen);
+    refreshNetworkStatus();
+    refreshShowOpToggles_();
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);

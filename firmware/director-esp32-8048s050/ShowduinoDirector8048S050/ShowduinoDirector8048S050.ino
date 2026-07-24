@@ -681,6 +681,90 @@ void handleUiCommand(const String &command) {
     return;
   }
 
+  /* Settings: show-operation preferences */
+  if (command.startsWith("SETTINGS:SHOWOP:")) {
+    DirectorConfig &cfg = gStorage.getConfig();
+    bool val = command.endsWith(":1");
+    if (command.startsWith("SETTINGS:SHOWOP:CFMSTART:")) {
+      cfg.confirmBeforeStart = val;
+    } else if (command.startsWith("SETTINGS:SHOWOP:CFMSTOP:")) {
+      cfg.confirmBeforeStop = val;
+    } else if (command.startsWith("SETTINGS:SHOWOP:AUTOLIVE:")) {
+      cfg.autoOpenLiveAfterLoad = val;
+    }
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
+    return;
+  }
+
+  /* Settings: director name presets */
+  if (command.startsWith("SETTINGS:NAME:")) {
+    DirectorConfig &cfg = gStorage.getConfig();
+    String name = command.substring(strlen("SETTINGS:NAME:"));
+    name.trim();
+    if (name.length() > 0 && name.length() < sizeof(cfg.directorName)) {
+      strncpy(cfg.directorName, name.c_str(), sizeof(cfg.directorName) - 1);
+      cfg.directorName[sizeof(cfg.directorName) - 1] = '\0';
+      gStorage.markConfigDirty();
+      gStorage.saveAllConfiguration();
+      ui.setAboutDirectorName(cfg.directorName);
+      ui.appendLog(String("Director name changed to: ") + cfg.directorName);
+    }
+    return;
+  }
+
+  /* Maintenance: restore latest backup */
+  if (command == "MAINTENANCE:RESTORE:LATEST") {
+    /* Find the most recent backup file and restore */
+    const char *backupDir = "/showduino/backups/automatic";
+    File dir = SD.open(backupDir);
+    char latestPath[STORAGE_MAX_PATH_LEN] = {};
+    unsigned long latestTime = 0;
+    if (dir && dir.isDirectory()) {
+      File f = dir.openNextFile();
+      while (f) {
+        if (!f.isDirectory()) {
+          unsigned long t = f.getLastWrite();
+          if (t > latestTime) {
+            latestTime = t;
+            char fname[STORAGE_MAX_PATH_LEN];
+            strncpy(fname, f.name(), sizeof(fname) - 1);
+            fname[sizeof(fname) - 1] = '\0';
+            /* f.name() may be basename only — prepend dir */
+            if (fname[0] != '/') {
+              snprintf(latestPath, sizeof(latestPath), "%s/%s", backupDir, fname);
+            } else {
+              strncpy(latestPath, fname, sizeof(latestPath) - 1);
+            }
+          }
+        }
+        f.close();
+        f = dir.openNextFile();
+      }
+      dir.close();
+    }
+    if (!latestPath[0]) {
+      ui.appendLog("Restore failed — no backup files found in " + String(backupDir));
+      ui.setMaintenanceStatus("Restore failed: no backup files found");
+      return;
+    }
+    DirectorConfig &cfg = gStorage.getConfig();
+    bool ok = gStorage.configManager().restoreConfigBackup(latestPath, cfg);
+    if (ok) {
+      backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+      ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+      ui.setAboutDirectorName(cfg.directorName);
+      ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
+      ui.appendLog(String("Config restored from: ") + latestPath);
+      ui.setMaintenanceStatus("Config restored successfully — settings updated");
+    } else {
+      ui.appendLog(String("Restore failed — could not read ") + latestPath);
+      ui.setMaintenanceStatus("Restore failed — check SD and backup files");
+    }
+    return;
+  }
+
   if (command == "UI:SHOW:REFRESH") {
     const StorageStatus &st = getStorageStatus();
     if (gStorage.isRecoveryMode()) {
@@ -1046,6 +1130,8 @@ void setup() {
     ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
     /* Populate About + Settings identity with stored director name */
     ui.setAboutDirectorName(cfg.directorName);
+    /* Apply show-operation preferences from stored config */
+    ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
   }
 
   ui.appendLog("Showduino portable Director online.");
