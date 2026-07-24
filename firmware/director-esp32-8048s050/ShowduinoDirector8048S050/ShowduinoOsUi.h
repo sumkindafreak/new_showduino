@@ -350,7 +350,7 @@ struct ShowduinoOsTheme {
     makeButton(screen, "Desktop", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:DESKTOP"); x += navW + gap;
     makeButton(screen, "Live", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:LIVE"); x += navW + gap;
     makeButton(screen, "Shows", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SHOWS"); x += navW + gap;
-    makeButton(screen, "Settings", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SETTINGS"); x += navW + gap;
+    makeButton(screen, "More", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:MORE"); x += navW + gap;
     makeButton(screen, "E-STOP", x, OS_DOCK_Y, estopW, OS_DOCK_H, cb, user, "EMERGENCY:STOP", true);
   }
 

@@ -48,6 +48,17 @@ enum class DeskShowView : uint8_t {
   Finished
 };
 
+enum class ShowLoadUiState : uint8_t {
+  Ready = 0,
+  LoadRequested,
+  Loading,
+  Loaded,
+  Warning,
+  Failed,
+  AwaitingStage,
+  TimedOut
+};
+
 #ifndef OPERATOR_EVENT_LOG_MAX
 #define OPERATOR_EVENT_LOG_MAX 250
 #endif
@@ -60,7 +71,7 @@ enum class DeskShowView : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs
+    Desktop = 0, Live, Shows, Details, More, Nodes, Settings, Audio, Logs
   };
 
   void begin(ShowduinoCommandCallback callback) {
@@ -195,6 +206,7 @@ public:
     setTimelinePlayback(rt.showName[0] ? rt.showName : "-", liveStateName,
                         rt.elapsedMs, rt.remainingMs, pct);
     refreshLiveStatusPanel();
+    updateShowLoadStateFromRuntime(rt);
 
     /* Activation: ShowRuntime EMERGENCY_STOP */
     if (rt.state == SHOW_STATE_EMERGENCY_STOP) {
@@ -325,6 +337,21 @@ public:
         if (!cur || strcmp(cur, tbuf) != 0) lv_label_set_text(estopTimerLabel, tbuf);
       }
       updateEmergencyResumeButton();
+    }
+
+    if (showLoadRequested_ &&
+        (showLoadState_ == ShowLoadUiState::AwaitingStage ||
+         showLoadState_ == ShowLoadUiState::Loading ||
+         showLoadState_ == ShowLoadUiState::LoadRequested)) {
+      if (nowMs - showLoadRequestMs_ > 8000UL) {
+        showLoadState_ = ShowLoadUiState::TimedOut;
+        showLoadRequested_ = false;
+        strncpy(showLoadStatusText_,
+                "Load requested — awaiting Stage confirmation",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        refreshShowDetailsPresentation();
+      }
     }
 
     if (liveProgressBar && liveStatusDirty) {
@@ -637,12 +664,78 @@ public:
   }
 
   /** Refresh SHOWS list from ShowManager (SD scan results). */
-  void refreshShowLibrary(const ShowManager &sm) {
+  void refreshShowLibrary(const ShowManager &sm,
+                          const StorageStatus *storageStatus = nullptr,
+                          bool scanCompleted = true,
+                          bool scanOk = true,
+                          const char *scanNote = nullptr) {
+    if (storageStatus) {
+      showStorageMounted_ = storageStatus->mounted;
+      showStorageRecovery_ = storageStatus->recoveryMode;
+      strncpy(showStorageCardType_, storageStatus->cardType, sizeof(showStorageCardType_) - 1);
+      showStorageCardType_[sizeof(showStorageCardType_) - 1] = '\0';
+      strncpy(showStorageLastError_, storageStatus->lastError, sizeof(showStorageLastError_) - 1);
+      showStorageLastError_[sizeof(showStorageLastError_) - 1] = '\0';
+    }
+    if (scanCompleted) {
+      showLibraryScanned_ = true;
+      showLibraryScanOk_ = scanOk;
+      if (scanNote && scanNote[0]) {
+        strncpy(showLibraryScanNote_, scanNote, sizeof(showLibraryScanNote_) - 1);
+        showLibraryScanNote_[sizeof(showLibraryScanNote_) - 1] = '\0';
+      } else {
+        strncpy(showLibraryScanNote_, scanOk ? "Scan complete" : "Scan failed",
+                sizeof(showLibraryScanNote_) - 1);
+        showLibraryScanNote_[sizeof(showLibraryScanNote_) - 1] = '\0';
+      }
+    }
     rebuildShowList(sm);
+    refreshShowDetailsPresentation();
+    statusDirty = true;
   }
 
   const char *selectedShowId() const { return selectedShowIdBuf; }
-  bool hasSelectedShow() const { return selectedShowIdBuf[0] != '\0'; }
+  bool hasSelectedShow() const { return selectedShowIdBuf[0] != '\0' && selectedShowValid_; }
+
+  void beginSelectedShowLoadRequest() {
+    if (!hasSelectedShow()) return;
+    strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+    showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+    showLoadState_ = ShowLoadUiState::LoadRequested;
+    showLoadRequestMs_ = millis();
+    showLoadRequested_ = true;
+    strncpy(showLoadStatusText_, "Load requested — preparing package",
+            sizeof(showLoadStatusText_) - 1);
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
+
+  void markSelectedShowLoadAwaitingStage() {
+    if (!hasSelectedShow()) return;
+    if (!showLoadTargetId_[0]) {
+      strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+      showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+    }
+    showLoadState_ = ShowLoadUiState::AwaitingStage;
+    showLoadRequestMs_ = millis();
+    showLoadRequested_ = true;
+    strncpy(showLoadStatusText_, "Load requested — awaiting Stage",
+            sizeof(showLoadStatusText_) - 1);
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
+
+  void markSelectedShowLoadFailure(const char *reason) {
+    showLoadState_ = ShowLoadUiState::Failed;
+    showLoadRequested_ = false;
+    if (reason && reason[0]) {
+      strncpy(showLoadStatusText_, reason, sizeof(showLoadStatusText_) - 1);
+    } else {
+      strncpy(showLoadStatusText_, "Load failed", sizeof(showLoadStatusText_) - 1);
+    }
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
 
   void setLoadedShowName(const char *name) {
     if (!name) name = "";
@@ -650,6 +743,7 @@ public:
     strncpy(loadedShowNameBuf, name, sizeof(loadedShowNameBuf) - 1);
     loadedShowNameBuf[sizeof(loadedShowNameBuf) - 1] = '\0';
     statusDirty = true;
+    refreshShowDetailsPresentation();
   }
 
   /** Timeline / runtime readout (Stage 5–7). */
@@ -667,18 +761,6 @@ public:
       const char *cur = lv_label_get_text(timelineStatusLabel);
       if (cur == nullptr || strcmp(cur, line) != 0) {
         lv_label_set_text(timelineStatusLabel, line);
-      }
-    }
-    if (timelineDetailLabel) {
-      char detail[192];
-      snprintf(detail, sizeof(detail),
-               "Show: %s\nState: %s\nElapsed: %s\nRemaining: %s\nProgress: %u%%",
-               showName && showName[0] ? showName : "-",
-               stateText ? stateText : "Stopped",
-               et, rt, (unsigned)progressPct);
-      const char *cur = lv_label_get_text(timelineDetailLabel);
-      if (cur == nullptr || strcmp(cur, detail) != 0) {
-        lv_label_set_text(timelineDetailLabel, detail);
       }
     }
     if (liveProgressBar) {
@@ -852,15 +934,23 @@ private:
   lv_obj_t *liveScreen = nullptr;
   lv_obj_t *showsScreen = nullptr;
   lv_obj_t *showDetailsScreen = nullptr;
+  lv_obj_t *moreScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
+  lv_obj_t *showsStorageLabel_ = nullptr;
+  lv_obj_t *showsScanLabel_ = nullptr;
   lv_obj_t *showListScroll = nullptr;
   lv_obj_t *detailsNameLabel = nullptr;
+  lv_obj_t *detailsSummaryLabel_ = nullptr;
   lv_obj_t *detailsDescLabel = nullptr;
   lv_obj_t *detailsMetaLabel = nullptr;
+  lv_obj_t *detailsRequirementsLabel_ = nullptr;
+  lv_obj_t *detailsValidationLabel_ = nullptr;
+  lv_obj_t *detailsLoadBtn_ = nullptr;
+  lv_obj_t *detailsOpenLiveBtn_ = nullptr;
   lv_obj_t *detailsIconHost = nullptr;
   lv_obj_t *detailsCanvas = nullptr;
   lv_obj_t *timelineStatusLabel = nullptr;
@@ -873,7 +963,23 @@ private:
   char loadedShowNameBuf[64] = {};
   char showOpenCmds[SHOW_INDEX_MAX][80] = {};
   ShowIndexEntry showListCache[SHOW_INDEX_MAX] = {};
+  ShowValidationResult showValidationCache_[SHOW_INDEX_MAX] = {};
   uint8_t showListCount = 0;
+  bool selectedShowValid_ = false;
+  ShowIndexEntry selectedShowEntry_ = {};
+  ShowValidationResult selectedShowValidation_ = {};
+  ShowLoadUiState showLoadState_ = ShowLoadUiState::Ready;
+  bool showLoadRequested_ = false;
+  unsigned long showLoadRequestMs_ = 0;
+  char showLoadTargetId_[64] = {};
+  bool showLibraryScanned_ = false;
+  bool showLibraryScanOk_ = false;
+  bool showStorageMounted_ = false;
+  bool showStorageRecovery_ = false;
+  char showStorageCardType_[16] = "Unknown";
+  char showStorageLastError_[128] = {};
+  char showLibraryScanNote_[96] = "Not scanned";
+  char showLoadStatusText_[128] = "Ready to load";
 
   DeskPage currentPage = DeskPage::Desktop;
   DeskPage pageBeforeEmergency = DeskPage::Desktop;
@@ -1103,6 +1209,12 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "SCREEN:MORE") {
+      notePage(DeskPage::More);
+      showMore();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
     if (command == "SCREEN:DIAG" || command == "SCREEN:NODES") {
       notePage(DeskPage::Nodes);
       showDiagnostics();
@@ -1165,6 +1277,12 @@ private:
     if (command == "UI:SHOW:BACK") {
       notePage(DeskPage::Shows);
       showShows();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "UI:SHOW:OPENLIVE") {
+      notePage(DeskPage::Live);
+      showLive();
       maybeRestoreEmergencyOverlay();
       return;
     }
@@ -1482,15 +1600,12 @@ private:
     const int deskLeftW = OS_CONTENT_LEFT_W;
     const int deskRightW = OS_CONTENT_RIGHT_W;
     const int deskRightX = OS_CONTENT_RIGHT_X;
-    const int deskSumH = 240;
+    const int deskSumH = 218;
     const int deskActY = OS_BODY_Y + deskSumH + OS_GAP;
     const int deskActH = OS_BODY_H - deskSumH - OS_GAP;
 
     lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, deskLeftW, deskSumH);
     createSystemSummary(summary);
-    makeButton(summary, "Start", 10, 204, 90, 36, "SHOW:START");
-    makeButton(summary, "Pause", 108, 204, 90, 36, "SHOW:PAUSE");
-    makeButton(summary, "Stop", 206, 204, 90, 36, "SHOW:STOP", true);
 
     lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
     os_.makeHeading(fabric, "FABRIC", 8, 2);
@@ -1510,6 +1625,7 @@ private:
 
     lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, deskActY, OS_CONTENT_FULL_W, deskActH);
     createQuickActions(actions);
+    os_.makeCaption(actions, "Playback transport is intentionally owned by Live.", 470, 10);
     uiBuildPump();
 
     /* ---- LIVE — What is happening right now? ---- */
@@ -1530,12 +1646,11 @@ private:
     /* Reserved icon/scene slots — no placeholder text */
 
     lv_obj_t *live = os_.makePrimaryPanel(liveScreen);
-    os_.makeHeading(live, "TRANSPORT", 8, 2);
-    makeButton(live, "Start", 10, 24, 84, 40, "SHOW:START");
-    makeButton(live, "Pause", 102, 24, 76, 40, "SHOW:PAUSE");
-    makeButton(live, "Resume", 186, 24, 84, 40, "SHOW:RESUME");
-    makeButton(live, "Stop", 278, 24, 68, 40, "SHOW:STOP", true);
-    makeButton(live, "Status", 354, 24, 76, 40, "STATUS:REQUEST");
+    os_.makeHeading(live, "SHOW CONTROL", 8, 2);
+    makeButton(live, "Start Show", 10, 24, 112, 44, "SHOW:START");
+    makeButton(live, "Pause", 130, 24, 92, 44, "SHOW:PAUSE");
+    makeButton(live, "Resume", 230, 24, 100, 44, "SHOW:RESUME");
+    makeButton(live, "Stop Show", 338, 24, 112, 44, "SHOW:STOP", true);
 
     liveEmergencyDot = lv_obj_create(live);
     lv_obj_remove_style_all(liveEmergencyDot);
@@ -1545,12 +1660,12 @@ private:
     lv_obj_set_style_bg_color(liveEmergencyDot, lv_color_hex(OsColor::Unknown), 0);
     lv_obj_set_style_bg_opa(liveEmergencyDot, LV_OPA_COVER, 0);
 
-    liveStatusLabel = makeLabel(live, "0%", 10, 70);
+    liveStatusLabel = makeLabel(live, "0%", 10, 78);
     lv_obj_set_width(liveStatusLabel, 60);
     lv_obj_add_style(liveStatusLabel, &os_.body, 0);
 
     liveProgressBar = lv_bar_create(live);
-    lv_obj_set_pos(liveProgressBar, 70, 74);
+    lv_obj_set_pos(liveProgressBar, 70, 82);
     lv_obj_set_size(liveProgressBar, 380, 10);
     lv_bar_set_range(liveProgressBar, 0, 100);
     lv_bar_set_value(liveProgressBar, 0, LV_ANIM_OFF);
@@ -1560,45 +1675,57 @@ private:
     timelineStatusLabel = makeLabel(live, "", 10, 88);
     lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-    os_.makeHeading(live, "RELAYS", 8, 96);
+    os_.makeHeading(live, "MANUAL OUTPUTS", 8, 106);
     for (uint8_t i = 0; i < 8; i++) {
       int row = i / 4;
       int col = i % 4;
       int x = 10 + col * 112;
-      int y = 118 + row * 40;
+      int y = 130 + row * 40;
       static const char *relayNames[8] = { "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8" };
       relayButtons[i] = makeButton(live, relayNames[i], x, y, 104, 36, kRelayCmds[i]);
       refreshRelayButton(i);
     }
-    makeButton(live, "All Off", 10, 202, 100, 36, "RELAY:ALL:OFF");
-    makeButton(live, "Pulse R1", 118, 202, 100, 36, "RELAY:1:PULSE:1000");
-    makeButton(live, "E-Clear", 226, 202, 100, 36, "EMERGENCY:CLEAR");
+    makeButton(live, "All Outputs Off", 10, 214, 142, 38, "RELAY:ALL:OFF");
+    makeButton(live, "Pulse R1", 160, 214, 104, 38, "RELAY:1:PULSE:1000");
+    makeButton(live, "Request Status", 272, 214, 128, 38, "STATUS:REQUEST");
     uiBuildPump();
 
-    /* ---- SHOWS — What can I run? ---- */
+    /* ---- SHOWS — deliberate package browser ---- */
     Serial.println("[UI] shows…");
     showsScreen = makeScreen();
     uiBuildPump("[UI] shows");
     createDock(showsScreen);
     lv_obj_t *showSum = os_.makePageChrome(showsScreen, "SHOWS");
-    os_.makeCaption(showSum, "Library", 10, 8);
-    showsSummaryLabel_ = makeLabel(showSum, "Scan SD to list packages", 10, 28);
+    os_.makeCaption(showSum, "Show workflow", 10, 8);
+    showsSummaryLabel_ = makeLabel(showSum, "Select package → inspect details → load → open Live", 10, 28);
     lv_obj_add_style(showsSummaryLabel_, &os_.body, 0);
-    lv_obj_set_width(showsSummaryLabel_, 440);
+    lv_obj_set_width(showsSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(showsSummaryLabel_, LV_LABEL_LONG_CLIP);
 
     showsListPanel = os_.makePrimaryPanel(showsScreen);
     os_.makeHeading(showsListPanel, "SHOW LIBRARY", 8, 2);
-    makeButton(showsListPanel, "Resync", 360, 2, 90, 36, "UI:SHOW:REFRESH");
-    showsListTitle = makeLabel(showsListPanel, "", 8, 4);
-    lv_obj_add_flag(showsListTitle, LV_OBJ_FLAG_HIDDEN);
+    makeButton(showsListPanel, "Refresh Library", 304, 2, 150, 36, "UI:SHOW:REFRESH");
+    showsListTitle = makeLabel(showsListPanel, "Discovered: Unknown", 8, 30);
+    lv_obj_add_style(showsListTitle, &os_.caption, 0);
+    lv_obj_set_width(showsListTitle, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsListTitle, LV_LABEL_LONG_CLIP);
+    showsStorageLabel_ = makeLabel(showsListPanel, "Storage: Unknown", 8, 48);
+    lv_obj_add_style(showsStorageLabel_, &os_.caption, 0);
+    lv_obj_set_width(showsStorageLabel_, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsStorageLabel_, LV_LABEL_LONG_CLIP);
+    showsScanLabel_ = makeLabel(showsListPanel, "Last scan: Not scanned", 8, 66);
+    lv_obj_add_style(showsScanLabel_, &os_.caption, 0);
+    lv_obj_set_width(showsScanLabel_, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsScanLabel_, LV_LABEL_LONG_CLIP);
+
     showListScroll = lv_obj_create(showsListPanel);
     lv_obj_remove_style_all(showListScroll);
-    lv_obj_set_pos(showListScroll, 4, 42);
-    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 52);
+    lv_obj_set_pos(showListScroll, 4, 88);
+    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 98);
     lv_obj_set_style_bg_opa(showListScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(showListScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(showListScroll, LV_SCROLLBAR_MODE_AUTO);
-    makeLabel(showListScroll, "No shows yet — insert SD and tap Resync", 8, 8);
+    makeLabel(showListScroll, "Library not scanned yet.", 8, 8);
     uiBuildPump();
 
     /* ---- SHOW DETAILS ---- */
@@ -1607,33 +1734,69 @@ private:
     uiBuildPump("[UI] details");
     createDock(showDetailsScreen);
     lv_obj_t *detSum = os_.makePageChrome(showDetailsScreen, "SHOW DETAILS");
-    detailsNameLabel = makeLabel(detSum, "Show", 10, 8);
+    detailsNameLabel = makeLabel(detSum, "No show selected", 10, 8);
     lv_obj_add_style(detailsNameLabel, &os_.title, 0);
-    lv_obj_set_width(detailsNameLabel, 440);
+    lv_obj_set_width(detailsNameLabel, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(detailsNameLabel, LV_LABEL_LONG_CLIP);
+    detailsSummaryLabel_ = makeLabel(detSum, "Select a package in Shows.", 10, 30);
+    lv_obj_add_style(detailsSummaryLabel_, &os_.caption, 0);
+    lv_obj_set_width(detailsSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(detailsSummaryLabel_, LV_LABEL_LONG_CLIP);
 
     lv_obj_t *det = os_.makePrimaryPanel(showDetailsScreen);
     detailsIconHost = lv_obj_create(det);
     lv_obj_remove_style_all(detailsIconHost);
     lv_obj_set_pos(detailsIconHost, 8, 8);
-    lv_obj_set_size(detailsIconHost, 96, 64);
-    ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
-    detailsDescLabel = makeLabel(det, "Description", 116, 12);
-    lv_obj_set_width(detailsDescLabel, 330);
+    lv_obj_set_size(detailsIconHost, 104, 72);
+    ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
+    detailsDescLabel = makeLabel(det, "Description unavailable", 122, 10);
+    lv_obj_set_width(detailsDescLabel, 320);
     lv_obj_add_style(detailsDescLabel, &os_.body, 0);
     lv_label_set_long_mode(detailsDescLabel, LV_LABEL_LONG_WRAP);
-    detailsMetaLabel = makeLabel(det, "Duration / Version / Author", 8, 84);
-    lv_obj_set_width(detailsMetaLabel, 440);
+    detailsMetaLabel = makeLabel(det, "Duration: Unknown", 8, 88);
+    lv_obj_set_width(detailsMetaLabel, OS_CONTENT_FULL_W - 26);
     lv_obj_add_style(detailsMetaLabel, &os_.caption, 0);
     lv_label_set_long_mode(detailsMetaLabel, LV_LABEL_LONG_WRAP);
-    timelineDetailLabel = makeLabel(det, "Playback: STOPPED", 8, 110);
-    lv_obj_set_width(timelineDetailLabel, 440);
-    lv_obj_add_style(timelineDetailLabel, &os_.body, 0);
-    makeButton(det, "Load", 8, 155, 72, 44, "UI:SHOW:LOAD");
-    makeButton(det, "Run", 88, 155, 72, 44, "UI:SHOW:RUN");
-    makeButton(det, "Pause", 168, 155, 72, 44, "SHOW:PAUSE");
-    makeButton(det, "Resume", 248, 155, 80, 44, "SHOW:RESUME");
-    makeButton(det, "Stop", 336, 155, 64, 44, "UI:SHOW:STOP");
-    makeButton(det, "Back", 408, 155, 50, 44, "UI:SHOW:BACK");
+    detailsRequirementsLabel_ = makeLabel(det,
+                                          "Requirements\nNodes: Not specified\nAudio: Not specified\nLighting: Not specified\nStorage: Not specified\nMinimum package: Not specified",
+                                          8, 126);
+    lv_obj_set_width(detailsRequirementsLabel_, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(detailsRequirementsLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(detailsRequirementsLabel_, LV_LABEL_LONG_WRAP);
+    detailsValidationLabel_ = makeLabel(det, "Validation: Not validated", 8, 204);
+    lv_obj_set_width(detailsValidationLabel_, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(detailsValidationLabel_, &os_.body, 0);
+    lv_label_set_long_mode(detailsValidationLabel_, LV_LABEL_LONG_WRAP);
+    timelineDetailLabel = makeLabel(det, "Load state: Ready to load", 8, 222);
+    lv_obj_set_width(timelineDetailLabel, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(timelineDetailLabel, &os_.caption, 0);
+    detailsLoadBtn_ = makeButton(det, "Load Show", 8, 236, 130, 34, "UI:SHOW:LOAD");
+    makeButton(det, "Back to Shows", 146, 236, 146, 34, "UI:SHOW:BACK");
+    detailsOpenLiveBtn_ = makeButton(det, "Open Live", 300, 236, 120, 34, "UI:SHOW:OPENLIVE");
+    lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+    refreshShowDetailsPresentation();
+    uiBuildPump();
+
+    /* ---- MORE — stable launcher for secondary destinations ---- */
+    Serial.println("[UI] more…");
+    moreScreen = makeScreen();
+    uiBuildPump("[UI] more");
+    createDock(moreScreen);
+    lv_obj_t *moreSum = os_.makePageChrome(moreScreen, "MORE");
+    os_.makeCaption(moreSum, "System", 10, 8);
+    makeLabel(moreSum, "Secondary tools and configuration", 10, 28);
+
+    lv_obj_t *more = os_.makePrimaryPanel(moreScreen);
+    os_.makeHeading(more, "DESTINATIONS", 8, 2);
+    makeButton(more, "Nodes", 12, 36, 210, 58, "SCREEN:NODES");
+    makeButton(more, "Audio", 234, 36, 210, 58, "SCREEN:AUDIO");
+    makeButton(more, "Logs", 12, 106, 210, 58, "SCREEN:LOGS");
+    makeButton(more, "Settings", 234, 106, 210, 58, "SCREEN:SETTINGS");
+    makeButton(more, "Diagnostics", 12, 176, 210, 58, "SCREEN:DIAG");
+    makeButton(more, "About", 234, 176, 210, 58, "SETTINGS:ABOUT");
+    os_.makeCaption(more,
+                    "Playback remains in Live. Show selection remains in Shows.",
+                    12, 244);
     uiBuildPump();
 
     /* ---- NODES (Quick Actions / future nav) ---- */
@@ -2006,7 +2169,8 @@ private:
     switch (pageBeforeEmergency) {
       case DeskPage::Live: showLive(); break;
       case DeskPage::Shows: showShows(); break;
-      case DeskPage::Details: showShows(); break;
+      case DeskPage::Details: showDetails(); break;
+      case DeskPage::More: showMore(); break;
       case DeskPage::Nodes: showDiagnostics(); break;
       case DeskPage::Settings: showSettings(); break;
       case DeskPage::Audio: showAudio(); break;
@@ -2069,91 +2233,335 @@ private:
     lv_obj_clean(showListScroll);
   }
 
-  void rebuildShowList(const ShowManager &sm) {
-    showListCount = 0;
-    clearShowListChildren();
-    if (showsSummaryLabel_) {
-      char title[48];
-      snprintf(title, sizeof(title), "%u package%s available",
-               (unsigned)sm.size(), sm.size() == 1 ? "" : "s");
-      ShowduinoOsTheme::setTextIfChanged(showsSummaryLabel_, title);
+  static const char *validationStateWord(ShowValidationState state) {
+    switch (state) {
+      case ShowValidationState::Ready: return "Ready";
+      case ShowValidationState::Warning: return "Warning";
+      case ShowValidationState::Invalid: return "Invalid";
+      case ShowValidationState::MissingAssets: return "Missing assets";
+      case ShowValidationState::Incompatible: return "Incompatible";
+      case ShowValidationState::NotValidated:
+      default: return "Not validated";
     }
+  }
+
+  static lv_color_t validationStateColor(ShowValidationState state) {
+    switch (state) {
+      case ShowValidationState::Ready: return lv_color_hex(OsColor::Ok);
+      case ShowValidationState::Warning: return lv_color_hex(OsColor::Warn);
+      case ShowValidationState::Invalid:
+      case ShowValidationState::MissingAssets:
+      case ShowValidationState::Incompatible: return lv_color_hex(OsColor::Fault);
+      case ShowValidationState::NotValidated:
+      default: return lv_color_hex(OsColor::TextMuted);
+    }
+  }
+
+  static const char *showLoadStateWord(ShowLoadUiState state) {
+    switch (state) {
+      case ShowLoadUiState::Ready: return "Ready to load";
+      case ShowLoadUiState::LoadRequested: return "Load requested";
+      case ShowLoadUiState::Loading: return "Loading";
+      case ShowLoadUiState::Loaded: return "Show loaded";
+      case ShowLoadUiState::Warning: return "Warning";
+      case ShowLoadUiState::Failed: return "Failed";
+      case ShowLoadUiState::AwaitingStage: return "Awaiting Stage";
+      case ShowLoadUiState::TimedOut: return "Timed out";
+      default: return "Unknown";
+    }
+  }
+
+  void updateShowsHeader(uint8_t packageCount) {
     if (showsListTitle) {
-      char title[40];
-      snprintf(title, sizeof(title), "SHOWS ON SD (%u)", (unsigned)sm.size());
-      lv_label_set_text(showsListTitle, title);
+      char title[64];
+      snprintf(title, sizeof(title), "Discovered: %u package%s",
+               (unsigned)packageCount, packageCount == 1 ? "" : "s");
+      ShowduinoOsTheme::setTextIfChanged(showsListTitle, title);
+    }
+    if (showsStorageLabel_) {
+      char storage[120];
+      if (showStorageRecovery_ || !showStorageMounted_) {
+        snprintf(storage, sizeof(storage), "Storage: Unavailable");
+      } else if (showStorageCardType_[0]) {
+        snprintf(storage, sizeof(storage), "Storage: SD %s", showStorageCardType_);
+      } else {
+        snprintf(storage, sizeof(storage), "Storage: Mounted");
+      }
+      ShowduinoOsTheme::setTextIfChanged(showsStorageLabel_, storage);
+    }
+    if (showsScanLabel_) {
+      char scanLine[140];
+      if (!showLibraryScanned_) {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: Not scanned");
+      } else if (showLibraryScanOk_) {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: %s",
+                 showLibraryScanNote_[0] ? showLibraryScanNote_ : "Complete");
+      } else {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: Failed — %s",
+                 showLibraryScanNote_[0] ? showLibraryScanNote_ : "check SD status");
+      }
+      ShowduinoOsTheme::setTextIfChanged(showsScanLabel_, scanLine);
+    }
+  }
+
+  void renderShowsEmptyState(const char *headline, const char *detail) {
+    if (!showListScroll) return;
+    lv_obj_t *h = makeLabel(showListScroll, headline ? headline : "No packages", 8, 8);
+    lv_obj_add_style(h, &os_.title, 0);
+    lv_obj_set_width(h, OS_CONTENT_FULL_W - 52);
+    lv_label_set_long_mode(h, LV_LABEL_LONG_WRAP);
+    lv_obj_t *d = makeLabel(showListScroll, detail ? detail : "", 8, 36);
+    lv_obj_add_style(d, &os_.caption, 0);
+    lv_obj_set_width(d, OS_CONTENT_FULL_W - 52);
+    lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
+  }
+
+  bool showNameMatchesSelection(const char *name) const {
+    if (!selectedShowValid_ || !name || !name[0]) return false;
+    if (strcmp(name, selectedShowIdBuf) == 0) return true;
+    if (!selectedShowEntry_.name[0]) return false;
+    if (strcmp(name, selectedShowEntry_.name) == 0) return true;
+    size_t runtimeLen = strlen(name);
+    size_t selectedLen = strlen(selectedShowEntry_.name);
+    if (runtimeLen > 0 && runtimeLen < selectedLen &&
+        strncmp(selectedShowEntry_.name, name, runtimeLen) == 0) {
+      return true;
+    }
+    return false;
+  }
+
+  bool selectedShowAppearsLoaded() const {
+    if (!selectedShowValid_) return false;
+    if (showLoadState_ == ShowLoadUiState::Loaded &&
+        showLoadTargetId_[0] && strcmp(showLoadTargetId_, selectedShowIdBuf) == 0) {
+      return true;
+    }
+    if ((mirroredState == SHOW_STATE_SHOW_LOADED ||
+         mirroredState == SHOW_STATE_RUNNING ||
+         mirroredState == SHOW_STATE_PAUSED ||
+         mirroredState == SHOW_STATE_FINISHED) &&
+        showNameMatchesSelection(loadedShowNameBuf)) {
+      return true;
+    }
+    return false;
+  }
+
+  void updateShowLoadStateFromRuntime(const ShowRuntime &rt) {
+    bool stateChanged = false;
+    if (showLoadRequested_) {
+      if ((rt.state == SHOW_STATE_SHOW_LOADED || rt.state == SHOW_STATE_RUNNING ||
+           rt.state == SHOW_STATE_PAUSED || rt.state == SHOW_STATE_FINISHED) &&
+          showNameMatchesSelection(rt.showName)) {
+        showLoadState_ = ShowLoadUiState::Loaded;
+        showLoadRequested_ = false;
+        strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+        showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+        strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      } else if (rt.state == SHOW_STATE_ERROR) {
+        showLoadState_ = ShowLoadUiState::Failed;
+        showLoadRequested_ = false;
+        if (rt.lastError[0]) strncpy(showLoadStatusText_, rt.lastError, sizeof(showLoadStatusText_) - 1);
+        else strncpy(showLoadStatusText_, "Load failed on Stage", sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      } else if (showLoadState_ == ShowLoadUiState::LoadRequested) {
+        showLoadState_ = ShowLoadUiState::Loading;
+        strncpy(showLoadStatusText_, "Loading — waiting for Stage confirmation",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      }
     }
 
+    if (!showLoadRequested_ && selectedShowValid_) {
+      if ((rt.state == SHOW_STATE_SHOW_LOADED || rt.state == SHOW_STATE_RUNNING ||
+           rt.state == SHOW_STATE_PAUSED || rt.state == SHOW_STATE_FINISHED) &&
+          showNameMatchesSelection(rt.showName) &&
+          showLoadState_ != ShowLoadUiState::Loaded) {
+        showLoadState_ = ShowLoadUiState::Loaded;
+        strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+        showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+        strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      }
+    }
+    if (stateChanged) refreshShowDetailsPresentation();
+  }
+
+  void rebuildShowList(const ShowManager &sm) {
+    updateShowsHeader(sm.size());
+    showListCount = 0;
+    clearShowListChildren();
+
+    if (showsSummaryLabel_) {
+      if (!showStorageMounted_ || showStorageRecovery_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "SD unavailable. Restore storage, then refresh library.");
+      } else if (!showLibraryScanned_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Library not scanned yet. Tap Refresh Library.");
+      } else if (!showLibraryScanOk_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Library scan failed. Review SD state and retry.");
+      } else {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Select package → inspect details → load → open Live");
+      }
+    }
+
+    if (!showStorageMounted_ || showStorageRecovery_) {
+      renderShowsEmptyState("No SD card / storage unavailable",
+                            showStorageLastError_[0] ? showStorageLastError_ : "Director is in storage recovery mode.");
+      return;
+    }
+    if (!showLibraryScanned_) {
+      renderShowsEmptyState("Library not yet scanned",
+                            "Tap Refresh Library to discover show packages.");
+      return;
+    }
+    if (!showLibraryScanOk_) {
+      renderShowsEmptyState("Library scan failed",
+                            showLibraryScanNote_[0] ? showLibraryScanNote_ : "SD scan reported an error.");
+      return;
+    }
     if (sm.size() == 0) {
-      makeLabel(showListScroll, "No shows found under /showduino/shows/packages", 8, 8);
+      renderShowsEmptyState("No show packages found",
+                            "No packages exist under /showduino/shows/packages.");
       return;
     }
 
+    const int cardW = OS_CONTENT_FULL_W - 36;
+    const int cardH = 112;
     int y = 4;
+    uint8_t validCount = 0;
     for (uint8_t i = 0; i < sm.size() && showListCount < SHOW_INDEX_MAX; i++) {
       const ShowIndexEntry *e = sm.get(i);
       if (!e) continue;
       showListCache[showListCount] = *e;
+      sm.validateShowPackage(e->id, showValidationCache_[showListCount]);
+      if (showValidationCache_[showListCount].state == ShowValidationState::Ready) validCount++;
       snprintf(showOpenCmds[showListCount], sizeof(showOpenCmds[showListCount]),
                "UI:SHOW:OPEN:%s", e->id);
 
-      lv_obj_t *row = lv_obj_create(showListScroll);
-      lv_obj_remove_style_all(row);
-      lv_obj_set_pos(row, 4, y);
-      lv_obj_set_size(row, 448, 72);
-      lv_obj_set_style_bg_color(row, lv_color_hex(OsColor::Button), 0);
-      lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-      lv_obj_set_style_border_color(row, lv_color_hex(OsColor::PanelBorder), 0);
-      lv_obj_set_style_border_width(row, 1, 0);
-      lv_obj_set_style_radius(row, OS_BTN_RADIUS, 0);
+      const bool isSelected = selectedShowValid_ && strcmp(selectedShowIdBuf, e->id) == 0;
+      const bool isLoaded = (loadedShowNameBuf[0] && strcmp(loadedShowNameBuf, e->name) == 0);
+      lv_obj_t *card = lv_obj_create(showListScroll);
+      lv_obj_remove_style_all(card);
+      lv_obj_set_pos(card, 4, y);
+      lv_obj_set_size(card, cardW, cardH);
+      lv_obj_set_style_bg_color(card,
+                                lv_color_hex(isSelected ? 0x10323F : OsColor::Button), 0);
+      lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_color(card,
+                                    lv_color_hex(isSelected ? OsColor::Accent : OsColor::PanelBorder), 0);
+      lv_obj_set_style_border_width(card, isSelected ? 2 : 1, 0);
+      lv_obj_set_style_radius(card, OS_BTN_RADIUS, 0);
 
-      ShowduinoShowThumb::makeDefaultIcon(row, 6, 6, 56, 56);
+      ShowduinoShowThumb::makeDefaultIcon(card, 8, 8, 72, 48);
       if (e->hasThumbnail) {
-        lv_obj_t *badge = lv_label_create(row);
-        lv_label_set_text(badge, "BMP");
-        lv_obj_set_style_text_color(badge, lv_color_hex(0x4ADE80), 0);
-        lv_obj_set_pos(badge, 14, 48);
+        lv_obj_t *badge = lv_label_create(card);
+        lv_label_set_text(badge, "ART");
+        lv_obj_set_style_text_color(badge, lv_color_hex(OsColor::Ok), 0);
+        lv_obj_set_pos(badge, 10, 60);
       }
 
       char dur[16];
       ShowduinoShowThumb::formatDuration(e->durationSeconds, dur, sizeof(dur));
-      char line1[96];
-      snprintf(line1, sizeof(line1), "%s", e->name);
-      lv_obj_t *n = lv_label_create(row);
-      lv_label_set_text(n, line1);
-      lv_obj_set_style_text_color(n, lv_color_hex(0xFFFFFF), 0);
-      lv_obj_set_pos(n, 72, 6);
 
-      char line2[128];
-      snprintf(line2, sizeof(line2), "%s  ·  v%s  ·  %s",
-               dur, e->version[0] ? e->version : "-", e->author[0] ? e->author : "-");
-      lv_obj_t *m = lv_label_create(row);
-      lv_label_set_text(m, line2);
-      lv_obj_set_style_text_color(m, lv_color_hex(0xA1A1AA), 0);
-      lv_obj_set_pos(m, 72, 28);
+      lv_obj_t *title = lv_label_create(card);
+      lv_label_set_text(title, e->name[0] ? e->name : e->id);
+      lv_obj_set_style_text_color(title, lv_color_hex(OsColor::Title), 0);
+      lv_obj_set_pos(title, 88, 6);
+      lv_obj_set_width(title, cardW - 220);
+      lv_label_set_long_mode(title, LV_LABEL_LONG_CLIP);
 
-      char line3[96];
-      if (e->description[0]) {
-        snprintf(line3, sizeof(line3), "%.70s", e->description);
-      } else {
-        snprintf(line3, sizeof(line3), "(no description)");
+      char info[196];
+      snprintf(info, sizeof(info), "%s  ·  cues %u  ·  v%s  ·  %s",
+               dur,
+               (unsigned)e->cueCount,
+               e->version[0] ? e->version : "Unknown",
+               e->author[0] ? e->author : "Unknown");
+      lv_obj_t *meta = lv_label_create(card);
+      lv_label_set_text(meta, info);
+      lv_obj_set_style_text_color(meta, lv_color_hex(OsColor::TextMuted), 0);
+      lv_obj_set_pos(meta, 88, 28);
+      lv_obj_set_width(meta, cardW - 220);
+      lv_label_set_long_mode(meta, LV_LABEL_LONG_CLIP);
+
+      char desc[120];
+      if (e->description[0]) snprintf(desc, sizeof(desc), "%.96s", e->description);
+      else snprintf(desc, sizeof(desc), "Description unavailable");
+      lv_obj_t *descLabel = lv_label_create(card);
+      lv_label_set_text(descLabel, desc);
+      lv_obj_set_style_text_color(descLabel, lv_color_hex(OsColor::TextDim), 0);
+      lv_obj_set_pos(descLabel, 88, 48);
+      lv_obj_set_width(descLabel, cardW - 220);
+      lv_label_set_long_mode(descLabel, LV_LABEL_LONG_CLIP);
+
+      const ShowValidationResult &vr = showValidationCache_[showListCount];
+      char statusLine[196];
+      snprintf(statusLine, sizeof(statusLine), "Validation: %s  ·  Compatibility: %s  ·  Modified: %s",
+               validationStateWord(vr.state),
+               vr.compatible ? "Compatible" : "Incompatible",
+               e->modified[0] ? e->modified : "Unavailable");
+      lv_obj_t *stateLab = lv_label_create(card);
+      lv_label_set_text(stateLab, statusLine);
+      lv_obj_set_style_text_color(stateLab, validationStateColor(vr.state), 0);
+      lv_obj_set_pos(stateLab, 88, 68);
+      lv_obj_set_width(stateLab, cardW - 220);
+      lv_label_set_long_mode(stateLab, LV_LABEL_LONG_CLIP);
+
+      if (isLoaded) {
+        lv_obj_t *loaded = lv_label_create(card);
+        lv_label_set_text(loaded, "LOADED");
+        lv_obj_set_style_text_color(loaded, lv_color_hex(OsColor::Ok), 0);
+        lv_obj_set_pos(loaded, cardW - 128, 8);
       }
-      lv_obj_t *d = lv_label_create(row);
-      lv_label_set_text(d, line3);
-      lv_obj_set_style_text_color(d, lv_color_hex(0xD4D4D8), 0);
-      lv_obj_set_pos(d, 72, 48);
 
-      lv_obj_t *hit = lv_button_create(row);
-      lv_obj_remove_style_all(hit);
-      lv_obj_set_size(hit, 448, 72);
-      lv_obj_set_pos(hit, 0, 0);
-      lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
-      lv_obj_add_event_cb(hit, staticEventHandler, LV_EVENT_CLICKED, this);
-      lv_obj_set_user_data(hit, (void *)showOpenCmds[showListCount]);
+      lv_obj_t *openBtn = makeButton(card, "View Details", cardW - 126, 66, 116, 36,
+                                     showOpenCmds[showListCount]);
+      (void)openBtn;
 
       showListCount++;
-      y += 78;
+      y += cardH + 8;
       yield();
+    }
+
+    if (validCount == 0 && showsSummaryLabel_) {
+      ShowduinoOsTheme::setTextIfChanged(
+          showsSummaryLabel_,
+          "Packages discovered, but all failed validation. Open details to inspect issues.");
+    }
+
+    const ShowIndexEntry *selected = cachedShow(selectedShowIdBuf);
+    if (!selectedShowIdBuf[0] || !selected) {
+      selectedShowValid_ = false;
+      selectedShowIdBuf[0] = '\0';
+      memset(&selectedShowEntry_, 0, sizeof(selectedShowEntry_));
+      memset(&selectedShowValidation_, 0, sizeof(selectedShowValidation_));
+      showLoadState_ = ShowLoadUiState::Ready;
+      showLoadRequested_ = false;
+      showLoadTargetId_[0] = '\0';
+      strncpy(showLoadStatusText_, "Ready to load", sizeof(showLoadStatusText_) - 1);
+      showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    } else {
+      selectedShowValid_ = true;
+      selectedShowEntry_ = *selected;
+      for (uint8_t i = 0; i < showListCount; i++) {
+        if (strcmp(showListCache[i].id, selectedShowEntry_.id) == 0) {
+          selectedShowValidation_ = showValidationCache_[i];
+          break;
+        }
+      }
     }
   }
 
@@ -2165,29 +2573,154 @@ private:
     return nullptr;
   }
 
-  void openShowDetails(const char *showId) {
-    if (!showId || !showId[0]) return;
-    strncpy(selectedShowIdBuf, showId, sizeof(selectedShowIdBuf) - 1);
-    selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+  const ShowValidationResult *cachedValidation(const char *id) const {
+    if (!id) return nullptr;
+    for (uint8_t i = 0; i < showListCount; i++) {
+      if (strcmp(showListCache[i].id, id) == 0) return &showValidationCache_[i];
+    }
+    return nullptr;
+  }
 
-    const ShowIndexEntry *e = cachedShow(showId);
-    const char *name = e ? e->name : showId;
-    const char *desc = e && e->description[0] ? e->description : "(no description)";
-    const char *author = e && e->author[0] ? e->author : "-";
-    const char *version = e && e->version[0] ? e->version : "-";
-    uint32_t durSec = e ? e->durationSeconds : 0;
+  String requirementFieldFromManifest(const String &manifest, const char *key) const {
+    String asString = ShowduinoFileUtil::jsonGetString(manifest, key, "");
+    if (asString.length() > 0) return asString;
 
-    if (detailsNameLabel) lv_label_set_text(detailsNameLabel, name);
-    if (detailsDescLabel) lv_label_set_text(detailsDescLabel, desc);
+    String pattern = String("\"") + key + "\"";
+    int k = manifest.indexOf(pattern);
+    if (k < 0) return "";
+    int colon = manifest.indexOf(':', k + pattern.length());
+    if (colon < 0) return "";
+    int s = colon + 1;
+    while (s < (int)manifest.length() && (manifest[s] == ' ' || manifest[s] == '\t')) s++;
+    if (s >= (int)manifest.length()) return "";
+    if (manifest[s] == '[') {
+      int end = manifest.indexOf(']', s + 1);
+      if (end < 0) return "";
+      String body = manifest.substring(s + 1, end);
+      body.trim();
+      if (!body.length()) return "";
+      body.replace("\"", "");
+      body.replace(",", ", ");
+      return body;
+    }
+    return "";
+  }
+
+  void refreshShowDetailsPresentation() {
+    if (!detailsNameLabel || !detailsDescLabel || !detailsMetaLabel ||
+        !detailsRequirementsLabel_ || !detailsValidationLabel_ || !timelineDetailLabel) {
+      return;
+    }
+
+    if (!selectedShowValid_) {
+      lv_label_set_text(detailsNameLabel, "No show selected");
+      if (detailsSummaryLabel_) lv_label_set_text(detailsSummaryLabel_, "Select a package from Shows.");
+      lv_label_set_text(detailsDescLabel, "Description unavailable");
+      lv_label_set_text(detailsMetaLabel,
+                        "Duration: Unknown\nCue count: Unknown\nPackage: Unselected\nLoaded: No");
+      lv_label_set_text(detailsRequirementsLabel_,
+                        "Requirements\nNodes: Not specified\nAudio assets: Not specified\nLighting: Not specified\nStorage: Not specified\nMinimum package: Not specified");
+      lv_label_set_text(detailsValidationLabel_, "Validation: Not validated");
+      lv_obj_set_style_text_color(detailsValidationLabel_, lv_color_hex(OsColor::TextMuted), 0);
+      lv_label_set_text(timelineDetailLabel, "Load state: Ready to load");
+      if (detailsLoadBtn_) lv_obj_add_state(detailsLoadBtn_, LV_STATE_DISABLED);
+      if (detailsOpenLiveBtn_) lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+      if (detailsIconHost) {
+        if (detailsCanvas) {
+          ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
+          detailsCanvas = nullptr;
+        }
+        lv_obj_clean(detailsIconHost);
+        ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
+      }
+      return;
+    }
+
+    lv_label_set_text(detailsNameLabel, selectedShowEntry_.name[0] ? selectedShowEntry_.name : selectedShowEntry_.id);
+    if (detailsSummaryLabel_) {
+      char summary[120];
+      snprintf(summary, sizeof(summary), "Package: %s  ·  Selected: YES  ·  Loaded: %s",
+               selectedShowEntry_.id,
+               selectedShowAppearsLoaded() ? "YES" : "NO");
+      lv_label_set_text(detailsSummaryLabel_, summary);
+    }
+    lv_label_set_text(detailsDescLabel,
+                      selectedShowEntry_.description[0] ? selectedShowEntry_.description : "Description unavailable");
 
     char dur[16];
-    ShowduinoShowThumb::formatDuration(durSec, dur, sizeof(dur));
-    char meta[160];
-    snprintf(meta, sizeof(meta), "Duration  %s\nVersion   %s\nAuthor    %s",
-             dur, version, author);
-    if (detailsMetaLabel) lv_label_set_text(detailsMetaLabel, meta);
+    ShowduinoShowThumb::formatDuration(selectedShowEntry_.durationSeconds, dur, sizeof(dur));
+    char meta[260];
+    snprintf(meta, sizeof(meta),
+             "Duration: %s\nCue count: %u\nAuthor: %s\nVersion: %s\nPackage ID: %s\nModified: %s",
+             dur,
+             (unsigned)selectedShowEntry_.cueCount,
+             selectedShowEntry_.author[0] ? selectedShowEntry_.author : "Unavailable",
+             selectedShowEntry_.version[0] ? selectedShowEntry_.version : "Unavailable",
+             selectedShowEntry_.id,
+             selectedShowEntry_.modified[0] ? selectedShowEntry_.modified : "Unavailable");
+    lv_label_set_text(detailsMetaLabel, meta);
 
-    /* Rebuild icon host: default Showduino icon, replace with BMP when available. */
+    String manifest;
+    String reqNodes = "Not specified";
+    String reqAudio = "Not specified";
+    String reqLighting = "Not specified";
+    String reqStorage = "Not specified";
+    String reqMinVersion = "Not specified";
+    if (selectedShowEntry_.path[0] && ShowduinoFileUtil::readTextFile(selectedShowEntry_.path, manifest)) {
+      String nodes = requirementFieldFromManifest(manifest, "requiredNodes");
+      String audio = requirementFieldFromManifest(manifest, "requiredAudio");
+      String lighting = requirementFieldFromManifest(manifest, "requiredLighting");
+      String storage = requirementFieldFromManifest(manifest, "requiredStorage");
+      String minVersion = requirementFieldFromManifest(manifest, "minimumVersion");
+      if (!minVersion.length()) minVersion = requirementFieldFromManifest(manifest, "minPackageVersion");
+      bool stageReq = ShowduinoFileUtil::jsonGetBool(manifest, "stageControllerRequired", true);
+      if (nodes.length()) reqNodes = nodes;
+      else if (stageReq) reqNodes = "Stage Controller (Brain)";
+      if (audio.length()) reqAudio = audio;
+      if (lighting.length()) reqLighting = lighting;
+      if (storage.length()) reqStorage = storage;
+      if (minVersion.length()) reqMinVersion = minVersion;
+    }
+
+    String requirements = String("Requirements\nNodes: ") + reqNodes +
+                          "\nAudio assets: " + reqAudio +
+                          "\nLighting: " + reqLighting +
+                          "\nStorage: " + reqStorage +
+                          "\nMinimum package: " + reqMinVersion;
+    lv_label_set_text(detailsRequirementsLabel_, requirements.c_str());
+
+    char validation[220];
+    snprintf(validation, sizeof(validation),
+             "Validation: %s\nCompatibility: %s\nIssue: %s",
+             validationStateWord(selectedShowValidation_.state),
+             selectedShowValidation_.compatible ? "Compatible" : "Incompatible",
+             selectedShowValidation_.detail[0] ? selectedShowValidation_.detail : "None");
+    lv_label_set_text(detailsValidationLabel_, validation);
+    lv_obj_set_style_text_color(detailsValidationLabel_,
+                                validationStateColor(selectedShowValidation_.state), 0);
+
+    char loadLine[220];
+    snprintf(loadLine, sizeof(loadLine), "Load state: %s\n%s",
+             showLoadStateWord(showLoadState_),
+             showLoadStatusText_[0] ? showLoadStatusText_ : "Ready to load");
+    lv_label_set_text(timelineDetailLabel, loadLine);
+
+    if (detailsLoadBtn_) {
+      const bool busy = (showLoadState_ == ShowLoadUiState::LoadRequested ||
+                         showLoadState_ == ShowLoadUiState::Loading ||
+                         showLoadState_ == ShowLoadUiState::AwaitingStage);
+      const bool validationBlocksLoad =
+          (selectedShowValidation_.state == ShowValidationState::Invalid ||
+           selectedShowValidation_.state == ShowValidationState::MissingAssets ||
+           selectedShowValidation_.state == ShowValidationState::Incompatible);
+      if (busy || validationBlocksLoad) lv_obj_add_state(detailsLoadBtn_, LV_STATE_DISABLED);
+      else lv_obj_clear_state(detailsLoadBtn_, LV_STATE_DISABLED);
+    }
+    if (detailsOpenLiveBtn_) {
+      if (selectedShowAppearsLoaded()) lv_obj_clear_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (detailsIconHost) {
       if (detailsCanvas) {
         ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
@@ -2195,11 +2728,11 @@ private:
       }
       lv_obj_clean(detailsIconHost);
       bool showedBmp = false;
-      if (e && e->hasThumbnail) {
+      if (selectedShowEntry_.hasThumbnail) {
         char thumb[STORAGE_MAX_PATH_LEN];
-        snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", e->folder);
+        snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", selectedShowEntry_.folder);
         detailsCanvas = lv_canvas_create(detailsIconHost);
-        lv_obj_set_pos(detailsCanvas, 0, 0);
+        lv_obj_set_pos(detailsCanvas, 4, 4);
         if (ShowduinoShowThumb::loadBmpToCanvas(detailsCanvas, thumb, 96, 64)) {
           showedBmp = true;
         } else {
@@ -2208,15 +2741,45 @@ private:
           detailsCanvas = nullptr;
         }
       }
-      if (!showedBmp) {
-        ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
-      }
+      if (!showedBmp) ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
     }
+  }
 
-    lv_screen_load(showDetailsScreen);
-    statusDirty = true;
-    trafficDirty = true;
-    updateStatusWidgets(true);
+  void openShowDetails(const char *showId) {
+    if (!showId || !showId[0]) return;
+    const ShowIndexEntry *e = cachedShow(showId);
+    if (!e) return;
+    strncpy(selectedShowIdBuf, showId, sizeof(selectedShowIdBuf) - 1);
+    selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+    selectedShowValid_ = true;
+    selectedShowEntry_ = *e;
+    const ShowValidationResult *vr = cachedValidation(showId);
+    if (vr) selectedShowValidation_ = *vr;
+    else {
+      memset(&selectedShowValidation_, 0, sizeof(selectedShowValidation_));
+      selectedShowValidation_.state = ShowValidationState::NotValidated;
+      selectedShowValidation_.compatible = true;
+      strncpy(selectedShowValidation_.summary, "Not validated",
+              sizeof(selectedShowValidation_.summary) - 1);
+      strncpy(selectedShowValidation_.detail, "Validation data unavailable",
+              sizeof(selectedShowValidation_.detail) - 1);
+    }
+    if (selectedShowAppearsLoaded()) {
+      showLoadState_ = ShowLoadUiState::Loaded;
+      strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+      showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+      strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+              sizeof(showLoadStatusText_) - 1);
+    } else {
+      showLoadState_ = ShowLoadUiState::Ready;
+      if (strcmp(showLoadTargetId_, selectedShowIdBuf) != 0) showLoadTargetId_[0] = '\0';
+      strncpy(showLoadStatusText_, "Ready to load", sizeof(showLoadStatusText_) - 1);
+    }
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    showLoadRequested_ = false;
+    refreshShowDetailsPresentation();
+
+    showDetails();
   }
 
   void showDesktop() {
@@ -2236,6 +2799,21 @@ private:
   void showShows() {
     notePage(DeskPage::Shows);
     lv_screen_load(showsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showDetails() {
+    notePage(DeskPage::Details);
+    lv_screen_load(showDetailsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showMore() {
+    if (!moreScreen) return;
+    notePage(DeskPage::More);
+    lv_screen_load(moreScreen);
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);

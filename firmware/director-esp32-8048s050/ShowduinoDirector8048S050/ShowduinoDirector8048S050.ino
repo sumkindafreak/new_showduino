@@ -336,6 +336,8 @@ void requestStateSync() {
 
 void applyMirroredRuntime(const ShowRuntime &rt) {
   ShowState prev = gShowMirror.state;
+  char prevShowName[64] = {};
+  strncpy(prevShowName, gShowMirror.showName, sizeof(prevShowName) - 1);
   gShowMirror = rt;
   gShowMirror.stageConnected = (linkState == LINK_READY) ? 1 : 0;
 
@@ -358,6 +360,12 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
   }
 
   refreshTimelineUi();
+
+  const bool showIdentityChanged = strcmp(prevShowName, rt.showName) != 0;
+  if (prev != rt.state || showIdentityChanged) {
+    const StorageStatus &st = getStorageStatus();
+    ui.refreshShowLibrary(gStorage.showManager(), &st, false, true, nullptr);
+  }
 }
 
 /** Timeline cue strings are executed by Stage — Director does not dispatch. */
@@ -427,9 +435,13 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   timeline.Stop();
 
   char loadCmd[96];
-  snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showId);
-  if (strlen(loadCmd) >= SHOWDUINO_DESK_COMMAND_MAX) {
-    snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
+  int loadLen = snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showId);
+  if (loadLen <= 0 || loadLen >= SHOWDUINO_DESK_COMMAND_MAX) {
+    loadLen = snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
+  }
+  if (loadLen <= 0 || loadLen >= SHOWDUINO_DESK_COMMAND_MAX) {
+    ui.appendLog("LOAD failed — package identifier exceeds Stage command limits");
+    return false;
   }
   sendToStage(loadCmd);
   sendToStage("SHOW:TL:BEGIN");
@@ -455,7 +467,6 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   }
 
   sendToStage("SHOW:TL:END");
-  ui.setLoadedShowName(showName);
 
   char line[120];
   snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues, %u skipped)",
@@ -592,32 +603,51 @@ void handleUiCommand(const String &command) {
   }
 
   if (command == "UI:SHOW:REFRESH") {
+    const StorageStatus &st = getStorageStatus();
     if (gStorage.isRecoveryMode()) {
+      ui.refreshShowLibrary(gStorage.showManager(), &st, false, false, "Storage recovery mode");
       ui.appendLog("Show refresh failed — SD recovery mode");
       return;
     }
     bool ok = gStorage.showManager().refreshLibrary();
-    ui.refreshShowLibrary(gStorage.showManager());
+    ui.refreshShowLibrary(gStorage.showManager(), &st, true, ok,
+                          ok ? "Scan complete" : "Scan failed");
     ui.appendLog(ok ? "Show library rescanned from SD" : "Show library rescan failed");
     return;
   }
 
   if (command == "UI:SHOW:LOAD") {
     if (!ui.hasSelectedShow()) {
+      ui.markSelectedShowLoadFailure("Load failed — no valid show selected");
       ui.appendLog("LOAD failed — no show selected");
       return;
     }
+    ShowValidationResult validation = {};
+    gStorage.showManager().validateShowPackage(ui.selectedShowId(), validation);
+    if (validation.state == ShowValidationState::Invalid ||
+        validation.state == ShowValidationState::MissingAssets ||
+        validation.state == ShowValidationState::Incompatible) {
+      ui.markSelectedShowLoadFailure(validation.detail[0] ? validation.detail : "Validation failed");
+      ui.appendLog(String("LOAD blocked — ") + validation.detail);
+      return;
+    }
+
+    ui.beginSelectedShowLoadRequest();
     ShowDefinition def;
     if (!gStorage.showManager().loadShow(ui.selectedShowId(), def)) {
+      ui.markSelectedShowLoadFailure("Load failed — missing show manifest");
       ui.appendLog(String("LOAD failed — missing show.json for ") + ui.selectedShowId());
       return;
     }
-    ui.setLoadedShowName(def.name);
     DirectorConfig &cfg = gStorage.getConfig();
     strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
     gStorage.markConfigDirty();
     gStorage.startShowLog(def.id);
-    uploadShowTimelineToStage(def.id);
+    if (uploadShowTimelineToStage(def.id)) {
+      ui.markSelectedShowLoadAwaitingStage();
+    } else {
+      ui.markSelectedShowLoadFailure("Load request failed before Stage confirmation");
+    }
     return;
   }
 
@@ -934,6 +964,8 @@ void setup() {
   ui.appendLog("Panel: landscape 800x480 (BankOfDad bring-up)");
   if (gStorage.isRecoveryMode()) {
     ui.appendLog("SD CARD NOT AVAILABLE — recovery mode");
+    const StorageStatus &st = getStorageStatus();
+    ui.refreshShowLibrary(gStorage.showManager(), &st, false, false, "Storage recovery mode");
     backlightConfigure(10, 255);
     ui.setScreenTimeoutMinutes(10);
   } else {
@@ -942,7 +974,7 @@ void setup() {
     snprintf(line, sizeof(line), "SD %s  %lluMB free", st.cardType,
              (unsigned long long)(st.freeBytes / (1024 * 1024)));
     ui.appendLog(line);
-    ui.refreshShowLibrary(gStorage.showManager());
+    ui.refreshShowLibrary(gStorage.showManager(), &st, true, true, "Scan complete");
     logEvent(LogLevel::Info, LogCategory::System, "Director", "Director ready");
   }
 

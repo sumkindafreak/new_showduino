@@ -1,6 +1,21 @@
 # Showduino Director — Product UI Architecture
 
-Status: implementation baseline for the post-beta Director UI overhaul.
+Status: production implementation reference for the post-beta Director UI overhaul.
+
+## Implementation status (agent/director-ui-overhaul)
+
+- Phase 1 (permanent shell) is implemented in source:
+  - Dock is fixed as `Desktop | Live | Shows | More | E-STOP`
+  - `SCREEN:MORE` route is active
+  - More launcher exists as a dedicated destination screen
+  - Desktop no longer owns transport controls
+  - Live owns primary show transport controls
+  - E-STOP remains permanently available
+- Phase 2 (show workflow) is implemented:
+  - Shows is a deliberate package-library browser with scan/storage states and empty-state handling
+  - Selection opens Show Details without auto-load or auto-run
+  - Show Details presents identity, metadata, requirements, validation, and explicit load status
+  - Load flow is request -> awaiting Stage confirmation -> loaded/open Live (without auto-start)
 
 The beta interface proved the ESP32-S3 display, LVGL 9 rendering, GT911 touch input, SD assets, navigation, runtime mirroring, ESP-NOW command paths and emergency handling. This document defines the production information architecture. It is intentionally operator-led: every item has one primary home, live-operation controls remain easy to reach, and diagnostic detail is separated from normal show operation.
 
@@ -42,7 +57,7 @@ Production target:
 - More
 - E-STOP
 
-`More` opens a launcher for Nodes, Audio, Logs, Settings, Diagnostics and About. Until the launcher is implemented, existing navigation routes may remain available internally, but the final shell must not crowd every destination into the dock.
+`More` opens a launcher for Nodes, Audio, Logs, Settings, Diagnostics and About. The launcher is implemented and serves as the primary path to secondary destinations so the dock remains uncluttered.
 
 ### Emergency control
 
@@ -141,7 +156,7 @@ Contains:
 - View cue list
 - Back to Shows
 
-Playback transport belongs to Live. Show Details may expose Run only after a successful load if that workflow remains desirable, but it must never become a second full Live page.
+Playback transport belongs to Live. Show Details does not expose full transport controls and does not start playback directly.
 
 ## 5. Nodes
 
