@@ -6,11 +6,15 @@
 #include "BoardConfig.h"
 #include "backlight.h"
 #include "src/ShowManager.h"
+#include "src/StorageConfig.h"
+#include "src/DeviceDatabase.h"
 #include "src/ShowThumb.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
 #include "DirectorStatusBar.h"
 #include "DirectorAudioModel.h"
+#include "DirectorP4AudioModel.h"
+#include "DirectorP4AudioView.h"
 #include "ShowduinoOsUi.h"
 
 // =========================================================
@@ -48,6 +52,46 @@ enum class DeskShowView : uint8_t {
   Finished
 };
 
+enum class ShowLoadUiState : uint8_t {
+  Ready = 0,
+  LoadRequested,
+  Loading,
+  Loaded,
+  Warning,
+  Failed,
+  AwaitingStage,
+  TimedOut
+};
+
+enum class NodeDiscoveryUiState : uint8_t {
+  Idle = 0,
+  Requested,
+  Discovering,
+  Found,
+  Completed,
+  TimedOut,
+  Failed
+};
+
+enum class UiNodeRole : uint8_t {
+  Director = 0,
+  Sue,
+  Ian,
+  Children,
+  Grandchildren,
+  Saviour
+};
+
+enum class UiNodeHealth : uint8_t {
+  Fault = 0,
+  Offline,
+  Warning,
+  Degraded,
+  Online,
+  Discovering,
+  Unknown
+};
+
 #ifndef OPERATOR_EVENT_LOG_MAX
 #define OPERATOR_EVENT_LOG_MAX 250
 #endif
@@ -60,7 +104,7 @@ enum class DeskShowView : uint8_t {
 class ShowduinoUi {
 public:
   enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs
+    Desktop = 0, Live, Shows, Details, More, Nodes, NodeDetails, Diagnostics, Settings, Maintenance, About, Audio, Logs
   };
 
   void begin(ShowduinoCommandCallback callback) {
@@ -88,6 +132,18 @@ public:
     statusDirty = true;
     if (state == LINK_DISCONNECTED) statusBar_.noteLinkDown();
     else statusBar_.noteWaitingForSue();
+    if (state == LINK_READY) {
+      lastNodeSignalMs_ = millis();
+      if (nodeDiscoveryPending_) nodeDiscoveryState_ = NodeDiscoveryUiState::Discovering;
+    } else if (state == LINK_DISCONNECTED && nodeDiscoveryPending_) {
+      nodeDiscoveryPending_ = false;
+      nodeDiscoveryState_ = NodeDiscoveryUiState::Failed;
+      strncpy(nodeDiscoveryResult_, "Discovery failed — link disconnected",
+              sizeof(nodeDiscoveryResult_) - 1);
+      nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    }
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
     syncStatusBarHealth();
   }
   uint8_t getLinkState() const { return linkState; }
@@ -103,16 +159,26 @@ public:
     statusDirty = true;
 
     if (locked && !wasLocked) {
+      hideActionConfirm();   /* Emergency must cancel pending destructive confirmations. */
+      hideAbortConfirm();
       emergencyOverlayDismissed = false;
       emergencyAcknowledged = false;
+      pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
       emergencySessionOpen = true;
       emergencyActiveSinceMs = millis();
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
       sessionEmergencyCount++;
       captureEmergencySnapshot();
       showEmergencyOverlay();
       pushOperatorEvent("Emergency Activated");
       emergencyAlarmOnHook();
     } else if (!locked && wasLocked) {
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
+      pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
       pushOperatorEvent("Emergency Cleared");
       emergencyAlarmOffHook();
       updateEmergencyResumeButton();
@@ -158,8 +224,95 @@ public:
   void setNodeCount(uint8_t n) {
     if (nodeCount == n) return;
     nodeCount = n;
+    nodeViewDirty_ = true;
     liveStatusDirty = true;
     syncStatusBarHealth();
+  }
+
+  void setNodeAvailability(ShowduinoNodeAvailWire wireState) {
+    if (nodeAvailWire_ == wireState && nodeAvailKnown_) return;
+    nodeAvailWire_ = wireState;
+    nodeAvailKnown_ = true;
+    if (wireState == SHOWDUINO_NODE_WIRE_FAULT) {
+      strncpy(nodeDiscoveryResult_, "Node fault reported by Stage", sizeof(nodeDiscoveryResult_) - 1);
+    } else if (wireState == SHOWDUINO_NODE_WIRE_OFFLINE) {
+      strncpy(nodeDiscoveryResult_, "Node reported offline", sizeof(nodeDiscoveryResult_) - 1);
+    } else if (wireState == SHOWDUINO_NODE_WIRE_ONLINE) {
+      strncpy(nodeDiscoveryResult_, "Node availability updated", sizeof(nodeDiscoveryResult_) - 1);
+    } else {
+      strncpy(nodeDiscoveryResult_, "Node availability unknown", sizeof(nodeDiscoveryResult_) - 1);
+    }
+    nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    lastNodeSignalMs_ = millis();
+    if (nodeDiscoveryPending_) {
+      nodeDiscoveryState_ = (wireState == SHOWDUINO_NODE_WIRE_ONLINE) ? NodeDiscoveryUiState::Found
+                                                                       : NodeDiscoveryUiState::Completed;
+      nodeDiscoveryPending_ = false;
+    }
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
+  }
+
+  void syncPairedDeviceSnapshot(const DeviceDatabase &db) {
+    uint8_t nextCount = db.size();
+    if (nextCount > DEVICE_DB_MAX) nextCount = DEVICE_DB_MAX;
+    bool changed = (pairedDeviceCount_ != nextCount);
+    pairedDeviceCount_ = nextCount;
+    for (uint8_t i = 0; i < pairedDeviceCount_; i++) {
+      const DeviceRecord *src = db.get(i);
+      if (!src) continue;
+      if (memcmp(&pairedDeviceCache_[i], src, sizeof(DeviceRecord)) != 0) {
+        changed = true;
+      }
+      pairedDeviceCache_[i] = *src;
+    }
+    if (changed) {
+      nodeViewDirty_ = true;
+      refreshNodesPresentationIfActive();
+    }
+  }
+
+  void setStorageStatusSnapshot(const StorageStatus &st) {
+    nodeStorageStatus_ = st;
+    refreshDiagnosticsSummary();
+  }
+
+  void beginNodeDiscoveryRequest() {
+    nodeDiscoveryPending_ = true;
+    nodeDiscoveryRequestMs_ = millis();
+    nodeDiscoveryState_ = NodeDiscoveryUiState::Requested;
+    strncpy(nodeDiscoveryResult_, "Discovery requested — awaiting network response",
+            sizeof(nodeDiscoveryResult_) - 1);
+    nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    nodeViewDirty_ = true;
+    refreshNodesPresentationIfActive();
+  }
+
+  bool nodeDiscoveryPending() const { return nodeDiscoveryPending_; }
+
+  void noteNodeCommandSent(const char *command) {
+    if (command && command[0]) {
+      strncpy(nodeLastCommand_, command, sizeof(nodeLastCommand_) - 1);
+      nodeLastCommand_[sizeof(nodeLastCommand_) - 1] = '\0';
+    }
+    nodeViewDirty_ = true;
+    refreshDiagnosticsSummary();
+  }
+
+  void noteNodeResponse(const char *response) {
+    if (!response || !response[0]) return;
+    strncpy(nodeLastResponse_, response, sizeof(nodeLastResponse_) - 1);
+    nodeLastResponse_[sizeof(nodeLastResponse_) - 1] = '\0';
+    lastNodeSignalMs_ = millis();
+    if (nodeDiscoveryPending_) {
+      nodeDiscoveryState_ = NodeDiscoveryUiState::Completed;
+      nodeDiscoveryPending_ = false;
+      strncpy(nodeDiscoveryResult_, "Discovery completed — network responded",
+              sizeof(nodeDiscoveryResult_) - 1);
+      nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+    }
+    refreshDiagnosticsSummary();
+    refreshNodesPresentationIfActive();
   }
 
   /**
@@ -187,14 +340,17 @@ public:
     liveRemainMs = rt.remainingMs;
     liveProgressPct = pct;
     liveStageConnected = (rt.stageConnected != 0) || (linkState == LINK_READY);
+    lastRuntimeMirrorMs_ = millis();
     strncpy(liveStateName, showStateName(rt.state), sizeof(liveStateName) - 1);
     liveStateName[sizeof(liveStateName) - 1] = '\0';
     liveStatusDirty = true;
     statusDirty = true;
+    nodeViewDirty_ = true;
 
     setTimelinePlayback(rt.showName[0] ? rt.showName : "-", liveStateName,
                         rt.elapsedMs, rt.remainingMs, pct);
     refreshLiveStatusPanel();
+    updateShowLoadStateFromRuntime(rt);
 
     /* Activation: ShowRuntime EMERGENCY_STOP */
     if (rt.state == SHOW_STATE_EMERGENCY_STOP) {
@@ -225,7 +381,6 @@ public:
     }
 
     bool justConfirmedResume = false;
-    bool justConfirmedAbort = false;
 
     /* Pending RESUME: dismiss only after Stage confirms RUNNING */
     if (pendingResumeAwait && rt.state == SHOW_STATE_RUNNING) {
@@ -251,13 +406,18 @@ public:
       showDesktop();
       pushOperatorEvent("Show Aborted");
       setShowView(DeskShowView::Idle);
-      justConfirmedAbort = true;
     }
 
     /* State-transition operator events */
     if (prev != rt.state) {
       switch (rt.state) {
-        case SHOW_STATE_SHOW_LOADED: pushOperatorEvent("Show Loaded"); break;
+        case SHOW_STATE_SHOW_LOADED:
+          pushOperatorEvent("Show Loaded");
+          /* Auto-navigate to Live if operator preference is set */
+          if (showAutoOpenLive_ && !emergencyLocked && !emergencyOverlayVisible) {
+            showLive();
+          }
+          break;
         case SHOW_STATE_RUNNING:
           if (prev == SHOW_STATE_PAUSED && !justConfirmedResume) pushOperatorEvent("Resumed");
           else if (prev != SHOW_STATE_EMERGENCY_STOP && prev != SHOW_STATE_PAUSED)
@@ -275,8 +435,6 @@ public:
           pushOperatorEvent(rt.lastError[0] ? rt.lastError : "Error");
           break;
         case SHOW_STATE_IDLE:
-          if (!justConfirmedAbort && prev == SHOW_STATE_FINISHED)
-            /* menu return path */;
           break;
         default: break;
       }
@@ -327,6 +485,58 @@ public:
       updateEmergencyResumeButton();
     }
 
+    if (showLoadRequested_ &&
+        (showLoadState_ == ShowLoadUiState::AwaitingStage ||
+         showLoadState_ == ShowLoadUiState::Loading ||
+         showLoadState_ == ShowLoadUiState::LoadRequested)) {
+      if (nowMs - showLoadRequestMs_ > 8000UL) {
+        showLoadState_ = ShowLoadUiState::TimedOut;
+        showLoadRequested_ = false;
+        strncpy(showLoadStatusText_,
+                "Load requested — awaiting Stage confirmation",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        refreshShowDetailsPresentation();
+      }
+    }
+
+    if (emergencyActivating && !emergencyLocked &&
+        (nowMs - emergencyRequestMs_) > 5000UL) {
+      emergencyActivating = false;
+      emergencyRequestMs_ = 0;
+      pushOperatorEvent("Emergency requested — awaiting Stage confirmation");
+    }
+
+    /* Clear-await timeout: allow retry if Stage doesn't respond in 12 s */
+    if (pendingClearAwait_ && emergencyLocked &&
+        pendingClearRequestMs_ > 0 &&
+        (nowMs - pendingClearRequestMs_) > 12000UL) {
+      pendingClearAwait_ = false;
+      pendingClearRequestMs_ = 0;
+      pushOperatorEvent("Clear timed out — Stage did not confirm");
+      if (emergencyOverlayVisible) refreshEmergencyOverlayContent();
+    }
+
+    if (nodeDiscoveryPending_) {
+      const unsigned long elapsedMs = nowMs - nodeDiscoveryRequestMs_;
+      if (elapsedMs > 9000UL) {
+        nodeDiscoveryPending_ = false;
+        nodeDiscoveryState_ = NodeDiscoveryUiState::TimedOut;
+        strncpy(nodeDiscoveryResult_, "Discovery requested — awaiting network response",
+                sizeof(nodeDiscoveryResult_) - 1);
+        nodeDiscoveryResult_[sizeof(nodeDiscoveryResult_) - 1] = '\0';
+        nodeViewDirty_ = true;
+      } else if (elapsedMs > 1400UL && nodeDiscoveryState_ == NodeDiscoveryUiState::Requested) {
+        nodeDiscoveryState_ = NodeDiscoveryUiState::Discovering;
+        nodeViewDirty_ = true;
+      }
+    }
+
+    if (nodeViewDirty_) {
+      refreshNodesPresentationIfActive();
+      refreshDiagnosticsSummary();
+    }
+
     if (liveProgressBar && liveStatusDirty) {
       refreshLiveStatusPanel();
     }
@@ -347,6 +557,7 @@ public:
     txCount = tx;
     rxCount = rx;
     trafficDirty = true;
+    refreshDiagnosticsSummary();
   }
 
   void setSynchronising(bool on) {
@@ -459,60 +670,128 @@ public:
     eventSlot(0)[OPERATOR_EVENT_LINE_LEN - 1] = '\0';
     if (eventLogCount < OPERATOR_EVENT_LOG_MAX) eventLogCount++;
 
+    if (logsLivePaused_ && logsPausedUnseen_ < OPERATOR_EVENT_LOG_MAX) {
+      logsPausedUnseen_++;
+    }
     refreshLogsDisplay();
   }
 
+  /* Returns a fixed-width severity prefix for visual scanning in the log display.
+     Format: "!! EMRG" / " X ERR " / " * WARN" / "    ... " (7 chars + space)
+     Kept concise so entries wrap minimally at 80 chars. */
   static const char *logSeverityTag(const char *msg) {
-    if (!msg) return "INFO";
+    if (!msg) return "      ";
     if (strstr(msg, "Emergency") || strstr(msg, "EMERGENCY") || strstr(msg, "E-STOP"))
-      return "EMERGENCY";
-    if (strstr(msg, "Error") || strstr(msg, "ERROR") || strstr(msg, "FAULT") || strstr(msg, "failed"))
-      return "ERROR";
-    if (strstr(msg, "Warn") || strstr(msg, "lost") || strstr(msg, "Lost") || strstr(msg, "Degraded"))
-      return "WARNING";
-    return "INFO";
+      return "!!EMRG";
+    if (strstr(msg, "Error") || strstr(msg, "ERROR") || strstr(msg, "FAULT") ||
+        strstr(msg, "failed") || strstr(msg, "Failed") || strstr(msg, "ERR:"))
+      return " XERR ";
+    if (strstr(msg, "Warn") || strstr(msg, "WARN") || strstr(msg, "lost") ||
+        strstr(msg, "Lost") || strstr(msg, "Degraded") || strstr(msg, "timeout"))
+      return " WARN ";
+    return "      ";
   }
 
   bool logPassesFilter(const char *msg) const {
     if (logsFilter_ == 0) return true; /* All */
-    /* Lightweight keyword filters — safe placeholders until typed log channels exist. */
     if (!msg) return false;
-    if (logsFilter_ == 1) return true; /* System */
-    if (logsFilter_ == 2) return (strstr(msg, "Show") || strstr(msg, "Cue") || strstr(msg, "Runtime"));
-    if (logsFilter_ == 3) return (strstr(msg, "Audio") || strstr(msg, "AUDIO"));
-    if (logsFilter_ == 4) return (strstr(msg, "ESP-NOW") || strstr(msg, "Comms") || strstr(msg, "Node") || strstr(msg, "LINK"));
-    if (logsFilter_ == 5) return (strstr(msg, "Emergency") || strstr(msg, "E-STOP") || strstr(msg, "EMERGENCY"));
+    /* 1=System, 2=Show, 3=Audio, 4=Network, 5=Emergency, 6=Warnings, 7=Errors */
+    switch (logsFilter_) {
+      case 1: /* System — exclude clearly show/audio/network/emergency entries */
+        return !strstr(msg, "AUDIO") && !strstr(msg, "Audio") &&
+               !strstr(msg, "ESP-NOW") && !strstr(msg, "Emergency") &&
+               !strstr(msg, "E-STOP") && !strstr(msg, "Show Started") &&
+               !strstr(msg, "Show Loaded") && !strstr(msg, "Show Finished");
+      case 2: /* Show */
+        return strstr(msg, "Show") || strstr(msg, "Cue") ||
+               strstr(msg, "Runtime") || strstr(msg, "SHOW:") ||
+               strstr(msg, "Loaded") || strstr(msg, "Running");
+      case 3: /* Audio */
+        return strstr(msg, "Audio") || strstr(msg, "AUDIO") ||
+               strstr(msg, "P4 AUDIO");
+      case 4: /* Network */
+        return strstr(msg, "ESP-NOW") || strstr(msg, "Comms") ||
+               strstr(msg, "Stage link") || strstr(msg, "LINK") ||
+               strstr(msg, "HELLO") || strstr(msg, "disconnected") ||
+               strstr(msg, "Stage DISCONNECTED");
+      case 5: /* Emergency */
+        return strstr(msg, "Emergency") || strstr(msg, "E-STOP") ||
+               strstr(msg, "EMERGENCY") || strstr(msg, "Abort");
+      case 6: /* Warnings */
+        return strstr(msg, "Warn") || strstr(msg, "WARN") ||
+               strstr(msg, "lost") || strstr(msg, "Lost") ||
+               strstr(msg, "Degraded") || strstr(msg, "timeout") ||
+               strstr(msg, "Timeout") || strstr(msg, "blocked");
+      case 7: /* Errors */
+        return strstr(msg, "Error") || strstr(msg, "ERROR") ||
+               strstr(msg, "FAULT") || strstr(msg, "failed") ||
+               strstr(msg, "Failed") || strstr(msg, "ERR:") ||
+               strstr(msg, "rejected") || strstr(msg, "LOAD failed");
+    }
     return true;
   }
 
   void refreshLogsDisplay() {
+    if (logsPauseStateLabel_) {
+      char state[64];
+      if (logsLivePaused_) {
+        snprintf(state, sizeof(state), "Live updates: PAUSED  (new %u)",
+                 (unsigned)logsPausedUnseen_);
+      } else {
+        snprintf(state, sizeof(state), "Live updates: ON");
+      }
+      ShowduinoOsTheme::setTextIfChanged(logsPauseStateLabel_, state);
+    }
     if (logsLivePaused_) return;
+
     uiLogText = "";
     uint16_t shown = 0;
+    uint16_t total = 0;
     for (uint16_t i = 0; i < eventLogCount && shown < 60; i++) {
       const char *line = eventSlot(i);
       if (!logPassesFilter(line)) continue;
-      uiLogText += "[";
-      uiLogText += logSeverityTag(line);
-      uiLogText += "] ";
+      total++;
+      const char *sev = logSeverityTag(line);
+      uiLogText += sev;
+      uiLogText += "  ";
       uiLogText += line;
       uiLogText += "\n";
       shown++;
     }
     if (operatorLogLabel != nullptr) {
-      lv_label_set_text(operatorLogLabel, uiLogText.length() ? uiLogText.c_str() : "(no events)\n");
+      if (uiLogText.length() == 0) {
+        /* Deliberate empty state — explain why no entries are shown */
+        if (eventLogCount == 0) {
+          lv_label_set_text(operatorLogLabel,
+              "No log entries yet.\n"
+              "Events will appear here as the Director operates.");
+        } else {
+          lv_label_set_text(operatorLogLabel,
+              "No entries match the current filter.\n"
+              "Tap 'All' to see all events.");
+        }
+      } else {
+        lv_label_set_text(operatorLogLabel, uiLogText.c_str());
+      }
       if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
     }
     if (logsCountLabel_) {
-      char buf[48];
-      snprintf(buf, sizeof(buf), "Events: %u", (unsigned)eventLogCount);
+      char buf[64];
+      if (logsFilter_ == 0) {
+        snprintf(buf, sizeof(buf), "Events: %u  (max %u)", (unsigned)eventLogCount, (unsigned)OPERATOR_EVENT_LOG_MAX);
+      } else {
+        snprintf(buf, sizeof(buf), "Events: %u  (showing %u filtered)", (unsigned)eventLogCount, (unsigned)shown);
+      }
       ShowduinoOsTheme::setTextIfChanged(logsCountLabel_, buf);
     }
     if (logsNewestLabel_) {
-      const char *newest = (eventLogCount > 0) ? eventSlot(0) : "—";
-      char buf[96];
-      snprintf(buf, sizeof(buf), "Newest: %.70s", newest);
-      ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+      if (eventLogCount > 0) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "Latest: %.68s", eventSlot(0));
+        ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+      } else {
+        ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, "Latest: \xe2\x80\x94");
+      }
     }
   }
 
@@ -522,127 +801,237 @@ public:
     eventLogCount = 0;
     uiLogText = "";
     logsLivePaused_ = false;
+    logsPausedUnseen_ = 0;
     refreshLogsDisplay();
     pushOperatorEvent("Logs cleared");
   }
 
   void refreshAudioPresentation() {
-    if (audioLocalStatusLabel_) {
-      char line[96];
-      snprintf(line, sizeof(line), "Status: %s%s",
-               DeskAudioModel::playWord(audioModel_.local.play),
-               audioModel_.local.muted ? " (MUTED)" : "");
-      ShowduinoOsTheme::setTextIfChanged(audioLocalStatusLabel_, line);
-    }
-    if (audioLocalDetailLabel_) {
-      char et[16], rt[16];
-      formatClock(audioModel_.local.elapsedMs, et, sizeof(et));
-      formatClock(audioModel_.local.remainMs, rt, sizeof(rt));
-      char detail[320];
-      snprintf(detail, sizeof(detail),
-               "%s\nAsset: %s\nVol: %u  Loop: %s\nElapsed: %s  Remain: %s\nSD: %s  I2S: %s\n"
-               "Commands only — files play from local SD (no ESP-NOW audio stream).",
-               audioModel_.local.outputName,
-               audioModel_.local.assetName,
-               (unsigned)audioModel_.local.volume,
-               audioModel_.local.loop ? "ON" : "OFF",
-               et, rt,
-               DeskAudioModel::sdWord(audioModel_.local.sd),
-               DeskAudioModel::i2sWord(audioModel_.local.i2s));
-      ShowduinoOsTheme::setTextIfChanged(audioLocalDetailLabel_, detail);
-    }
-    if (audioNodesLabel_) {
-      if (audioModel_.nodeCount == 0) {
-        ShowduinoOsTheme::setTextIfChanged(
-            audioNodesLabel_,
-            "No audio nodes discovered.\n"
-            "Remote nodes = ESP32 + I2S + SD.\n"
-            "P4 sends PLAY/STOP/VOLUME over ESP-NOW (commands only).");
-      } else {
-        String body;
-        for (uint8_t i = 0; i < audioModel_.nodeCount && i < SHOWDUINO_AUDIO_NODE_MAX; i++) {
-          const DeskRemoteAudioNode &n = audioModel_.nodes[i];
-          if (!n.present) continue;
-          char row[220];
-          snprintf(row, sizeof(row),
-                   "%s (%s)\nESP-NOW:%s SD:%s I2S:%s\nASSET:%s STATE:%s SYNC:%s VOL:%u\n\n",
-                   n.name[0] ? n.name : "AUDIO NODE",
-                   n.nodeId[0] ? n.nodeId : "?",
-                   n.online ? "ONLINE" : "OFFLINE",
-                   DeskAudioModel::sdWord(n.sd),
-                   DeskAudioModel::i2sWord(n.i2s),
-                   n.assetName,
-                   DeskAudioModel::playWord(n.play),
-                   DeskAudioModel::syncWord(n.sync),
-                   (unsigned)n.volume);
-          body += row;
-        }
-        ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, body.c_str());
-      }
-    }
-    if (audioRoutingLabel_) {
-      String body = "Asset source = target device SD (not streamed).\n\n";
-      for (uint8_t i = 0; i < 8; i++) {
-        if (!audioModel_.routes[i].used) continue;
-        char row[96];
-        snprintf(row, sizeof(row), "%-14s → %s\n",
-                 audioModel_.routes[i].zone, audioModel_.routes[i].target);
-        body += row;
-      }
-      ShowduinoOsTheme::setTextIfChanged(audioRoutingLabel_, body.c_str());
-    }
-    if (audioCmdStatusLabel_) {
-      bool any = false;
-      String body;
-      for (uint8_t i = 0; i < 6; i++) {
-        if (!audioModel_.recentCmds[i].used) continue;
-        any = true;
-        char row[96];
-        snprintf(row, sizeof(row), "%s  %s  [%s]\n",
-                 audioModel_.recentCmds[i].commandId[0] ? audioModel_.recentCmds[i].commandId : "-",
-                 DeskAudioModel::cmdWord(audioModel_.recentCmds[i].phase),
-                 audioModel_.recentCmds[i].summary);
-        body += row;
-      }
-      if (!any) body = "No command status available.\n(Acks appear when Stage/nodes report them.)";
-      ShowduinoOsTheme::setTextIfChanged(audioCmdStatusLabel_, body.c_str());
-    }
+    /* Update Audio page from P4 model */
+    DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+
+    /* Update Desktop audio summary card */
     if (deskAudioSummaryLabel_) {
       char sum[128];
-      snprintf(sum, sizeof(sum),
-               "AUDIO\nLocal: %s\nNodes: %u ONLINE\nPlaying: %u",
-               DeskAudioModel::playWord(audioModel_.local.play),
-               (unsigned)audioModel_.onlineNodeCount(),
-               (unsigned)audioModel_.playingNodeCount());
+      const char *engWord = p4Audio_.engineStateText();
+      if (p4Audio_.emergencyAudio) {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\nEMERGENCY AUDIO\n%s", engWord);
+      } else if (!p4Audio_.p4LinkOnline) {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\nP4 OFFLINE\nAwaiting link");
+      } else if (p4Audio_.trackKnown && p4Audio_.trackName[0]) {
+        char tname[40];
+        strncpy(tname, p4Audio_.trackName, sizeof(tname) - 1);
+        tname[sizeof(tname) - 1] = '\0';
+        snprintf(sum, sizeof(sum), "P4 AUDIO\n%s\n%.38s", engWord, tname);
+      } else {
+        snprintf(sum, sizeof(sum), "P4 AUDIO\n%s\nAwaiting status", engWord);
+      }
       ShowduinoOsTheme::setTextIfChanged(deskAudioSummaryLabel_, sum);
     }
+
+    /* Update Live page compact audio summary */
+    if (liveAudioStateLabel_) {
+      char liveAudio[64];
+      if (p4Audio_.emergencyAudio) {
+        strncpy(liveAudio, "EMERGENCY AUDIO", sizeof(liveAudio) - 1);
+      } else if (!p4Audio_.p4LinkOnline) {
+        strncpy(liveAudio, "P4 Offline", sizeof(liveAudio) - 1);
+      } else {
+        strncpy(liveAudio, p4Audio_.engineStateText(), sizeof(liveAudio) - 1);
+      }
+      liveAudio[sizeof(liveAudio) - 1] = '\0';
+      ShowduinoOsTheme::setTextIfChanged(liveAudioStateLabel_, liveAudio);
+      lv_obj_set_style_text_color(liveAudioStateLabel_,
+                                   lv_color_hex(p4Audio_.engineStateColor()), 0);
+    }
+  }
+
+  /** Apply a P4 audio response line from Stage. Call from handleStageLine. */
+  void applyP4AudioResponse(const String &line) {
+    const bool rejected = line.startsWith("REJECTED:AUDIO:LOCAL:DISABLED");
+    const bool ack      = line.startsWith("ACK:AUDIO:");
+    const bool unsupp   = line.startsWith("UNSUPPORTED:AUDIO:") ||
+                          line.startsWith("NOT_IMPLEMENTED:AUDIO:");
+    const bool unavail  = line.startsWith("NODE_UNAVAILABLE:AUDIO");
+
+    if (rejected)       p4Audio_.applyLocalDisabled();
+    else if (ack)       p4Audio_.applyAck(line.c_str());
+    else if (unsupp)    p4Audio_.applyUnsupported(line.c_str());
+    else if (unavail)   p4Audio_.applyNodeUnavailable(line.c_str());
+
+    if (currentPage == DeskPage::Audio) {
+      DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+    }
+  }
+
+  /** Track an outgoing audio command for pending state. */
+  void noteAudioCommandSent(const char *cmd) {
+    if (cmd) p4Audio_.trackCommand(cmd);
+  }
+
+  /** Tick audio model — call from loop to detect timeouts. */
+  void tickAudioModel() {
+    p4Audio_.tick();
+  }
+
+  /** Propagate Stage link state to P4 audio model. */
+  void setP4AudioLinkState(bool online) {
+    p4Audio_.setLinkState(online);
+    statusDirty = true;
+  }
+
+  /** Update audio emergency state from Stage emergency. */
+  void setP4AudioEmergency(bool active) {
+    p4Audio_.setEmergencyAudio(active);
+    if (currentPage == DeskPage::Audio) {
+      DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+    }
+  }
+
+  /** Show a maintenance operation result on the Maintenance page. */
+  void setMaintenanceStatus(const char *msg) {
+    if (maintStatusLabel_ && msg) {
+      ShowduinoOsTheme::setTextIfChanged(maintStatusLabel_, msg);
+    }
+  }
+
+  /** Update the About director name label and Settings identity. */
+  void setAboutDirectorName(const char *name) {
+    if (aboutNameLabel_ && name && name[0]) {
+      ShowduinoOsTheme::setTextIfChanged(aboutNameLabel_, name);
+    }
+    if (settingsDirNameLabel_ && name && name[0]) {
+      char buf[64];
+      snprintf(buf, sizeof(buf), "Director: %.50s", name);
+      ShowduinoOsTheme::setTextIfChanged(settingsDirNameLabel_, buf);
+    }
+  }
+
+  /** Apply show-operation preferences from DirectorConfig (call after config loads). */
+  void setShowOpPreferences(bool confirmStart, bool confirmStop, bool autoLive) {
+    showCfmBeforeStart_ = confirmStart;
+    showCfmBeforeStop_  = confirmStop;
+    showAutoOpenLive_   = autoLive;
+    refreshShowOpToggles_();
+  }
+
+  /** Refresh network status labels on the Settings page. */
+  void refreshNetworkStatus() {
+    if (!settingsNetStatusLabel_) return;
+    const char *linkWord;
+    switch (linkState) {
+      case LINK_READY:        linkWord = "ONLINE";        break;
+      case LINK_SEARCHING:    linkWord = "SEARCHING";     break;
+      case LINK_DISCONNECTED: linkWord = "DISCONNECTED";  break;
+      default:                linkWord = "UNKNOWN";       break;
+    }
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "Stage: %s  \xc2\xb7  Nodes: %u  \xc2\xb7  P4: %s",
+             linkWord,
+             (unsigned)nodeCount,
+             liveStageConnected ? "LINKED" : "NOT REPORTED");
+    ShowduinoOsTheme::setTextIfChanged(settingsNetStatusLabel_, buf);
+    uint32_t col = (linkState == LINK_READY) ? 0x3CFFB0u : (linkState == LINK_DISCONNECTED ? 0xFF5A6Au : 0xFFD166u);
+    lv_obj_set_style_text_color(settingsNetStatusLabel_, lv_color_hex(col), 0);
   }
 
   void refreshDesktopFabric() {
     if (!deskFabricLabel_) return;
-    const char *esp = "UNKNOWN";
-    if (linkState == LINK_READY) esp = "ONLINE";
-    else if (linkState == LINK_SEARCHING) esp = "SEARCHING";
-    else if (linkState == LINK_DISCONNECTED) esp = "LOST";
-    const char *ian = liveStageConnected ? "LINKED" : "NOT AVAILABLE";
-    const char *em = (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) ? "ACTIVE" : "CLEAR";
-    char buf[220];
+    const char *health = "UNKNOWN";
+    if (nodeAvailKnown_) {
+      if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT) health = "FAULT";
+      else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_OFFLINE) health = "OFFLINE";
+      else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE) health = "HEALTHY";
+      else health = "UNKNOWN";
+    } else if (nodeCount >= SHOWDUINO_EXPECTED_NODES && linkState == LINK_READY) {
+      health = "HEALTHY";
+    } else if (linkState == LINK_DISCONNECTED) {
+      health = "OFFLINE";
+    }
+    const char *warn = (nodeAvailKnown_ && nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT)
+                         ? "Critical warning: relay node fault"
+                         : ((linkState == LINK_DISCONNECTED) ? "Critical warning: fabric link lost" : "Critical warning: none");
+    char buf[200];
     snprintf(buf, sizeof(buf),
-             "ESP-NOW: %s\nIAN / P4: %s\nNodes: %u / %u\nEmergency: %s\nTraffic: TX %lu / RX %lu",
-             esp, ian,
-             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES,
-             em,
-             (unsigned long)txCount, (unsigned long)rxCount);
+             "Online nodes: %u\nExpected nodes: %u\nOverall health: %s\n%s",
+             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES, health, warn);
     ShowduinoOsTheme::setTextIfChanged(deskFabricLabel_, buf);
   }
 
   /** Refresh SHOWS list from ShowManager (SD scan results). */
-  void refreshShowLibrary(const ShowManager &sm) {
+  void refreshShowLibrary(const ShowManager &sm,
+                          const StorageStatus *storageStatus = nullptr,
+                          bool scanCompleted = true,
+                          bool scanOk = true,
+                          const char *scanNote = nullptr) {
+    if (storageStatus) {
+      showStorageMounted_ = storageStatus->mounted;
+      showStorageRecovery_ = storageStatus->recoveryMode;
+      strncpy(showStorageCardType_, storageStatus->cardType, sizeof(showStorageCardType_) - 1);
+      showStorageCardType_[sizeof(showStorageCardType_) - 1] = '\0';
+      strncpy(showStorageLastError_, storageStatus->lastError, sizeof(showStorageLastError_) - 1);
+      showStorageLastError_[sizeof(showStorageLastError_) - 1] = '\0';
+    }
+    if (scanCompleted) {
+      showLibraryScanned_ = true;
+      showLibraryScanOk_ = scanOk;
+      if (scanNote && scanNote[0]) {
+        strncpy(showLibraryScanNote_, scanNote, sizeof(showLibraryScanNote_) - 1);
+        showLibraryScanNote_[sizeof(showLibraryScanNote_) - 1] = '\0';
+      } else {
+        strncpy(showLibraryScanNote_, scanOk ? "Scan complete" : "Scan failed",
+                sizeof(showLibraryScanNote_) - 1);
+        showLibraryScanNote_[sizeof(showLibraryScanNote_) - 1] = '\0';
+      }
+    }
     rebuildShowList(sm);
+    refreshShowDetailsPresentation();
+    statusDirty = true;
   }
 
   const char *selectedShowId() const { return selectedShowIdBuf; }
-  bool hasSelectedShow() const { return selectedShowIdBuf[0] != '\0'; }
+  bool hasSelectedShow() const { return selectedShowIdBuf[0] != '\0' && selectedShowValid_; }
+
+  void beginSelectedShowLoadRequest() {
+    if (!hasSelectedShow()) return;
+    strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+    showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+    showLoadState_ = ShowLoadUiState::LoadRequested;
+    showLoadRequestMs_ = millis();
+    showLoadRequested_ = true;
+    strncpy(showLoadStatusText_, "Load requested — preparing package",
+            sizeof(showLoadStatusText_) - 1);
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
+
+  void markSelectedShowLoadAwaitingStage() {
+    if (!hasSelectedShow()) return;
+    if (!showLoadTargetId_[0]) {
+      strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+      showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+    }
+    showLoadState_ = ShowLoadUiState::AwaitingStage;
+    showLoadRequestMs_ = millis();
+    showLoadRequested_ = true;
+    strncpy(showLoadStatusText_, "Load requested — awaiting Stage",
+            sizeof(showLoadStatusText_) - 1);
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
+
+  void markSelectedShowLoadFailure(const char *reason) {
+    showLoadState_ = ShowLoadUiState::Failed;
+    showLoadRequested_ = false;
+    if (reason && reason[0]) {
+      strncpy(showLoadStatusText_, reason, sizeof(showLoadStatusText_) - 1);
+    } else {
+      strncpy(showLoadStatusText_, "Load failed", sizeof(showLoadStatusText_) - 1);
+    }
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    refreshShowDetailsPresentation();
+  }
 
   void setLoadedShowName(const char *name) {
     if (!name) name = "";
@@ -650,6 +1039,7 @@ public:
     strncpy(loadedShowNameBuf, name, sizeof(loadedShowNameBuf) - 1);
     loadedShowNameBuf[sizeof(loadedShowNameBuf) - 1] = '\0';
     statusDirty = true;
+    refreshShowDetailsPresentation();
   }
 
   /** Timeline / runtime readout (Stage 5–7). */
@@ -667,18 +1057,6 @@ public:
       const char *cur = lv_label_get_text(timelineStatusLabel);
       if (cur == nullptr || strcmp(cur, line) != 0) {
         lv_label_set_text(timelineStatusLabel, line);
-      }
-    }
-    if (timelineDetailLabel) {
-      char detail[192];
-      snprintf(detail, sizeof(detail),
-               "Show: %s\nState: %s\nElapsed: %s\nRemaining: %s\nProgress: %u%%",
-               showName && showName[0] ? showName : "-",
-               stateText ? stateText : "Stopped",
-               et, rt, (unsigned)progressPct);
-      const char *cur = lv_label_get_text(timelineDetailLabel);
-      if (cur == nullptr || strcmp(cur, detail) != 0) {
-        lv_label_set_text(timelineDetailLabel, detail);
       }
     }
     if (liveProgressBar) {
@@ -848,21 +1226,66 @@ private:
       default: return "IDLE";
     }
   }
+  bool isShowActiveForMaintenance() const {
+    return mirroredState == SHOW_STATE_RUNNING ||
+           mirroredState == SHOW_STATE_PAUSED ||
+           mirroredState == SHOW_STATE_EMERGENCY_STOP;
+  }
   lv_obj_t *desktopScreen = nullptr;
   lv_obj_t *liveScreen = nullptr;
   lv_obj_t *showsScreen = nullptr;
   lv_obj_t *showDetailsScreen = nullptr;
+  lv_obj_t *moreScreen = nullptr;
+  lv_obj_t *nodesScreen = nullptr;
+  lv_obj_t *nodeDetailsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
+  lv_obj_t *maintenanceScreen = nullptr;
+  lv_obj_t *aboutScreen = nullptr;
+  lv_obj_t *maintStatusLabel_ = nullptr;     /* last maintenance op result */
+  lv_obj_t *aboutNameLabel_ = nullptr;       /* director name on About page */
+  lv_obj_t *settingsDirNameLabel_ = nullptr; /* director name on Settings page */
+  lv_obj_t *brightnessLabel_ = nullptr;      /* brightness readout on Settings */
+  lv_obj_t *settingsNetStatusLabel_ = nullptr; /* network status in Settings */
+  lv_obj_t *settingsCfmStartLabel_ = nullptr;  /* confirm-before-start toggle state */
+  lv_obj_t *settingsCfmStopLabel_  = nullptr;  /* confirm-before-stop toggle state */
+  lv_obj_t *settingsAutoLiveLabel_ = nullptr;  /* auto-open-live toggle state */
+
+  /* Show-operation preferences (mirrored from DirectorConfig) */
+  bool showCfmBeforeStart_    = false;
+  bool showCfmBeforeStop_     = false;
+  bool showAutoOpenLive_      = false;
   lv_obj_t *timeoutLabel = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
+  lv_obj_t *showsStorageLabel_ = nullptr;
+  lv_obj_t *showsScanLabel_ = nullptr;
   lv_obj_t *showListScroll = nullptr;
   lv_obj_t *detailsNameLabel = nullptr;
+  lv_obj_t *detailsSummaryLabel_ = nullptr;
   lv_obj_t *detailsDescLabel = nullptr;
   lv_obj_t *detailsMetaLabel = nullptr;
+  lv_obj_t *detailsRequirementsLabel_ = nullptr;
+  lv_obj_t *detailsValidationLabel_ = nullptr;
+  lv_obj_t *detailsLoadBtn_ = nullptr;
+  lv_obj_t *detailsOpenLiveBtn_ = nullptr;
   lv_obj_t *detailsIconHost = nullptr;
   lv_obj_t *detailsCanvas = nullptr;
+  lv_obj_t *nodesSummaryLabel_ = nullptr;
+  lv_obj_t *nodesDiscoveryLabel_ = nullptr;
+  lv_obj_t *nodesLinkLabel_ = nullptr;
+  lv_obj_t *nodesRefreshBtn_ = nullptr;
+  lv_obj_t *nodesListScroll_ = nullptr;
+  lv_obj_t *nodesMissingDataLabel_ = nullptr;
+  lv_obj_t *nodeDetailsTitleLabel_ = nullptr;
+  lv_obj_t *nodeDetailsIdentityLabel_ = nullptr;
+  lv_obj_t *nodeDetailsConnectionLabel_ = nullptr;
+  lv_obj_t *nodeDetailsRuntimeLabel_ = nullptr;
+  lv_obj_t *diagTransportLabel_ = nullptr;
+  lv_obj_t *diagStorageLabel_ = nullptr;
+  lv_obj_t *diagPacketLabel_ = nullptr;
+  lv_obj_t *diagLastCommandLabel_ = nullptr;
+  lv_obj_t *diagLastResponseLabel_ = nullptr;
   lv_obj_t *timelineStatusLabel = nullptr;
   lv_obj_t *timelineDetailLabel = nullptr;
   lv_obj_t *liveStatusLabel = nullptr;
@@ -873,7 +1296,64 @@ private:
   char loadedShowNameBuf[64] = {};
   char showOpenCmds[SHOW_INDEX_MAX][80] = {};
   ShowIndexEntry showListCache[SHOW_INDEX_MAX] = {};
+  ShowValidationResult showValidationCache_[SHOW_INDEX_MAX] = {};
   uint8_t showListCount = 0;
+  bool selectedShowValid_ = false;
+  ShowIndexEntry selectedShowEntry_ = {};
+  ShowValidationResult selectedShowValidation_ = {};
+  ShowLoadUiState showLoadState_ = ShowLoadUiState::Ready;
+  bool showLoadRequested_ = false;
+  unsigned long showLoadRequestMs_ = 0;
+  char showLoadTargetId_[64] = {};
+  bool showLibraryScanned_ = false;
+  bool showLibraryScanOk_ = false;
+  bool showStorageMounted_ = false;
+  bool showStorageRecovery_ = false;
+  char showStorageCardType_[16] = "Unknown";
+  char showStorageLastError_[128] = {};
+  char showLibraryScanNote_[96] = "Not scanned";
+  char showLoadStatusText_[128] = "Ready to load";
+
+  struct UiNodeEntry {
+    bool used = false;
+    UiNodeRole role = UiNodeRole::Children;
+    UiNodeHealth health = UiNodeHealth::Unknown;
+    bool online = false;
+    bool onlineKnown = false;
+    bool everSeen = false;
+    char name[48] = {};
+    char id[32] = {};
+    char mac[24] = {};
+    char firmware[20] = {};
+    char lastSeen[32] = {};
+    char roleText[20] = {};
+    char activity[64] = {};
+    char path[64] = {};
+    char transport[20] = {};
+    int16_t rssi = 0;
+    bool hasRssi = false;
+    char capabilities[96] = {};
+  };
+
+  static constexpr uint8_t NODE_VIEW_MAX = 32;
+  UiNodeEntry nodeView_[NODE_VIEW_MAX] = {};
+  uint8_t nodeViewCount_ = 0;
+  char nodeOpenCmds_[NODE_VIEW_MAX][24] = {};
+  int16_t selectedNodeIndex_ = -1;
+  bool nodeViewDirty_ = true;
+  DeviceRecord pairedDeviceCache_[DEVICE_DB_MAX] = {};
+  uint8_t pairedDeviceCount_ = 0;
+  ShowduinoNodeAvailWire nodeAvailWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  bool nodeAvailKnown_ = false;
+  NodeDiscoveryUiState nodeDiscoveryState_ = NodeDiscoveryUiState::Idle;
+  bool nodeDiscoveryPending_ = false;
+  unsigned long nodeDiscoveryRequestMs_ = 0;
+  unsigned long lastNodeSignalMs_ = 0;
+  unsigned long lastRuntimeMirrorMs_ = 0;
+  char nodeDiscoveryResult_[96] = "Not requested";
+  char nodeLastCommand_[96] = "Not sent";
+  char nodeLastResponse_[96] = "Not received";
+  StorageStatus nodeStorageStatus_ = {};
 
   DeskPage currentPage = DeskPage::Desktop;
   DeskPage pageBeforeEmergency = DeskPage::Desktop;
@@ -890,11 +1370,18 @@ private:
   lv_obj_t *abortConfirmRoot = nullptr;
   lv_obj_t *completeOverlayRoot = nullptr;
   lv_obj_t *completeDetailLabel = nullptr;
+  lv_obj_t *actionConfirmRoot = nullptr;
+  lv_obj_t *actionConfirmTitleLabel_ = nullptr;
+  lv_obj_t *actionConfirmBodyLabel_ = nullptr;
+  char actionConfirmCommand_[48] = {};
+  bool actionConfirmVisible_ = false;
   bool emergencyOverlayBuilt = false;
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
   bool emergencyVisitingDiag = false;
   bool emergencyAcknowledged = false;
+  bool pendingClearAwait_ = false;
+  unsigned long pendingClearRequestMs_ = 0;
   bool pendingResumeAwait = false;
   bool pendingAbortAwait = false;
   bool emergencySessionOpen = false;
@@ -966,14 +1453,19 @@ private:
   lv_obj_t *logsCountLabel_ = nullptr;
   lv_obj_t *logsNewestLabel_ = nullptr;
   lv_obj_t *logsFilterLabel_ = nullptr;
+  lv_obj_t *logsPauseStateLabel_ = nullptr;
   bool logsLivePaused_ = false;
-  uint8_t logsFilter_ = 0; /* 0=All placeholder */
-  DeskAudioModel audioModel_;
+  uint16_t logsPausedUnseen_ = 0;
+  uint8_t logsFilter_ = 0; /* 0=All, 1=System, 2=Show, 3=Audio, 4=Net, 5=E-Stop, 6=Warnings, 7=Errors */
+  DeskAudioModel audioModel_;                          /* legacy; retained for compatibility */
+  DirectorP4AudioModel p4Audio_;                       /* P4-mirrored audio state             */
+  DirectorP4AudioView::PageHandles audioVH_;           /* Audio page LVGL handles             */
   lv_obj_t *audioLocalStatusLabel_ = nullptr;
   lv_obj_t *audioLocalDetailLabel_ = nullptr;
   lv_obj_t *audioNodesLabel_ = nullptr;
   lv_obj_t *audioRoutingLabel_ = nullptr;
   lv_obj_t *audioCmdStatusLabel_ = nullptr;
+  lv_obj_t *liveAudioStateLabel_ = nullptr;  /* compact P4 audio summary on Live */
   lv_obj_t *operatorLogRoot = nullptr;
   lv_obj_t *operatorLogScroll = nullptr;
   lv_obj_t *operatorLogLabel = nullptr;
@@ -993,6 +1485,7 @@ private:
   bool synchronising = false;
   bool snapshotActive = false;
   bool emergencyActivating = false;
+  unsigned long emergencyRequestMs_ = 0;
   bool statusDirty = true;
   bool trafficDirty = true;
   uint32_t txCount = 0;
@@ -1009,6 +1502,21 @@ private:
 
   void runCommand(const String &command) {
     backlightNotifyActivity();
+
+    if (command == "UI:CONFIRM:CANCEL") {
+      hideActionConfirm();
+      pushOperatorEvent("Action cancelled");
+      return;
+    }
+    if (command == "UI:CONFIRM:OK") {
+      if (!actionConfirmVisible_ || !actionConfirmCommand_[0]) return;
+      char confirmed[48];
+      strncpy(confirmed, actionConfirmCommand_, sizeof(confirmed) - 1);
+      confirmed[sizeof(confirmed) - 1] = '\0';
+      hideActionConfirm();
+      runCommand(String(confirmed));
+      return;
+    }
 
     /* Emergency overlay actions — handled even while overlay blocks the desk. */
     if (command == "UI:ESTOP:RESUME") {
@@ -1039,6 +1547,7 @@ private:
     if (command == "UI:ESTOP:DIAG") {
       emergencyVisitingDiag = true;
       hideEmergencyOverlay();
+      hideActionConfirm();
       /* Persistent banner stays while EMERGENCY_STOP. */
       showDiagnostics();
       if (commandCallback) commandCallback("UI:ESTOP:DIAG");
@@ -1052,12 +1561,14 @@ private:
         emergencyOverlayDismissed = true;
         hideEmergencyOverlay();
         hideAbortConfirm();
+        hideActionConfirm();
         showDesktop();
         setShowView(DeskShowView::Idle);
         pushOperatorEvent("Returned to Desktop");
       } else {
         emergencyVisitingDiag = true;
         hideEmergencyOverlay();
+        hideActionConfirm();
         showDesktop();
         pushOperatorEvent("Desktop — banner active until E-Stop cleared");
       }
@@ -1081,7 +1592,8 @@ private:
       return;
     }
     if (command == "UI:COMPLETE:EXPORT") {
-      pushOperatorEvent("Export Log — coming soon");
+      /* Forward to .ino for exportDiagnostics() */
+      if (commandCallback) commandCallback("UI:LOGS:EXPORT");
       return;
     }
 
@@ -1103,8 +1615,20 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
-    if (command == "SCREEN:DIAG" || command == "SCREEN:NODES") {
+    if (command == "SCREEN:MORE") {
+      notePage(DeskPage::More);
+      showMore();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:NODES") {
       notePage(DeskPage::Nodes);
+      showNodes();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:DIAG") {
+      notePage(DeskPage::Diagnostics);
       showDiagnostics();
       maybeRestoreEmergencyOverlay();
       return;
@@ -1113,6 +1637,60 @@ private:
       notePage(DeskPage::Settings);
       showSettings();
       maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:MAINT") {
+      notePage(DeskPage::Maintenance);
+      showMaintenance();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "SCREEN:ABOUT" || command == "SETTINGS:ABOUT") {
+      notePage(DeskPage::About);
+      showAbout();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "MAINTENANCE:FACTORY:RESET:CONFIRM") {
+      showActionConfirm("FACTORY RESET — CONFIRM?",
+                        "This will reset ALL Director configuration to defaults.\n"
+                        "Director name, backlight settings and all preferences will be lost.\n"
+                        "The running show on the Stage Engine is NOT affected.",
+                        "MAINTENANCE:FACTORY:RESET");
+      return;
+    }
+    if (command == "MAINTENANCE:RESTORE:LATEST:CONFIRM") {
+      showActionConfirm("RESTORE LATEST BACKUP?",
+                        "This will replace the current Director configuration\n"
+                        "with the most recent saved backup.\n"
+                        "The current config will be backed up before restore.",
+                        "MAINTENANCE:RESTORE:LATEST");
+      return;
+    }
+    if (command == "UI:SETTINGS:BRIGHTNESS:UP") {
+      if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:UP");
+      return;
+    }
+    if (command == "UI:SETTINGS:BRIGHTNESS:DOWN") {
+      if (commandCallback) commandCallback("SETTINGS:BRIGHTNESS:DOWN");
+      return;
+    }
+    /* Show-op preference toggles — forward to .ino for persistence */
+    if (command == "SETTINGS:SHOWOP:CFMSTART:1" || command == "SETTINGS:SHOWOP:CFMSTART:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    if (command == "SETTINGS:SHOWOP:CFMSTOP:1" || command == "SETTINGS:SHOWOP:CFMSTOP:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    if (command == "SETTINGS:SHOWOP:AUTOLIVE:1" || command == "SETTINGS:SHOWOP:AUTOLIVE:0") {
+      if (commandCallback) commandCallback(command);
+      return;
+    }
+    /* Director name presets — forward to .ino for persistence */
+    if (command.startsWith("SETTINGS:NAME:")) {
+      if (commandCallback) commandCallback(command);
       return;
     }
     if (command == "SCREEN:AUDIO") {
@@ -1130,8 +1708,10 @@ private:
 
     if (command.startsWith("UI:LOGS:FILTER:")) {
       logsFilter_ = (uint8_t)command.substring(strlen("UI:LOGS:FILTER:")).toInt();
-      static const char *names[] = {"All", "System", "Show", "Audio", "Network", "Emergency"};
-      if (logsFilterLabel_ && logsFilter_ < 6) {
+      static const char *names[] = {
+        "All", "System", "Show", "Audio", "Network", "Emergency", "Warnings", "Errors"};
+      static const uint8_t namesCount = 8;
+      if (logsFilterLabel_ && logsFilter_ < namesCount) {
         char buf[32];
         snprintf(buf, sizeof(buf), "Filter: %s", names[logsFilter_]);
         ShowduinoOsTheme::setTextIfChanged(logsFilterLabel_, buf);
@@ -1143,22 +1723,42 @@ private:
       return;
     }
     if (command == "UI:LOGS:CLEAR") {
+      showActionConfirm("CLEAR LOG HISTORY?",
+                        "This removes operator log history from memory.\n"
+                        "Running show state is not changed.\n"
+                        "You can cancel to keep all current logs.",
+                        "UI:LOGS:CLEAR:CONFIRMED");
+      return;
+    }
+    if (command == "UI:LOGS:CLEAR:CONFIRMED") {
       clearOperatorLogs();
       return;
     }
     if (command == "UI:LOGS:EXPORT") {
-      pushOperatorEvent("Export Logs — placeholder (not available)");
+      /* Forward to .ino for actual export via exportDiagnostics() */
+      if (commandCallback) commandCallback("UI:LOGS:EXPORT");
       return;
     }
     if (command == "UI:LOGS:PAUSE") {
-      logsLivePaused_ = true;
       pushOperatorEvent("Log live updates paused");
+      logsLivePaused_ = true;
+      logsPausedUnseen_ = 0;
+      refreshLogsDisplay();
       return;
     }
     if (command == "UI:LOGS:RESUME") {
       logsLivePaused_ = false;
+      logsPausedUnseen_ = 0;
       refreshLogsDisplay();
       pushOperatorEvent("Log live updates resumed");
+      return;
+    }
+    if (command == "UI:LOGS:LATEST") {
+      logsLivePaused_ = false;
+      logsPausedUnseen_ = 0;
+      refreshLogsDisplay();
+      if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
+      pushOperatorEvent("Logs jumped to latest");
       return;
     }
 
@@ -1168,9 +1768,89 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "UI:SHOW:OPENLIVE") {
+      notePage(DeskPage::Live);
+      showLive();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
     if (command.startsWith("UI:SHOW:OPEN:")) {
       notePage(DeskPage::Details);
       openShowDetails(command.substring(strlen("UI:SHOW:OPEN:")).c_str());
+      return;
+    }
+    if (command == "UI:NODE:BACK") {
+      notePage(DeskPage::Nodes);
+      showNodes();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == "UI:NODE:DIAG") {
+      notePage(DeskPage::Diagnostics);
+      showDiagnostics();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command.startsWith("UI:NODE:OPEN:")) {
+      int idx = command.substring(strlen("UI:NODE:OPEN:")).toInt();
+      if (idx >= 0 && idx < (int)nodeViewCount_) {
+        openNodeDetails((uint8_t)idx);
+      }
+      return;
+    }
+    if (command == "UI:NODES:REFRESH") {
+      if (emergencyOverlayVisible || emergencyLocked) {
+        pushOperatorEvent("Discovery blocked during emergency");
+        return;
+      }
+      if (nodeDiscoveryPending_) {
+        pushOperatorEvent("Discovery already pending");
+        return;
+      }
+      beginNodeDiscoveryRequest();
+      if (commandCallback != nullptr) commandCallback("UI:NODES:REFRESH");
+      return;
+    }
+
+    if (command == "STORAGE:REPAIR") {
+      if (emergencyLocked || emergencyOverlayVisible) {
+        pushOperatorEvent("Repair blocked during emergency");
+        return;
+      }
+      if (isShowActiveForMaintenance()) {
+        pushOperatorEvent("Repair blocked while show is active");
+        return;
+      }
+      showActionConfirm("REPAIR STORAGE DIRECTORIES?",
+                        "Repairs folder structure on SD.\n"
+                        "This can interrupt maintenance workflows.\n"
+                        "Confirm to continue.",
+                        "STORAGE:REPAIR:CONFIRMED");
+      return;
+    }
+    if (command == "STORAGE:REPAIR:CONFIRMED") {
+      if (commandCallback) commandCallback("STORAGE:REPAIR");
+      pushOperatorEvent("Storage repair requested");
+      return;
+    }
+    if (command == "SELFTEST:START") {
+      if (emergencyLocked || emergencyOverlayVisible) {
+        pushOperatorEvent("Self-test blocked during emergency");
+        return;
+      }
+      if (isShowActiveForMaintenance()) {
+        pushOperatorEvent("Self-test blocked while show is active");
+        return;
+      }
+      showActionConfirm("START SELF-TEST?",
+                        "Self-test may pulse outputs for diagnostics.\n"
+                        "Confirm only when the stage is safe.",
+                        "SELFTEST:START:CONFIRMED");
+      return;
+    }
+    if (command == "SELFTEST:START:CONFIRMED") {
+      if (commandCallback) commandCallback("SELFTEST:START");
+      pushOperatorEvent("Self-test requested");
       return;
     }
 
@@ -1204,8 +1884,28 @@ private:
       relayView[ch - 1] = wantOn ? DeskRelayView::PendingOn : DeskRelayView::PendingOff;
       refreshRelayButton(ch - 1);
       outbound = String("RELAY:") + ch + (wantOn ? ":ON" : ":OFF");
+    } else if (command == "SHOW:START") {
+      /* Optional confirmation before starting the show */
+      if (showCfmBeforeStart_) {
+        showActionConfirm("START SHOW?",
+                          "This will start playback on the Stage Engine.\n"
+                          "Confirm to proceed or Cancel to return to Live.",
+                          "SHOW:START");
+        return;
+      }
+      /* Fall through: outbound = "SHOW:START" (default) */
     } else if (command == "RELAY:ALL:OFF" || command == "STOP:ALL" || command == "SHOW:STOP" ||
                command == "UI:SHOW:STOP") {
+      /* Optional confirmation before stopping the show */
+      const bool isStop = (command == "SHOW:STOP" || command == "UI:SHOW:STOP");
+      if (isStop && showCfmBeforeStop_ &&
+          mirroredState == SHOW_STATE_RUNNING) {
+        showActionConfirm("STOP SHOW?",
+                          "This will stop the running show on the Stage Engine.\n"
+                          "The show can be restarted from Live.",
+                          command == "UI:SHOW:STOP" ? "UI:SHOW:STOP" : "SHOW:STOP");
+        return;
+      }
       for (uint8_t i = 0; i < 8; i++) {
         if (relayView[i] == DeskRelayView::ConfirmedOn ||
             relayView[i] == DeskRelayView::ConfirmedOff) {
@@ -1227,17 +1927,33 @@ private:
       outbound = "UI:SHOW:REFRESH";
     } else if (command == "AUDIO:LOCAL:VOLUME:+") {
       outbound = "AUDIO:LOCAL:VOLUME:+";
+      p4Audio_.trackCommand(outbound.c_str());
     } else if (command == "AUDIO:LOCAL:VOLUME:-") {
       outbound = "AUDIO:LOCAL:VOLUME:-";
+      p4Audio_.trackCommand(outbound.c_str());
     } else if (command.startsWith("AUDIO:LOCAL:") || command.startsWith("AUDIO:NODE:")) {
+      /* Emergency blocks audio controls (except status requests) */
+      if (emergencyLocked && !command.startsWith("AUDIO:LOCAL:STATUS") &&
+          !command.startsWith("AUDIO:NODE:STATUS")) {
+        pushOperatorEvent("Audio cmd blocked: emergency active");
+        return;
+      }
       outbound = command; /* colon-text to Stage; no PCM over ESP-NOW */
+      p4Audio_.trackCommand(command.c_str());
       {
         char note[96];
         snprintf(note, sizeof(note), "Audio cmd %.80s", command.c_str());
         pushOperatorEvent(note);
       }
     } else if (command == "EMERGENCY:STOP") {
+      if ((emergencyActivating && (millis() - emergencyRequestMs_) < 2000UL) ||
+          emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+        pushOperatorEvent("Emergency already active/requested");
+        return;
+      }
       emergencyActivating = true;
+      emergencyRequestMs_ = millis();
+      hideActionConfirm();
       pageBeforeEmergency = currentPage;
       for (uint8_t i = 0; i < 8; i++) {
         relayView[i] = DeskRelayView::PendingOff;
@@ -1245,8 +1961,16 @@ private:
       }
       /* Overlay + timeline pause applied in handleUiCommand / Stage STATE path. */
     } else if (command == "EMERGENCY:CLEAR") {
-      /* Do not clear lock until STATE:EMERGENCY:CLEAR */
-      appendLog("E-CLEAR requested…");
+      /* Do not clear lock until STATE:EMERGENCY:CLEAR.
+         Debounce: do not resend if already awaiting Stage confirmation. */
+      if (pendingClearAwait_) {
+        pushOperatorEvent("Clear already requested — awaiting Stage");
+        return;
+      }
+      pendingClearAwait_ = true;
+      pendingClearRequestMs_ = millis();
+      appendLog("E-CLEAR requested — awaiting Stage");
+      refreshEmergencyOverlayContent();
     }
 
     statusDirty = true;
@@ -1386,27 +2110,36 @@ private:
     lv_label_set_long_mode(logsNewestLabel_, LV_LABEL_LONG_CLIP);
 
     lv_obj_t *panel = os_.makePrimaryPanel(logsScreen);
+    /* Filter row 1: All, System, Show, Audio, Net, E-Stop */
     os_.makeHeading(panel, "FILTERS", 8, 2);
-    makeButton(panel, "All", 8, 28, 70, 36, "UI:LOGS:FILTER:0");
-    makeButton(panel, "System", 84, 28, 86, 36, "UI:LOGS:FILTER:1");
-    makeButton(panel, "Show", 176, 28, 70, 36, "UI:LOGS:FILTER:2");
-    makeButton(panel, "Audio", 252, 28, 70, 36, "UI:LOGS:FILTER:3");
-    makeButton(panel, "Net", 328, 28, 64, 36, "UI:LOGS:FILTER:4");
-    makeButton(panel, "E-Stop", 398, 28, 80, 36, "UI:LOGS:FILTER:5");
-    logsFilterLabel_ = makeLabel(panel, "Filter: All", 490, 34);
+    makeButton(panel, "All",    8, 24, 60, 32, "UI:LOGS:FILTER:0");
+    makeButton(panel, "System",74, 24, 78, 32, "UI:LOGS:FILTER:1");
+    makeButton(panel, "Show", 158, 24, 64, 32, "UI:LOGS:FILTER:2");
+    makeButton(panel, "Audio", 228, 24, 66, 32, "UI:LOGS:FILTER:3");
+    makeButton(panel, "Net",   300, 24, 56, 32, "UI:LOGS:FILTER:4");
+    makeButton(panel, "E-Stop",362, 24, 74, 32, "UI:LOGS:FILTER:5");
+    /* Filter row: Warnings and Errors (expanded severity filters) */
+    makeButton(panel, "Warnings", 442, 24, 88, 32, "UI:LOGS:FILTER:6");
+    makeButton(panel, "Errors",   536, 24, 72, 32, "UI:LOGS:FILTER:7");
+    logsFilterLabel_ = makeLabel(panel, "Filter: All", 616, 28);
     lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
+    lv_obj_set_width(logsFilterLabel_, OS_CONTENT_FULL_W - 626);
+    logsPauseStateLabel_ = makeLabel(panel, "Live: ON", 616, 44);
+    lv_obj_add_style(logsPauseStateLabel_, &os_.caption, 0);
+    lv_obj_set_width(logsPauseStateLabel_, OS_CONTENT_FULL_W - 626);
 
-    makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
-    makeButton(panel, "Export", 106, 72, 90, 36, "UI:LOGS:EXPORT");
-    makeButton(panel, "Pause", 204, 72, 90, 36, "UI:LOGS:PAUSE");
-    makeButton(panel, "Resume", 302, 72, 90, 36, "UI:LOGS:RESUME");
-    makeButton(panel, "Back", 400, 72, 90, 36, "SCREEN:SETTINGS");
+    makeButton(panel, "Clear",  8, 62, 86, 34, "UI:LOGS:CLEAR", true);
+    makeButton(panel, "Export",100, 62, 86, 34, "UI:LOGS:EXPORT");
+    makeButton(panel, "Pause", 192, 62, 86, 34, "UI:LOGS:PAUSE");
+    makeButton(panel, "Resume",284, 62, 86, 34, "UI:LOGS:RESUME");
+    makeButton(panel, "Latest",376, 62, 86, 34, "UI:LOGS:LATEST");
+    makeButton(panel, "Back",  468, 62, 86, 34, "SCREEN:MORE");
 
     operatorLogRoot = panel;
     operatorLogScroll = lv_obj_create(panel);
     lv_obj_remove_style_all(operatorLogScroll);
-    lv_obj_set_pos(operatorLogScroll, 8, 118);
-    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 130);
+    lv_obj_set_pos(operatorLogScroll, 8, 104);
+    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 114);
     lv_obj_set_style_bg_opa(operatorLogScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(operatorLogScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(operatorLogScroll, LV_SCROLLBAR_MODE_AUTO);
@@ -1421,51 +2154,723 @@ private:
   void buildAudioPage() {
     audioScreen = makeScreen();
     createDock(audioScreen);
-    lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
-    makeLabel(sum, "1× local P4 output  ·  remote zones = ESP-NOW command nodes", 10, 10);
+    /* Build Audio page using P4-aware view builder */
+    audioVH_ = DirectorP4AudioView::buildChrome(audioScreen, os_, staticEventHandler, this);
+    DirectorP4AudioView::updateState(audioVH_, os_, p4Audio_);
+  }
+
+  static const char *nodeRoleName(UiNodeRole role) {
+    switch (role) {
+      case UiNodeRole::Director: return "DIRECTOR";
+      case UiNodeRole::Sue: return "SUE";
+      case UiNodeRole::Ian: return "IAN";
+      case UiNodeRole::Children: return "CHILDREN";
+      case UiNodeRole::Grandchildren: return "GRANDCHILDREN";
+      case UiNodeRole::Saviour: return "SAVIOUR";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static const char *nodeHealthName(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return "FAULT";
+      case UiNodeHealth::Offline: return "OFFLINE";
+      case UiNodeHealth::Warning: return "WARNING";
+      case UiNodeHealth::Degraded: return "DEGRADED";
+      case UiNodeHealth::Online: return "ONLINE";
+      case UiNodeHealth::Discovering: return "DISCOVERING";
+      default: return "UNKNOWN";
+    }
+  }
+
+  static uint8_t nodeHealthSortRank(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return 0;
+      case UiNodeHealth::Offline: return 1;
+      case UiNodeHealth::Warning:
+      case UiNodeHealth::Degraded: return 2;
+      case UiNodeHealth::Online: return 3;
+      case UiNodeHealth::Discovering: return 4;
+      default: return 5;
+    }
+  }
+
+  static uint32_t nodeHealthColor(UiNodeHealth health) {
+    switch (health) {
+      case UiNodeHealth::Fault: return OsColor::Danger;
+      case UiNodeHealth::Offline: return 0x334155;
+      case UiNodeHealth::Warning: return 0xB45309;
+      case UiNodeHealth::Degraded: return 0x92400E;
+      case UiNodeHealth::Online: return OsColor::Ok;
+      case UiNodeHealth::Discovering: return OsColor::Accent;
+      default: return OsColor::TextMuted;
+    }
+  }
+
+  static const char *nodeDiscoveryStateName(NodeDiscoveryUiState st) {
+    switch (st) {
+      case NodeDiscoveryUiState::Idle: return "Idle";
+      case NodeDiscoveryUiState::Requested: return "Discovery requested";
+      case NodeDiscoveryUiState::Discovering: return "Discovering";
+      case NodeDiscoveryUiState::Found: return "Devices found";
+      case NodeDiscoveryUiState::Completed: return "Completed";
+      case NodeDiscoveryUiState::TimedOut: return "Timed out";
+      case NodeDiscoveryUiState::Failed: return "Failed";
+      default: return "Unknown";
+    }
+  }
+
+  static UiNodeRole roleFromDeviceRecord(const DeviceRecord &d) {
+    String type = String(d.type);
+    String id = String(d.id);
+    String caps = String(d.capabilities);
+    type.toLowerCase();
+    id.toLowerCase();
+    caps.toLowerCase();
+    if (type.indexOf("director") >= 0 || id.indexOf("director") >= 0) return UiNodeRole::Director;
+    if (type.indexOf("sue") >= 0 || id.indexOf("sue") >= 0) return UiNodeRole::Sue;
+    if (type.indexOf("ian") >= 0 || type.indexOf("stage") >= 0 ||
+        id.indexOf("ian") >= 0 || id.indexOf("stage") >= 0) return UiNodeRole::Ian;
+    if (type.indexOf("grandchild") >= 0 || caps.indexOf("grandchild") >= 0) return UiNodeRole::Grandchildren;
+    if (type.indexOf("saviour") >= 0 || caps.indexOf("saviour") >= 0) return UiNodeRole::Saviour;
+    return UiNodeRole::Children;
+  }
+
+  static bool stringsEqualCaseInsensitive(const char *a, const char *b) {
+    if (!a || !b) return false;
+    return strcasecmp(a, b) == 0;
+  }
+
+  bool nodeIdExists(const char *id) const {
+    if (!id || !id[0]) return false;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (!nodeView_[i].used) continue;
+      if (stringsEqualCaseInsensitive(nodeView_[i].id, id)) return true;
+    }
+    return false;
+  }
+
+  UiNodeEntry *appendNodeEntry() {
+    if (nodeViewCount_ >= NODE_VIEW_MAX) return nullptr;
+    UiNodeEntry *entry = &nodeView_[nodeViewCount_++];
+    memset(entry, 0, sizeof(UiNodeEntry));
+    entry->used = true;
+    entry->health = UiNodeHealth::Unknown;
+    return entry;
+  }
+
+  void addCoreNodeEntries() {
+    UiNodeEntry *director = appendNodeEntry();
+    if (director) {
+      director->role = UiNodeRole::Director;
+      strncpy(director->name, "Showduino Director UI", sizeof(director->name) - 1);
+      strncpy(director->id, "director-ui", sizeof(director->id) - 1);
+      strncpy(director->roleText, nodeRoleName(director->role), sizeof(director->roleText) - 1);
+      strncpy(director->activity, "Touchscreen control surface", sizeof(director->activity) - 1);
+      strncpy(director->transport, "local", sizeof(director->transport) - 1);
+      strncpy(director->path, "Local", sizeof(director->path) - 1);
+      director->onlineKnown = true;
+      director->online = true;
+      director->health = UiNodeHealth::Online;
+      director->everSeen = true;
+      strncpy(director->firmware, STORAGE_FW_VERSION, sizeof(director->firmware) - 1);
+    }
+
+    UiNodeEntry *sue = appendNodeEntry();
+    if (sue) {
+      char sueMac[24];
+      snprintf(sueMac, sizeof(sueMac), "%02X:%02X:%02X:%02X:%02X:%02X",
+               SHOWDUINO_P4_C6_MAC_0, SHOWDUINO_P4_C6_MAC_1, SHOWDUINO_P4_C6_MAC_2,
+               SHOWDUINO_P4_C6_MAC_3, SHOWDUINO_P4_C6_MAC_4, SHOWDUINO_P4_C6_MAC_5);
+      sue->role = UiNodeRole::Sue;
+      strncpy(sue->name, "SUE Communications Engine", sizeof(sue->name) - 1);
+      strncpy(sue->id, "sue-bridge", sizeof(sue->id) - 1);
+      strncpy(sue->mac, sueMac, sizeof(sue->mac) - 1);
+      strncpy(sue->roleText, nodeRoleName(sue->role), sizeof(sue->roleText) - 1);
+      strncpy(sue->transport, "esp-now", sizeof(sue->transport) - 1);
+      strncpy(sue->path, "Director -> SUE", sizeof(sue->path) - 1);
+      if (linkState == LINK_READY) {
+        sue->onlineKnown = true;
+        sue->online = true;
+        sue->health = UiNodeHealth::Online;
+        sue->everSeen = true;
+      } else if (linkState == LINK_SEARCHING) {
+        sue->onlineKnown = false;
+        sue->online = false;
+        sue->health = UiNodeHealth::Discovering;
+      } else {
+        sue->onlineKnown = true;
+        sue->online = false;
+        sue->health = UiNodeHealth::Offline;
+      }
+      strncpy(sue->activity, linkState == LINK_READY ? "Bridge responding" : "Awaiting bridge response",
+              sizeof(sue->activity) - 1);
+    }
+
+    UiNodeEntry *ian = appendNodeEntry();
+    if (ian) {
+      ian->role = UiNodeRole::Ian;
+      strncpy(ian->name, "IAN Show Engine", sizeof(ian->name) - 1);
+      strncpy(ian->id, "ian-show-engine", sizeof(ian->id) - 1);
+      strncpy(ian->roleText, nodeRoleName(ian->role), sizeof(ian->roleText) - 1);
+      strncpy(ian->transport, "uart-via-sue", sizeof(ian->transport) - 1);
+      strncpy(ian->path, "Director -> SUE -> IAN", sizeof(ian->path) - 1);
+      ian->everSeen = (lastRuntimeMirrorMs_ > 0 || liveStageConnected);
+      if (liveStageConnected) {
+        ian->onlineKnown = true;
+        ian->online = true;
+        ian->health = UiNodeHealth::Online;
+      } else if (linkState == LINK_SEARCHING) {
+        ian->onlineKnown = false;
+        ian->online = false;
+        ian->health = UiNodeHealth::Discovering;
+      } else if (linkState == LINK_DISCONNECTED) {
+        ian->onlineKnown = true;
+        ian->online = false;
+        ian->health = UiNodeHealth::Offline;
+      } else {
+        ian->onlineKnown = false;
+        ian->online = false;
+        ian->health = UiNodeHealth::Unknown;
+      }
+      strncpy(ian->activity, liveStateName, sizeof(ian->activity) - 1);
+    }
+
+    if (nodeAvailKnown_) {
+      UiNodeEntry *relayFabric = appendNodeEntry();
+      if (relayFabric) {
+        relayFabric->role = UiNodeRole::Children;
+        strncpy(relayFabric->name, "Relay Fabric", sizeof(relayFabric->name) - 1);
+        strncpy(relayFabric->id, "relay-fabric", sizeof(relayFabric->id) - 1);
+        strncpy(relayFabric->roleText, nodeRoleName(relayFabric->role), sizeof(relayFabric->roleText) - 1);
+        strncpy(relayFabric->transport, "stage-runtime", sizeof(relayFabric->transport) - 1);
+        strncpy(relayFabric->path, "Director -> SUE -> IAN -> Relay", sizeof(relayFabric->path) - 1);
+        relayFabric->onlineKnown = true;
+        relayFabric->online = (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE);
+        relayFabric->everSeen = true;
+        if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_ONLINE) relayFabric->health = UiNodeHealth::Online;
+        else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_FAULT) relayFabric->health = UiNodeHealth::Fault;
+        else if (nodeAvailWire_ == SHOWDUINO_NODE_WIRE_OFFLINE) relayFabric->health = UiNodeHealth::Offline;
+        else relayFabric->health = UiNodeHealth::Unknown;
+        strncpy(relayFabric->activity, "Availability mirrored from Stage", sizeof(relayFabric->activity) - 1);
+      }
+    }
+  }
+
+  void addPairedDeviceEntries() {
+    for (uint8_t i = 0; i < pairedDeviceCount_ && i < DEVICE_DB_MAX; i++) {
+      const DeviceRecord &src = pairedDeviceCache_[i];
+      if (!src.id[0] && !src.mac[0]) continue;
+      if (src.id[0] && nodeIdExists(src.id)) continue;
+      UiNodeEntry *entry = appendNodeEntry();
+      if (!entry) return;
+      entry->role = roleFromDeviceRecord(src);
+      strncpy(entry->roleText, nodeRoleName(entry->role), sizeof(entry->roleText) - 1);
+      if (src.name[0]) strncpy(entry->name, src.name, sizeof(entry->name) - 1);
+      else strncpy(entry->name, "Unnamed device", sizeof(entry->name) - 1);
+      if (src.id[0]) strncpy(entry->id, src.id, sizeof(entry->id) - 1);
+      else strncpy(entry->id, src.mac, sizeof(entry->id) - 1);
+      strncpy(entry->mac, src.mac, sizeof(entry->mac) - 1);
+      strncpy(entry->firmware, src.firmware, sizeof(entry->firmware) - 1);
+      strncpy(entry->capabilities, src.capabilities, sizeof(entry->capabilities) - 1);
+      strncpy(entry->transport, "paired-db", sizeof(entry->transport) - 1);
+      strncpy(entry->path, "Stored paired record", sizeof(entry->path) - 1);
+      if (src.lastSeen[0]) {
+        entry->everSeen = true;
+        strncpy(entry->lastSeen, src.lastSeen, sizeof(entry->lastSeen) - 1);
+        entry->onlineKnown = true;
+        entry->online = false;
+        entry->health = UiNodeHealth::Offline;
+        strncpy(entry->activity, "Previously seen (not live-reported)", sizeof(entry->activity) - 1);
+      } else {
+        entry->everSeen = false;
+        entry->onlineKnown = false;
+        entry->online = false;
+        entry->health = UiNodeHealth::Unknown;
+        strncpy(entry->activity, "Never seen on this runtime", sizeof(entry->activity) - 1);
+      }
+    }
+  }
+
+  void sortNodeView() {
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      for (uint8_t j = i + 1; j < nodeViewCount_; j++) {
+        UiNodeEntry &a = nodeView_[i];
+        UiNodeEntry &b = nodeView_[j];
+        bool swap = false;
+        if ((uint8_t)b.role < (uint8_t)a.role) swap = true;
+        else if (a.role == b.role) {
+          uint8_t ra = nodeHealthSortRank(a.health);
+          uint8_t rb = nodeHealthSortRank(b.health);
+          if (rb < ra) swap = true;
+          else if (ra == rb) {
+            const char *an = a.name[0] ? a.name : a.id;
+            const char *bn = b.name[0] ? b.name : b.id;
+            if (strcasecmp(bn, an) < 0) swap = true;
+          }
+        }
+        if (swap) {
+          UiNodeEntry tmp = a;
+          a = b;
+          b = tmp;
+        }
+      }
+    }
+  }
+
+  void rebuildNodeViewModel() {
+    nodeViewCount_ = 0;
+    memset(nodeView_, 0, sizeof(nodeView_));
+    addCoreNodeEntries();
+    addPairedDeviceEntries();
+    sortNodeView();
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      snprintf(nodeOpenCmds_[i], sizeof(nodeOpenCmds_[i]), "UI:NODE:OPEN:%u", (unsigned)i);
+    }
+    if (selectedNodeIndex_ >= (int16_t)nodeViewCount_) selectedNodeIndex_ = -1;
+    nodeViewDirty_ = false;
+  }
+
+  void refreshNodesSummary() {
+    if (!nodesSummaryLabel_) return;
+    uint8_t warningFault = 0;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (nodeView_[i].health == UiNodeHealth::Fault ||
+          nodeView_[i].health == UiNodeHealth::Warning ||
+          nodeView_[i].health == UiNodeHealth::Degraded) {
+        warningFault++;
+      }
+    }
+    uint8_t expected = (uint8_t)SHOWDUINO_EXPECTED_NODES;
+    uint8_t online = nodeCount;
+    uint8_t offline = (online >= expected) ? 0 : (uint8_t)(expected - online);
+
+    char summary[200];
+    snprintf(summary, sizeof(summary),
+             "Expected: %u  |  Online: %u  |  Offline: %u  |  Warning/Fault: %u",
+             (unsigned)expected, (unsigned)online, (unsigned)offline, (unsigned)warningFault);
+    ShowduinoOsTheme::setTextIfChanged(nodesSummaryLabel_, summary);
+
+    char discovery[200];
+    snprintf(discovery, sizeof(discovery), "Discovery: %s\nLast result: %s",
+             nodeDiscoveryStateName(nodeDiscoveryState_), nodeDiscoveryResult_);
+    ShowduinoOsTheme::setTextIfChanged(nodesDiscoveryLabel_, discovery);
+
+    const char *sue = (linkState == LINK_READY) ? "Connected" :
+                      (linkState == LINK_SEARCHING) ? "Searching" : "Disconnected";
+    const char *ian = liveStageConnected ? "Connected" : "Not reported";
+    char linkLine[180];
+    snprintf(linkLine, sizeof(linkLine), "SUE link: %s   |   IAN link: %s", sue, ian);
+    ShowduinoOsTheme::setTextIfChanged(nodesLinkLabel_, linkLine);
+
+    if (nodesMissingDataLabel_) {
+      ShowduinoOsTheme::setTextIfChanged(
+          nodesMissingDataLabel_,
+          "Individual CHILDREN / GRANDCHILDREN / SAVIOUR live records are not currently streamed by Stage."
+      );
+    }
+
+    if (nodesRefreshBtn_) {
+      if (nodeDiscoveryPending_) {
+        lv_obj_add_state(nodesRefreshBtn_, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_opa(nodesRefreshBtn_, LV_OPA_50, 0);
+      } else {
+        lv_obj_clear_state(nodesRefreshBtn_, LV_STATE_DISABLED);
+        lv_obj_set_style_bg_opa(nodesRefreshBtn_, LV_OPA_COVER, 0);
+      }
+    }
+  }
+
+  void renderNodeGroup(UiNodeRole role, int &y, int w) {
+    char heading[48];
+    snprintf(heading, sizeof(heading), "%s", nodeRoleName(role));
+    lv_obj_t *h = makeLabel(nodesListScroll_, heading, 8, y);
+    lv_obj_add_style(h, &os_.title, 0);
+    y += 24;
+
+    bool any = false;
+    for (uint8_t i = 0; i < nodeViewCount_; i++) {
+      if (nodeView_[i].role != role) continue;
+      any = true;
+      const UiNodeEntry &n = nodeView_[i];
+      const int cardH = 88;
+      lv_obj_t *card = lv_obj_create(nodesListScroll_);
+      lv_obj_add_style(card, &os_.panel, 0);
+      lv_obj_set_pos(card, 6, y);
+      lv_obj_set_size(card, w - 12, cardH);
+      lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
+
+      lv_obj_t *name = makeLabel(card, n.name[0] ? n.name : "Unnamed", 10, 8);
+      lv_obj_add_style(name, &os_.body, 0);
+      lv_obj_set_width(name, w - 170);
+      lv_label_set_long_mode(name, LV_LABEL_LONG_CLIP);
+
+      char stateChip[26];
+      snprintf(stateChip, sizeof(stateChip), "[%s]", nodeHealthName(n.health));
+      lv_obj_t *chip = makeLabel(card, stateChip, 10, 30);
+      lv_obj_add_style(chip, &os_.caption, 0);
+      lv_obj_set_style_text_color(chip, lv_color_hex(nodeHealthColor(n.health)), 0);
+
+      char sub[196];
+      snprintf(sub, sizeof(sub),
+               "ID: %s\nLast seen: %s\nPath: %s",
+               n.id[0] ? n.id : "Not reported",
+               n.lastSeen[0] ? n.lastSeen : (n.everSeen ? "Previously seen" : "Never seen"),
+               n.path[0] ? n.path : "Not available");
+      lv_obj_t *detail = makeLabel(card, sub, 126, 8);
+      lv_obj_add_style(detail, &os_.caption, 0);
+      lv_obj_set_width(detail, w - 250);
+      lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+
+      makeButton(card, "Details", w - 122, 24, 102, 38, nodeOpenCmds_[i]);
+      y += cardH + 8;
+    }
+
+    if (!any) {
+      lv_obj_t *empty = makeLabel(nodesListScroll_, "No live records reported for this role.", 12, y);
+      lv_obj_add_style(empty, &os_.caption, 0);
+      lv_obj_set_style_text_color(empty, lv_color_hex(OsColor::TextMuted), 0);
+      y += 26;
+    }
+    y += 8;
+  }
+
+  void rebuildNodesList() {
+    if (!nodesListScroll_) return;
+    lv_obj_clean(nodesListScroll_);
+    int y = 4;
+    const int w = OS_CONTENT_FULL_W - 40;
+    renderNodeGroup(UiNodeRole::Director, y, w);
+    renderNodeGroup(UiNodeRole::Sue, y, w);
+    renderNodeGroup(UiNodeRole::Ian, y, w);
+    renderNodeGroup(UiNodeRole::Children, y, w);
+    renderNodeGroup(UiNodeRole::Grandchildren, y, w);
+    renderNodeGroup(UiNodeRole::Saviour, y, w);
+  }
+
+  void refreshNodeDetailsPresentation() {
+    if (!nodeDetailsScreen || !nodeDetailsTitleLabel_) return;
+    if (selectedNodeIndex_ < 0 || selectedNodeIndex_ >= (int16_t)nodeViewCount_) {
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsTitleLabel_, "No node selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsIdentityLabel_, "Identity\nNot selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsConnectionLabel_, "Connection\nNot selected");
+      ShowduinoOsTheme::setTextIfChanged(nodeDetailsRuntimeLabel_, "Runtime\nNot selected");
+      return;
+    }
+
+    const UiNodeEntry &n = nodeView_[(uint8_t)selectedNodeIndex_];
+    char title[80];
+    snprintf(title, sizeof(title), "%s  •  %s", n.name[0] ? n.name : "Unnamed", nodeRoleName(n.role));
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsTitleLabel_, title);
+
+    char identity[320];
+    snprintf(identity, sizeof(identity),
+             "Identity\n"
+             "Name: %s\n"
+             "Role: %s\n"
+             "Device ID: %s\n"
+             "MAC: %s\n"
+             "IP: Not reported\n"
+             "Firmware: %s\n"
+             "Hardware: %s",
+             n.name[0] ? n.name : "Not reported",
+             nodeRoleName(n.role),
+             n.id[0] ? n.id : "Not reported",
+             n.mac[0] ? n.mac : "Not reported",
+             n.firmware[0] ? n.firmware : "Not reported",
+             n.transport[0] ? n.transport : "Not reported");
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsIdentityLabel_, identity);
+
+    char rssiText[20];
+    if (n.hasRssi) snprintf(rssiText, sizeof(rssiText), "%d dBm", (int)n.rssi);
+    else strncpy(rssiText, "Not reported", sizeof(rssiText) - 1);
+    rssiText[sizeof(rssiText) - 1] = '\0';
+
+    char connection[420];
+    snprintf(connection, sizeof(connection),
+             "Connection\n"
+             "State: %s\n"
+             "Last seen: %s\n"
+             "Signal: %s\n"
+             "Transport: %s\n"
+             "Connection path: %s\n"
+             "Discovery: %s\n"
+             "Last command: %s\n"
+             "Last response: %s\n"
+             "Packet counters: TX %lu / RX %lu\n"
+             "Error counters: Not reported",
+             nodeHealthName(n.health),
+             n.lastSeen[0] ? n.lastSeen : (n.everSeen ? "Previously seen" : "Never seen"),
+             rssiText,
+             n.transport[0] ? n.transport : "Not reported",
+             n.path[0] ? n.path : "Not reported",
+             nodeDiscoveryStateName(nodeDiscoveryState_),
+             nodeLastCommand_,
+             nodeLastResponse_,
+             (unsigned long)txCount, (unsigned long)rxCount);
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsConnectionLabel_, connection);
+
+    char runtime[420];
+    snprintf(runtime, sizeof(runtime),
+             "Runtime\n"
+             "Uptime: %lus\n"
+             "Active show: %s\n"
+             "Current state: %s\n"
+             "Current cue: %lu / %lu\n"
+             "Output state: Not reported\n"
+             "Audio state: Not reported\n"
+             "Sensor values: Not reported\n"
+             "Battery level: Not reported",
+             (unsigned long)(millis() / 1000UL),
+             loadedShowNameBuf[0] ? loadedShowNameBuf : "Not loaded",
+             liveStateName[0] ? liveStateName : "Unknown",
+             (unsigned long)liveCue,
+             (unsigned long)liveCueTotal);
+    ShowduinoOsTheme::setTextIfChanged(nodeDetailsRuntimeLabel_, runtime);
+  }
+
+  void refreshDiagnosticsSummary() {
+    if (!diagTransportLabel_) return;
+    const char *link = (linkState == LINK_READY) ? "READY" :
+                       (linkState == LINK_SEARCHING) ? "SEARCHING" : "DISCONNECTED";
+    char transport[200];
+    snprintf(transport, sizeof(transport),
+             "Transport\nESP-NOW link: %s\nIAN / Stage: %s\nDiscovery: %s",
+             link,
+             liveStageConnected ? "CONNECTED" : "NOT REPORTED",
+             nodeDiscoveryStateName(nodeDiscoveryState_));
+    ShowduinoOsTheme::setTextIfChanged(diagTransportLabel_, transport);
+
+    char storage[220];
+    snprintf(storage, sizeof(storage),
+             "Storage\nSD: %s (%s)\nFree: %llu MB\nLast error: %s",
+             nodeStorageStatus_.mounted ? "READY" : "UNAVAILABLE",
+             nodeStorageStatus_.cardType,
+             (unsigned long long)(nodeStorageStatus_.freeBytes / (1024ULL * 1024ULL)),
+             nodeStorageStatus_.lastError[0] ? nodeStorageStatus_.lastError : "None");
+    ShowduinoOsTheme::setTextIfChanged(diagStorageLabel_, storage);
+
+    char packet[180];
+    snprintf(packet, sizeof(packet),
+             "Telemetry\nTX %lu  RX %lu\nHeap %u  PSRAM %u",
+             (unsigned long)txCount, (unsigned long)rxCount,
+             (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
+    ShowduinoOsTheme::setTextIfChanged(diagPacketLabel_, packet);
+
+    char lastCmd[120];
+    snprintf(lastCmd, sizeof(lastCmd), "Last command: %.90s", nodeLastCommand_);
+    ShowduinoOsTheme::setTextIfChanged(diagLastCommandLabel_, lastCmd);
+
+    char lastRsp[120];
+    snprintf(lastRsp, sizeof(lastRsp), "Last response: %.90s", nodeLastResponse_);
+    ShowduinoOsTheme::setTextIfChanged(diagLastResponseLabel_, lastRsp);
+  }
+
+  void refreshNodesPresentationIfActive() {
+    if (!nodesScreen) return;
+    if (nodeViewDirty_) rebuildNodeViewModel();
+    refreshNodesSummary();
+    if (currentPage == DeskPage::Nodes) rebuildNodesList();
+    if (currentPage == DeskPage::NodeDetails) refreshNodeDetailsPresentation();
+  }
+
+  void openNodeDetails(uint8_t idx) {
+    if (idx >= nodeViewCount_) return;
+    selectedNodeIndex_ = idx;
+    refreshNodeDetailsPresentation();
+    showNodeDetails();
+  }
+
+  void buildNodesPage() {
+    nodesScreen = makeScreen();
+    createDock(nodesScreen);
+    lv_obj_t *sum = os_.makePageChrome(nodesScreen, "NODES");
+    nodesSummaryLabel_ = makeLabel(sum, "Expected: 0  |  Online: 0  |  Offline: 0  |  Warning/Fault: 0", 10, 8);
+    lv_obj_add_style(nodesSummaryLabel_, &os_.body, 0);
+    lv_obj_set_width(nodesSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesSummaryLabel_, LV_LABEL_LONG_CLIP);
+    nodesDiscoveryLabel_ = makeLabel(sum, "Discovery: Idle", 10, 28);
+    lv_obj_add_style(nodesDiscoveryLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesDiscoveryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesDiscoveryLabel_, LV_LABEL_LONG_CLIP);
+    nodesLinkLabel_ = makeLabel(sum, "SUE link: Unknown   |   IAN link: Unknown", 10, 48);
+    lv_obj_add_style(nodesLinkLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesLinkLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodesLinkLabel_, LV_LABEL_LONG_CLIP);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(nodesScreen);
+    os_.makeHeading(panel, "SHOWDUINO FABRIC", 8, 2);
+    nodesRefreshBtn_ = makeButton(panel, "Discover / Refresh", 8, 30, 170, 40, "UI:NODES:REFRESH");
+    makeButton(panel, "Open Diagnostics", 186, 30, 170, 40, "SCREEN:DIAG");
+    nodesMissingDataLabel_ = makeLabel(panel, "", 366, 34);
+    lv_obj_add_style(nodesMissingDataLabel_, &os_.caption, 0);
+    lv_obj_set_width(nodesMissingDataLabel_, OS_CONTENT_FULL_W - 392);
+    lv_label_set_long_mode(nodesMissingDataLabel_, LV_LABEL_LONG_WRAP);
+
+    nodesListScroll_ = lv_obj_create(panel);
+    lv_obj_remove_style_all(nodesListScroll_);
+    lv_obj_set_pos(nodesListScroll_, 4, 78);
+    lv_obj_set_size(nodesListScroll_, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 88);
+    lv_obj_set_style_bg_opa(nodesListScroll_, LV_OPA_TRANSP, 0);
+    lv_obj_set_scroll_dir(nodesListScroll_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(nodesListScroll_, LV_SCROLLBAR_MODE_AUTO);
+  }
+
+  void buildNodeDetailsPage() {
+    nodeDetailsScreen = makeScreen();
+    createDock(nodeDetailsScreen);
+    lv_obj_t *sum = os_.makePageChrome(nodeDetailsScreen, "NODE DETAILS");
+    nodeDetailsTitleLabel_ = makeLabel(sum, "No node selected", 10, 8);
+    lv_obj_add_style(nodeDetailsTitleLabel_, &os_.title, 0);
+    lv_obj_set_width(nodeDetailsTitleLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(nodeDetailsTitleLabel_, LV_LABEL_LONG_CLIP);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(nodeDetailsScreen);
+    nodeDetailsIdentityLabel_ = makeLabel(panel, "Identity", 8, 8);
+    lv_obj_set_width(nodeDetailsIdentityLabel_, 252);
+    lv_obj_add_style(nodeDetailsIdentityLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsIdentityLabel_, LV_LABEL_LONG_WRAP);
+
+    nodeDetailsConnectionLabel_ = makeLabel(panel, "Connection", 268, 8);
+    lv_obj_set_width(nodeDetailsConnectionLabel_, 252);
+    lv_obj_add_style(nodeDetailsConnectionLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsConnectionLabel_, LV_LABEL_LONG_WRAP);
+
+    nodeDetailsRuntimeLabel_ = makeLabel(panel, "Runtime", 528, 8);
+    lv_obj_set_width(nodeDetailsRuntimeLabel_, 240);
+    lv_obj_add_style(nodeDetailsRuntimeLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(nodeDetailsRuntimeLabel_, LV_LABEL_LONG_WRAP);
+
+    makeButton(panel, "Refresh Status", 8, OS_PRIMARY_H - 48, 130, 38, "STATUS:REQUEST");
+    makeButton(panel, "Rediscover", 146, OS_PRIMARY_H - 48, 110, 38, "UI:NODES:REFRESH");
+    makeButton(panel, "Diagnostics", 264, OS_PRIMARY_H - 48, 120, 38, "UI:NODE:DIAG");
+    makeButton(panel, "Back to Nodes", 392, OS_PRIMARY_H - 48, 130, 38, "UI:NODE:BACK");
+  }
+
+  void buildDiagnosticsPage() {
+    diagnosticsScreen = makeScreen();
+    createDock(diagnosticsScreen);
+    lv_obj_t *sum = os_.makePageChrome(diagnosticsScreen, "DIAGNOSTICS");
+    makeLabel(sum, "Technical status and protocol checks", 10, 14);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(diagnosticsScreen);
+    os_.makeHeading(panel, "TRANSPORT", 8, 2);
+    makeButton(panel, "Stage Status", 8, 28, 128, 38, "STATUS:REQUEST");
+    makeButton(panel, "Stage Hello", 142, 28, 118, 38, "HELLO");
+    makeButton(panel, "Rediscover", 266, 28, 110, 38, "UI:NODES:REFRESH");
+    makeButton(panel, "Open Nodes", 382, 28, 110, 38, "SCREEN:NODES");
+    makeButton(panel, "Back", 498, 28, 90, 38, "SCREEN:MORE");
+    diagTransportLabel_ = makeLabel(panel, "Transport", 8, 72);
+    lv_obj_add_style(diagTransportLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagTransportLabel_, 360);
+    lv_label_set_long_mode(diagTransportLabel_, LV_LABEL_LONG_WRAP);
+
+    os_.makeHeading(panel, "SERVICE TESTS", 8, 132);
+    makeButton(panel, "SD Status", 8, 158, 110, 38, "STORAGE:STATUS");
+    makeButton(panel, "Self Test", 124, 158, 96, 38, "SELFTEST:START");
+    makeButton(panel, "Maintenance", 226, 158, 128, 38, "SCREEN:MAINT");
+    diagStorageLabel_ = makeLabel(panel, "Storage", 8, 202);
+    lv_obj_add_style(diagStorageLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagStorageLabel_, 360);
+    lv_label_set_long_mode(diagStorageLabel_, LV_LABEL_LONG_WRAP);
+
+    os_.makeHeading(panel, "TELEMETRY", 390, 72);
+    diagPacketLabel_ = makeLabel(panel, "Telemetry", 390, 98);
+    lv_obj_add_style(diagPacketLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagPacketLabel_, 380);
+    lv_label_set_long_mode(diagPacketLabel_, LV_LABEL_LONG_WRAP);
+    diagLastCommandLabel_ = makeLabel(panel, "Last command: Not sent", 390, 174);
+    lv_obj_add_style(diagLastCommandLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagLastCommandLabel_, 380);
+    lv_label_set_long_mode(diagLastCommandLabel_, LV_LABEL_LONG_CLIP);
+    diagLastResponseLabel_ = makeLabel(panel, "Last response: Not received", 390, 194);
+    lv_obj_add_style(diagLastResponseLabel_, &os_.caption, 0);
+    lv_obj_set_width(diagLastResponseLabel_, 380);
+    lv_label_set_long_mode(diagLastResponseLabel_, LV_LABEL_LONG_CLIP);
+  }
+
+  void buildMaintenancePage() {
+    if (maintenanceScreen) return; /* Guard: prevent duplicate build and LVGL object leak */
+    maintenanceScreen = makeScreen();
+    createDock(maintenanceScreen);
+    lv_obj_t *sum = os_.makePageChrome(maintenanceScreen, "MAINTENANCE");
+    os_.makeCaption(sum, "Service operations and recovery tools", 10, 8);
+    os_.makeCaption(sum, "Dangerous actions require confirmation.", 10, 28);
+
+    lv_obj_t *panel = os_.makePrimaryPanel(maintenanceScreen);
+    const int pW = OS_CONTENT_FULL_W - 24;
+
+    os_.makeHeading(panel, "STORAGE", OS_PAD, 2);
+    makeButton(panel, "SD Status",       OS_PAD,       28, 110, 40, "STORAGE:STATUS");
+    makeButton(panel, "Backup Config",   OS_PAD+118,   28, 130, 40, "STORAGE:BACKUP");
+    makeButton(panel, "Restore Latest",  OS_PAD+256,   28, 140, 40, "MAINTENANCE:RESTORE:LATEST:CONFIRM");
+    makeButton(panel, "Export Diag",     OS_PAD+404,   28,  96, 40, "STORAGE:EXPORT");
+    makeButton(panel, "Repair Dirs",     OS_PAD,       76, 130, 36, "STORAGE:REPAIR");
+    os_.makeCaption(panel,
+                    "Backup: copies current config to SD  \xc2\xb7  "
+                    "Restore: reverts to most recent backup  \xc2\xb7  "
+                    "Repair: creates missing dirs",
+                    OS_PAD+140, 80);
+
+    os_.makeHeading(panel, "LOGS & REPORTS", OS_PAD, 96);
+    makeButton(panel, "Open Logs",        OS_PAD,       122, 120, 40, "SCREEN:LOGS");
+    makeButton(panel, "Export Logs",      OS_PAD+128,   122, 130, 40, "UI:LOGS:EXPORT");
+    makeButton(panel, "Diagnostics",      OS_PAD+266,   122, 126, 40, "SCREEN:DIAG");
+    makeButton(panel, "Back to Settings", OS_PAD+400,   122, 170, 40, "SCREEN:SETTINGS");
+
+    /* Last operation status */
+    os_.makeHeading(panel, "LAST OPERATION", OS_PAD, 172);
+    maintStatusLabel_ = makeLabel(panel, "No operation run this session", OS_PAD, 192);
+    lv_obj_add_style(maintStatusLabel_, &os_.caption, 0);
+    lv_obj_set_width(maintStatusLabel_, pW - OS_PAD);
+    lv_label_set_long_mode(maintStatusLabel_, LV_LABEL_LONG_WRAP);
+
+    /* Factory reset — confirmed only */
+    os_.makeHeading(panel, "CONFIGURATION RESET", OS_PAD, 220);
+    os_.makeCaption(panel, "Resets all Director configuration to factory defaults. Stage show is not stopped.", OS_PAD, 240);
+    makeButton(panel, "Factory Reset", OS_PAD, 260, 160, 42, "MAINTENANCE:FACTORY:RESET:CONFIRM", true);
+  }
+
+  void buildAboutPage() {
+    if (aboutScreen) return; /* Guard: prevent duplicate build and LVGL object leak */
+    aboutScreen = makeScreen();
+    createDock(aboutScreen);
+    lv_obj_t *sum = os_.makePageChrome(aboutScreen, "ABOUT");
     makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
 
-    lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
-    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_t *panel = os_.makePrimaryPanel(aboutScreen);
+    os_.makeHeading(panel, "SHOWDUINO DIRECTOR", 8, 2);
 
-    os_.makeHeading(panel, "LOCAL OUTPUT — IAN / P4 AUDIO 1", 8, 2);
-    audioLocalStatusLabel_ = makeLabel(panel, "Status: UNKNOWN", 8, 28);
-    lv_obj_add_style(audioLocalStatusLabel_, &os_.title, 0);
-    audioLocalDetailLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 54);
-    lv_obj_add_style(audioLocalDetailLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioLocalDetailLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioLocalDetailLabel_, LV_LABEL_LONG_WRAP);
+    /* Director name — updated at runtime from DirectorConfig */
+    os_.makeCaption(panel, "Director name", OS_PAD, 28);
+    aboutNameLabel_ = makeLabel(panel, "Loading\xe2\x80\xa6", OS_PAD + 130, 28);
+    lv_obj_add_style(aboutNameLabel_, &os_.body, 0);
+    lv_obj_set_width(aboutNameLabel_, OS_CONTENT_FULL_W - OS_PAD - 140);
+    lv_label_set_long_mode(aboutNameLabel_, LV_LABEL_LONG_WRAP);
 
-    makeButton(panel, "Play", 8, 150, 70, 36, "AUDIO:LOCAL:PLAY");
-    makeButton(panel, "Pause", 84, 150, 70, 36, "AUDIO:LOCAL:PAUSE");
-    makeButton(panel, "Stop", 160, 150, 70, 36, "AUDIO:LOCAL:STOP", true);
-    makeButton(panel, "Mute", 236, 150, 70, 36, "AUDIO:LOCAL:MUTE");
-    makeButton(panel, "Vol -", 312, 150, 64, 36, "AUDIO:LOCAL:VOLUME:-");
-    makeButton(panel, "Vol +", 382, 150, 64, 36, "AUDIO:LOCAL:VOLUME:+");
-    makeButton(panel, "Test", 452, 150, 70, 36, "AUDIO:LOCAL:TEST");
-
-    os_.makeHeading(panel, "REMOTE AUDIO NODES", 8, 198);
-    audioNodesLabel_ = makeLabel(panel, "Scanning…", 8, 224);
-    lv_obj_add_style(audioNodesLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioNodesLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioNodesLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(panel, "Refresh", 8, 300, 100, 36, "AUDIO:NODE:STATUS");
-    makeButton(panel, "Stop All", 116, 300, 100, 36, "AUDIO:NODE:STOP", true);
-    makeButton(panel, "Mute All", 224, 300, 100, 36, "AUDIO:NODE:MUTE");
-    makeButton(panel, "Test", 332, 300, 80, 36, "AUDIO:NODE:TEST");
-
-    os_.makeHeading(panel, "AUDIO ROUTING", 8, 348);
-    audioRoutingLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 374);
-    lv_obj_add_style(audioRoutingLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioRoutingLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioRoutingLabel_, LV_LABEL_LONG_WRAP);
-
-    os_.makeHeading(panel, "COMMAND STATUS", 8, 440);
-    audioCmdStatusLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 466);
-    lv_obj_add_style(audioCmdStatusLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioCmdStatusLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
+    char info[768];
+    snprintf(info, sizeof(info),
+             "Product: Showduino Director\n"
+             "Role: Operator UI (LVGL touchscreen)\n"
+             "Firmware: %s\n"
+             "Board: %s\n"
+             "Display: 800x480 RGB + GT911 touch\n"
+             "LVGL: %d.%d\n"
+             "Protocol: %d.%d\n"
+             "Show Runtime Owner: IAN / P4 Stage Engine\n"
+             "Audio Engine Owner: IAN / P4 (Director is monitor/control only)\n"
+             "Comms Path: Director \xe2\x86\x92 SUE bridge \xe2\x86\x92 IAN\n"
+             "Build info: see STORAGE_FW_VERSION in firmware\n"
+             "Repository: sumkindafreak/new_showduino\n"
+             "License/Credits: see repository documentation.",
+             STORAGE_FW_VERSION,
+             SHOWDUINO_BOARD_NAME,
+             LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR,
+             SHOWDUINO_PROTOCOL_VERSION_MAJOR, SHOWDUINO_PROTOCOL_VERSION_MINOR);
+    lv_obj_t *label = makeLabel(panel, info, 8, 56);
+    lv_obj_add_style(label, &os_.caption, 0);
+    lv_obj_set_width(label, OS_CONTENT_FULL_W - 30);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   }
 
   void buildScreens() {
@@ -1482,34 +2887,33 @@ private:
     const int deskLeftW = OS_CONTENT_LEFT_W;
     const int deskRightW = OS_CONTENT_RIGHT_W;
     const int deskRightX = OS_CONTENT_RIGHT_X;
-    const int deskSumH = 240;
+    const int deskSumH = 218;
     const int deskActY = OS_BODY_Y + deskSumH + OS_GAP;
     const int deskActH = OS_BODY_H - deskSumH - OS_GAP;
 
     lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, deskLeftW, deskSumH);
     createSystemSummary(summary);
-    makeButton(summary, "Start", 10, 204, 90, 36, "SHOW:START");
-    makeButton(summary, "Pause", 108, 204, 90, 36, "SHOW:PAUSE");
-    makeButton(summary, "Stop", 206, 204, 90, 36, "SHOW:STOP", true);
 
     lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
-    os_.makeHeading(fabric, "FABRIC", 8, 2);
-    deskFabricLabel_ = makeLabel(fabric, "ESP-NOW: UNKNOWN", 8, 28);
+    os_.makeHeading(fabric, "NODE HEALTH", 8, 2);
+    deskFabricLabel_ = makeLabel(fabric, "Online nodes: 0", 8, 28);
     lv_obj_add_style(deskFabricLabel_, &os_.caption, 0);
-    lv_obj_set_width(deskFabricLabel_, deskRightW - 20);
+    lv_obj_set_width(deskFabricLabel_, deskRightW - 132);
     lv_label_set_long_mode(deskFabricLabel_, LV_LABEL_LONG_WRAP);
+    makeButton(fabric, "Open", deskRightW - 110, 40, 94, 40, "SCREEN:NODES");
 
     lv_obj_t *audioCard = makePanel(desktopScreen, deskRightX, OS_BODY_Y + 128 + OS_GAP, deskRightW,
                                     deskSumH - 128 - OS_GAP);
-    os_.makeHeading(audioCard, "AUDIO", 8, 2);
-    deskAudioSummaryLabel_ = makeLabel(audioCard, "Local: UNKNOWN\nNodes: 0 ONLINE\nPlaying: 0", 8, 28);
+    os_.makeHeading(audioCard, "P4 AUDIO", 8, 2);
+    deskAudioSummaryLabel_ = makeLabel(audioCard, "P4 AUDIO\nAwaiting status\nP4 link: Unknown", 8, 28);
     lv_obj_add_style(deskAudioSummaryLabel_, &os_.caption, 0);
     lv_obj_set_width(deskAudioSummaryLabel_, deskRightW - 20);
     lv_label_set_long_mode(deskAudioSummaryLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(audioCard, "Open", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
+    makeButton(audioCard, "Open Audio", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
 
     lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, deskActY, OS_CONTENT_FULL_W, deskActH);
     createQuickActions(actions);
+    os_.makeCaption(actions, "Playback transport is intentionally owned by Live.", 470, 10);
     uiBuildPump();
 
     /* ---- LIVE — What is happening right now? ---- */
@@ -1527,15 +2931,19 @@ private:
     os_.makeCaption(liveSum, "Remaining", 300, 8);
     liveRemainLabel_ = makeLabel(liveSum, "0:00", 300, 28);
     lv_obj_add_style(liveRemainLabel_, &os_.body, 0);
-    /* Reserved icon/scene slots — no placeholder text */
+    /* Compact P4 audio state (right side of summary bar) */
+    os_.makeCaption(liveSum, "P4 Audio", 490, 8);
+    liveAudioStateLabel_ = makeLabel(liveSum, "Awaiting P4", 490, 28);
+    lv_obj_add_style(liveAudioStateLabel_, &os_.caption, 0);
+    lv_obj_set_width(liveAudioStateLabel_, 270);
+    lv_label_set_long_mode(liveAudioStateLabel_, LV_LABEL_LONG_WRAP);
 
     lv_obj_t *live = os_.makePrimaryPanel(liveScreen);
-    os_.makeHeading(live, "TRANSPORT", 8, 2);
-    makeButton(live, "Start", 10, 24, 84, 40, "SHOW:START");
-    makeButton(live, "Pause", 102, 24, 76, 40, "SHOW:PAUSE");
-    makeButton(live, "Resume", 186, 24, 84, 40, "SHOW:RESUME");
-    makeButton(live, "Stop", 278, 24, 68, 40, "SHOW:STOP", true);
-    makeButton(live, "Status", 354, 24, 76, 40, "STATUS:REQUEST");
+    os_.makeHeading(live, "SHOW CONTROL", 8, 2);
+    makeButton(live, "Start Show", 10, 24, 112, 44, "SHOW:START");
+    makeButton(live, "Pause", 130, 24, 92, 44, "SHOW:PAUSE");
+    makeButton(live, "Resume", 230, 24, 100, 44, "SHOW:RESUME");
+    makeButton(live, "Stop Show", 338, 24, 112, 44, "SHOW:STOP", true);
 
     liveEmergencyDot = lv_obj_create(live);
     lv_obj_remove_style_all(liveEmergencyDot);
@@ -1545,12 +2953,12 @@ private:
     lv_obj_set_style_bg_color(liveEmergencyDot, lv_color_hex(OsColor::Unknown), 0);
     lv_obj_set_style_bg_opa(liveEmergencyDot, LV_OPA_COVER, 0);
 
-    liveStatusLabel = makeLabel(live, "0%", 10, 70);
+    liveStatusLabel = makeLabel(live, "0%", 10, 78);
     lv_obj_set_width(liveStatusLabel, 60);
     lv_obj_add_style(liveStatusLabel, &os_.body, 0);
 
     liveProgressBar = lv_bar_create(live);
-    lv_obj_set_pos(liveProgressBar, 70, 74);
+    lv_obj_set_pos(liveProgressBar, 70, 82);
     lv_obj_set_size(liveProgressBar, 380, 10);
     lv_bar_set_range(liveProgressBar, 0, 100);
     lv_bar_set_value(liveProgressBar, 0, LV_ANIM_OFF);
@@ -1560,45 +2968,57 @@ private:
     timelineStatusLabel = makeLabel(live, "", 10, 88);
     lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-    os_.makeHeading(live, "RELAYS", 8, 96);
+    os_.makeHeading(live, "MANUAL OUTPUTS", 8, 106);
     for (uint8_t i = 0; i < 8; i++) {
       int row = i / 4;
       int col = i % 4;
       int x = 10 + col * 112;
-      int y = 118 + row * 40;
+      int y = 130 + row * 40;
       static const char *relayNames[8] = { "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8" };
       relayButtons[i] = makeButton(live, relayNames[i], x, y, 104, 36, kRelayCmds[i]);
       refreshRelayButton(i);
     }
-    makeButton(live, "All Off", 10, 202, 100, 36, "RELAY:ALL:OFF");
-    makeButton(live, "Pulse R1", 118, 202, 100, 36, "RELAY:1:PULSE:1000");
-    makeButton(live, "E-Clear", 226, 202, 100, 36, "EMERGENCY:CLEAR");
+    makeButton(live, "All Outputs Off", 10, 214, 142, 38, "RELAY:ALL:OFF");
+    makeButton(live, "Pulse R1", 160, 214, 104, 38, "RELAY:1:PULSE:1000");
+    makeButton(live, "Request Status", 272, 214, 128, 38, "STATUS:REQUEST");
     uiBuildPump();
 
-    /* ---- SHOWS — What can I run? ---- */
+    /* ---- SHOWS — deliberate package browser ---- */
     Serial.println("[UI] shows…");
     showsScreen = makeScreen();
     uiBuildPump("[UI] shows");
     createDock(showsScreen);
     lv_obj_t *showSum = os_.makePageChrome(showsScreen, "SHOWS");
-    os_.makeCaption(showSum, "Library", 10, 8);
-    showsSummaryLabel_ = makeLabel(showSum, "Scan SD to list packages", 10, 28);
+    os_.makeCaption(showSum, "Show workflow", 10, 8);
+    showsSummaryLabel_ = makeLabel(showSum, "Select package → inspect details → load → open Live", 10, 28);
     lv_obj_add_style(showsSummaryLabel_, &os_.body, 0);
-    lv_obj_set_width(showsSummaryLabel_, 440);
+    lv_obj_set_width(showsSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(showsSummaryLabel_, LV_LABEL_LONG_CLIP);
 
     showsListPanel = os_.makePrimaryPanel(showsScreen);
     os_.makeHeading(showsListPanel, "SHOW LIBRARY", 8, 2);
-    makeButton(showsListPanel, "Resync", 360, 2, 90, 36, "UI:SHOW:REFRESH");
-    showsListTitle = makeLabel(showsListPanel, "", 8, 4);
-    lv_obj_add_flag(showsListTitle, LV_OBJ_FLAG_HIDDEN);
+    makeButton(showsListPanel, "Refresh Library", 304, 2, 150, 36, "UI:SHOW:REFRESH");
+    showsListTitle = makeLabel(showsListPanel, "Discovered: Unknown", 8, 30);
+    lv_obj_add_style(showsListTitle, &os_.caption, 0);
+    lv_obj_set_width(showsListTitle, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsListTitle, LV_LABEL_LONG_CLIP);
+    showsStorageLabel_ = makeLabel(showsListPanel, "Storage: Unknown", 8, 48);
+    lv_obj_add_style(showsStorageLabel_, &os_.caption, 0);
+    lv_obj_set_width(showsStorageLabel_, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsStorageLabel_, LV_LABEL_LONG_CLIP);
+    showsScanLabel_ = makeLabel(showsListPanel, "Last scan: Not scanned", 8, 66);
+    lv_obj_add_style(showsScanLabel_, &os_.caption, 0);
+    lv_obj_set_width(showsScanLabel_, OS_CONTENT_FULL_W - 26);
+    lv_label_set_long_mode(showsScanLabel_, LV_LABEL_LONG_CLIP);
+
     showListScroll = lv_obj_create(showsListPanel);
     lv_obj_remove_style_all(showListScroll);
-    lv_obj_set_pos(showListScroll, 4, 42);
-    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 52);
+    lv_obj_set_pos(showListScroll, 4, 88);
+    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 98);
     lv_obj_set_style_bg_opa(showListScroll, LV_OPA_TRANSP, 0);
     lv_obj_set_scroll_dir(showListScroll, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(showListScroll, LV_SCROLLBAR_MODE_AUTO);
-    makeLabel(showListScroll, "No shows yet — insert SD and tap Resync", 8, 8);
+    makeLabel(showListScroll, "Library not scanned yet.", 8, 8);
     uiBuildPump();
 
     /* ---- SHOW DETAILS ---- */
@@ -1607,53 +3027,88 @@ private:
     uiBuildPump("[UI] details");
     createDock(showDetailsScreen);
     lv_obj_t *detSum = os_.makePageChrome(showDetailsScreen, "SHOW DETAILS");
-    detailsNameLabel = makeLabel(detSum, "Show", 10, 8);
+    detailsNameLabel = makeLabel(detSum, "No show selected", 10, 8);
     lv_obj_add_style(detailsNameLabel, &os_.title, 0);
-    lv_obj_set_width(detailsNameLabel, 440);
+    lv_obj_set_width(detailsNameLabel, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(detailsNameLabel, LV_LABEL_LONG_CLIP);
+    detailsSummaryLabel_ = makeLabel(detSum, "Select a package in Shows.", 10, 30);
+    lv_obj_add_style(detailsSummaryLabel_, &os_.caption, 0);
+    lv_obj_set_width(detailsSummaryLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(detailsSummaryLabel_, LV_LABEL_LONG_CLIP);
 
     lv_obj_t *det = os_.makePrimaryPanel(showDetailsScreen);
     detailsIconHost = lv_obj_create(det);
     lv_obj_remove_style_all(detailsIconHost);
     lv_obj_set_pos(detailsIconHost, 8, 8);
-    lv_obj_set_size(detailsIconHost, 96, 64);
-    ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
-    detailsDescLabel = makeLabel(det, "Description", 116, 12);
-    lv_obj_set_width(detailsDescLabel, 330);
+    lv_obj_set_size(detailsIconHost, 104, 72);
+    ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
+    detailsDescLabel = makeLabel(det, "Description unavailable", 122, 10);
+    lv_obj_set_width(detailsDescLabel, 320);
     lv_obj_add_style(detailsDescLabel, &os_.body, 0);
     lv_label_set_long_mode(detailsDescLabel, LV_LABEL_LONG_WRAP);
-    detailsMetaLabel = makeLabel(det, "Duration / Version / Author", 8, 84);
-    lv_obj_set_width(detailsMetaLabel, 440);
+    detailsMetaLabel = makeLabel(det, "Duration: Unknown", 8, 88);
+    lv_obj_set_width(detailsMetaLabel, OS_CONTENT_FULL_W - 26);
     lv_obj_add_style(detailsMetaLabel, &os_.caption, 0);
     lv_label_set_long_mode(detailsMetaLabel, LV_LABEL_LONG_WRAP);
-    timelineDetailLabel = makeLabel(det, "Playback: STOPPED", 8, 110);
-    lv_obj_set_width(timelineDetailLabel, 440);
-    lv_obj_add_style(timelineDetailLabel, &os_.body, 0);
-    makeButton(det, "Load", 8, 155, 72, 44, "UI:SHOW:LOAD");
-    makeButton(det, "Run", 88, 155, 72, 44, "UI:SHOW:RUN");
-    makeButton(det, "Pause", 168, 155, 72, 44, "SHOW:PAUSE");
-    makeButton(det, "Resume", 248, 155, 80, 44, "SHOW:RESUME");
-    makeButton(det, "Stop", 336, 155, 64, 44, "UI:SHOW:STOP");
-    makeButton(det, "Back", 408, 155, 50, 44, "UI:SHOW:BACK");
+    detailsRequirementsLabel_ = makeLabel(det,
+                                          "Requirements\nNodes: Not specified\nAudio: Not specified\nLighting: Not specified\nStorage: Not specified\nMinimum package: Not specified",
+                                          8, 126);
+    lv_obj_set_width(detailsRequirementsLabel_, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(detailsRequirementsLabel_, &os_.caption, 0);
+    lv_label_set_long_mode(detailsRequirementsLabel_, LV_LABEL_LONG_WRAP);
+    detailsValidationLabel_ = makeLabel(det, "Validation: Not validated", 8, 204);
+    lv_obj_set_width(detailsValidationLabel_, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(detailsValidationLabel_, &os_.body, 0);
+    lv_label_set_long_mode(detailsValidationLabel_, LV_LABEL_LONG_WRAP);
+    timelineDetailLabel = makeLabel(det, "Load state: Ready to load", 8, 222);
+    lv_obj_set_width(timelineDetailLabel, OS_CONTENT_FULL_W - 26);
+    lv_obj_add_style(timelineDetailLabel, &os_.caption, 0);
+    detailsLoadBtn_ = makeButton(det, "Load Show", 8, 236, 130, 34, "UI:SHOW:LOAD");
+    makeButton(det, "Back to Shows", 146, 236, 146, 34, "UI:SHOW:BACK");
+    detailsOpenLiveBtn_ = makeButton(det, "Open Live", 300, 236, 120, 34, "UI:SHOW:OPENLIVE");
+    lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+    refreshShowDetailsPresentation();
     uiBuildPump();
 
-    /* ---- NODES (Quick Actions / future nav) ---- */
-    Serial.println("[UI] nodes…");
-    diagnosticsScreen = makeScreen();
-    uiBuildPump("[UI] nodes");
-    createDock(diagnosticsScreen);
-    lv_obj_t *nodeSum = os_.makePageChrome(diagnosticsScreen, "NODES");
-    os_.makeCaption(nodeSum, "Fabric", 10, 8);
-    makeLabel(nodeSum, "Director → C3 → Stage → Nodes", 10, 28);
-    lv_obj_t *nodes = os_.makePrimaryPanel(diagnosticsScreen);
-    os_.makeHeading(nodes, "TOOLS", 8, 2);
-    makeButton(nodes, "SD Status", 12, 36, 140, 48, "STORAGE:STATUS");
-    makeButton(nodes, "Backup", 160, 36, 140, 48, "STORAGE:BACKUP");
-    makeButton(nodes, "Export", 308, 36, 140, 48, "STORAGE:EXPORT");
-    makeButton(nodes, "Repair Dirs", 12, 96, 140, 48, "STORAGE:REPAIR");
-    makeButton(nodes, "Stage Status", 160, 96, 140, 48, "STATUS:REQUEST");
-    makeButton(nodes, "Self Test", 308, 96, 140, 48, "SELFTEST:START");
-    makeButton(nodes, "Stage Hello", 12, 156, 140, 48, "HELLO");
+    /* ---- MORE — stable launcher for secondary destinations ---- */
+    Serial.println("[UI] more…");
+    moreScreen = makeScreen();
+    uiBuildPump("[UI] more");
+    createDock(moreScreen);
+    lv_obj_t *moreSum = os_.makePageChrome(moreScreen, "MORE");
+    os_.makeCaption(moreSum, "System", 10, 8);
+    makeLabel(moreSum, "Secondary tools and configuration", 10, 28);
+
+    lv_obj_t *more = os_.makePrimaryPanel(moreScreen);
+    os_.makeHeading(more, "DESTINATIONS", 8, 2);
+    makeButton(more, "Nodes",       12, 36, 210, 58, "SCREEN:NODES");
+    makeButton(more, "Audio",      234, 36, 210, 58, "SCREEN:AUDIO");
+    makeButton(more, "Logs",        12, 106, 210, 58, "SCREEN:LOGS");
+    makeButton(more, "Settings",   234, 106, 210, 58, "SCREEN:SETTINGS");
+    makeButton(more, "Diagnostics", 12, 176, 140, 58, "SCREEN:DIAG");
+    makeButton(more, "Maintenance",162, 176, 140, 58, "SCREEN:MAINT");
+    makeButton(more, "About",      312, 176, 140, 58, "SCREEN:ABOUT");
+    os_.makeCaption(more,
+                    "Playback remains in Live. Show selection remains in Shows.",
+                    12, 244);
     uiBuildPump();
+
+    /* ---- NODES + NODE DETAILS + DIAGNOSTICS ---- */
+    Serial.println("[UI] nodes…");
+    buildNodesPage();
+    uiBuildPump("[UI] nodes");
+    Serial.println("[UI] node details…");
+    buildNodeDetailsPage();
+    uiBuildPump("[UI] node details");
+    Serial.println("[UI] diagnostics…");
+    buildDiagnosticsPage();
+    uiBuildPump("[UI] diagnostics");
+    Serial.println("[UI] maintenance…");
+    buildMaintenancePage();
+    uiBuildPump("[UI] maintenance");
+    Serial.println("[UI] about…");
+    buildAboutPage();
+    uiBuildPump("[UI] about");
 
     /* ---- SETTINGS — How is the system configured? ---- */
     Serial.println("[UI] settings…");
@@ -1661,35 +3116,90 @@ private:
     uiBuildPump("[UI] settings");
     createDock(settingsScreen);
     lv_obj_t *setSum = os_.makePageChrome(settingsScreen, "SETTINGS");
-    os_.makeCaption(setSum, "Display", 10, 8);
+    os_.makeCaption(setSum, "Configuration and preferences", 10, 6);
     timeoutLabel = makeLabel(setSum, "Auto backlight: 10 min", 10, 28);
     lv_obj_add_style(timeoutLabel, &os_.body, 0);
 
     lv_obj_t *settings = os_.makePrimaryPanel(settingsScreen);
-    os_.makeHeading(settings, "MODULES", 8, 2);
-    makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
-    makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
-    os_.makeCaption(settings, "Audio: local P4 + remote nodes   ·   Logs: operator event history", 8, 86);
+    os_.makeHeading(settings, "DISPLAY", OS_PAD, 2);
+    makeButton(settings, "Never",  OS_PAD,       24, 68, 36, "SETTINGS:TIMEOUT:0");
+    makeButton(settings, "1m",     OS_PAD+ 76,   24, 50, 36, "SETTINGS:TIMEOUT:1");
+    makeButton(settings, "3m",     OS_PAD+134,   24, 50, 36, "SETTINGS:TIMEOUT:3");
+    makeButton(settings, "5m",     OS_PAD+192,   24, 50, 36, "SETTINGS:TIMEOUT:5");
+    makeButton(settings, "10m",    OS_PAD+250,   24, 58, 36, "SETTINGS:TIMEOUT:10");
+    makeButton(settings, "30m",    OS_PAD+316,   24, 58, 36, "SETTINGS:TIMEOUT:30");
+    makeButton(settings, "Cycle",  OS_PAD+382,   24, 52, 36, "SETTINGS:TIMEOUT:CYCLE");
+    os_.makeCaption(settings, "Timeout: dim at half, off at limit.", OS_PAD, 66);
 
-    os_.makeHeading(settings, "DISPLAY", 8, 112);
-    makeButton(settings, "Never", 8, 140, 70, 40, "SETTINGS:TIMEOUT:0");
-    makeButton(settings, "1m", 86, 140, 54, 40, "SETTINGS:TIMEOUT:1");
-    makeButton(settings, "3m", 148, 140, 54, 40, "SETTINGS:TIMEOUT:3");
-    makeButton(settings, "5m", 210, 140, 54, 40, "SETTINGS:TIMEOUT:5");
-    makeButton(settings, "10m", 272, 140, 62, 40, "SETTINGS:TIMEOUT:10");
-    makeButton(settings, "30m", 342, 140, 62, 40, "SETTINGS:TIMEOUT:30");
-    makeButton(settings, "Cycle", 412, 140, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
-    os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
+    /* Brightness controls */
+    os_.makeCaption(settings, "Brightness", OS_PAD + 470, 4);
+    brightnessLabel_ = makeLabel(settings, "255", OS_PAD + 470, 22);
+    lv_obj_add_style(brightnessLabel_, &os_.body, 0);
+    makeButton(settings, "\xe2\x96\xbd", OS_PAD + 516, 16, 40, 34, "UI:SETTINGS:BRIGHTNESS:DOWN");
+    makeButton(settings, "\xe2\x96\xb2", OS_PAD + 562, 16, 40, 34, "UI:SETTINGS:BRIGHTNESS:UP");
 
-    os_.makeHeading(settings, "SYSTEM", 8, 210);
-    makeButton(settings, "Clear E-Stop", 8, 236, 150, 44, "EMERGENCY:CLEAR");
-    makeButton(settings, "Backup", 168, 236, 110, 44, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 288, 236, 90, 44, "STORAGE:EXPORT");
-    makeButton(settings, "About", 388, 236, 90, 44, "SETTINGS:ABOUT");
+    /* System identity */
+    os_.makeHeading(settings, "SYSTEM", OS_PAD, 82);
+    settingsDirNameLabel_ = makeLabel(settings, "Director: —", OS_PAD, 104);
+    lv_obj_add_style(settingsDirNameLabel_, &os_.caption, 0);
+    lv_obj_set_width(settingsDirNameLabel_, 450);
+
+    /* Director name presets (Phase 5: no on-screen keyboard) */
+    const int presetY = 104, presetH = 24;
+    os_.makeCaption(settings, "Name:", 460, 104);
+    makeButton(settings, "Main",     540, presetY, 56, presetH, "SETTINGS:NAME:Main Director");
+    makeButton(settings, "FOH",      602, presetY, 50, presetH, "SETTINGS:NAME:FOH Director");
+    makeButton(settings, "Stage",    658, presetY, 58, presetH, "SETTINGS:NAME:Stage Director");
+    makeButton(settings, "Backup",   722, presetY, 60, presetH, "SETTINGS:NAME:Backup Director");
+
+    /* Network & fabric status (read-only) */
+    os_.makeHeading(settings, "NETWORK & FABRIC", OS_PAD, 136);
+    settingsNetStatusLabel_ = makeLabel(settings, "Stage: Unknown  \xc2\xb7  Nodes: 0  \xc2\xb7  P4: Not reported", OS_PAD, 156);
+    lv_obj_add_style(settingsNetStatusLabel_, &os_.caption, 0);
+    lv_obj_set_width(settingsNetStatusLabel_, OS_CONTENT_FULL_W - OS_PAD * 2 - 24);
+    lv_label_set_long_mode(settingsNetStatusLabel_, LV_LABEL_LONG_WRAP);
+    os_.makeCaption(settings, "Read-only. Raw diagnostics are on the Diagnostics page.", OS_PAD, 178);
+
+    /* Show-operation preferences */
+    os_.makeHeading(settings, "SHOW OPERATION", OS_PAD, 198);
+    os_.makeCaption(settings, "Confirm Start:", OS_PAD, 220);
+    settingsCfmStartLabel_ = makeLabel(settings, "OFF", OS_PAD + 130, 218);
+    lv_obj_add_style(settingsCfmStartLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+160, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTART:1");
+    makeButton(settings, "OFF", OS_PAD+206, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTART:0");
+
+    os_.makeCaption(settings, "Confirm Stop:", OS_PAD + 260, 220);
+    settingsCfmStopLabel_ = makeLabel(settings, "OFF", OS_PAD + 390, 218);
+    lv_obj_add_style(settingsCfmStopLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+420, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTOP:1");
+    makeButton(settings, "OFF", OS_PAD+466, 218, 40, 26, "SETTINGS:SHOWOP:CFMSTOP:0");
+
+    os_.makeCaption(settings, "Auto-open Live after load:", OS_PAD, 252);
+    settingsAutoLiveLabel_ = makeLabel(settings, "OFF", OS_PAD + 205, 250);
+    lv_obj_add_style(settingsAutoLiveLabel_, &os_.body, 0);
+    makeButton(settings, "ON",  OS_PAD+238, 250, 40, 26, "SETTINGS:SHOWOP:AUTOLIVE:1");
+    makeButton(settings, "OFF", OS_PAD+284, 250, 40, 26, "SETTINGS:SHOWOP:AUTOLIVE:0");
+
+    /* Navigation */
+    os_.makeHeading(settings, "SECTIONS", OS_PAD, 286);
+    makeButton(settings, "Audio",       OS_PAD,       308, 120, 40, "SCREEN:AUDIO");
+    makeButton(settings, "Logs",        OS_PAD+128,   308, 120, 40, "SCREEN:LOGS");
+    makeButton(settings, "Nodes",       OS_PAD+256,   308, 120, 40, "SCREEN:NODES");
+    makeButton(settings, "Diagnostics", OS_PAD+384,   308, 140, 40, "SCREEN:DIAG");
+    makeButton(settings, "Maintenance", OS_PAD,       356, 160, 40, "SCREEN:MAINT");
+    makeButton(settings, "About",       OS_PAD+168,   356, 120, 40, "SCREEN:ABOUT");
+    makeButton(settings, "E-Stop Clear",OS_PAD+396,   356, 168, 40, "EMERGENCY:CLEAR");
 
     refreshTimeoutLabel();
+    refreshSettingsDisplayValues_();
     uiBuildPump();
 
+    Serial.println("[UI] about…");
+    buildAboutPage();
+    uiBuildPump("[UI] about");
+    Serial.println("[UI] maintenance…");
+    buildMaintenancePage();
+    uiBuildPump("[UI] maintenance");
     Serial.println("[UI] logs…");
     buildLogsPage();
     uiBuildPump("[UI] logs");
@@ -1699,6 +3209,8 @@ private:
     refreshLogsDisplay();
     refreshAudioPresentation();
     refreshDesktopFabric();
+    refreshNodesPresentationIfActive();
+    refreshDiagnosticsSummary();
 
     Serial.println("[UI] overlays…");
     buildPersistentBanner();
@@ -1759,8 +3271,11 @@ private:
       if (emergencyOverlayRoot && emergencyOverlayVisible) {
         lv_obj_move_foreground(emergencyOverlayRoot);
       }
-      if (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) {
+      if (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN) &&
+          !emergencyOverlayVisible) {
         lv_obj_move_foreground(abortConfirmRoot);
+      } else if (emergencyOverlayVisible) {
+        hideAbortConfirm();
       }
     } else {
       lv_obj_add_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
@@ -1810,9 +3325,11 @@ private:
     lv_obj_set_style_text_align(estopTitleLabel, LV_TEXT_ALIGN_CENTER, 0);
 
     lv_obj_t *sub = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(sub, "Show halted. Press CLEAR E-STOP, then Resume or Abort.");
+    lv_label_set_text(sub,
+        "Stage halted. Clear the emergency, then Resume show or Abort.\n"
+        "All outputs are in safe-state pending Stage confirmation.");
     lv_obj_set_style_text_color(sub, lv_color_hex(0xFECACA), 0);
-    lv_obj_set_pos(sub, 40, 188);
+    lv_obj_set_pos(sub, 40, 183);
     lv_obj_set_width(sub, SCREEN_WIDTH - 80);
     lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
 
@@ -1885,6 +3402,73 @@ private:
 
   void hideAbortConfirm() {
     if (abortConfirmRoot) lv_obj_add_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  void buildActionConfirm() {
+    if (actionConfirmRoot) return;
+    lv_obj_t *top = lv_layer_top();
+    actionConfirmRoot = lv_obj_create(top);
+    lv_obj_remove_style_all(actionConfirmRoot);
+    lv_obj_set_size(actionConfirmRoot, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(actionConfirmRoot, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(actionConfirmRoot, LV_OPA_70, 0);
+    lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *box = lv_obj_create(actionConfirmRoot);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_size(box, 520, 240);
+    lv_obj_center(box);
+    lv_obj_set_style_bg_color(box, lv_color_hex(OsColor::Panel), 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(OsColor::DangerBorder), 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_radius(box, 12, 0);
+
+    actionConfirmTitleLabel_ = lv_label_create(box);
+    lv_label_set_text(actionConfirmTitleLabel_, "CONFIRM ACTION");
+    lv_obj_add_style(actionConfirmTitleLabel_, &os_.title, 0);
+    lv_obj_set_style_text_color(actionConfirmTitleLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_pos(actionConfirmTitleLabel_, 20, 18);
+    lv_obj_set_width(actionConfirmTitleLabel_, 480);
+
+    actionConfirmBodyLabel_ = lv_label_create(box);
+    lv_label_set_text(actionConfirmBodyLabel_, "This action can affect operation.");
+    lv_obj_add_style(actionConfirmBodyLabel_, &os_.caption, 0);
+    lv_obj_set_style_text_color(actionConfirmBodyLabel_, lv_color_hex(0xD1D5DB), 0);
+    lv_obj_set_pos(actionConfirmBodyLabel_, 20, 62);
+    lv_obj_set_width(actionConfirmBodyLabel_, 480);
+    lv_label_set_long_mode(actionConfirmBodyLabel_, LV_LABEL_LONG_WRAP);
+
+    makeButton(box, "Cancel", 20, 178, 180, 44, "UI:CONFIRM:CANCEL");
+    makeButton(box, "Confirm", 320, 178, 180, 44, "UI:CONFIRM:OK", true);
+  }
+
+  void hideActionConfirm() {
+    if (actionConfirmRoot) lv_obj_add_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+    actionConfirmVisible_ = false;
+    actionConfirmCommand_[0] = '\0';
+  }
+
+  void showActionConfirm(const char *title, const char *body, const char *confirmCommand) {
+    if (!confirmCommand || !confirmCommand[0]) return;
+    if (emergencyLocked || emergencyOverlayVisible || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+      pushOperatorEvent("Action blocked — emergency active");
+      return;
+    }
+    if (!actionConfirmRoot) buildActionConfirm();
+    if (!actionConfirmRoot) return;
+    strncpy(actionConfirmCommand_, confirmCommand, sizeof(actionConfirmCommand_) - 1);
+    actionConfirmCommand_[sizeof(actionConfirmCommand_) - 1] = '\0';
+    if (actionConfirmTitleLabel_) {
+      lv_label_set_text(actionConfirmTitleLabel_, title && title[0] ? title : "CONFIRM ACTION");
+    }
+    if (actionConfirmBodyLabel_) {
+      lv_label_set_text(actionConfirmBodyLabel_, body && body[0] ? body : "Confirm this action.");
+    }
+    lv_obj_clear_flag(actionConfirmRoot, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(actionConfirmRoot);
+    actionConfirmVisible_ = true;
   }
 
   void buildCompleteOverlay() {
@@ -1964,7 +3548,7 @@ private:
       ShowduinoOsTheme::setTextIfChanged(liveStatusLabel, line);
     }
     if (liveProgressBar) {
-      lv_bar_set_value(liveProgressBar, liveProgressPct, LV_ANIM_ON);
+      lv_bar_set_value(liveProgressBar, liveProgressPct, LV_ANIM_OFF);
     }
     if (liveEmergencyDot) {
       bool em = (mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked;
@@ -1976,6 +3560,7 @@ private:
   void showEmergencyOverlay() {
     if (!emergencyOverlayBuilt) buildEmergencyOverlay();
     if (!emergencyOverlayRoot || emergencyOverlayDismissed) return;
+    hideActionConfirm();
     emergencySessionOpen = true;
     refreshEmergencyOverlayContent();
     updateEmergencyResumeButton();
@@ -2006,9 +3591,14 @@ private:
     switch (pageBeforeEmergency) {
       case DeskPage::Live: showLive(); break;
       case DeskPage::Shows: showShows(); break;
-      case DeskPage::Details: showShows(); break;
-      case DeskPage::Nodes: showDiagnostics(); break;
+      case DeskPage::Details: showDetails(); break;
+      case DeskPage::More: showMore(); break;
+      case DeskPage::Nodes: showNodes(); break;
+      case DeskPage::NodeDetails: showNodeDetails(); break;
+      case DeskPage::Diagnostics: showDiagnostics(); break;
       case DeskPage::Settings: showSettings(); break;
+      case DeskPage::Maintenance: showMaintenance(); break;
+      case DeskPage::About: showAbout(); break;
       case DeskPage::Audio: showAudio(); break;
       case DeskPage::Logs: showLogs(); break;
       default: showDesktop(); break;
@@ -2035,18 +3625,36 @@ private:
     formatClock(estopElapsedMs, clock, sizeof(clock));
     formatClock(estopRemainMs, rem, sizeof(rem));
     formatClock(estopOccurredMs > bootMs ? (estopOccurredMs - bootMs) : 0, occurred, sizeof(occurred));
-    char detail[360];
+    const char *audioEmergency = (mirroredState == SHOW_STATE_EMERGENCY_STOP || emergencyLocked)
+                                   ? "ACTIVE"
+                                   : "Not reported";
+    const char *safeState = emergencyLocked
+                              ? "Awaiting Stage confirmation"
+                              : "Stage reported clear";
+    char detail[520];
     snprintf(detail, sizeof(detail),
-             "Show: %s\nPlayback before stop: %s\nCurrent cue: %u / %u\nElapsed: %s    Remaining: %s\nStage link: %s\nEmergency occurred: T+%s%s%s%s",
+             "Show: %s\n"
+             "Source: Not reported\n"
+             "Reason: Not reported\n"
+             "Playback before stop: %s\n"
+             "Current cue: %u / %u\n"
+             "Elapsed: %s    Remaining: %s\n"
+             "Stage link: %s\n"
+             "Audio emergency: %s\n"
+             "Output safe-state: %s\n"
+             "Emergency occurred: T+%s%s%s%s%s",
              estopShowName,
              estopPlayStateBefore,
              (unsigned)estopCueIndex,
              (unsigned)estopCueTotal,
              clock, rem,
              estopStageConnected ? "CONNECTED" : "DISCONNECTED",
+             audioEmergency,
+             safeState,
              occurred,
              emergencyAcknowledged ? "\nAcknowledged: YES" : "\nAcknowledged: NO",
              emergencyLocked ? "\nStage: LOCKED — press CLEAR E-STOP" : "\nStage: CLEARED — Resume or Abort",
+             pendingClearAwait_ ? "\nClear requested — awaiting Stage confirmation" : "",
              pendingResumeAwait ? "\nWaiting for Stage RESUME…" :
              (pendingAbortAwait ? "\nWaiting for Stage STOP…" : ""));
     lv_label_set_text(estopDetailLabel, detail);
@@ -2062,6 +3670,28 @@ private:
                (unsigned)screenTimeoutMinutes);
     }
     lv_label_set_text(timeoutLabel, buf);
+    refreshSettingsDisplayValues_();
+  }
+
+  void refreshSettingsDisplayValues_() {
+    if (brightnessLabel_) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "%u", (unsigned)backlightBrightness());
+      ShowduinoOsTheme::setTextIfChanged(brightnessLabel_, buf);
+    }
+    refreshShowOpToggles_();
+  }
+
+  void refreshShowOpToggles_() {
+    auto applyToggle = [](lv_obj_t *lbl, bool val) {
+      if (!lbl) return;
+      ShowduinoOsTheme::setTextIfChanged(lbl, val ? "ON" : "OFF");
+      lv_obj_set_style_text_color(lbl,
+          lv_color_hex(val ? 0x3CFFB0u : 0x75A0ADu), 0);
+    };
+    applyToggle(settingsCfmStartLabel_, showCfmBeforeStart_);
+    applyToggle(settingsCfmStopLabel_,  showCfmBeforeStop_);
+    applyToggle(settingsAutoLiveLabel_, showAutoOpenLive_);
   }
 
   void clearShowListChildren() {
@@ -2069,91 +3699,335 @@ private:
     lv_obj_clean(showListScroll);
   }
 
-  void rebuildShowList(const ShowManager &sm) {
-    showListCount = 0;
-    clearShowListChildren();
-    if (showsSummaryLabel_) {
-      char title[48];
-      snprintf(title, sizeof(title), "%u package%s available",
-               (unsigned)sm.size(), sm.size() == 1 ? "" : "s");
-      ShowduinoOsTheme::setTextIfChanged(showsSummaryLabel_, title);
+  static const char *validationStateWord(ShowValidationState state) {
+    switch (state) {
+      case ShowValidationState::Ready: return "Ready";
+      case ShowValidationState::Warning: return "Warning";
+      case ShowValidationState::Invalid: return "Invalid";
+      case ShowValidationState::MissingAssets: return "Missing assets";
+      case ShowValidationState::Incompatible: return "Incompatible";
+      case ShowValidationState::NotValidated:
+      default: return "Not validated";
     }
+  }
+
+  static lv_color_t validationStateColor(ShowValidationState state) {
+    switch (state) {
+      case ShowValidationState::Ready: return lv_color_hex(OsColor::Ok);
+      case ShowValidationState::Warning: return lv_color_hex(OsColor::Warn);
+      case ShowValidationState::Invalid:
+      case ShowValidationState::MissingAssets:
+      case ShowValidationState::Incompatible: return lv_color_hex(OsColor::Fault);
+      case ShowValidationState::NotValidated:
+      default: return lv_color_hex(OsColor::TextMuted);
+    }
+  }
+
+  static const char *showLoadStateWord(ShowLoadUiState state) {
+    switch (state) {
+      case ShowLoadUiState::Ready: return "Ready to load";
+      case ShowLoadUiState::LoadRequested: return "Load requested";
+      case ShowLoadUiState::Loading: return "Loading";
+      case ShowLoadUiState::Loaded: return "Show loaded";
+      case ShowLoadUiState::Warning: return "Warning";
+      case ShowLoadUiState::Failed: return "Failed";
+      case ShowLoadUiState::AwaitingStage: return "Awaiting Stage";
+      case ShowLoadUiState::TimedOut: return "Timed out";
+      default: return "Unknown";
+    }
+  }
+
+  void updateShowsHeader(uint8_t packageCount) {
     if (showsListTitle) {
-      char title[40];
-      snprintf(title, sizeof(title), "SHOWS ON SD (%u)", (unsigned)sm.size());
-      lv_label_set_text(showsListTitle, title);
+      char title[64];
+      snprintf(title, sizeof(title), "Discovered: %u package%s",
+               (unsigned)packageCount, packageCount == 1 ? "" : "s");
+      ShowduinoOsTheme::setTextIfChanged(showsListTitle, title);
+    }
+    if (showsStorageLabel_) {
+      char storage[120];
+      if (showStorageRecovery_ || !showStorageMounted_) {
+        snprintf(storage, sizeof(storage), "Storage: Unavailable");
+      } else if (showStorageCardType_[0]) {
+        snprintf(storage, sizeof(storage), "Storage: SD %s", showStorageCardType_);
+      } else {
+        snprintf(storage, sizeof(storage), "Storage: Mounted");
+      }
+      ShowduinoOsTheme::setTextIfChanged(showsStorageLabel_, storage);
+    }
+    if (showsScanLabel_) {
+      char scanLine[140];
+      if (!showLibraryScanned_) {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: Not scanned");
+      } else if (showLibraryScanOk_) {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: %s",
+                 showLibraryScanNote_[0] ? showLibraryScanNote_ : "Complete");
+      } else {
+        snprintf(scanLine, sizeof(scanLine), "Last scan: Failed — %s",
+                 showLibraryScanNote_[0] ? showLibraryScanNote_ : "check SD status");
+      }
+      ShowduinoOsTheme::setTextIfChanged(showsScanLabel_, scanLine);
+    }
+  }
+
+  void renderShowsEmptyState(const char *headline, const char *detail) {
+    if (!showListScroll) return;
+    lv_obj_t *h = makeLabel(showListScroll, headline ? headline : "No packages", 8, 8);
+    lv_obj_add_style(h, &os_.title, 0);
+    lv_obj_set_width(h, OS_CONTENT_FULL_W - 52);
+    lv_label_set_long_mode(h, LV_LABEL_LONG_WRAP);
+    lv_obj_t *d = makeLabel(showListScroll, detail ? detail : "", 8, 36);
+    lv_obj_add_style(d, &os_.caption, 0);
+    lv_obj_set_width(d, OS_CONTENT_FULL_W - 52);
+    lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
+  }
+
+  bool showNameMatchesSelection(const char *name) const {
+    if (!selectedShowValid_ || !name || !name[0]) return false;
+    if (strcmp(name, selectedShowIdBuf) == 0) return true;
+    if (!selectedShowEntry_.name[0]) return false;
+    if (strcmp(name, selectedShowEntry_.name) == 0) return true;
+    size_t runtimeLen = strlen(name);
+    size_t selectedLen = strlen(selectedShowEntry_.name);
+    if (runtimeLen > 0 && runtimeLen < selectedLen &&
+        strncmp(selectedShowEntry_.name, name, runtimeLen) == 0) {
+      return true;
+    }
+    return false;
+  }
+
+  bool selectedShowAppearsLoaded() const {
+    if (!selectedShowValid_) return false;
+    if (showLoadState_ == ShowLoadUiState::Loaded &&
+        showLoadTargetId_[0] && strcmp(showLoadTargetId_, selectedShowIdBuf) == 0) {
+      return true;
+    }
+    if ((mirroredState == SHOW_STATE_SHOW_LOADED ||
+         mirroredState == SHOW_STATE_RUNNING ||
+         mirroredState == SHOW_STATE_PAUSED ||
+         mirroredState == SHOW_STATE_FINISHED) &&
+        showNameMatchesSelection(loadedShowNameBuf)) {
+      return true;
+    }
+    return false;
+  }
+
+  void updateShowLoadStateFromRuntime(const ShowRuntime &rt) {
+    bool stateChanged = false;
+    if (showLoadRequested_) {
+      if ((rt.state == SHOW_STATE_SHOW_LOADED || rt.state == SHOW_STATE_RUNNING ||
+           rt.state == SHOW_STATE_PAUSED || rt.state == SHOW_STATE_FINISHED) &&
+          showNameMatchesSelection(rt.showName)) {
+        showLoadState_ = ShowLoadUiState::Loaded;
+        showLoadRequested_ = false;
+        strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+        showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+        strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      } else if (rt.state == SHOW_STATE_ERROR) {
+        showLoadState_ = ShowLoadUiState::Failed;
+        showLoadRequested_ = false;
+        if (rt.lastError[0]) strncpy(showLoadStatusText_, rt.lastError, sizeof(showLoadStatusText_) - 1);
+        else strncpy(showLoadStatusText_, "Load failed on Stage", sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      } else if (showLoadState_ == ShowLoadUiState::LoadRequested) {
+        showLoadState_ = ShowLoadUiState::Loading;
+        strncpy(showLoadStatusText_, "Loading — waiting for Stage confirmation",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      }
     }
 
+    if (!showLoadRequested_ && selectedShowValid_) {
+      if ((rt.state == SHOW_STATE_SHOW_LOADED || rt.state == SHOW_STATE_RUNNING ||
+           rt.state == SHOW_STATE_PAUSED || rt.state == SHOW_STATE_FINISHED) &&
+          showNameMatchesSelection(rt.showName) &&
+          showLoadState_ != ShowLoadUiState::Loaded) {
+        showLoadState_ = ShowLoadUiState::Loaded;
+        strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+        showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+        strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+                sizeof(showLoadStatusText_) - 1);
+        showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+        stateChanged = true;
+      }
+    }
+    if (stateChanged) refreshShowDetailsPresentation();
+  }
+
+  void rebuildShowList(const ShowManager &sm) {
+    updateShowsHeader(sm.size());
+    showListCount = 0;
+    clearShowListChildren();
+
+    if (showsSummaryLabel_) {
+      if (!showStorageMounted_ || showStorageRecovery_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "SD unavailable. Restore storage, then refresh library.");
+      } else if (!showLibraryScanned_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Library not scanned yet. Tap Refresh Library.");
+      } else if (!showLibraryScanOk_) {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Library scan failed. Review SD state and retry.");
+      } else {
+        ShowduinoOsTheme::setTextIfChanged(
+            showsSummaryLabel_,
+            "Select package → inspect details → load → open Live");
+      }
+    }
+
+    if (!showStorageMounted_ || showStorageRecovery_) {
+      renderShowsEmptyState("No SD card / storage unavailable",
+                            showStorageLastError_[0] ? showStorageLastError_ : "Director is in storage recovery mode.");
+      return;
+    }
+    if (!showLibraryScanned_) {
+      renderShowsEmptyState("Library not yet scanned",
+                            "Tap Refresh Library to discover show packages.");
+      return;
+    }
+    if (!showLibraryScanOk_) {
+      renderShowsEmptyState("Library scan failed",
+                            showLibraryScanNote_[0] ? showLibraryScanNote_ : "SD scan reported an error.");
+      return;
+    }
     if (sm.size() == 0) {
-      makeLabel(showListScroll, "No shows found under /showduino/shows/packages", 8, 8);
+      renderShowsEmptyState("No show packages found",
+                            "No packages exist under /showduino/shows/packages.");
       return;
     }
 
+    const int cardW = OS_CONTENT_FULL_W - 36;
+    const int cardH = 112;
     int y = 4;
+    uint8_t validCount = 0;
     for (uint8_t i = 0; i < sm.size() && showListCount < SHOW_INDEX_MAX; i++) {
       const ShowIndexEntry *e = sm.get(i);
       if (!e) continue;
       showListCache[showListCount] = *e;
+      sm.validateShowPackage(e->id, showValidationCache_[showListCount]);
+      if (showValidationCache_[showListCount].state == ShowValidationState::Ready) validCount++;
       snprintf(showOpenCmds[showListCount], sizeof(showOpenCmds[showListCount]),
                "UI:SHOW:OPEN:%s", e->id);
 
-      lv_obj_t *row = lv_obj_create(showListScroll);
-      lv_obj_remove_style_all(row);
-      lv_obj_set_pos(row, 4, y);
-      lv_obj_set_size(row, 448, 72);
-      lv_obj_set_style_bg_color(row, lv_color_hex(OsColor::Button), 0);
-      lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-      lv_obj_set_style_border_color(row, lv_color_hex(OsColor::PanelBorder), 0);
-      lv_obj_set_style_border_width(row, 1, 0);
-      lv_obj_set_style_radius(row, OS_BTN_RADIUS, 0);
+      const bool isSelected = selectedShowValid_ && strcmp(selectedShowIdBuf, e->id) == 0;
+      const bool isLoaded = (loadedShowNameBuf[0] && strcmp(loadedShowNameBuf, e->name) == 0);
+      lv_obj_t *card = lv_obj_create(showListScroll);
+      lv_obj_remove_style_all(card);
+      lv_obj_set_pos(card, 4, y);
+      lv_obj_set_size(card, cardW, cardH);
+      lv_obj_set_style_bg_color(card,
+                                lv_color_hex(isSelected ? 0x10323F : OsColor::Button), 0);
+      lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_color(card,
+                                    lv_color_hex(isSelected ? OsColor::Accent : OsColor::PanelBorder), 0);
+      lv_obj_set_style_border_width(card, isSelected ? 2 : 1, 0);
+      lv_obj_set_style_radius(card, OS_BTN_RADIUS, 0);
 
-      ShowduinoShowThumb::makeDefaultIcon(row, 6, 6, 56, 56);
+      ShowduinoShowThumb::makeDefaultIcon(card, 8, 8, 72, 48);
       if (e->hasThumbnail) {
-        lv_obj_t *badge = lv_label_create(row);
-        lv_label_set_text(badge, "BMP");
-        lv_obj_set_style_text_color(badge, lv_color_hex(0x4ADE80), 0);
-        lv_obj_set_pos(badge, 14, 48);
+        lv_obj_t *badge = lv_label_create(card);
+        lv_label_set_text(badge, "ART");
+        lv_obj_set_style_text_color(badge, lv_color_hex(OsColor::Ok), 0);
+        lv_obj_set_pos(badge, 10, 60);
       }
 
       char dur[16];
       ShowduinoShowThumb::formatDuration(e->durationSeconds, dur, sizeof(dur));
-      char line1[96];
-      snprintf(line1, sizeof(line1), "%s", e->name);
-      lv_obj_t *n = lv_label_create(row);
-      lv_label_set_text(n, line1);
-      lv_obj_set_style_text_color(n, lv_color_hex(0xFFFFFF), 0);
-      lv_obj_set_pos(n, 72, 6);
 
-      char line2[128];
-      snprintf(line2, sizeof(line2), "%s  ·  v%s  ·  %s",
-               dur, e->version[0] ? e->version : "-", e->author[0] ? e->author : "-");
-      lv_obj_t *m = lv_label_create(row);
-      lv_label_set_text(m, line2);
-      lv_obj_set_style_text_color(m, lv_color_hex(0xA1A1AA), 0);
-      lv_obj_set_pos(m, 72, 28);
+      lv_obj_t *title = lv_label_create(card);
+      lv_label_set_text(title, e->name[0] ? e->name : e->id);
+      lv_obj_set_style_text_color(title, lv_color_hex(OsColor::Title), 0);
+      lv_obj_set_pos(title, 88, 6);
+      lv_obj_set_width(title, cardW - 220);
+      lv_label_set_long_mode(title, LV_LABEL_LONG_CLIP);
 
-      char line3[96];
-      if (e->description[0]) {
-        snprintf(line3, sizeof(line3), "%.70s", e->description);
-      } else {
-        snprintf(line3, sizeof(line3), "(no description)");
+      char info[196];
+      snprintf(info, sizeof(info), "%s  ·  cues %u  ·  v%s  ·  %s",
+               dur,
+               (unsigned)e->cueCount,
+               e->version[0] ? e->version : "Unknown",
+               e->author[0] ? e->author : "Unknown");
+      lv_obj_t *meta = lv_label_create(card);
+      lv_label_set_text(meta, info);
+      lv_obj_set_style_text_color(meta, lv_color_hex(OsColor::TextMuted), 0);
+      lv_obj_set_pos(meta, 88, 28);
+      lv_obj_set_width(meta, cardW - 220);
+      lv_label_set_long_mode(meta, LV_LABEL_LONG_CLIP);
+
+      char desc[120];
+      if (e->description[0]) snprintf(desc, sizeof(desc), "%.96s", e->description);
+      else snprintf(desc, sizeof(desc), "Description unavailable");
+      lv_obj_t *descLabel = lv_label_create(card);
+      lv_label_set_text(descLabel, desc);
+      lv_obj_set_style_text_color(descLabel, lv_color_hex(OsColor::TextDim), 0);
+      lv_obj_set_pos(descLabel, 88, 48);
+      lv_obj_set_width(descLabel, cardW - 220);
+      lv_label_set_long_mode(descLabel, LV_LABEL_LONG_CLIP);
+
+      const ShowValidationResult &vr = showValidationCache_[showListCount];
+      char statusLine[196];
+      snprintf(statusLine, sizeof(statusLine), "Validation: %s  ·  Compatibility: %s  ·  Modified: %s",
+               validationStateWord(vr.state),
+               vr.compatible ? "Compatible" : "Incompatible",
+               e->modified[0] ? e->modified : "Unavailable");
+      lv_obj_t *stateLab = lv_label_create(card);
+      lv_label_set_text(stateLab, statusLine);
+      lv_obj_set_style_text_color(stateLab, validationStateColor(vr.state), 0);
+      lv_obj_set_pos(stateLab, 88, 68);
+      lv_obj_set_width(stateLab, cardW - 220);
+      lv_label_set_long_mode(stateLab, LV_LABEL_LONG_CLIP);
+
+      if (isLoaded) {
+        lv_obj_t *loaded = lv_label_create(card);
+        lv_label_set_text(loaded, "LOADED");
+        lv_obj_set_style_text_color(loaded, lv_color_hex(OsColor::Ok), 0);
+        lv_obj_set_pos(loaded, cardW - 128, 8);
       }
-      lv_obj_t *d = lv_label_create(row);
-      lv_label_set_text(d, line3);
-      lv_obj_set_style_text_color(d, lv_color_hex(0xD4D4D8), 0);
-      lv_obj_set_pos(d, 72, 48);
 
-      lv_obj_t *hit = lv_button_create(row);
-      lv_obj_remove_style_all(hit);
-      lv_obj_set_size(hit, 448, 72);
-      lv_obj_set_pos(hit, 0, 0);
-      lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
-      lv_obj_add_event_cb(hit, staticEventHandler, LV_EVENT_CLICKED, this);
-      lv_obj_set_user_data(hit, (void *)showOpenCmds[showListCount]);
+      lv_obj_t *openBtn = makeButton(card, "View Details", cardW - 126, 66, 116, 36,
+                                     showOpenCmds[showListCount]);
+      (void)openBtn;
 
       showListCount++;
-      y += 78;
+      y += cardH + 8;
       yield();
+    }
+
+    if (validCount == 0 && showsSummaryLabel_) {
+      ShowduinoOsTheme::setTextIfChanged(
+          showsSummaryLabel_,
+          "Packages discovered, but all failed validation. Open details to inspect issues.");
+    }
+
+    const ShowIndexEntry *selected = cachedShow(selectedShowIdBuf);
+    if (!selectedShowIdBuf[0] || !selected) {
+      selectedShowValid_ = false;
+      selectedShowIdBuf[0] = '\0';
+      memset(&selectedShowEntry_, 0, sizeof(selectedShowEntry_));
+      memset(&selectedShowValidation_, 0, sizeof(selectedShowValidation_));
+      showLoadState_ = ShowLoadUiState::Ready;
+      showLoadRequested_ = false;
+      showLoadTargetId_[0] = '\0';
+      strncpy(showLoadStatusText_, "Ready to load", sizeof(showLoadStatusText_) - 1);
+      showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    } else {
+      selectedShowValid_ = true;
+      selectedShowEntry_ = *selected;
+      for (uint8_t i = 0; i < showListCount; i++) {
+        if (strcmp(showListCache[i].id, selectedShowEntry_.id) == 0) {
+          selectedShowValidation_ = showValidationCache_[i];
+          break;
+        }
+      }
     }
   }
 
@@ -2165,29 +4039,154 @@ private:
     return nullptr;
   }
 
-  void openShowDetails(const char *showId) {
-    if (!showId || !showId[0]) return;
-    strncpy(selectedShowIdBuf, showId, sizeof(selectedShowIdBuf) - 1);
-    selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+  const ShowValidationResult *cachedValidation(const char *id) const {
+    if (!id) return nullptr;
+    for (uint8_t i = 0; i < showListCount; i++) {
+      if (strcmp(showListCache[i].id, id) == 0) return &showValidationCache_[i];
+    }
+    return nullptr;
+  }
 
-    const ShowIndexEntry *e = cachedShow(showId);
-    const char *name = e ? e->name : showId;
-    const char *desc = e && e->description[0] ? e->description : "(no description)";
-    const char *author = e && e->author[0] ? e->author : "-";
-    const char *version = e && e->version[0] ? e->version : "-";
-    uint32_t durSec = e ? e->durationSeconds : 0;
+  String requirementFieldFromManifest(const String &manifest, const char *key) const {
+    String asString = ShowduinoFileUtil::jsonGetString(manifest, key, "");
+    if (asString.length() > 0) return asString;
 
-    if (detailsNameLabel) lv_label_set_text(detailsNameLabel, name);
-    if (detailsDescLabel) lv_label_set_text(detailsDescLabel, desc);
+    String pattern = String("\"") + key + "\"";
+    int k = manifest.indexOf(pattern);
+    if (k < 0) return "";
+    int colon = manifest.indexOf(':', k + pattern.length());
+    if (colon < 0) return "";
+    int s = colon + 1;
+    while (s < (int)manifest.length() && (manifest[s] == ' ' || manifest[s] == '\t')) s++;
+    if (s >= (int)manifest.length()) return "";
+    if (manifest[s] == '[') {
+      int end = manifest.indexOf(']', s + 1);
+      if (end < 0) return "";
+      String body = manifest.substring(s + 1, end);
+      body.trim();
+      if (!body.length()) return "";
+      body.replace("\"", "");
+      body.replace(",", ", ");
+      return body;
+    }
+    return "";
+  }
+
+  void refreshShowDetailsPresentation() {
+    if (!detailsNameLabel || !detailsDescLabel || !detailsMetaLabel ||
+        !detailsRequirementsLabel_ || !detailsValidationLabel_ || !timelineDetailLabel) {
+      return;
+    }
+
+    if (!selectedShowValid_) {
+      lv_label_set_text(detailsNameLabel, "No show selected");
+      if (detailsSummaryLabel_) lv_label_set_text(detailsSummaryLabel_, "Select a package from Shows.");
+      lv_label_set_text(detailsDescLabel, "Description unavailable");
+      lv_label_set_text(detailsMetaLabel,
+                        "Duration: Unknown\nCue count: Unknown\nPackage: Unselected\nLoaded: No");
+      lv_label_set_text(detailsRequirementsLabel_,
+                        "Requirements\nNodes: Not specified\nAudio assets: Not specified\nLighting: Not specified\nStorage: Not specified\nMinimum package: Not specified");
+      lv_label_set_text(detailsValidationLabel_, "Validation: Not validated");
+      lv_obj_set_style_text_color(detailsValidationLabel_, lv_color_hex(OsColor::TextMuted), 0);
+      lv_label_set_text(timelineDetailLabel, "Load state: Ready to load");
+      if (detailsLoadBtn_) lv_obj_add_state(detailsLoadBtn_, LV_STATE_DISABLED);
+      if (detailsOpenLiveBtn_) lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+      if (detailsIconHost) {
+        if (detailsCanvas) {
+          ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
+          detailsCanvas = nullptr;
+        }
+        lv_obj_clean(detailsIconHost);
+        ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
+      }
+      return;
+    }
+
+    lv_label_set_text(detailsNameLabel, selectedShowEntry_.name[0] ? selectedShowEntry_.name : selectedShowEntry_.id);
+    if (detailsSummaryLabel_) {
+      char summary[120];
+      snprintf(summary, sizeof(summary), "Package: %s  ·  Selected: YES  ·  Loaded: %s",
+               selectedShowEntry_.id,
+               selectedShowAppearsLoaded() ? "YES" : "NO");
+      lv_label_set_text(detailsSummaryLabel_, summary);
+    }
+    lv_label_set_text(detailsDescLabel,
+                      selectedShowEntry_.description[0] ? selectedShowEntry_.description : "Description unavailable");
 
     char dur[16];
-    ShowduinoShowThumb::formatDuration(durSec, dur, sizeof(dur));
-    char meta[160];
-    snprintf(meta, sizeof(meta), "Duration  %s\nVersion   %s\nAuthor    %s",
-             dur, version, author);
-    if (detailsMetaLabel) lv_label_set_text(detailsMetaLabel, meta);
+    ShowduinoShowThumb::formatDuration(selectedShowEntry_.durationSeconds, dur, sizeof(dur));
+    char meta[260];
+    snprintf(meta, sizeof(meta),
+             "Duration: %s\nCue count: %u\nAuthor: %s\nVersion: %s\nPackage ID: %s\nModified: %s",
+             dur,
+             (unsigned)selectedShowEntry_.cueCount,
+             selectedShowEntry_.author[0] ? selectedShowEntry_.author : "Unavailable",
+             selectedShowEntry_.version[0] ? selectedShowEntry_.version : "Unavailable",
+             selectedShowEntry_.id,
+             selectedShowEntry_.modified[0] ? selectedShowEntry_.modified : "Unavailable");
+    lv_label_set_text(detailsMetaLabel, meta);
 
-    /* Rebuild icon host: default Showduino icon, replace with BMP when available. */
+    String manifest;
+    String reqNodes = "Not specified";
+    String reqAudio = "Not specified";
+    String reqLighting = "Not specified";
+    String reqStorage = "Not specified";
+    String reqMinVersion = "Not specified";
+    if (selectedShowEntry_.path[0] && ShowduinoFileUtil::readTextFile(selectedShowEntry_.path, manifest)) {
+      String nodes = requirementFieldFromManifest(manifest, "requiredNodes");
+      String audio = requirementFieldFromManifest(manifest, "requiredAudio");
+      String lighting = requirementFieldFromManifest(manifest, "requiredLighting");
+      String storage = requirementFieldFromManifest(manifest, "requiredStorage");
+      String minVersion = requirementFieldFromManifest(manifest, "minimumVersion");
+      if (!minVersion.length()) minVersion = requirementFieldFromManifest(manifest, "minPackageVersion");
+      bool stageReq = ShowduinoFileUtil::jsonGetBool(manifest, "stageControllerRequired", true);
+      if (nodes.length()) reqNodes = nodes;
+      else if (stageReq) reqNodes = "Stage Controller (Brain)";
+      if (audio.length()) reqAudio = audio;
+      if (lighting.length()) reqLighting = lighting;
+      if (storage.length()) reqStorage = storage;
+      if (minVersion.length()) reqMinVersion = minVersion;
+    }
+
+    String requirements = String("Requirements\nNodes: ") + reqNodes +
+                          "\nAudio assets: " + reqAudio +
+                          "\nLighting: " + reqLighting +
+                          "\nStorage: " + reqStorage +
+                          "\nMinimum package: " + reqMinVersion;
+    lv_label_set_text(detailsRequirementsLabel_, requirements.c_str());
+
+    char validation[220];
+    snprintf(validation, sizeof(validation),
+             "Validation: %s\nCompatibility: %s\nIssue: %s",
+             validationStateWord(selectedShowValidation_.state),
+             selectedShowValidation_.compatible ? "Compatible" : "Incompatible",
+             selectedShowValidation_.detail[0] ? selectedShowValidation_.detail : "None");
+    lv_label_set_text(detailsValidationLabel_, validation);
+    lv_obj_set_style_text_color(detailsValidationLabel_,
+                                validationStateColor(selectedShowValidation_.state), 0);
+
+    char loadLine[220];
+    snprintf(loadLine, sizeof(loadLine), "Load state: %s\n%s",
+             showLoadStateWord(showLoadState_),
+             showLoadStatusText_[0] ? showLoadStatusText_ : "Ready to load");
+    lv_label_set_text(timelineDetailLabel, loadLine);
+
+    if (detailsLoadBtn_) {
+      const bool busy = (showLoadState_ == ShowLoadUiState::LoadRequested ||
+                         showLoadState_ == ShowLoadUiState::Loading ||
+                         showLoadState_ == ShowLoadUiState::AwaitingStage);
+      const bool validationBlocksLoad =
+          (selectedShowValidation_.state == ShowValidationState::Invalid ||
+           selectedShowValidation_.state == ShowValidationState::MissingAssets ||
+           selectedShowValidation_.state == ShowValidationState::Incompatible);
+      if (busy || validationBlocksLoad) lv_obj_add_state(detailsLoadBtn_, LV_STATE_DISABLED);
+      else lv_obj_clear_state(detailsLoadBtn_, LV_STATE_DISABLED);
+    }
+    if (detailsOpenLiveBtn_) {
+      if (selectedShowAppearsLoaded()) lv_obj_clear_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(detailsOpenLiveBtn_, LV_OBJ_FLAG_HIDDEN);
+    }
+
     if (detailsIconHost) {
       if (detailsCanvas) {
         ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
@@ -2195,28 +4194,62 @@ private:
       }
       lv_obj_clean(detailsIconHost);
       bool showedBmp = false;
-      if (e && e->hasThumbnail) {
+      if (selectedShowEntry_.hasThumbnail) {
         char thumb[STORAGE_MAX_PATH_LEN];
-        snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", e->folder);
-        detailsCanvas = lv_canvas_create(detailsIconHost);
-        lv_obj_set_pos(detailsCanvas, 0, 0);
-        if (ShowduinoShowThumb::loadBmpToCanvas(detailsCanvas, thumb, 96, 64)) {
-          showedBmp = true;
+        const int pathLen = snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", selectedShowEntry_.folder);
+        if (pathLen > 0 && pathLen < (int)sizeof(thumb)) {
+          detailsCanvas = lv_canvas_create(detailsIconHost);
+          lv_obj_set_pos(detailsCanvas, 4, 4);
+          if (ShowduinoShowThumb::loadBmpToCanvas(detailsCanvas, thumb, 96, 64)) {
+            showedBmp = true;
+          } else {
+            ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
+            lv_obj_delete(detailsCanvas);
+            detailsCanvas = nullptr;
+          }
         } else {
-          ShowduinoShowThumb::freeCanvasBuffer(detailsCanvas);
-          lv_obj_delete(detailsCanvas);
-          detailsCanvas = nullptr;
+          pushOperatorEvent("Thumbnail path too long");
         }
       }
-      if (!showedBmp) {
-        ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
-      }
+      if (!showedBmp) ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 4, 4, 96, 64);
     }
+  }
 
-    lv_screen_load(showDetailsScreen);
-    statusDirty = true;
-    trafficDirty = true;
-    updateStatusWidgets(true);
+  void openShowDetails(const char *showId) {
+    if (!showId || !showId[0]) return;
+    const ShowIndexEntry *e = cachedShow(showId);
+    if (!e) return;
+    strncpy(selectedShowIdBuf, showId, sizeof(selectedShowIdBuf) - 1);
+    selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+    selectedShowValid_ = true;
+    selectedShowEntry_ = *e;
+    const ShowValidationResult *vr = cachedValidation(showId);
+    if (vr) selectedShowValidation_ = *vr;
+    else {
+      memset(&selectedShowValidation_, 0, sizeof(selectedShowValidation_));
+      selectedShowValidation_.state = ShowValidationState::NotValidated;
+      selectedShowValidation_.compatible = true;
+      strncpy(selectedShowValidation_.summary, "Not validated",
+              sizeof(selectedShowValidation_.summary) - 1);
+      strncpy(selectedShowValidation_.detail, "Validation data unavailable",
+              sizeof(selectedShowValidation_.detail) - 1);
+    }
+    if (selectedShowAppearsLoaded()) {
+      showLoadState_ = ShowLoadUiState::Loaded;
+      strncpy(showLoadTargetId_, selectedShowIdBuf, sizeof(showLoadTargetId_) - 1);
+      showLoadTargetId_[sizeof(showLoadTargetId_) - 1] = '\0';
+      strncpy(showLoadStatusText_, "Show Loaded — open Live when ready",
+              sizeof(showLoadStatusText_) - 1);
+    } else {
+      showLoadState_ = ShowLoadUiState::Ready;
+      if (strcmp(showLoadTargetId_, selectedShowIdBuf) != 0) showLoadTargetId_[0] = '\0';
+      strncpy(showLoadStatusText_, "Ready to load", sizeof(showLoadStatusText_) - 1);
+    }
+    showLoadStatusText_[sizeof(showLoadStatusText_) - 1] = '\0';
+    showLoadRequested_ = false;
+    refreshShowDetailsPresentation();
+
+    showDetails();
   }
 
   void showDesktop() {
@@ -2240,8 +4273,40 @@ private:
     trafficDirty = true;
     updateStatusWidgets(true);
   }
-  void showDiagnostics() {
+  void showDetails() {
+    notePage(DeskPage::Details);
+    lv_screen_load(showDetailsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showMore() {
+    if (!moreScreen) return;
+    notePage(DeskPage::More);
+    lv_screen_load(moreScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showNodes() {
     notePage(DeskPage::Nodes);
+    refreshNodesPresentationIfActive();
+    lv_screen_load(nodesScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showNodeDetails() {
+    notePage(DeskPage::NodeDetails);
+    refreshNodeDetailsPresentation();
+    lv_screen_load(nodeDetailsScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showDiagnostics() {
+    notePage(DeskPage::Diagnostics);
+    refreshDiagnosticsSummary();
     lv_screen_load(diagnosticsScreen);
     statusDirty = true;
     trafficDirty = true;
@@ -2250,6 +4315,22 @@ private:
   void showSettings() {
     notePage(DeskPage::Settings);
     lv_screen_load(settingsScreen);
+    refreshNetworkStatus();
+    refreshShowOpToggles_();
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showMaintenance() {
+    notePage(DeskPage::Maintenance);
+    lv_screen_load(maintenanceScreen);
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showAbout() {
+    notePage(DeskPage::About);
+    lv_screen_load(aboutScreen);
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
@@ -2265,10 +4346,7 @@ private:
   void showLogs() {
     notePage(DeskPage::Logs);
     lv_screen_load(logsScreen);
-    const bool wasPaused = logsLivePaused_;
-    logsLivePaused_ = false;
     refreshLogsDisplay();
-    logsLivePaused_ = wasPaused;
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);

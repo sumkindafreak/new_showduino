@@ -17,10 +17,33 @@ struct ShowIndexEntry {
   char description[96];
   char author[48];
   char version[16];
+  char modified[32];
   char path[STORAGE_MAX_PATH_LEN];   /* …/show.json */
   char folder[STORAGE_MAX_PATH_LEN]; /* package folder */
   uint32_t durationSeconds;
+  uint16_t cueCount;
+  uint16_t schemaVersion;
   bool hasThumbnail;
+};
+
+enum class ShowValidationState : uint8_t {
+  NotValidated = 0,
+  Ready,
+  Warning,
+  Invalid,
+  MissingAssets,
+  Incompatible
+};
+
+struct ShowValidationResult {
+  ShowValidationState state;
+  bool compatible;
+  bool hasManifest;
+  bool hasTimeline;
+  bool hasCueFile;
+  uint16_t schemaVersion;
+  char summary[40];
+  char detail[128];
 };
 
 /**
@@ -149,7 +172,10 @@ public:
       strncpy(e.description, show.description, sizeof(e.description) - 1);
       strncpy(e.author, show.author, sizeof(e.author) - 1);
       strncpy(e.version, show.version, sizeof(e.version) - 1);
+      strncpy(e.modified, show.modified, sizeof(e.modified) - 1);
       e.durationSeconds = show.durationSeconds;
+      e.cueCount = show.cueCount;
+      e.schemaVersion = show.schemaVersion ? show.schemaVersion : 1;
       snprintf(e.folder, sizeof(e.folder), "%s", dir);
       snprintf(e.path, sizeof(e.path), "%s/show.json", dir);
       e.hasThumbnail = SD.exists((String(dir) + "/thumbnail.bmp").c_str());
@@ -201,7 +227,10 @@ public:
         strncpy(entries[i].description, show.description, sizeof(entries[i].description) - 1);
         strncpy(entries[i].author, show.author, sizeof(entries[i].author) - 1);
         strncpy(entries[i].version, show.version, sizeof(entries[i].version) - 1);
+        strncpy(entries[i].modified, show.modified, sizeof(entries[i].modified) - 1);
         entries[i].durationSeconds = show.durationSeconds;
+        entries[i].cueCount = show.cueCount;
+        entries[i].schemaVersion = show.schemaVersion ? show.schemaVersion : 1;
       }
     }
     dirty = true;
@@ -290,6 +319,94 @@ public:
     if (!showId || !out || outLen < 8) return false;
     snprintf(out, outLen, "%s/%s/timeline.json", SHOW_PKG_ROOT, showId);
     return ShowduinoFileUtil::pathLooksSafe(out);
+  }
+
+  bool validateShowPackage(const char *showId, ShowValidationResult &out) const {
+    memset(&out, 0, sizeof(out));
+    out.state = ShowValidationState::NotValidated;
+    out.compatible = true;
+    strncpy(out.summary, "Not validated", sizeof(out.summary) - 1);
+    strncpy(out.detail, "Validation has not run.", sizeof(out.detail) - 1);
+
+    const ShowIndexEntry *entry = findById(showId);
+    if (!entry) {
+      out.state = ShowValidationState::Invalid;
+      out.compatible = false;
+      strncpy(out.summary, "Invalid", sizeof(out.summary) - 1);
+      strncpy(out.detail, "Package is not present in the current library index.",
+              sizeof(out.detail) - 1);
+      return false;
+    }
+
+    out.hasManifest = SD.exists(entry->path);
+    if (!out.hasManifest) {
+      out.state = ShowValidationState::Invalid;
+      out.compatible = false;
+      strncpy(out.summary, "Invalid manifest", sizeof(out.summary) - 1);
+      strncpy(out.detail, "show.json is missing from the package directory.",
+              sizeof(out.detail) - 1);
+      return false;
+    }
+
+    String manifest;
+    if (!ShowduinoFileUtil::readTextFile(entry->path, manifest) ||
+        !ShowduinoFileUtil::looksLikeJsonObject(manifest)) {
+      out.state = ShowValidationState::Invalid;
+      out.compatible = false;
+      strncpy(out.summary, "Invalid manifest", sizeof(out.summary) - 1);
+      strncpy(out.detail, "show.json is unreadable or malformed JSON.",
+              sizeof(out.detail) - 1);
+      return false;
+    }
+
+    out.schemaVersion = (uint16_t)ShowduinoFileUtil::jsonGetLong(manifest, "schemaVersion", 1);
+    if (out.schemaVersion > 1) {
+      out.state = ShowValidationState::Incompatible;
+      out.compatible = false;
+      strncpy(out.summary, "Incompatible", sizeof(out.summary) - 1);
+      snprintf(out.detail, sizeof(out.detail),
+               "Unsupported schemaVersion %u (Director supports 1).",
+               (unsigned)out.schemaVersion);
+      return false;
+    }
+
+    char timeline[STORAGE_MAX_PATH_LEN];
+    snprintf(timeline, sizeof(timeline), "%s/timeline.json", entry->folder);
+    out.hasTimeline = SD.exists(timeline) && ShowduinoFileUtil::fileNonEmpty(timeline);
+    if (!out.hasTimeline) {
+      out.state = ShowValidationState::MissingAssets;
+      out.compatible = true;
+      strncpy(out.summary, "Missing assets", sizeof(out.summary) - 1);
+      strncpy(out.detail, "timeline.json is missing or empty.", sizeof(out.detail) - 1);
+      return false;
+    }
+
+    char cues[STORAGE_MAX_PATH_LEN];
+    snprintf(cues, sizeof(cues), "%s/cues.json", entry->folder);
+    out.hasCueFile = SD.exists(cues) && ShowduinoFileUtil::fileNonEmpty(cues);
+    if (!out.hasCueFile) {
+      out.state = ShowValidationState::Warning;
+      out.compatible = true;
+      strncpy(out.summary, "Warning", sizeof(out.summary) - 1);
+      strncpy(out.detail, "cues.json is missing or empty; verify package completeness.",
+              sizeof(out.detail) - 1);
+      return true;
+    }
+
+    if (entry->cueCount == 0) {
+      out.state = ShowValidationState::Warning;
+      out.compatible = true;
+      strncpy(out.summary, "Warning", sizeof(out.summary) - 1);
+      strncpy(out.detail, "Cue count is not declared in show.json.", sizeof(out.detail) - 1);
+      return true;
+    }
+
+    out.state = ShowValidationState::Ready;
+    out.compatible = true;
+    strncpy(out.summary, "Ready", sizeof(out.summary) - 1);
+    strncpy(out.detail, "Manifest and timeline validated for load request.",
+            sizeof(out.detail) - 1);
+    return true;
   }
 
   /** Resolve package id from id or display name (Show Management compatible). */
@@ -395,11 +512,16 @@ private:
     strncpy(e.version,
             ShowduinoFileUtil::jsonGetString(json, "version", "1.0.0").c_str(),
             sizeof(e.version) - 1);
+    strncpy(e.modified,
+            ShowduinoFileUtil::jsonGetString(json, "modified", "").c_str(),
+            sizeof(e.modified) - 1);
+    e.schemaVersion = (uint16_t)ShowduinoFileUtil::jsonGetLong(json, "schemaVersion", 1);
 
     e.durationSeconds = (uint32_t)ShowduinoFileUtil::jsonGetLong(json, "durationSeconds", 0);
     if (e.durationSeconds == 0) {
       e.durationSeconds = (uint32_t)ShowduinoFileUtil::jsonGetLong(json, "durationMs", 0) / 1000UL;
     }
+    e.cueCount = (uint16_t)ShowduinoFileUtil::jsonGetLong(json, "cueCount", 0);
 
     char thumb[STORAGE_MAX_PATH_LEN];
     snprintf(thumb, sizeof(thumb), "%s/thumbnail.bmp", e.folder[0] ? e.folder : (SHOW_PKG_ROOT));

@@ -81,6 +81,7 @@ unsigned long lastUiRefreshMs = 0;
 unsigned long lastLvglTickMs = 0;
 unsigned long lastStageReplyMs = 0;
 unsigned long lastEspNowRecoverMs = 0;
+unsigned long lastNodeSnapshotSyncMs = 0;
 unsigned long bootMs = 0;
 
 uint8_t linkState = LINK_SEARCHING;
@@ -98,6 +99,7 @@ void sendToStage(const String &command);
 void requestStateSync();
 void applyMirroredRuntime(const ShowRuntime &rt);
 void onEmergencyActivatedDirectorUx();
+void onEmergencyClearedDirectorUx();
 void pushEmergencyTimelineSnapshot();
 bool uploadShowTimelineToStage(const char *idOrName);
 void applyLinkState(uint8_t state) {
@@ -105,6 +107,8 @@ void applyLinkState(uint8_t state) {
   if (linkState == state) return;
   linkState = state;
   ui.setLinkState(state);
+  /* Propagate link state to P4 audio model */
+  ui.setP4AudioLinkState(state == LINK_READY);
   if (state == LINK_DISCONNECTED) {
     ui.markRelayStaleUnknown();
     syncRequested = false;
@@ -112,6 +116,9 @@ void applyLinkState(uint8_t state) {
     gShowMirror.stageConnected = 0;
   } else if (state == LINK_READY && prev != LINK_READY) {
     requestStateSync();
+    /* Request audio status when P4 reconnects */
+    sendToStage("AUDIO:LOCAL:STATUS");
+    ui.noteAudioCommandSent("AUDIO:LOCAL:STATUS");
   }
   ui.updateStatusWidgets(false);
 }
@@ -122,6 +129,8 @@ void onStorageStatus(const StorageStatus &st) {
     lastLogged = st.stage;
     Serial.printf("[StorageUI] %s\n", st.bootMessage);
   }
+  ui.setStorageStatusSnapshot(st);
+  ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
 }
 
 // =========================================================
@@ -157,6 +166,7 @@ void handleStageLine(String line) {
 
   // Any valid Stage reply proves the link is alive (reconnects from DISCONNECTED).
   applyLinkState(LINK_READY);
+  ui.noteNodeResponse(line.c_str());
 
   /* SUE TimeService — display only; do not invent a local clock. */
   if (line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
@@ -218,6 +228,7 @@ void handleStageLine(String line) {
 
   ShowduinoNodeAvailWire nodeW = showduino_parse_state_node_relay(line.c_str());
   if (nodeW != SHOWDUINO_NODE_WIRE_INVALID) {
+    ui.setNodeAvailability(nodeW);
     ui.setNodeCount(nodeW == SHOWDUINO_NODE_WIRE_ONLINE ? 1 : 0);
   }
 
@@ -231,6 +242,7 @@ void handleStageLine(String line) {
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
     ui.pushOperatorEvent("Stage cleared emergency");
+    onEmergencyClearedDirectorUx();
   }
 
   /* Fingerprint: early Stage Engine (pre-ShowRuntime) — operator must reflash P4. */
@@ -272,10 +284,19 @@ void handleStageLine(String line) {
   /* Do NOT treat ACK:RELAY / OK:RELAY as confirmed Stage 3 state.
      Confirmed display comes only from STATE:RELAY. */
 
+  /* P4 audio response routing */
+  if (line.startsWith("REJECTED:AUDIO:") ||
+      line.startsWith("ACK:AUDIO:") ||
+      (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) && line.indexOf("AUDIO") >= 0) ||
+      (line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) && line.indexOf("AUDIO") >= 0) ||
+      (line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX) && line.indexOf("AUDIO") >= 0)) {
+    ui.applyP4AudioResponse(line);
+  }
+
   if (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX)) {
-    /* Log only — honest failure paths */
+    /* Logged below */
   }
 
   if (!isQuietLinkTraffic(line)) {
@@ -288,6 +309,7 @@ void handleStageLine(String line) {
 }
 
 void sendToStage(const String &command) {
+  ui.noteNodeCommandSent(command.c_str());
   bool sentByEspNow = false;
 
 #if SHOWDUINO_USE_ESPNOW
@@ -336,6 +358,8 @@ void requestStateSync() {
 
 void applyMirroredRuntime(const ShowRuntime &rt) {
   ShowState prev = gShowMirror.state;
+  char prevShowName[64] = {};
+  strncpy(prevShowName, gShowMirror.showName, sizeof(prevShowName) - 1);
   gShowMirror = rt;
   gShowMirror.stageConnected = (linkState == LINK_READY) ? 1 : 0;
 
@@ -358,6 +382,12 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
   }
 
   refreshTimelineUi();
+
+  const bool showIdentityChanged = strcmp(prevShowName, rt.showName) != 0;
+  if (prev != rt.state || showIdentityChanged) {
+    const StorageStatus &st = getStorageStatus();
+    ui.refreshShowLibrary(gStorage.showManager(), &st, false, true, nullptr);
+  }
 }
 
 /** Timeline cue strings are executed by Stage — Director does not dispatch. */
@@ -427,9 +457,13 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   timeline.Stop();
 
   char loadCmd[96];
-  snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showId);
-  if (strlen(loadCmd) >= SHOWDUINO_DESK_COMMAND_MAX) {
-    snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
+  int loadLen = snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showId);
+  if (loadLen <= 0 || loadLen >= SHOWDUINO_DESK_COMMAND_MAX) {
+    loadLen = snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
+  }
+  if (loadLen <= 0 || loadLen >= SHOWDUINO_DESK_COMMAND_MAX) {
+    ui.appendLog("LOAD failed — package identifier exceeds Stage command limits");
+    return false;
   }
   sendToStage(loadCmd);
   sendToStage("SHOW:TL:BEGIN");
@@ -455,7 +489,6 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   }
 
   sendToStage("SHOW:TL:END");
-  ui.setLoadedShowName(showName);
 
   char line[120];
   snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues, %u skipped)",
@@ -527,6 +560,11 @@ void onEmergencyActivatedDirectorUx() {
   /* Overlay only — Stage pauses timeline & owns ShowRuntime.emergency. */
   pushEmergencyTimelineSnapshot();
   refreshTimelineUi();
+  ui.setP4AudioEmergency(true);
+}
+
+void onEmergencyClearedDirectorUx() {
+  ui.setP4AudioEmergency(false);
 }
 
 void handleUiCommand(const String &command) {
@@ -564,7 +602,9 @@ void handleUiCommand(const String &command) {
   }
 
   if (command == "STORAGE:BACKUP") {
-    ui.appendLog(createManualBackup() ? "Backup created" : "Backup failed");
+    bool ok = createManualBackup();
+    ui.appendLog(ok ? "Backup created" : "Backup failed");
+    ui.setMaintenanceStatus(ok ? "Backup created successfully" : "Backup failed — check SD card");
     return;
   }
   if (command == "STORAGE:UNMOUNT") {
@@ -572,11 +612,15 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "STORAGE:EXPORT") {
-    ui.appendLog(exportDiagnostics() ? "Diagnostics exported" : "Diagnostics export failed");
+    bool ok = exportDiagnostics();
+    ui.appendLog(ok ? "Diagnostics exported" : "Diagnostics export failed");
+    ui.setMaintenanceStatus(ok ? "Diagnostics exported to SD" : "Export failed — check SD card");
     return;
   }
   if (command == "STORAGE:REPAIR") {
-    ui.appendLog(gStorage.repairFolders() ? "Folder structure repaired" : "Repair failed");
+    bool ok = gStorage.repairFolders();
+    ui.appendLog(ok ? "Folder structure repaired" : "Repair failed");
+    ui.setMaintenanceStatus(ok ? "Storage directories repaired" : "Repair failed — check SD");
     return;
   }
   if (command == "STORAGE:STATUS") {
@@ -588,36 +632,192 @@ void handleUiCommand(const String &command) {
              (unsigned long long)(st.freeBytes / (1024 * 1024)),
              (unsigned)st.saveState);
     ui.appendLog(line);
+    ui.setMaintenanceStatus(line);
+    return;
+  }
+
+  /* Maintenance: factory reset (after confirmation dialog) */
+  if (command == "MAINTENANCE:FACTORY:RESET") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    gStorage.configManager().resetToDefaults(cfg);
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    ui.setAboutDirectorName(cfg.directorName);
+    ui.appendLog("Configuration reset to factory defaults");
+    ui.setMaintenanceStatus("Factory reset complete — defaults applied");
+    return;
+  }
+
+  /* Settings: brightness control */
+  if (command == "SETTINGS:BRIGHTNESS:UP") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    uint8_t b = cfg.brightness;
+    if (b < 245) b = (uint8_t)(b + 10); else b = 255;
+    cfg.brightness = b;
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    return;
+  }
+  if (command == "SETTINGS:BRIGHTNESS:DOWN") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    uint8_t b = cfg.brightness;
+    if (b > 15) b = (uint8_t)(b - 10); else b = 5;
+    cfg.brightness = b;
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    return;
+  }
+
+  /* Logs: export via diagnostics */
+  if (command == "UI:LOGS:EXPORT") {
+    bool ok = exportDiagnostics();
+    ui.appendLog(ok ? "Log export done (diagnostics JSON written to SD)" : "Log export failed — check SD");
+    return;
+  }
+
+  /* Settings: show-operation preferences */
+  if (command.startsWith("SETTINGS:SHOWOP:")) {
+    DirectorConfig &cfg = gStorage.getConfig();
+    bool val = command.endsWith(":1");
+    if (command.startsWith("SETTINGS:SHOWOP:CFMSTART:")) {
+      cfg.confirmBeforeStart = val;
+    } else if (command.startsWith("SETTINGS:SHOWOP:CFMSTOP:")) {
+      cfg.confirmBeforeStop = val;
+    } else if (command.startsWith("SETTINGS:SHOWOP:AUTOLIVE:")) {
+      cfg.autoOpenLiveAfterLoad = val;
+    }
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
+    return;
+  }
+
+  /* Settings: director name presets */
+  if (command.startsWith("SETTINGS:NAME:")) {
+    DirectorConfig &cfg = gStorage.getConfig();
+    String name = command.substring(strlen("SETTINGS:NAME:"));
+    name.trim();
+    if (name.length() > 0 && name.length() < sizeof(cfg.directorName)) {
+      strncpy(cfg.directorName, name.c_str(), sizeof(cfg.directorName) - 1);
+      cfg.directorName[sizeof(cfg.directorName) - 1] = '\0';
+      gStorage.markConfigDirty();
+      gStorage.saveAllConfiguration();
+      ui.setAboutDirectorName(cfg.directorName);
+      ui.appendLog(String("Director name changed to: ") + cfg.directorName);
+    }
+    return;
+  }
+
+  /* Maintenance: restore latest backup */
+  if (command == "MAINTENANCE:RESTORE:LATEST") {
+    /* Find the most recent backup file and restore */
+    const char *backupDir = "/showduino/backups/automatic";
+    File dir = SD.open(backupDir);
+    char latestPath[STORAGE_MAX_PATH_LEN] = {};
+    unsigned long latestTime = 0;
+    if (dir && dir.isDirectory()) {
+      File f = dir.openNextFile();
+      while (f) {
+        if (!f.isDirectory()) {
+          unsigned long t = f.getLastWrite();
+          if (t > latestTime) {
+            latestTime = t;
+            char fname[STORAGE_MAX_PATH_LEN];
+            strncpy(fname, f.name(), sizeof(fname) - 1);
+            fname[sizeof(fname) - 1] = '\0';
+            /* f.name() may be basename only — prepend dir */
+            if (fname[0] != '/') {
+              snprintf(latestPath, sizeof(latestPath), "%s/%s", backupDir, fname);
+            } else {
+              strncpy(latestPath, fname, sizeof(latestPath) - 1);
+            }
+          }
+        }
+        f.close();
+        f = dir.openNextFile();
+      }
+      dir.close();
+    }
+    if (!latestPath[0]) {
+      ui.appendLog("Restore failed — no backup files found in " + String(backupDir));
+      ui.setMaintenanceStatus("Restore failed: no backup files found");
+      return;
+    }
+    DirectorConfig &cfg = gStorage.getConfig();
+    bool ok = gStorage.configManager().restoreConfigBackup(latestPath, cfg);
+    if (ok) {
+      backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+      ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+      ui.setAboutDirectorName(cfg.directorName);
+      ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
+      ui.appendLog(String("Config restored from: ") + latestPath);
+      ui.setMaintenanceStatus("Config restored successfully — settings updated");
+    } else {
+      ui.appendLog(String("Restore failed — could not read ") + latestPath);
+      ui.setMaintenanceStatus("Restore failed — check SD and backup files");
+    }
     return;
   }
 
   if (command == "UI:SHOW:REFRESH") {
+    const StorageStatus &st = getStorageStatus();
     if (gStorage.isRecoveryMode()) {
+      ui.refreshShowLibrary(gStorage.showManager(), &st, false, false, "Storage recovery mode");
       ui.appendLog("Show refresh failed — SD recovery mode");
       return;
     }
     bool ok = gStorage.showManager().refreshLibrary();
-    ui.refreshShowLibrary(gStorage.showManager());
+    ui.refreshShowLibrary(gStorage.showManager(), &st, true, ok,
+                          ok ? "Scan complete" : "Scan failed");
     ui.appendLog(ok ? "Show library rescanned from SD" : "Show library rescan failed");
+    return;
+  }
+
+  if (command == "UI:NODES:REFRESH") {
+    ui.appendLog("Discovery: STATUS:REQUEST + HELLO");
+    sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
+    sendToStage(SHOWDUINO_LEGACY_HELLO);
     return;
   }
 
   if (command == "UI:SHOW:LOAD") {
     if (!ui.hasSelectedShow()) {
+      ui.markSelectedShowLoadFailure("Load failed — no valid show selected");
       ui.appendLog("LOAD failed — no show selected");
       return;
     }
+    ShowValidationResult validation = {};
+    gStorage.showManager().validateShowPackage(ui.selectedShowId(), validation);
+    if (validation.state == ShowValidationState::Invalid ||
+        validation.state == ShowValidationState::MissingAssets ||
+        validation.state == ShowValidationState::Incompatible) {
+      ui.markSelectedShowLoadFailure(validation.detail[0] ? validation.detail : "Validation failed");
+      ui.appendLog(String("LOAD blocked — ") + validation.detail);
+      return;
+    }
+
+    ui.beginSelectedShowLoadRequest();
     ShowDefinition def;
     if (!gStorage.showManager().loadShow(ui.selectedShowId(), def)) {
+      ui.markSelectedShowLoadFailure("Load failed — missing show manifest");
       ui.appendLog(String("LOAD failed — missing show.json for ") + ui.selectedShowId());
       return;
     }
-    ui.setLoadedShowName(def.name);
     DirectorConfig &cfg = gStorage.getConfig();
     strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
     gStorage.markConfigDirty();
     gStorage.startShowLog(def.id);
-    uploadShowTimelineToStage(def.id);
+    if (uploadShowTimelineToStage(def.id)) {
+      ui.markSelectedShowLoadAwaitingStage();
+    } else {
+      ui.markSelectedShowLoadFailure("Load request failed before Stage confirmation");
+    }
     return;
   }
 
@@ -928,12 +1128,18 @@ void setup() {
     backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
     backlightNotifyActivity();
     ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    /* Populate About + Settings identity with stored director name */
+    ui.setAboutDirectorName(cfg.directorName);
+    /* Apply show-operation preferences from stored config */
+    ui.setShowOpPreferences(cfg.confirmBeforeStart, cfg.confirmBeforeStop, cfg.autoOpenLiveAfterLoad);
   }
 
   ui.appendLog("Showduino portable Director online.");
   ui.appendLog("Panel: landscape 800x480 (BankOfDad bring-up)");
   if (gStorage.isRecoveryMode()) {
     ui.appendLog("SD CARD NOT AVAILABLE — recovery mode");
+    const StorageStatus &st = getStorageStatus();
+    ui.refreshShowLibrary(gStorage.showManager(), &st, false, false, "Storage recovery mode");
     backlightConfigure(10, 255);
     ui.setScreenTimeoutMinutes(10);
   } else {
@@ -942,7 +1148,7 @@ void setup() {
     snprintf(line, sizeof(line), "SD %s  %lluMB free", st.cardType,
              (unsigned long long)(st.freeBytes / (1024 * 1024)));
     ui.appendLog(line);
-    ui.refreshShowLibrary(gStorage.showManager());
+    ui.refreshShowLibrary(gStorage.showManager(), &st, true, true, "Scan complete");
     logEvent(LogLevel::Info, LogCategory::System, "Director", "Director ready");
   }
 
@@ -969,11 +1175,14 @@ void setup() {
   lastHelloMs = 0;
   lastUiRefreshMs = millis();
   lastLvglTickMs = millis();
+  lastNodeSnapshotSyncMs = millis();
 
   showRuntimeClear(&gShowMirror);
   gShowMirror.state = SHOW_STATE_BOOTING;
 
   sendToStage("HELLO");
+  ui.setStorageStatusSnapshot(getStorageStatus());
+  ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
 }
 
@@ -998,6 +1207,11 @@ void loop() {
   } else {
     ui.updateStatusWidgets(false);
   }
+  if (now - lastNodeSnapshotSyncMs >= 1000UL) {
+    lastNodeSnapshotSyncMs = now;
+    ui.setStorageStatusSnapshot(getStorageStatus());
+    ui.syncPairedDeviceSnapshot(gStorage.deviceDb());
+  }
   lvglPortLoop();
 #if SHOWDUINO_WEBUI_ENABLED
   webServerLoop();
@@ -1014,6 +1228,7 @@ void loop() {
   checkLinkWatchdog();
   readEspNowReplies();
   storageLoop();
+  ui.tickAudioModel();
 
   delay(2);
 }
