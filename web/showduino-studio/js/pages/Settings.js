@@ -1,13 +1,13 @@
 /**
  * Showduino Studio – Settings
  *
- * Director system configuration and firmware identity.
- * Uses shared runtime state for system info.
+ * System information and firmware identity.
+ * Reads entirely from runtimeStore — no independent REST calls.
+ * The store polls /api/system every 6 s.
  */
 
 import { el, statRow, formatBytes, formatUptime, makeCleanupGroup } from '../utils.js';
-import { subscribe, getState, applySystemData } from '../state/runtime.js';
-import { fetchSystem } from '../api.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
 
 export function SettingsPage(container) {
   const cleanup = makeCleanupGroup();
@@ -22,56 +22,53 @@ export function SettingsPage(container) {
   const storageBody = el('div', {});
   storageCard.append(storageBody);
 
-  container.append(el('div', { className: 'page-grid' }, [sysCard, storageCard]));
+  const wifiCard = el('div', { className: 'card' });
+  wifiCard.append(el('h2', { text: 'Network Identity' }));
+  const wifiBody = el('div', {});
+  wifiCard.append(wifiBody);
 
-  function paintSystem(sys) {
-    if (!sys || !sys.boardName) return;
+  container.append(el('div', { className: 'page-grid' }, [sysCard, storageCard, wifiCard]));
+
+  function paint(state) {
+    const sys    = state.systemState;
+    const assets = state.assetCollection;
+    const cfg    = state.configurationState;
+    const wifi   = cfg.wifi || {};
+
     sysBody.innerHTML = '';
     sysBody.append(statRow('Board', sys.boardName));
     sysBody.append(statRow('Firmware', sys.firmwareVersion));
     sysBody.append(statRow('Protocol', sys.protocolVersion));
-    sysBody.append(statRow('Hostname', sys.wifi?.hostname));
-    sysBody.append(statRow('AP SSID', sys.apSsid));
-    sysBody.append(statRow('mDNS', sys.mdnsHost ? sys.mdnsHost + '.local' : '—'));
+    sysBody.append(statRow('Role', sys.role || '—'));
     sysBody.append(statRow('Uptime', formatUptime(sys.uptime)));
-    sysBody.append(statRow('CPU', sys.cpuMhz ? sys.cpuMhz + ' MHz' : '—'));
-    sysBody.append(statRow('Heap Free', formatBytes(sys.heapFree)));
-    sysBody.append(statRow('PSRAM Free', formatBytes(sys.psramFree)));
-    sysBody.append(statRow('WebUI Root', sys.webuiPath));
+    if (sys.cpuMhz) sysBody.append(statRow('CPU', `${sys.cpuMhz} MHz`));
+    if (sys.heapFree != null) sysBody.append(statRow('Heap Free', formatBytes(sys.heapFree)));
+    if (sys.psramFree != null) sysBody.append(statRow('PSRAM Free', formatBytes(sys.psramFree)));
 
     storageBody.innerHTML = '';
-    storageBody.append(statRow('SD Ready', sys.storageReady ? 'Yes' : 'No'));
-    storageBody.append(statRow('Writable', sys.storageWritable ? 'Yes' : 'No'));
+    storageBody.append(statRow('SD Ready',  sys.storageReady    ? 'Yes' : 'No'));
+    storageBody.append(statRow('Writable',  sys.storageWritable ? 'Yes' : 'No'));
     storageBody.append(statRow('WebUI on SD', sys.storageHasWww ? 'Yes' : 'No'));
-    storageBody.append(statRow('Card', sys.storageCardType || '—'));
+    if (sys.storageCardType) storageBody.append(statRow('Card', sys.storageCardType));
     if (sys.storageTotalMb != null) {
       storageBody.append(statRow('Free / Total', `${sys.storageFreeMb || 0} / ${sys.storageTotalMb} MB`));
     }
-    storageBody.append(statRow('Shows Path', sys.showsPath));
-    storageBody.append(statRow('WebUI Path', sys.webuiPath || '/showduino/www'));
-    storageBody.append(statRow('Status', sys.storageMessage || '—'));
+    storageBody.append(statRow('Shows Path', assets.showsPath || '—'));
+    storageBody.append(statRow('WebUI Path', assets.webuiPath || '—'));
+    storageBody.append(statRow('Status', sys.storageMessage || assets.status || '—'));
+
+    wifiBody.innerHTML = '';
+    wifiBody.append(statRow('Mode', wifi.mode || '—'));
+    wifiBody.append(statRow('SSID', wifi.ssid || '—'));
+    wifiBody.append(statRow('IP Address', wifi.ip || '—'));
+    wifiBody.append(statRow('Hostname', wifi.hostname || '—'));
+    wifiBody.append(statRow('AP SSID', cfg.apSsid || '—'));
+    wifiBody.append(statRow('mDNS', cfg.mdnsHost ? cfg.mdnsHost + '.local' : '—'));
+    wifiBody.append(statRow('WebSocket', `ws://${location.hostname || '192.168.4.1'}:81/`));
+    wifiBody.append(statRow('Connection Status', state.connectionStatus.lifecycle));
   }
 
-  // Paint from existing state immediately
-  const s = getState();
-  if (s.system?.boardName) {
-    paintSystem(s.system);
-  }
-
-  // Subscribe for system updates
-  cleanup.add(subscribe((state) => {
-    if (state.system?.boardName) paintSystem(state.system);
-  }));
-
-  // Also poll if not already fresh
-  fetchSystem().then((sys) => {
-    applySystemData(sys);
-  }).catch(() => {
-    if (!getState().system?.boardName) {
-      sysBody.innerHTML = '';
-      sysBody.append(el('p', { className: 'text-muted', text: 'System API unavailable' }));
-    }
-  });
+  cleanup.add(subscribeRuntime(paint));
 
   return () => cleanup.run();
 }

@@ -2,44 +2,31 @@
  * Showduino Studio – Persistent Status Bar
  *
  * Always visible at the top of the application shell.
- * Reflects connection state, runtime state, emergency, node count, current
- * show, system clock and notification count.
+ * Driven entirely by the single runtimeStore — no independent polling.
  */
 
 import { el } from '../utils.js';
-import { subscribe, getState, ConnectionState } from '../state/runtime.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
 import { navigate } from '../router.js';
 
 const CONN_LABEL = {
-  [ConnectionState.CONNECTING]:  { text: 'Connecting…', cls: 'conn-connecting' },
-  [ConnectionState.CONNECTED]:   { text: 'Connected',   cls: 'conn-connected' },
-  [ConnectionState.DEGRADED]:    { text: 'Degraded',    cls: 'conn-degraded' },
-  [ConnectionState.RECONNECTING]:{ text: 'Reconnecting',cls: 'conn-reconnecting' },
-  [ConnectionState.OFFLINE]:     { text: 'Offline',     cls: 'conn-offline' },
+  connecting:  { text: 'Connecting…', cls: 'conn-connecting' },
+  connected:   { text: 'Connected',   cls: 'conn-connected' },
+  degraded:    { text: 'Degraded',    cls: 'conn-degraded' },
+  reconnecting:{ text: 'Reconnecting',cls: 'conn-reconnecting' },
+  offline:     { text: 'Offline',     cls: 'conn-offline' },
 };
 
-function pad(n) { return String(n).padStart(2, '0'); }
-
-function formatClock() {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
 export function StatusBar() {
-  // ── Elements ──────────────────────────────────────────────────────────────
   const connDot  = el('span', { className: 'sb-dot' });
   const connText = el('span', { className: 'sb-conn-text', text: 'Connecting…' });
   const connChip = el('div', { className: 'sb-chip sb-chip--conn conn-connecting' }, [connDot, connText]);
 
-  const runtimeChip = el('div', { className: 'sb-chip sb-chip--runtime', text: 'IDLE' });
-
+  const runtimeChip   = el('div', { className: 'sb-chip sb-chip--runtime', text: 'IDLE' });
   const emergencyChip = el('div', { className: 'sb-chip sb-chip--emergency sb-emergency--safe', text: 'SAFE' });
-
-  const nodeChip = el('div', { className: 'sb-chip sb-chip--nodes', text: '0 nodes' });
-
-  const showChip = el('div', { className: 'sb-chip sb-chip--show', text: 'No show' });
-
-  const clockEl = el('div', { className: 'sb-clock', text: formatClock() });
+  const nodeChip      = el('div', { className: 'sb-chip sb-chip--nodes', text: '0 nodes' });
+  const showChip      = el('div', { className: 'sb-chip sb-chip--show', text: 'No show' });
+  const clockEl       = el('div', { className: 'sb-clock', text: '--:--:--' });
 
   const notifBadge = el('span', { className: 'sb-notif-badge', text: '' });
   notifBadge.style.display = 'none';
@@ -59,54 +46,42 @@ export function StatusBar() {
     el('div', { className: 'sb-right' }, [nodeChip, showChip, clockEl, notifBtn]),
   ]);
 
-  // ── Clock tick ────────────────────────────────────────────────────────────
-  let clockInterval = null;
-
-  function startClock() {
-    clockInterval = setInterval(() => {
-      const s = getState();
-      // If authoritative time from device, use it; else use local clock
-      if (s.time && s.time.time) {
-        clockEl.textContent = s.time.time;
-      } else {
-        clockEl.textContent = formatClock();
-      }
-    }, 1000);
-  }
-
-  // ── State subscription ────────────────────────────────────────────────────
   function paint(state) {
-    // Connection
-    const connInfo = CONN_LABEL[state.connection] || CONN_LABEL[ConnectionState.OFFLINE];
-    connChip.className = `sb-chip sb-chip--conn ${connInfo.cls}`;
+    // Connection chip
+    const lifecycle = state.connectionStatus.lifecycle || 'connecting';
+    const connInfo  = CONN_LABEL[lifecycle] || CONN_LABEL.offline;
+    connChip.className  = `sb-chip sb-chip--conn ${connInfo.cls}`;
     connText.textContent = connInfo.text;
 
-    // Runtime
-    const rState = state.runtime?.state || 'idle';
+    // Runtime chip
+    const rState = (state.runtimeStatus.runtime || 'idle').toLowerCase();
     runtimeChip.textContent = rState.toUpperCase();
-    runtimeChip.className = `sb-chip sb-chip--runtime rt-${rState}`;
+    runtimeChip.className   = `sb-chip sb-chip--runtime rt-${rState}`;
 
-    // Emergency
-    if (state.emergency?.active) {
-      emergencyChip.textContent = state.emergency.level === 'critical' ? '⚠ EMERGENCY' : '⚠ WARNING';
-      emergencyChip.className = 'sb-chip sb-chip--emergency sb-emergency--active';
+    // Emergency chip
+    if (state.emergencyState.active) {
+      emergencyChip.textContent = '⚠ EMERGENCY';
+      emergencyChip.className   = 'sb-chip sb-chip--emergency sb-emergency--active';
     } else {
       emergencyChip.textContent = 'SAFE';
-      emergencyChip.className = 'sb-chip sb-chip--emergency sb-emergency--safe';
+      emergencyChip.className   = 'sb-chip sb-chip--emergency sb-emergency--safe';
     }
 
-    // Nodes
-    const onlineNodes = state.nodes.filter((n) => n.online !== false && n.presence !== 'offline').length;
-    const totalNodes = state.nodes.length;
-    nodeChip.textContent = totalNodes > 0 ? `${onlineNodes}/${totalNodes} nodes` : '0 nodes';
-    nodeChip.className = `sb-chip sb-chip--nodes${totalNodes > 0 && onlineNodes < totalNodes ? ' nodes-warn' : ''}`;
+    // Node chip
+    const { online = 0, total = 0 } = state.nodeCollection.counts;
+    nodeChip.textContent = total > 0 ? `${online}/${total} nodes` : '0 nodes';
+    nodeChip.className   = `sb-chip sb-chip--nodes${total > 0 && online < total ? ' nodes-warn' : ''}`;
 
-    // Current show
-    const showName = state.runtime?.currentShow?.name || null;
-    showChip.textContent = showName || 'No show';
-    showChip.title = showName || '';
+    // Show chip
+    const showName = state.runtimeStatus.currentShow || null;
+    const isReported = showName && showName !== 'Not reported';
+    showChip.textContent = isReported ? showName : 'No show';
+    showChip.title       = isReported ? showName : '';
 
-    // Notifications
+    // Clock — use device clock when available, local fallback handled by watchdog
+    clockEl.textContent = state.clock.label || '--:--:--';
+
+    // Notifications badge
     const notifCount = state.notifications.length;
     if (notifCount > 0) {
       notifBadge.textContent = String(notifCount);
@@ -116,14 +91,8 @@ export function StatusBar() {
     }
   }
 
-  const unsub = subscribe(paint);
-  startClock();
-
-  // Attach cleanup to bar element for shell teardown
-  bar._statusBarCleanup = () => {
-    if (clockInterval) clearInterval(clockInterval);
-    unsub();
-  };
+  const unsub = subscribeRuntime(paint);
+  bar._statusBarCleanup = () => unsub();
 
   return bar;
 }

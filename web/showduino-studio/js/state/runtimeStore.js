@@ -53,7 +53,20 @@ const state = {
     boardName: 'Show Engine',
     firmwareVersion: 'unknown',
     protocolVersion: 'unknown',
-    uptime: null
+    uptime: null,
+    role: 'show-engine',
+    cpuMhz: null,
+    heapFree: null,
+    heapTotal: null,
+    psramFree: null,
+    psramTotal: null,
+    storageReady: false,
+    storageWritable: false,
+    storageHasWww: false,
+    storageCardType: null,
+    storageTotalMb: null,
+    storageFreeMb: null,
+    storageMessage: null
   },
   networkState: {
     deviceCount: 0,
@@ -96,6 +109,15 @@ const state = {
     apSsid: 'Showduino-Studio',
     webuiHost: 'c3-front-door'
   },
+  commandCollection: {
+    queue: [],
+    running: [],
+    history: [],
+    queueDepth: 0,
+    emergencyDepth: 0
+  },
+  timeData: null,
+  timeStatus: null,
   notifications: [],
   latestEvents: [],
   logs: [],
@@ -193,7 +215,19 @@ function applySystem(system) {
     firmwareVersion: system.firmwareVersion || state.systemState.firmwareVersion,
     protocolVersion: system.protocolVersion || state.systemState.protocolVersion,
     uptime: system.uptime ?? state.systemState.uptime,
-    role: system.role || 'show-engine'
+    role: system.role || state.systemState.role || 'show-engine',
+    cpuMhz: system.cpuMhz ?? state.systemState.cpuMhz,
+    heapFree: system.heapFree ?? state.systemState.heapFree,
+    heapTotal: system.heapTotal ?? state.systemState.heapTotal,
+    psramFree: system.psramFree ?? state.systemState.psramFree,
+    psramTotal: system.psramTotal ?? state.systemState.psramTotal,
+    storageReady: system.storageReady ?? state.systemState.storageReady,
+    storageWritable: system.storageWritable ?? state.systemState.storageWritable,
+    storageHasWww: system.storageHasWww ?? state.systemState.storageHasWww,
+    storageCardType: system.storageCardType || state.systemState.storageCardType,
+    storageTotalMb: system.storageTotalMb ?? state.systemState.storageTotalMb,
+    storageFreeMb: system.storageFreeMb ?? state.systemState.storageFreeMb,
+    storageMessage: system.storageMessage || state.systemState.storageMessage
   };
 
   state.runtimeStatus.runtime = (system.showState || state.runtimeStatus.runtime || 'unknown').toLowerCase();
@@ -255,20 +289,48 @@ function applyNodes(nodes) {
 
 function applyCommands(commands) {
   if (!commands) return;
-  if (Array.isArray(commands.running)) {
-    state.runtimeStatus.executingActions = commands.running.slice(0, 8).map((cmd) => ({
-      id: cmd.id,
-      action: `${cmd.category || 'command'}:${cmd.action || 'unknown'}`,
-      destination: cmd.destination || 'any',
-      status: cmd.status || 'started'
-    }));
-  }
-  if (Array.isArray(commands.history)) {
-    state.runtimeStatus.warnings = commands.history
+  const queue   = Array.isArray(commands.queue)   ? commands.queue   : state.commandCollection.queue;
+  const running = Array.isArray(commands.running) ? commands.running : state.commandCollection.running;
+  const history = Array.isArray(commands.history) ? commands.history : state.commandCollection.history;
+
+  state.commandCollection = {
+    queue,
+    running,
+    history: history.slice(0, 200),
+    queueDepth:     commands.queueDepth     ?? queue.length,
+    emergencyDepth: commands.emergencyDepth ?? state.commandCollection.emergencyDepth
+  };
+
+  state.runtimeStatus.executingActions = running.slice(0, 8).map((cmd) => ({
+    id:          cmd.id,
+    action:      `${cmd.category || 'command'}:${cmd.action || 'unknown'}`,
+    destination: cmd.destination || 'any',
+    status:      cmd.status || 'started'
+  }));
+
+  if (history.length > 0) {
+    const failed = history
       .filter((cmd) => ['failed', 'rejected', 'cancelled'].includes((cmd.status || '').toLowerCase()))
       .slice(0, 6)
       .map((cmd) => `${cmd.action || cmd.category || 'command'} ${cmd.status}`);
+    if (failed.length > 0) state.runtimeStatus.warnings = failed;
   }
+}
+
+function mergeCommandIntoCollection(cmd) {
+  if (!cmd || !cmd.id) return;
+  const hist = state.commandCollection.history.slice();
+  const hi = hist.findIndex((c) => c.id === cmd.id);
+  if (hi >= 0) hist[hi] = { ...hist[hi], ...cmd };
+  else hist.unshift(cmd);
+  if (hist.length > 200) hist.length = 200;
+
+  const queue   = state.commandCollection.queue.filter((c) => c.id !== cmd.id);
+  const running = state.commandCollection.running.filter((c) => c.id !== cmd.id);
+  if ((cmd.status || '').toLowerCase() === 'queued')  queue.unshift(cmd);
+  if ((cmd.status || '').toLowerCase() === 'started') running.unshift(cmd);
+
+  state.commandCollection = { ...state.commandCollection, queue, running, history: hist };
 }
 
 function applyLogs(logPayload) {
@@ -285,13 +347,19 @@ function applyLogs(logPayload) {
 
 function applyClock(time, status) {
   if (!time && !status) return;
-  if (time?.iso) {
-    state.clock.source = time.source || 'rtc';
-    state.clock.iso = time.iso;
-    state.clock.label = time.time || new Date(time.iso).toLocaleTimeString();
+  if (time) {
+    state.timeData = time;
+    if (time.iso) {
+      state.clock.source = time.source || 'rtc';
+      state.clock.iso = time.iso;
+      state.clock.label = time.time || new Date(time.iso).toLocaleTimeString();
+    }
   }
-  if (status?.health && status.health !== 'ok') {
-    pushEvent('warn', 'rtc', `RTC status: ${status.health}`);
+  if (status) {
+    state.timeStatus = status;
+    if (status.health && status.health !== 'ok') {
+      pushEvent('warn', 'rtc', `RTC status: ${status.health}`);
+    }
   }
 }
 
@@ -356,7 +424,7 @@ function applySocketMessage(message) {
   } else if (message.event === 'network.stats' && message.stats) {
     applyNetwork(message.stats);
   } else if (message.command) {
-    applyCommands({ running: [message.command], history: [message.command] });
+    mergeCommandIntoCollection(message.command);
   } else if (message.device) {
     mergeNode(message.device);
   } else if (message.network) {
@@ -583,5 +651,20 @@ export function setNavigationRoute(route) {
 export function selectNode(nodeId) {
   if (!nodeId) return;
   state.nodeCollection.selectedNodeId = nodeId;
+  emit();
+}
+
+export function upsertRuntimeCommand(cmd) {
+  mergeCommandIntoCollection(cmd);
+  emit();
+}
+
+export function pushRuntimeNotification(message, level = 'info') {
+  pushNotification(level, message);
+  emit();
+}
+
+export function dismissRuntimeNotification(id) {
+  state.notifications = state.notifications.filter((n) => n.id !== id);
   emit();
 }

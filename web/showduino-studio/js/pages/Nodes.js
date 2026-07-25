@@ -1,62 +1,59 @@
 /**
  * Showduino Studio – Nodes (Device Inventory)
  *
- * Live node/device inventory using shared runtime state.
- * Updates push over WebSocket — no independent polling.
+ * Live node/device inventory driven by runtimeStore.
+ * The store polls /api/devices every 5 s and receives WebSocket pushes —
+ * this page subscribes and renders; it adds no independent polling.
  */
 
 import { el, statRow, makeCleanupGroup } from '../utils.js';
-import { subscribe, getState, applyNetworkData, setNodes } from '../state/runtime.js';
-import { fetchDevices, fetchNetwork } from '../api.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
 import { DeviceCard } from '../components/DeviceCard.js';
 
 export function NodesPage(container) {
   const cleanup = makeCleanupGroup();
 
-  const status = el('div', { className: 'live-status', text: 'Connecting…' });
+  const status     = el('div', { className: 'live-status', text: 'Connecting…' });
   const summaryRow = el('div', { className: 'page-grid' });
-  const grid = el('div', { className: 'page-grid' });
+  const grid       = el('div', { className: 'page-grid' });
 
-  container.append(status, summaryRow, el('h2', { className: 'nav-section-label', style: 'margin: 1rem 0 0.5rem;', text: 'Nodes' }), grid);
+  container.append(
+    status,
+    summaryRow,
+    el('h2', { className: 'nav-section-label', style: 'margin: 1rem 0 0.5rem;', text: 'Nodes' }),
+    grid
+  );
 
   function paintSummary(state) {
     summaryRow.innerHTML = '';
-    const nodes = state.nodes || [];
-    const online  = nodes.filter((n) => n.online !== false && n.presence !== 'offline').length;
-    const warning = nodes.filter((n) => n.presence === 'warning' || n.warning).length;
-    const offline = nodes.length - online;
+    const { total = 0, online = 0, warning = 0, offline = 0 } = state.nodeCollection.counts;
 
-    const counts = [
-      { label: 'Total', value: nodes.length, cls: '' },
-      { label: 'Online', value: online, cls: 'card--teal' },
+    for (const c of [
+      { label: 'Total',   value: total,   cls: '' },
+      { label: 'Online',  value: online,  cls: 'card--teal' },
       { label: 'Warning', value: warning, cls: warning > 0 ? 'card--warn' : '' },
       { label: 'Offline', value: offline, cls: offline > 0 ? 'card--accent' : '' },
-    ];
-
-    for (const c of counts) {
-      const card = el('div', { className: `card ${c.cls}` }, [
+    ]) {
+      summaryRow.append(el('div', { className: `card ${c.cls}` }, [
         el('h2', { text: c.label }),
         el('div', { className: 'value', text: String(c.value) }),
-      ]);
-      summaryRow.append(card);
+      ]));
     }
 
-    // Network health summary
-    const net = state.network;
-    if (net && net.networkHealth) {
-      const netCard = el('div', { className: 'card network-health-card' }, [
+    const net = state.networkState;
+    if (net.health && net.health !== 'unknown') {
+      summaryRow.append(el('div', { className: 'card network-health-card' }, [
         el('h2', { text: 'Network Health' }),
-        el('div', { className: 'value', text: net.networkHealth }),
-        net.averageRssi != null ? statRow('Avg Signal', `${net.averageRssi} dBm`) : null,
-        net.heartbeatRate != null ? statRow('Heartbeat', `${net.heartbeatRate}/min`) : null,
-      ].filter(Boolean));
-      summaryRow.append(netCard);
+        el('div', { className: 'value', text: net.health }),
+        ...(net.averageRssi  != null ? [statRow('Avg Signal', `${net.averageRssi} dBm`)] : []),
+        ...(net.heartbeatRate != null ? [statRow('Heartbeat', `${net.heartbeatRate}/min`)] : []),
+      ]));
     }
   }
 
   function paintNodes(state) {
     grid.innerHTML = '';
-    const nodes = state.nodes || [];
+    const nodes = state.nodeCollection.nodes;
     if (nodes.length === 0) {
       grid.append(el('div', { className: 'card' }, [
         el('p', { className: 'text-muted', text: 'No nodes discovered yet. Nodes announce themselves via ESP-NOW.' }),
@@ -67,23 +64,13 @@ export function NodesPage(container) {
   }
 
   function paint(state) {
-    const nodes = state.nodes || [];
-    const online = nodes.filter((n) => n.online !== false && n.presence !== 'offline').length;
-    status.textContent = `Live · ${online}/${nodes.length} node(s) online`;
+    const { online = 0, total = 0 } = state.nodeCollection.counts;
+    status.textContent = `Live · ${online}/${total} node(s) online`;
     paintSummary(state);
     paintNodes(state);
   }
 
-  cleanup.add(subscribe(paint));
-
-  // Seed from REST on first load
-  Promise.all([
-    fetchDevices().catch(() => null),
-    fetchNetwork().catch(() => null),
-  ]).then(([devData, netData]) => {
-    if (devData?.devices) setNodes(devData.devices);
-    if (netData) applyNetworkData(netData);
-  });
+  cleanup.add(subscribeRuntime(paint));
 
   return () => cleanup.run();
 }

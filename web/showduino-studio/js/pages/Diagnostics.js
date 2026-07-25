@@ -1,37 +1,33 @@
 /**
  * Showduino Studio – Diagnostics
  *
- * Unified diagnostics view with tabs:
- *   Commands | Capabilities | Routing | Time
+ * Tabbed diagnostics view: Commands | Capabilities | Routing | Time
  *
- * All views use shared runtime state — no independent polling.
+ * All tabs subscribe to the shared runtimeStore. Individual tabs may also
+ * make one-time REST fetches on mount for data the store does not cache.
  */
 
 import { el, formatTimestamp, severityClass, statRow, makeCleanupGroup } from '../utils.js';
-import { subscribe, getState } from '../state/runtime.js';
+import { subscribeRuntime, getRuntimeState, upsertRuntimeCommand } from '../state/runtimeStore.js';
 import {
   fetchCommands, postCommand, cancelCommand,
   fetchCapabilities, fetchDeviceCapabilities, fetchRoutes, postRouteTest,
   fetchTime, fetchTimeStatus,
 } from '../api.js';
-import {
-  upsertCommand, bumpCapabilityTick,
-} from '../state/runtime.js';
 
 const TABS = ['Commands', 'Capabilities', 'Routing', 'Time'];
 
 export function DiagnosticsPage(container) {
   const cleanup = makeCleanupGroup();
 
-  // ── Tab bar ──────────────────────────────────────────────────────────────
-  const tabBar = el('div', { className: 'tab-bar' });
+  const tabBar     = el('div', { className: 'tab-bar' });
   const tabContent = el('div', { className: 'tab-content' });
   container.append(tabBar, tabContent);
 
-  let activeTab = 'Commands';
+  let activeTab  = 'Commands';
   let tabCleanup = null;
+  const tabBtns  = {};
 
-  const tabBtns = {};
   for (const tab of TABS) {
     const btn = el('button', {
       className: 'tab-btn' + (tab === activeTab ? ' active' : ''),
@@ -46,24 +42,13 @@ export function DiagnosticsPage(container) {
     if (tabCleanup) { try { tabCleanup(); } catch (_) {} tabCleanup = null; }
     tabContent.innerHTML = '';
     activeTab = tab;
-    for (const [t, btn] of Object.entries(tabBtns)) {
-      btn.classList.toggle('active', t === tab);
-    }
-
-    const builders = {
-      Commands:     buildCommandsTab,
-      Capabilities: buildCapabilitiesTab,
-      Routing:      buildRoutingTab,
-      Time:         buildTimeTab,
-    };
-
-    const result = builders[tab]?.(tabContent);
-    if (typeof result === 'function') tabCleanup = result;
-    else if (result instanceof Promise) result.then((fn) => { if (typeof fn === 'function') tabCleanup = fn; });
+    for (const [t, btn] of Object.entries(tabBtns)) btn.classList.toggle('active', t === tab);
+    const result = { Commands: buildCommandsTab, Capabilities: buildCapabilitiesTab, Routing: buildRoutingTab, Time: buildTimeTab }[tab]?.(tabContent);
+    if (result instanceof Promise) result.then((fn) => { if (typeof fn === 'function') tabCleanup = fn; });
+    else if (typeof result === 'function') tabCleanup = result;
   }
 
   cleanup.add(() => { if (tabCleanup) { try { tabCleanup(); } catch (_) {} } });
-
   switchTab('Commands');
 
   return () => cleanup.run();
@@ -73,12 +58,12 @@ export function DiagnosticsPage(container) {
 
 function cmdRow(cmd, { cancellable = false } = {}) {
   const row = el('tr', { 'data-id': cmd.id || '' }, [
-    el('td', { text: cmd.priority || '—' }),
-    el('td', { text: cmd.status || '—' }),
-    el('td', { text: cmd.source || '—' }),
+    el('td', { text: cmd.priority   || '—' }),
+    el('td', { text: cmd.status     || '—' }),
+    el('td', { text: cmd.source     || '—' }),
     el('td', { text: cmd.destination || '—' }),
-    el('td', { text: cmd.category || '—' }),
-    el('td', { text: cmd.action || '—' }),
+    el('td', { text: cmd.category   || '—' }),
+    el('td', { text: cmd.action     || '—' }),
     el('td', { className: 'mono', text: cmd.executionTimeMs != null ? `${cmd.executionTimeMs} ms` : '—' }),
     el('td', { className: 'mono text-dim', text: (cmd.id || '').slice(0, 8) }),
   ]);
@@ -97,14 +82,12 @@ function cmdRow(cmd, { cancellable = false } = {}) {
 }
 
 function cmdSection(title, rows, cancellable = false) {
-  const card = el('div', { className: 'card' });
+  const card   = el('div', { className: 'card' });
   card.append(el('h2', { text: title }));
-  const table = el('table', { className: 'log-table cmd-table' });
-  const headerCols = ['Priority', 'Status', 'Source', 'Dest', 'Category', 'Action', 'Exec', 'ID', ''];
-  table.append(el('thead', {}, [
-    el('tr', {}, headerCols.map((t) => el('th', { text: t }))),
-  ]));
-  const tbody = el('tbody', {});
+  const table  = el('table', { className: 'log-table cmd-table' });
+  const hCols  = ['Priority', 'Status', 'Source', 'Dest', 'Category', 'Action', 'Exec', 'ID', ''];
+  table.append(el('thead', {}, [el('tr', {}, hCols.map((t) => el('th', { text: t })))]));
+  const tbody  = el('tbody', {});
   if (!rows.length) {
     tbody.append(el('tr', {}, [el('td', { colSpan: '9', className: 'text-muted', text: 'None' })]));
   } else {
@@ -118,7 +101,6 @@ function cmdSection(title, rows, cancellable = false) {
 function buildCommandsTab(container) {
   const statusEl = el('div', { className: 'live-status', text: 'Connecting…' });
 
-  // Submit form
   const form = el('div', { className: 'card command-form' });
   form.append(el('h2', { text: 'Submit Command' }));
   const fields = {
@@ -129,23 +111,18 @@ function buildCommandsTab(container) {
     priority:    el('input', { value: 'normal', placeholder: 'emergency | high | normal | low' }),
     payload:     el('input', { value: '{}', placeholder: 'JSON payload' }),
   };
-  for (const [k, input] of Object.entries(fields)) {
-    form.append(el('label', { className: 'cmd-field' }, [k + ' ', input]));
-  }
+  for (const [k, input] of Object.entries(fields)) form.append(el('label', { className: 'cmd-field' }, [k + ' ', input]));
   form.append(el('button', {
     className: 'btn-primary',
     text: 'Submit',
     onClick: async () => {
       try {
         const cmd = await postCommand({
-          source: fields.source.value,
-          destination: fields.destination.value,
-          category: fields.category.value,
-          action: fields.action.value,
-          priority: fields.priority.value,
-          payload: fields.payload.value,
+          source: fields.source.value, destination: fields.destination.value,
+          category: fields.category.value, action: fields.action.value,
+          priority: fields.priority.value, payload: fields.payload.value,
         });
-        if (cmd) upsertCommand(cmd);
+        if (cmd) upsertRuntimeCommand(cmd);
       } catch (err) { alert(err.message); }
     },
   }));
@@ -157,28 +134,27 @@ function buildCommandsTab(container) {
   container.append(queueHost, runningHost, doneHost);
 
   function paint(state) {
-    const cmds = state.commands || {};
-    const hist = cmds.history || [];
-    queueHost.innerHTML = '';
+    const cmds = state.commandCollection;
+    queueHost.innerHTML   = '';
     runningHost.innerHTML = '';
-    doneHost.innerHTML = '';
-    const { card: qCard } = cmdSection(`Queue (${cmds.queueDepth ?? (cmds.queue || []).length})`, cmds.queue || [], true);
-    const { card: rCard } = cmdSection('Running', cmds.running || []);
-    const { card: hCard } = cmdSection('History', hist.slice(0, 50));
+    doneHost.innerHTML    = '';
+    const { card: qCard }  = cmdSection(`Queue (${cmds.queueDepth ?? cmds.queue.length})`, cmds.queue, true);
+    const { card: rCard }  = cmdSection('Running', cmds.running);
+    const { card: hCard }  = cmdSection('History', cmds.history.slice(0, 50));
     queueHost.append(qCard);
     runningHost.append(rCard);
     doneHost.append(hCard);
     statusEl.textContent = `Live · queue ${cmds.queueDepth ?? 0} · emergency ${cmds.emergencyDepth ?? 0}`;
   }
 
-  const unsub = subscribe(paint);
+  const unsub = subscribeRuntime(paint);
 
-  // Seed from REST
+  // Seed from REST — results are merged into the store's commandCollection
   fetchCommands().then((data) => {
     if (data) {
-      (data.queue || []).forEach((c) => upsertCommand(c));
-      (data.running || []).forEach((c) => upsertCommand(c));
-      (data.history || []).forEach((c) => upsertCommand(c));
+      const cmd = { queue: data.queue || [], running: data.running || [], history: data.history || [] };
+      // Merge each command individually so we don't wipe live data
+      for (const c of [...cmd.queue, ...cmd.running, ...cmd.history]) upsertRuntimeCommand(c);
     }
   }).catch(() => {});
 
@@ -188,31 +164,27 @@ function buildCommandsTab(container) {
 // ─── Capabilities tab ─────────────────────────────────────────────────────────
 
 async function buildCapabilitiesTab(container) {
-  const statusEl = el('div', { className: 'live-status', text: 'Loading…' });
+  const statusEl   = el('div', { className: 'live-status', text: 'Loading…' });
   const catalogHost = el('div', { className: 'card' });
   const groupsHost  = el('div', {});
   container.append(statusEl, catalogHost, groupsHost);
 
-  function paint(catalog, grouped) {
+  function paintCaps(catalog, grouped) {
     catalogHost.innerHTML = '';
     catalogHost.append(el('h2', { text: 'Capability Types' }));
     const chips = el('div', { className: 'cap-chips' });
-    for (const c of (catalog.capabilities || [])) {
-      chips.append(el('span', { className: 'cap-chip', text: c.name }));
-    }
+    for (const c of (catalog.capabilities || [])) chips.append(el('span', { className: 'cap-chip', text: c.name }));
     catalogHost.append(chips);
 
     groupsHost.innerHTML = '';
-    const by = grouped.byCapability || {};
+    const by    = grouped.byCapability || {};
     const names = Object.keys(by).sort();
     if (!names.length) {
-      groupsHost.append(el('div', { className: 'card' }, [
-        el('p', { className: 'text-muted', text: 'No capability providers online.' }),
-      ]));
+      groupsHost.append(el('div', { className: 'card' }, [el('p', { className: 'text-muted', text: 'No capability providers online.' })]));
       return;
     }
     for (const name of names) {
-      const card = el('div', { className: 'card' });
+      const card  = el('div', { className: 'card' });
       card.append(el('h2', { text: name }));
       const table = el('table', { className: 'log-table' });
       table.append(el('thead', {}, [
@@ -222,7 +194,7 @@ async function buildCapabilitiesTab(container) {
       for (const d of by[name]) {
         tbody.append(el('tr', {}, [
           el('td', { text: d.name || d.id }),
-          el('td', { text: d.board || '—' }),
+          el('td', { text: d.board    || '—' }),
           el('td', {}, [el('span', { className: `badge ${d.online ? 'online' : 'offline'}`, text: d.online ? 'online' : (d.presence || 'offline') })]),
           el('td', { className: 'mono', text: d.firmware || '—' }),
           el('td', { text: String(d.priority ?? '—') }),
@@ -237,19 +209,25 @@ async function buildCapabilitiesTab(container) {
     statusEl.textContent = `${names.length} capabilities with providers`;
   }
 
-  async function reload() {
-    try {
-      const [catalog, grouped] = await Promise.all([fetchCapabilities(), fetchDeviceCapabilities()]);
-      paint(catalog, grouped);
-    } catch (err) {
-      statusEl.textContent = err.message;
+  // Re-fetch when the store refreshes device capabilities (every 12 s)
+  let lastTick = null;
+  const unsub = subscribeRuntime((state) => {
+    const caps = state.diagnostics.deviceCapabilities;
+    if (caps && caps !== lastTick) {
+      lastTick = caps;
+      // caps is from store — we still need the catalog from a separate call
+      fetchCapabilities().then((catalog) => paintCaps(catalog, caps)).catch(() => {});
     }
+  });
+
+  // Initial load
+  try {
+    const [catalog, grouped] = await Promise.all([fetchCapabilities(), fetchDeviceCapabilities()]);
+    paintCaps(catalog, grouped);
+  } catch (err) {
+    statusEl.textContent = err.message;
   }
 
-  const unsub = subscribe((state) => {
-    if (state.capabilityTick != null) reload();
-  });
-  await reload();
   return () => unsub();
 }
 
@@ -266,11 +244,9 @@ async function buildRoutingTab(container) {
     priority:    el('input', { value: 'normal' }),
     payload:     el('input', { value: '{}' }),
   };
-  for (const [k, input] of Object.entries(fields)) {
-    form.append(el('label', { className: 'cmd-field' }, [k + ' ', input]));
-  }
+  for (const [k, input] of Object.entries(fields)) form.append(el('label', { className: 'cmd-field' }, [k + ' ', input]));
   const resultHost = el('div', { className: 'route-result' });
-  const status = el('div', { className: 'live-status', text: 'Ready' });
+  const status     = el('div', { className: 'live-status', text: 'Ready' });
   form.append(el('button', {
     className: 'btn-primary',
     text: 'POST /api/route-test',
@@ -284,9 +260,7 @@ async function buildRoutingTab(container) {
         });
         paintResult(data);
         status.textContent = data.ok ? 'Resolved' : 'Failed';
-      } catch (err) {
-        status.textContent = err.message;
-      }
+      } catch (err) { status.textContent = err.message; }
     },
   }));
   container.append(form, status, resultHost);
@@ -296,17 +270,17 @@ async function buildRoutingTab(container) {
 
   function paintResult(data) {
     resultHost.innerHTML = '';
-    const card = el('div', { className: 'card' });
+    const card  = el('div', { className: 'card' });
     card.append(el('h2', { text: 'Routing Decision' }));
-    const rows = [
-      ['Device',    data.resolvedDevice ? `${data.resolvedDevice.name || ''} (${data.resolvedDevice.id || ''})` : '—'],
-      ['Board',     data.resolvedDevice?.board || '—'],
-      ['Decision',  data.routingDecision || '—'],
-      ['Capability',data.capability || '—'],
-      ['Path',      data.path || '—'],
-      ['Fallback',  data.fallbackUsed ? 'yes' : 'no'],
-      ['Reason',    data.reason || '—'],
-      ['OK',        data.ok ? 'yes' : 'no'],
+    const rows  = [
+      ['Device',   data.resolvedDevice ? `${data.resolvedDevice.name || ''} (${data.resolvedDevice.id || ''})` : '—'],
+      ['Board',    data.resolvedDevice?.board || '—'],
+      ['Decision', data.routingDecision || '—'],
+      ['Capability', data.capability || '—'],
+      ['Path',     data.path     || '—'],
+      ['Fallback', data.fallbackUsed ? 'yes' : 'no'],
+      ['Reason',   data.reason   || '—'],
+      ['OK',       data.ok ? 'yes' : 'no'],
     ];
     const table = el('table', { className: 'log-table' });
     const tbody = el('tbody', {});
@@ -334,22 +308,23 @@ async function buildRoutingTab(container) {
     }
   }
 
-  const unsub = subscribe((state) => {
-    if (state.lastRoute) paintResult(state.lastRoute);
-  });
+  // Show stored routes from the store when available
+  const stored = getRuntimeState().diagnostics.routes;
+  if (stored) paintRules(stored);
 
+  // One-time fetch of route table
   try { paintRules(await fetchRoutes()); } catch (err) { status.textContent = err.message; }
 
-  return () => unsub();
+  return () => {};
 }
 
 // ─── Time tab ─────────────────────────────────────────────────────────────────
 
 async function buildTimeTab(container) {
-  const status = el('div', { className: 'live-status', text: 'Connecting…' });
-  const clock  = el('div', { className: 'time-clock', text: '--:--:--' });
-  const dateLine = el('div', { className: 'time-date', text: '————' });
-  const clockCard = el('div', { className: 'card time-card' }, [clock, dateLine]);
+  const status  = el('div', { className: 'live-status', text: 'Connecting…' });
+  const clock   = el('div', { className: 'time-clock',  text: '--:--:--' });
+  const dateLine = el('div', { className: 'time-date',  text: '————' });
+  const clockCard  = el('div', { className: 'card time-card' }, [clock, dateLine]);
   const detailCard = el('div', { className: 'card' });
   detailCard.append(el('h2', { text: 'Clock Details' }));
   const table = el('table', { className: 'log-table' });
@@ -360,7 +335,7 @@ async function buildTimeTab(container) {
 
   function paintTime(time, st) {
     if (!time) return;
-    clock.textContent = time.time || '--:--:--';
+    clock.textContent    = time.time || '--:--:--';
     dateLine.textContent = `${time.date || ''} · ${time.dayOfWeek || ''} · ${time.timezone || 'UTC'}`;
     tbody.innerHTML = '';
     const rows = [
@@ -368,9 +343,10 @@ async function buildTimeTab(container) {
       ['DST', time.dst ? 'active' : (time.dstEnabled ? 'enabled' : 'off')],
       ['RTC Status', time.rtcStatus || st?.health],
       ['RTC Temp', time.rtcTemperature != null ? `${time.rtcTemperature} °C` : '—'],
-      ['Battery', time.battery || st?.battery], ['Source', time.source],
-      ['System Uptime', time.uptime],
-      ['Last Sync', st?.lastSynchronisation], ['Drift', st?.driftMs != null ? `${st.driftMs} ms` : '—'],
+      ['Battery', time.battery || st?.battery],
+      ['Source', time.source], ['Uptime', time.uptime],
+      ['Last Sync', st?.lastSynchronisation],
+      ['Drift', st?.driftMs != null ? `${st.driftMs} ms` : '—'],
       ['Build', time.firmwareBuild],
     ];
     for (const [k, v] of rows) {
@@ -379,10 +355,17 @@ async function buildTimeTab(container) {
     status.textContent = `Live · source ${time.source || '?'} · rtc ${time.rtcStatus || '?'}`;
   }
 
-  const unsub = subscribe((state) => {
-    if (state.time) paintTime(state.time, state.timeStatus);
+  // Subscribe to store clock for live clock display; full time data from timeData
+  const unsub = subscribeRuntime((state) => {
+    // Use richer timeData when available, fall back to clock label
+    if (state.timeData) {
+      paintTime(state.timeData, state.timeStatus);
+    } else {
+      clock.textContent = state.clock.label || '--:--:--';
+    }
   });
 
+  // One-time detailed fetch for the detail table
   try {
     const [time, st] = await Promise.all([fetchTime(), fetchTimeStatus()]);
     paintTime(time, st);

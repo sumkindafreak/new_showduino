@@ -100,3 +100,20 @@ export function makeCleanupGroup() {
     run() { for (const fn of fns) { try { fn(); } catch (_) {} } fns.length = 0; }
   };
 }
+
+// Alias so Timeline.js and others can import formatDurationMs
+export const formatDurationMs = formatDuration;
+
+export function formatRelativeMs(ms) {
+  if (ms == null || isNaN(ms)) return '—';
+  const s = Math.floor(Math.abs(ms) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
+export function severityRank(sev) {
+  return { debug: 0, info: 1, warn: 2, error: 3, critical: 4 }[(sev || '').toLowerCase()] ?? 1;
+}

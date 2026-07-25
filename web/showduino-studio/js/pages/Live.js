@@ -1,209 +1,160 @@
 /**
  * Showduino Studio – Live Page
  *
- * Real-time show playback view using shared runtime state.
- * Shows exactly what the Director currently knows: progress, cues,
- * audio, lighting, node activity, latency and warnings.
+ * Real-time show playback view driven by the shared runtimeStore.
+ * No independent polling — all data arrives via the store's WebSocket and REST schedule.
  */
 
 import { el, formatDuration, statRow, makeCleanupGroup } from '../utils.js';
-import { subscribe, getState, ConnectionState } from '../state/runtime.js';
-
-function progressPct(pos, dur) {
-  if (!dur || dur === 0) return 0;
-  return Math.min(100, (pos / dur) * 100);
-}
+import { subscribeRuntime } from '../state/runtimeStore.js';
 
 export function LivePage(container) {
   const cleanup = makeCleanupGroup();
 
-  // ── Connection status pill ─────────────────────────────────────────────
+  // ── Connection pill ────────────────────────────────────────────────────────
   const connStatus = el('div', { className: 'live-status' });
 
-  // ── Show progress card ─────────────────────────────────────────────────
+  // ── Show progress card ─────────────────────────────────────────────────────
   const progressCard = el('div', { className: 'card live-progress-card' });
   progressCard.append(el('h2', { text: 'Show Progress' }));
+  const showTitle   = el('div', { className: 'value', text: 'No show loaded' });
+  const progTrack   = el('div', { className: 'live-progress-track' });
+  const progFill    = el('div', { className: 'live-progress-fill' });
+  progFill.style.width = '0%';
+  progTrack.append(progFill);
+  const timeRow     = el('div', { className: 'live-time-row' });
+  const elapsedVal  = el('div', { className: 'live-t-val', text: '--:--' });
+  const remainVal   = el('div', { className: 'live-t-val', text: '--:--' });
+  const durVal      = el('div', { className: 'live-t-val', text: '--:--' });
+  timeRow.append(
+    el('div', { className: 'live-t-block' }, [el('div', { className: 'live-t-label', text: 'Elapsed' }), elapsedVal]),
+    el('div', { className: 'live-t-block' }, [el('div', { className: 'live-t-label', text: 'Remaining' }), remainVal]),
+    el('div', { className: 'live-t-block' }, [el('div', { className: 'live-t-label', text: 'Duration' }), durVal]),
+  );
+  progressCard.append(showTitle, progTrack, timeRow);
 
-  const showTitle = el('div', { className: 'value', text: 'No show loaded' });
-  const progressTrack = el('div', { className: 'live-progress-track' });
-  const progressFill = el('div', { className: 'live-progress-fill' });
-  progressFill.style.width = '0%';
-  progressTrack.append(progressFill);
-
-  const timeRow = el('div', { className: 'live-time-row' });
-  const elapsedBlock = el('div', { className: 'live-t-block' }, [
-    el('div', { className: 'live-t-label', text: 'Elapsed' }),
-    el('div', { className: 'live-t-val', text: '--:--' }),
-  ]);
-  const remainingBlock = el('div', { className: 'live-t-block' }, [
-    el('div', { className: 'live-t-label', text: 'Remaining' }),
-    el('div', { className: 'live-t-val', text: '--:--' }),
-  ]);
-  const durationBlock = el('div', { className: 'live-t-block' }, [
-    el('div', { className: 'live-t-label', text: 'Duration' }),
-    el('div', { className: 'live-t-val', text: '--:--' }),
-  ]);
-  timeRow.append(elapsedBlock, remainingBlock, durationBlock);
-
-  progressCard.append(showTitle, progressTrack, timeRow);
-
-  // ── Current cue card ───────────────────────────────────────────────────
+  // ── Cue card ───────────────────────────────────────────────────────────────
   const cueCard = el('div', { className: 'card cue-card' });
   cueCard.append(el('h2', { text: 'Current Cue' }));
-  const cueNumber = el('div', { className: 'cue-number', text: '—' });
-  const cueName   = el('div', { className: 'cue-name', text: 'No cue' });
-  const cueTime   = el('div', { className: 'cue-time', text: '' });
-  cueCard.append(cueNumber, cueName, cueTime);
+  const cueDisplay = el('div', { className: 'cue-number', text: '—' });
+  cueCard.append(cueDisplay);
 
-  // ── Next cue card ──────────────────────────────────────────────────────
-  const nextCueCard = el('div', { className: 'card cue-card' });
-  nextCueCard.append(el('h2', { text: 'Next Cue' }));
-  const nextCueNum  = el('div', { className: 'cue-number', text: '—' });
-  const nextCueName = el('div', { className: 'cue-name', text: '—' });
-  const nextCueTime = el('div', { className: 'cue-time', text: '' });
-  nextCueCard.append(nextCueNum, nextCueName, nextCueTime);
-
-  // ── Node activity card ─────────────────────────────────────────────────
+  // ── Node activity card ─────────────────────────────────────────────────────
   const nodesCard = el('div', { className: 'card' });
   nodesCard.append(el('h2', { text: 'Node Activity' }));
   const nodesBody = el('div', {});
   nodesCard.append(nodesBody);
 
-  // ── Network health card ────────────────────────────────────────────────
+  // ── Transport health card ──────────────────────────────────────────────────
   const netCard = el('div', { className: 'card' });
   netCard.append(el('h2', { text: 'Transport Health' }));
   const netBody = el('div', {});
   netCard.append(netBody);
 
-  // ── Command activity card ──────────────────────────────────────────────
+  // ── Executing actions card ─────────────────────────────────────────────────
   const cmdCard = el('div', { className: 'card' });
   cmdCard.append(el('h2', { text: 'Executing Actions' }));
   const cmdBody = el('div', {});
   cmdCard.append(cmdBody);
 
-  // ── Warnings card ──────────────────────────────────────────────────────
+  // ── Warnings card ──────────────────────────────────────────────────────────
   const warnCard = el('div', { className: 'card' });
   warnCard.append(el('h2', { text: 'Warnings' }));
   const warnBody = el('div', {});
   warnCard.append(warnBody);
 
-  // ── Layout ─────────────────────────────────────────────────────────────
   container.append(
     connStatus,
     progressCard,
     el('div', { className: 'live-layout' }, [
-      cueCard, nextCueCard,
-      nodesCard, netCard,
-      cmdCard, warnCard,
+      cueCard, nodesCard, netCard, cmdCard, warnCard,
     ])
   );
 
-  // ── Paint ──────────────────────────────────────────────────────────────
+  // ── Paint ──────────────────────────────────────────────────────────────────
 
   function paintConnection(state) {
-    const label = {
-      [ConnectionState.CONNECTING]:  'Connecting to Director…',
-      [ConnectionState.CONNECTED]:   'Live',
-      [ConnectionState.DEGRADED]:    'Signal degraded',
-      [ConnectionState.RECONNECTING]:`Reconnecting (attempt ${state.reconnectAttempts})…`,
-      [ConnectionState.OFFLINE]:     'Offline',
-    }[state.connection] || '';
-    connStatus.textContent = label;
-    connStatus.className = `live-status ls-${state.connection}`;
+    const lifecycle = state.connectionStatus.lifecycle || 'connecting';
+    const retries   = state.connectionStatus.retries;
+    const labels    = {
+      connecting:   'Connecting to Director…',
+      connected:    'Live',
+      degraded:     'Signal degraded',
+      reconnecting: `Reconnecting (attempt ${retries})…`,
+      offline:      'Offline',
+    };
+    connStatus.textContent = labels[lifecycle] || '';
+    connStatus.className   = `live-status ls-${lifecycle}`;
   }
 
   function paintProgress(state) {
-    const r = state.runtime;
-    const rState = r.state || 'idle';
-    progressCard.className = `card live-progress-card live-state-${rState}`;
-
-    const show = r.currentShow;
-    showTitle.textContent = show ? (show.name || show.id || '—') : 'No show loaded';
-
-    const pct = progressPct(r.position, r.duration);
-    progressFill.style.width = `${pct}%`;
-
-    elapsedBlock.querySelector('.live-t-val').textContent = formatDuration(r.elapsed || r.position);
-    remainingBlock.querySelector('.live-t-val').textContent = formatDuration(r.remaining || Math.max(0, r.duration - r.position));
-    durationBlock.querySelector('.live-t-val').textContent = formatDuration(r.duration);
+    const rs    = state.runtimeStatus;
+    const rState = (rs.runtime || 'idle').toLowerCase();
+    progressCard.className   = `card live-progress-card live-state-${rState}`;
+    const showName = rs.currentShow;
+    const hasShow  = showName && showName !== 'Not reported';
+    showTitle.textContent    = hasShow ? showName : 'No show loaded';
+    progFill.style.width     = `${(rs.progress || 0) * 100}%`;
+    elapsedVal.textContent   = formatDuration(rs.elapsedMs);
+    remainVal.textContent    = formatDuration(rs.remainingMs);
+    durVal.textContent       = formatDuration(rs.timelineLengthMs);
   }
 
   function paintCue(state) {
-    const cue = state.runtime?.cue;
-    if (cue) {
-      cueNumber.textContent = cue.number != null ? `Cue ${cue.number}` : 'Current Cue';
-      cueName.textContent = cue.name || '—';
-      cueTime.textContent = cue.timeMs != null ? `@ ${formatDuration(cue.timeMs)}` : '';
-    } else {
-      cueNumber.textContent = '—';
-      cueName.textContent = 'No cue';
-      cueTime.textContent = '';
-    }
-
-    const next = state.runtime?.nextCue;
-    if (next) {
-      nextCueNum.textContent = next.number != null ? `Cue ${next.number}` : 'Next';
-      nextCueName.textContent = next.name || '—';
-      nextCueTime.textContent = next.timeMs != null ? `@ ${formatDuration(next.timeMs)}` : '';
-    } else {
-      nextCueNum.textContent = '—';
-      nextCueName.textContent = '—';
-      nextCueTime.textContent = '';
-    }
+    const cue = state.runtimeStatus.cue;
+    cueDisplay.textContent = (cue && cue !== 'Not reported') ? `Cue ${cue}` : '—';
   }
 
   function paintNodes(state) {
     nodesBody.innerHTML = '';
-    const nodes = state.nodes || [];
+    const nodes = state.nodeCollection.nodes;
     if (nodes.length === 0) {
       nodesBody.append(el('div', { className: 'text-muted sub', text: 'No nodes' }));
       return;
     }
     const table = el('table', { className: 'log-table' });
-    const thead = el('thead', {}, [
+    table.append(el('thead', {}, [
       el('tr', {}, [el('th', { text: 'Node' }), el('th', { text: 'Status' }), el('th', { text: 'Signal' })]),
-    ]);
+    ]));
     const tbody = el('tbody', {});
     for (const n of nodes) {
-      const online = n.online !== false && n.presence !== 'offline';
+      const pres = (n.presence || (n.online ? 'online' : 'offline')).toLowerCase();
       tbody.append(el('tr', {}, [
-        el('td', { text: n.name || n.id || '—' }),
-        el('td', {}, [el('span', { className: `badge ${online ? 'online' : 'offline'}`, text: online ? 'Online' : 'Offline' })]),
+        el('td', { text: n.friendlyName || n.name || n.id || '—' }),
+        el('td', {}, [el('span', { className: `badge ${pres}`, text: pres })]),
         el('td', { className: 'mono', text: n.rssi != null ? `${n.rssi} dBm` : '—' }),
       ]));
     }
-    table.append(thead, tbody);
+    table.append(tbody);
     nodesBody.append(table);
   }
 
   function paintNet(state) {
     netBody.innerHTML = '';
-    const net = state.network;
-    if (!net) {
+    const net = state.networkState;
+    if (!net.health || net.health === 'unknown') {
       netBody.append(el('div', { className: 'sub text-muted', text: 'Awaiting telemetry…' }));
       return;
     }
-    if (net.networkHealth) netBody.append(statRow('Health', net.networkHealth));
-    if (net.latencyMs != null) netBody.append(statRow('Latency', `${net.latencyMs} ms`));
+    netBody.append(statRow('Health', net.health));
+    if (state.connectionStatus.latencyMs != null) netBody.append(statRow('Latency', `${state.connectionStatus.latencyMs} ms`));
     if (net.averageRssi != null) netBody.append(statRow('Avg RSSI', `${net.averageRssi} dBm`));
     if (net.heartbeatRate != null) netBody.append(statRow('Heartbeat', `${net.heartbeatRate}/min`));
-    if (net.onlineCount != null && net.deviceCount != null) {
-      netBody.append(statRow('Online nodes', `${net.onlineCount}/${net.deviceCount}`));
-    }
+    const { online = 0, total = 0 } = state.nodeCollection.counts;
+    if (total > 0) netBody.append(statRow('Online nodes', `${online}/${total}`));
   }
 
-  function paintCommands(state) {
+  function paintActions(state) {
     cmdBody.innerHTML = '';
-    const running = state.commands?.running || [];
-    const queued  = state.commands?.queue || [];
-    if (running.length === 0 && queued.length === 0) {
+    const actions = state.runtimeStatus.executingActions || [];
+    if (actions.length === 0) {
       cmdBody.append(el('div', { className: 'sub text-muted', text: 'No active commands' }));
       return;
     }
-    for (const cmd of [...running, ...queued].slice(0, 6)) {
+    for (const a of actions) {
       cmdBody.append(el('div', { className: 'health-indicator' }, [
-        el('span', { className: `badge ${cmd.status === 'started' ? 'running' : 'warning'}`, text: cmd.status || '?' }),
-        el('span', { className: 'stat-label', text: `${cmd.category || '?'}/${cmd.action || '?'} → ${cmd.destination || '?'}` }),
+        el('span', { className: `badge ${a.status === 'started' ? 'running' : 'warning'}`, text: a.status || '?' }),
+        el('span', { className: 'stat-label', text: `${a.action} → ${a.destination}` }),
       ]));
     }
   }
@@ -211,13 +162,13 @@ export function LivePage(container) {
   function paintWarnings(state) {
     warnBody.innerHTML = '';
     const warnings = [];
-
-    if (state.connection === ConnectionState.DEGRADED) warnings.push('Signal degraded');
-    if (state.connection === ConnectionState.RECONNECTING) warnings.push(`Reconnecting (attempt ${state.reconnectAttempts})`);
-    if (state.emergency?.active) warnings.push(`Emergency: ${state.emergency.reason || state.emergency.level || 'active'}`);
-
-    const warnNodes = (state.nodes || []).filter((n) => n.presence === 'warning' || n.warning);
-    for (const n of warnNodes) warnings.push(`Node warning: ${n.name || n.id}`);
+    const lifecycle = state.connectionStatus.lifecycle;
+    if (lifecycle === 'degraded')    warnings.push('Signal degraded');
+    if (lifecycle === 'reconnecting') warnings.push(`Reconnecting (attempt ${state.connectionStatus.retries})`);
+    if (state.emergencyState.active) warnings.push(`Emergency: ${state.emergencyState.status}`);
+    for (const w of (state.runtimeStatus.warnings || [])) warnings.push(w);
+    const warnNodes = state.nodeCollection.nodes.filter((n) => n.presence === 'warning');
+    for (const n of warnNodes) warnings.push(`Node warning: ${n.friendlyName || n.name || n.id}`);
 
     if (warnings.length === 0) {
       warnBody.append(el('div', { className: 'sub text-success', text: 'No warnings' }));
@@ -234,11 +185,11 @@ export function LivePage(container) {
     paintCue(state);
     paintNodes(state);
     paintNet(state);
-    paintCommands(state);
+    paintActions(state);
     paintWarnings(state);
   }
 
-  cleanup.add(subscribe(paint));
+  cleanup.add(subscribeRuntime(paint));
 
   return () => cleanup.run();
 }

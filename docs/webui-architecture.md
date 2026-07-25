@@ -41,9 +41,10 @@ Pages mount as child views inside the container. Navigation swaps the view witho
 
 ## Shared Runtime State
 
-`js/state/runtime.js` is the single authoritative state model.
+`js/state/runtimeStore.js` is the single authoritative state model.
 
-All pages observe this model. No page maintains its own disconnected runtime logic.
+All pages observe this model via `subscribeRuntime()`. No page maintains its own
+polling loop or WebSocket connection. `runtime.js` and `live.js` have been deleted.
 
 ### State shape
 
