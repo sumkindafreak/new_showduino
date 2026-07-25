@@ -36,6 +36,7 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 | [`docs/architecture.md`](docs/architecture.md) | System architecture and maturity |
 | [`docs/repository-status.md`](docs/repository-status.md) | Firmware classification (ACTIVE / LEGACY / …) |
 | [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Hardware topology and board roles |
+| [`docs/webui-production-shell.md`](docs/webui-production-shell.md) | Showduino WebUI shell/state architecture |
 
 ## Canonical communication paths
 
