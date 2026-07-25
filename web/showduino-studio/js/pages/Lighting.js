@@ -1,25 +1,33 @@
-import { fetchSystem } from '../api.js';
-import { el, archBlock } from '../utils.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
+import { comingSoonCard, infoBanner, keyValueTable } from './pagePrimitives.js';
 
-export async function LightingPage(container) {
-  container.append(el('p', { className: 'info-panel', text: 'Lighting and relays are executed on remote nodes (Relay Node ESP32, Stage Engine). The Director sends relay and LED commands; confirmed state returns via ESP-NOW.' }));
+export function LightingPage(container) {
+  container.append(infoBanner('Lighting authority remains on execution nodes. This view consumes shared runtime telemetry.'));
 
-  const panel = el('div', { className: 'card' });
-  panel.append(el('h2', { text: 'Lighting Architecture' }));
+  const card = document.createElement('section');
+  card.className = 'card';
+  card.innerHTML = '<h2>Lighting Runtime Mirror</h2>';
+  const host = document.createElement('div');
+  card.append(host);
+  container.append(card);
 
-  try {
-    const sys = await fetchSystem();
-    panel.append(archBlock('Relay Command', '{"cmd":"relay","id":1-8,"state":0|1}'));
-    panel.append(archBlock('LED Command', '{"cmd":"led","line":1-4,"pixel":N,"brightness":0-255}'));
-    panel.append(archBlock('Fixture Profiles', sys.fixtureProfilesPath));
-    panel.append(archBlock('Device Presets', sys.devicePresetsPath));
-    panel.append(archBlock('Paired Devices', sys.pairedDevicesPath));
-    panel.append(archBlock('Lighting Icons', sys.lightingIconsPath));
-    panel.append(el('p', { className: 'sub', text: 'Relay grid supports 8 tactile toggles expandable via SX1509. LED lines use per-pixel brightness control on the Brain. Director never switches outputs directly.' }));
-  } catch (err) {
-    panel.append(el('p', { text: err.message }));
-  }
+  container.append(comingSoonCard(
+    'Lighting Patch & Pixel Tools',
+    'Patch, fixture and per-pixel editing are hidden until command acceptance and completion telemetry is complete.'
+  ));
 
-  container.append(panel);
+  const unsub = subscribeRuntime((state) => {
+    host.innerHTML = '';
+    host.append(keyValueTable([
+      ['Summary', state.runtimeStatus.lighting.summary],
+      ['Node Online', state.nodeCollection.counts.online],
+      ['Node Warning', state.nodeCollection.counts.warning],
+      ['Node Offline', state.nodeCollection.counts.offline],
+      ['Transport Health', state.runtimeStatus.transportHealth]
+    ]));
+  });
+
+  return () => unsub();
 }
 LightingPage.title = 'Lighting';
+LightingPage.subtitle = 'Runtime lighting mirror and future tools.';

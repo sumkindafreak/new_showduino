@@ -18,8 +18,8 @@ public:
     dirtyShutdown = !prefs.getBool("cleanExit", true);
     prefs.putBool("cleanExit", false);
     lastResetReason = (int)esp_reset_reason();
-    Serial.printf("[Recovery] bootAttempts=%u dirtyShutdown=%d reset=%d\n",
-                  bootAttempts, (int)dirtyShutdown, lastResetReason);
+    Serial.printf("[Recovery] bootAttempts=%lu dirtyShutdown=%d reset=%d\n",
+                  (unsigned long)bootAttempts, (int)dirtyShutdown, lastResetReason);
   }
 
   void markStartupComplete() {

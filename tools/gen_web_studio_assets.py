@@ -1,16 +1,40 @@
 #!/usr/bin/env python3
+"""
+Showduino Studio – WebStudioAssets.h generator
+
+Reads all web source files from web/showduino-studio/ and writes byte-array
+embedded asset headers for both firmware targets:
+
+  1. Director (ESP32-8048S050) – includes SD + StorageConfig helpers
+  2. C3 SUE bridge              – lightweight, no SD dependency
+"""
 import os
 
 WEB_ROOT = os.path.join(os.path.dirname(__file__), "..", "web", "showduino-studio")
-OUT = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "firmware",
-    "director-esp32-8048s050",
-    "ShowduinoDirector8048S050",
-    "src",
-    "WebStudioAssets.h",
-)
+
+TARGETS = [
+    {
+        "path": os.path.join(
+            os.path.dirname(__file__), "..",
+            "firmware", "director-esp32-8048s050",
+            "ShowduinoDirector8048S050", "src", "WebStudioAssets.h",
+        ),
+        "guard": "SHOWDUINO_WEB_STUDIO_ASSETS_H",
+        "includes": ['#include <Arduino.h>', '#include <SD.h>',
+                     '#include "StorageConfig.h"', '#include "FileUtil.h"'],
+        "sd_helpers": True,
+    },
+    {
+        "path": os.path.join(
+            os.path.dirname(__file__), "..",
+            "firmware", "c3-supermini-espnow-bridge",
+            "ShowduinoC3SuperMiniBridge", "src", "WebStudioAssets.h",
+        ),
+        "guard": "SHOWDUINO_C3_WEB_STUDIO_ASSETS_H",
+        "includes": ['#include <Arduino.h>'],
+        "sd_helpers": False,
+    },
+]
 
 MIME = {
     ".html": "text/html",
@@ -22,28 +46,30 @@ MIME = {
 }
 
 
-def main():
+def collect_assets(web_root):
     assets = []
-    for root, _dirs, files in os.walk(WEB_ROOT):
+    for root, _dirs, files in os.walk(web_root):
         for fn in sorted(files):
             ext = os.path.splitext(fn)[1].lower()
             if ext not in MIME:
                 continue
             full = os.path.join(root, fn)
-            rel = os.path.relpath(full, WEB_ROOT).replace("\\", "/")
+            rel = os.path.relpath(full, web_root).replace("\\", "/")
             web_path = "/" + rel
             with open(full, "rb") as f:
                 data = f.read()
             assets.append((web_path, MIME[ext], data))
+    return assets
 
+
+def build_header(assets, guard, includes, sd_helpers):
     lines = [
-        "#ifndef SHOWDUINO_WEB_STUDIO_ASSETS_H",
-        "#define SHOWDUINO_WEB_STUDIO_ASSETS_H",
+        f"#ifndef {guard}",
+        f"#define {guard}",
         "",
-        "#include <Arduino.h>",
-        "#include <SD.h>",
-        '#include "StorageConfig.h"',
-        '#include "FileUtil.h"',
+    ]
+    lines += includes
+    lines += [
         "",
         "struct WebStudioAsset {",
         "  const char *mime;",
@@ -90,7 +116,7 @@ def main():
         "  WebStudioAsset out = { nullptr, nullptr, 0 };",
         "  if (!path) return out;",
         "  String p = String(path);",
-        '  if (p.length() == 0) p = "/index.html";',
+        '  if (p.length() == 0 || p == "/") p = "/index.html";',
         "  for (size_t i = 0; i < kEmbeddedAssetCount; i++) {",
         "    if (p.equals(kEmbeddedAssets[i].path)) {",
         "      out.mime = kEmbeddedAssets[i].mime;",
@@ -102,36 +128,53 @@ def main():
         "  return out;",
         "}",
         "",
-        "inline bool ensureWwwOnSd() {",
-        "  if (!SD.exists(PATH_WEBUI_WWW)) {",
-        "    if (!ShowduinoFileUtil::ensureDir(PATH_WEBUI_WWW)) return false;",
-        "  }",
-        "  for (size_t i = 0; i < kEmbeddedAssetCount; i++) {",
-        "    const WebStudioAssetEntry &e = kEmbeddedAssets[i];",
-        "    String sdPath = String(PATH_WEBUI_WWW) + String(e.path);",
-        "    if (SD.exists(sdPath.c_str())) continue;",
-        "    if (!ShowduinoFileUtil::ensureParentDirs(sdPath.c_str())) continue;",
-        "    File f = SD.open(sdPath.c_str(), FILE_WRITE);",
-        "    if (!f) continue;",
-        "    for (size_t j = 0; j < e.length; j++) {",
-        "      f.write(pgm_read_byte(e.data + j));",
-        "    }",
-        "    f.close();",
-        "  }",
-        "  return true;",
-        "}",
-        "",
-        "#endif",
-        "",
     ]
 
-    out_path = os.path.normpath(OUT)
-    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines))
+    if sd_helpers:
+        lines += [
+            "inline bool ensureWwwOnSd() {",
+            "  if (!SD.exists(PATH_WEBUI_WWW)) {",
+            "    if (!ShowduinoFileUtil::ensureDir(PATH_WEBUI_WWW)) return false;",
+            "  }",
+            "  for (size_t i = 0; i < kEmbeddedAssetCount; i++) {",
+            "    const WebStudioAssetEntry &e = kEmbeddedAssets[i];",
+            "    String sdPath = String(PATH_WEBUI_WWW) + String(e.path);",
+            "    if (SD.exists(sdPath.c_str())) continue;",
+            "    if (!ShowduinoFileUtil::ensureParentDirs(sdPath.c_str())) continue;",
+            "    File f = SD.open(sdPath.c_str(), FILE_WRITE);",
+            "    if (!f) continue;",
+            "    for (size_t j = 0; j < e.length; j++) {",
+            "      f.write(pgm_read_byte(e.data + j));",
+            "    }",
+            "    f.close();",
+            "  }",
+            "  return true;",
+            "}",
+            "",
+        ]
 
-    print(f"Generated {out_path} with {len(assets)} assets")
-    for path, _mime, _vname, length in var_names:
-        print(f"  {path} ({length} bytes)")
+    lines += [f"#endif /* {guard} */", ""]
+    return "\n".join(lines)
+
+
+def main():
+    assets = collect_assets(WEB_ROOT)
+
+    print(f"Collected {len(assets)} assets from {WEB_ROOT}")
+    for path, _mime, data in assets:
+        print(f"  {path} ({len(data)} bytes)")
+
+    for target in TARGETS:
+        out_path = os.path.normpath(target["path"])
+        content = build_header(
+            assets,
+            guard=target["guard"],
+            includes=target["includes"],
+            sd_helpers=target["sd_helpers"],
+        )
+        with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+        print(f"Written: {out_path}")
 
 
 if __name__ == "__main__":

@@ -1,65 +1,62 @@
-import { fetchNetwork, fetchSystem } from '../api.js';
-import { el, statRow } from '../utils.js';
-import { connectLive, subscribeLive } from '../live.js';
+/**
+ * Showduino Studio – Network
+ *
+ * Network health and mesh topology view.
+ * Driven entirely by runtimeStore — no independent REST calls.
+ * The store polls /api/network every 4 s and /api/system every 6 s.
+ */
 
-export async function NetworkPage(container) {
-  container.append(el('p', {
-    className: 'info-panel',
-    text: 'Network health for the Showduino mesh. Topology graphics will attach here in a later stage.'
-  }));
+import { el, statRow, makeCleanupGroup } from '../utils.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
+
+export function NetworkPage(container) {
+  const cleanup = makeCleanupGroup();
 
   const healthCard = el('div', { className: 'card network-health-card' });
   healthCard.append(el('h2', { text: 'Connection Health' }));
-  const healthBody = el('div', { className: 'network-body' });
+  const healthBody = el('div', {});
   healthCard.append(healthBody);
 
   const wifiCard = el('div', { className: 'card' });
-  wifiCard.append(el('h2', { text: 'Studio Wi-Fi Front Door' }));
-  const wifiBody = el('div', { className: 'wifi-body' });
+  wifiCard.append(el('h2', { text: 'Studio Wi-Fi (C3 Front Door)' }));
+  const wifiBody = el('div', {});
   wifiCard.append(wifiBody);
 
-  const topo = el('div', { className: 'card topology-placeholder' });
+  const topo = el('div', { className: 'card' });
   topo.append(el('h2', { text: 'Topology' }));
-  topo.append(el('p', { className: 'sub', text: 'Reserved for future live link graph (Director ↔ SUE ↔ IAN ↔ Relays).' }));
+  topo.append(el('p', { className: 'text-muted', text: 'Reserved for live link graph: Director ↔ SUE ↔ IAN ↔ Relay nodes.' }));
+  topo.append(el('p', { className: 'sub', text: 'Phase 3 — ESP-NOW topology visualisation.' }));
 
-  container.append(healthCard, wifiCard, topo);
+  container.append(el('div', { className: 'page-grid' }, [healthCard, wifiCard, topo]));
 
-  function renderNetwork(net) {
-    if (!net) return;
+  function paint(state) {
+    const net = state.networkState;
     healthBody.innerHTML = '';
-    healthBody.append(statRow('Total Devices', net.deviceCount));
-    healthBody.append(statRow('Online', net.onlineCount));
-    healthBody.append(statRow('Warning', net.warningCount));
-    healthBody.append(statRow('Offline', net.offlineCount));
-    healthBody.append(statRow('Average Signal', net.averageRssi != null ? `${net.averageRssi} dBm` : '—'));
-    healthBody.append(statRow('Heartbeat Rate', net.heartbeatRate != null ? `${net.heartbeatRate} / min` : '—'));
-    healthBody.append(statRow('Network Health', net.networkHealth || net.health || '—'));
-  }
+    if (net.health && net.health !== 'unknown') {
+      healthBody.append(el('div', { className: 'value', text: net.health }));
+    }
+    if (net.deviceCount  != null) healthBody.append(statRow('Total Devices', net.deviceCount));
+    if (net.onlineCount  != null) healthBody.append(statRow('Online',  net.onlineCount));
+    if (net.warningCount != null && net.warningCount > 0) healthBody.append(statRow('Warning', net.warningCount));
+    if (net.offlineCount != null) healthBody.append(statRow('Offline', net.offlineCount));
+    if (net.averageRssi  != null) healthBody.append(statRow('Avg Signal', `${net.averageRssi} dBm`));
+    if (net.heartbeatRate != null) healthBody.append(statRow('Heartbeat', `${net.heartbeatRate}/min`));
+    if (state.connectionStatus.latencyMs != null) healthBody.append(statRow('Latency', `${state.connectionStatus.latencyMs} ms`));
 
-  connectLive();
-  const unsub = subscribeLive((snap) => renderNetwork(snap.network));
-
-  try {
-    const net = await fetchNetwork();
-    renderNetwork(net);
-  } catch (err) {
-    healthBody.append(el('p', { text: err.message }));
-  }
-
-  try {
-    const sys = await fetchSystem();
-    const w = sys.wifi || {};
+    const cfg  = state.configurationState;
+    const wifi = cfg.wifi || {};
     wifiBody.innerHTML = '';
-    wifiBody.append(statRow('Mode', w.mode));
-    wifiBody.append(statRow('SSID', w.ssid));
-    wifiBody.append(statRow('IP Address', w.ip));
-    wifiBody.append(statRow('Hostname', w.hostname));
-    wifiBody.append(statRow('mDNS', (sys.mdnsHost || 'showduino-studio') + '.local'));
+    wifiBody.append(statRow('Mode',     wifi.mode     || '—'));
+    wifiBody.append(statRow('SSID',     wifi.ssid     || '—'));
+    wifiBody.append(statRow('IP',       wifi.ip       || '—'));
+    wifiBody.append(statRow('Hostname', wifi.hostname || '—'));
+    wifiBody.append(statRow('mDNS',     cfg.mdnsHost ? cfg.mdnsHost + '.local' : '—'));
     wifiBody.append(statRow('WebSocket', `ws://${location.hostname || '192.168.4.1'}:81/`));
-  } catch (err) {
-    wifiBody.append(el('p', { text: 'Show Engine system API unavailable — front door still serves device live feed.' }));
   }
 
-  return () => unsub();
+  cleanup.add(subscribeRuntime(paint));
+
+  return () => cleanup.run();
 }
+
 NetworkPage.title = 'Network';

@@ -1,3 +1,10 @@
+/**
+ * Showduino Studio – Hash Router
+ *
+ * Hash-based client-side router.
+ * Pages mount inside #page-content; the shell is never rebuilt.
+ */
+
 const routes = new Map();
 let currentCleanup = null;
 
@@ -16,24 +23,39 @@ export async function navigate(path) {
 }
 
 async function render() {
-  const path = getPath();
-  const handler = routes.get(path) || routes.get('/');
+  let path = getPath();
+
+  // Redirect bare root to /dashboard
+  if (path === '/') path = '/dashboard';
+
+  const handler = routes.get(path) || routes.get('/dashboard') || routes.get('/');
   const container = document.getElementById('page-content');
   if (!container || !handler) return;
 
   if (typeof currentCleanup === 'function') {
-    currentCleanup();
+    try { currentCleanup(); } catch (_) {}
     currentCleanup = null;
   }
 
   container.innerHTML = '';
-  const result = await handler(container);
-  if (typeof result === 'function') currentCleanup = result;
 
-  document.querySelectorAll('.nav-link').forEach(link => {
+  // Scroll content back to top on navigation
+  container.scrollTop = 0;
+
+  const result = handler(container);
+  if (result instanceof Promise) {
+    const resolved = await result;
+    if (typeof resolved === 'function') currentCleanup = resolved;
+  } else if (typeof result === 'function') {
+    currentCleanup = result;
+  }
+
+  // Update active nav links
+  document.querySelectorAll('.nav-link').forEach((link) => {
     link.classList.toggle('active', link.dataset.route === path);
   });
 
+  // Update page title
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = handler.title || 'Showduino Studio';
 }
