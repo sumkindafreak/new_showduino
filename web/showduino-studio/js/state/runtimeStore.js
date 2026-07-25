@@ -255,18 +255,20 @@ function applyNodes(nodes) {
 
 function applyCommands(commands) {
   if (!commands) return;
-  const running = Array.isArray(commands.running) ? commands.running : [];
-  const history = Array.isArray(commands.history) ? commands.history : [];
-  state.runtimeStatus.executingActions = running.slice(0, 8).map((cmd) => ({
-    id: cmd.id,
-    action: `${cmd.category || 'command'}:${cmd.action || 'unknown'}`,
-    destination: cmd.destination || 'any',
-    status: cmd.status || 'started'
-  }));
-  state.runtimeStatus.warnings = history
-    .filter((cmd) => ['failed', 'rejected', 'cancelled'].includes((cmd.status || '').toLowerCase()))
-    .slice(0, 6)
-    .map((cmd) => `${cmd.action || cmd.category || 'command'} ${cmd.status}`);
+  if (Array.isArray(commands.running)) {
+    state.runtimeStatus.executingActions = commands.running.slice(0, 8).map((cmd) => ({
+      id: cmd.id,
+      action: `${cmd.category || 'command'}:${cmd.action || 'unknown'}`,
+      destination: cmd.destination || 'any',
+      status: cmd.status || 'started'
+    }));
+  }
+  if (Array.isArray(commands.history)) {
+    state.runtimeStatus.warnings = commands.history
+      .filter((cmd) => ['failed', 'rejected', 'cancelled'].includes((cmd.status || '').toLowerCase()))
+      .slice(0, 6)
+      .map((cmd) => `${cmd.action || cmd.category || 'command'} ${cmd.status}`);
+  }
 }
 
 function applyLogs(logPayload) {
