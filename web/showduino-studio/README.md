@@ -1,54 +1,126 @@
 # Showduino Studio WebUI
 
-Browser control desk for Showduino Studio — served by the Communications Engine (**SUE** / ESP32-C3).
+Production browser operating console served by the Communications Engine (**SUE / ESP32-C3**).
 
-## Architecture
+This UI follows the same concepts as the Director desk:
+
+- runtime
+- emergency/safety
+- nodes
+- shows
+- lighting
+- audio
+- assets
+- networking
+
+## Runtime architecture
 
 ```text
-Browser → Wi-Fi → ESP32-C3 SUE
-                    ├─ Device Manager (Stage 5)
-                    ├─ Command Bus (Stage 6)
-                    ├─ Capability Manager + Device Router (Stage 7)
-                    ├─ Time Service + DS3231 (Stage 7.5) ← authoritative clock
-                    └─ UART tunnel → ESP32-P4 IAN (/api/system, /api/logs)
+Browser shell (single-page operating console)
+   ├─ Persistent application shell (nav + header + status surface)
+   ├─ Shared runtime store (single authority)
+   │   ├─ REST refresh scheduler
+   │   ├─ WebSocket ingest
+   │   ├─ reconnect/backoff lifecycle
+   │   ├─ node freshness computation
+   │   └─ notifications + diagnostics
+   └─ Route child views (Dashboard, Live, Nodes, ...)
+
+SUE / C3
+   ├─ serves embedded static assets
+   ├─ emits realtime WebSocket events
+   └─ proxies `/api/system` and `/api/logs` to P4 via UART tunnel
+
+P4 / Show Engine
+   └─ authoritative runtime + system API source
 ```
 
-## Connect
+## State ownership model
+
+`js/state/runtimeStore.js` is the sole owner of application runtime state:
+
+- `systemState`
+- `runtimeStatus`
+- `networkState`
+- `emergencyState`
+- `nodeCollection`
+- `showCollection`
+- `assetCollection`
+- `configurationState`
+- `notifications`
+- `diagnostics`
+
+Pages do not run independent polling loops; every page observes the shared store.
+
+## Connection lifecycle
+
+Single source lifecycle states:
+
+- `connecting`
+- `connected`
+- `degraded`
+- `reconnecting`
+- `offline`
+
+Lifecycle transitions are driven by WebSocket state + frame freshness + reconnect backoff, not by page logic.
+
+## Navigation architecture
+
+Navigation is permanently mounted and split into:
+
+### OPERATE
+
+- Dashboard
+- Live
+- Timeline
+- Shows
+- Nodes
+- Logs
+- Diagnostics
+
+### CONFIGURE
+
+- Network
+- Lighting
+- Audio
+- Assets
+- Node Configuration
+- Settings
+
+Unfinished operational tools are explicitly marked **Coming Soon** instead of exposing incomplete controls.
+
+## Data flow
+
+1. Shared store performs scheduled REST refreshes.
+2. Shared store opens WebSocket realtime stream.
+3. Incoming updates merge into canonical runtime state.
+4. Pages re-render from the same data model.
+5. Status surface reflects global state continuously.
+
+## Connect for manual testing
 
 1. Flash **P4**, **C3**, **Director**
-2. Wire DS3231 to C3: **SDA=GPIO4**, **SCL=GPIO5**, 3V3, GND
-3. Join Wi-Fi: `Showduino-Studio` / `showduino`
-4. Open `http://192.168.4.1/` — Devices, Commands, Capabilities, Routing, **Time**
+2. Join Wi-Fi AP `Showduino-Studio` / `showduino`
+3. Open `http://192.168.4.1/`
 
-## Library
+## API surface currently consumed
 
-Install **Adafruit RTClib** (v2.1.4+) and dependency **Adafruit BusIO** in Arduino Library Manager.
-
-## REST API (additions)
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/time` | Live clock / ISO / epoch / RTC status / temperature |
-| `GET /api/time/status` | RTC present/healthy/lostPower/battery/sync/drift/SQW/alarm |
-| `POST /api/time/alarm` | Arm timed-show alarm (`{"epoch":…}` or `{"daily":true,"hour":h,"minute":m}`) |
-| `DELETE /api/time/alarm` | Clear RTC alarm |
-
-## WebSocket events (additions)
-
-`time.updated` (1 Hz) · `time.sync` · `time.unsynced` · `rtc.status` · `time.alarm` · `time.alarm.armed` · `time.alarm.cleared`
-
-## DS3231 wiring (SUE / C3)
-
-| RTC pin | C3 GPIO |
-|---------|---------|
-| SDA | 4 |
-| SCL | 5 |
-| SQW / INT / DS | **6** (timed-show alarm interrupt) |
-| VCC / GND | 3V3 / GND |
-| 32K | unused |
+- `GET /api/system`
+- `GET /api/devices`
+- `GET /api/network`
+- `GET /api/logs`
+- `GET /api/commands`
+- `GET /api/time`
+- `GET /api/time/status`
+- `GET /api/capabilities`
+- `GET /api/device-capabilities`
+- `GET /api/routes`
 
 ## Regenerate embedded assets
 
-```powershell
-powershell -File tools/embed-web-studio-assets.ps1
+From repository root:
+
+```bash
+python3 tools/gen_web_studio_assets.py
+pwsh -File tools/embed-web-studio-assets.ps1
 ```

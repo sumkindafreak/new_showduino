@@ -1,8 +1,8 @@
-import { fetchLogs } from '../api.js';
 import { el, formatTimestamp, severityClass } from '../utils.js';
+import { subscribeRuntime } from '../state/runtimeStore.js';
 
-export async function LogsPage(container) {
-  container.append(el('p', { className: 'info-panel', text: 'Web API request log ring buffer (250 entries in PSRAM). Auto-refreshes every 2 seconds.' }));
+export function LogsPage(container) {
+  container.append(el('p', { className: 'info-panel', text: 'Unified runtime/event logs from the shared store. Page does not poll directly.' }));
 
   const wrap = el('div', { className: 'card' });
   const table = el('table', { className: 'log-table' });
@@ -12,32 +12,24 @@ export async function LogsPage(container) {
   wrap.append(table);
   container.append(wrap);
 
-  async function refresh() {
-    try {
-      const data = await fetchLogs();
-      const entries = data.logs || data;
-      tbody.innerHTML = '';
-      const list = Array.isArray(entries) ? entries : [];
-      for (const entry of list.slice().reverse()) {
-        const tr = el('tr', {}, [
-          el('td', { text: formatTimestamp(entry.timestampMs) }),
-          el('td', { className: severityClass(entry.severity), text: entry.severity }),
-          el('td', { text: entry.source || '—' }),
-          el('td', { text: entry.message || '—' })
-        ]);
-        tbody.append(tr);
-      }
-      if (list.length === 0) {
-        tbody.append(el('tr', {}, [el('td', { colSpan: '4', text: 'No log entries yet.' })]));
-      }
-    } catch (err) {
-      tbody.innerHTML = '';
-      tbody.append(el('tr', {}, [el('td', { colSpan: '4', text: err.message })]));
+  const unsub = subscribeRuntime((state) => {
+    const entries = Array.isArray(state.logs) ? state.logs : [];
+    tbody.innerHTML = '';
+    for (const entry of entries.slice().reverse()) {
+      const tr = el('tr', {}, [
+        el('td', { text: formatTimestamp(entry.timestampMs || entry.at) }),
+        el('td', { className: severityClass(entry.severity || entry.level), text: entry.severity || entry.level || 'info' }),
+        el('td', { text: entry.source || 'runtime' }),
+        el('td', { text: entry.message || '—' })
+      ]);
+      tbody.append(tr);
     }
-  }
+    if (entries.length === 0) {
+      tbody.append(el('tr', {}, [el('td', { colSpan: '4', text: 'No log entries yet.' })]));
+    }
+  });
 
-  await refresh();
-  const timer = setInterval(refresh, 2000);
-  return () => clearInterval(timer);
+  return () => unsub();
 }
 LogsPage.title = 'Logs';
+LogsPage.subtitle = 'Centralised runtime and API logs.';

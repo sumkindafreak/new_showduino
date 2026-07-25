@@ -15,10 +15,12 @@ function presenceLabel(device) {
 }
 
 function formatLastSeen(device) {
-  if (device.lastSeenMs == null) return '—';
-  const age = Math.max(0, Date.now() - (device._wallLastSeen || Date.now()));
-  // Prefer relative age from presence updates; fall back to raw ms uptime stamp label
   if (device.lastSeenLabel) return device.lastSeenLabel;
+  if (device.lastSeenMs == null) return '—';
+  if (device.freshnessAgeMs != null) {
+    const seconds = Math.max(0, Math.floor(device.freshnessAgeMs / 1000));
+    return `${seconds}s ago`;
+  }
   return `t+${device.lastSeenMs} ms`;
 }
 
@@ -37,6 +39,7 @@ export function DeviceCard(device) {
     statRow('Firmware', device.firmwareVersion || '—'),
     statRow('Protocol', device.protocolVersion || '—'),
     statRow('Connection', device.connectionType || device.connectionStatus || '—'),
+    statRow('Freshness', device.freshness || '—'),
     statRow('Last Seen', formatLastSeen(device)),
     statRow('MAC', device.mac || '—')
   ]);

@@ -1,35 +1,29 @@
 import { el } from '../utils.js';
 import { navigate } from '../router.js';
 
-const NAV_ITEMS = [
-  { route: '/', label: 'Home', icon: '◉' },
-  { route: '/devices', label: 'Devices', icon: '⬡' },
-  { route: '/commands', label: 'Commands', icon: '⇢' },
-  { route: '/capabilities', label: 'Capabilities', icon: '◈' },
-  { route: '/routing', label: 'Routing', icon: '⤳' },
-  { route: '/time', label: 'Time', icon: '◷' },
-  { route: '/shows', label: 'Shows', icon: '▶' },
-  { route: '/scenes', label: 'Scenes', icon: '◫' },
-  { route: '/audio', label: 'Audio', icon: '♪' },
-  { route: '/lighting', label: 'Lighting', icon: '☀' },
-  { route: '/network', label: 'Network', icon: '⌁' },
-  { route: '/logs', label: 'Logs', icon: '≡' },
-  { route: '/settings', label: 'Settings', icon: '⚙' }
-];
-
-export function Nav() {
-  const list = el('ul', { className: 'nav-list' });
-  for (const item of NAV_ITEMS) {
-    list.append(el('li', {}, [
-      el('a', {
-        className: 'nav-link',
-        href: `#${item.route}`,
-        'data-route': item.route,
-        onClick: (e) => { e.preventDefault(); navigate(item.route); closeDrawer(); }
-      }, [`${item.icon}  ${item.label}`])
-    ]));
+export function Nav(sections) {
+  const host = el('div', { className: 'nav-sections' });
+  for (const section of sections) {
+    const block = el('section', { className: 'nav-block' });
+    block.append(el('h2', { className: 'nav-section-title', text: section.title }));
+    const list = el('ul', { className: 'nav-list' });
+    for (const item of section.items) {
+      list.append(el('li', {}, [
+        el('a', {
+          className: 'nav-link',
+          href: `#${item.route}`,
+          'data-route': item.route,
+          onClick: (e) => { e.preventDefault(); navigate(item.route); closeDrawer(); }
+        }, [
+          el('span', { className: 'nav-icon', text: item.icon || '•' }),
+          el('span', { className: 'nav-label', text: item.label })
+        ])
+      ]));
+    }
+    block.append(list);
+    host.append(block);
   }
-  return list;
+  return host;
 }
 
 function closeDrawer() {

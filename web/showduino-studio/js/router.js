@@ -1,5 +1,6 @@
 const routes = new Map();
 let currentCleanup = null;
+let routeListener = null;
 
 export function registerRoute(path, handler) {
   routes.set(path, handler);
@@ -30,15 +31,18 @@ async function render() {
   const result = await handler(container);
   if (typeof result === 'function') currentCleanup = result;
 
+  const activePath = path === '/' ? '/dashboard' : path;
   document.querySelectorAll('.nav-link').forEach(link => {
-    link.classList.toggle('active', link.dataset.route === path);
+    link.classList.toggle('active', link.dataset.route === activePath);
   });
 
-  const titleEl = document.getElementById('page-title');
-  if (titleEl) titleEl.textContent = handler.title || 'Showduino Studio';
+  if (typeof routeListener === 'function') {
+    routeListener({ path, handler });
+  }
 }
 
-export function startRouter() {
+export function startRouter(options = {}) {
+  routeListener = options.onRouteChange || null;
   window.addEventListener('hashchange', render);
   render();
 }

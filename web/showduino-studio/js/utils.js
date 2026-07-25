@@ -35,10 +35,35 @@ export function formatUptime(ms) {
   return `${sec}s`;
 }
 
+export function formatDurationMs(ms) {
+  if (ms == null || Number.isNaN(ms)) return '—';
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export function formatTimestamp(ms) {
   if (ms == null) return '—';
   const d = new Date(ms);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+}
+
+export function formatRelativeMs(ms) {
+  if (ms == null || Number.isNaN(ms)) return '—';
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m ago`;
+}
+
+export function severityRank(level) {
+  const map = { debug: 0, info: 1, warn: 2, error: 3 };
+  return map[(level || '').toLowerCase()] ?? 0;
 }
 
 export function severityClass(sev) {
