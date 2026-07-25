@@ -1,6 +1,13 @@
 const BASE = '';
 const DEFAULT_TIMEOUT_MS = 3000;
 
+function compactDetail(detail) {
+  if (!detail) return '';
+  const singleLine = String(detail).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!singleLine) return '';
+  return singleLine.length > 180 ? `${singleLine.slice(0, 177)}...` : singleLine;
+}
+
 function mergeAbortSignals(...signals) {
   const active = signals.filter(Boolean);
   if (active.length === 0) return null;
@@ -39,7 +46,8 @@ async function request(path, options = {}) {
     if (!res.ok) {
       let detail = '';
       try { detail = await res.text(); } catch (_) {}
-      throw new Error(`${path} → HTTP ${res.status}${detail ? ` ${detail}` : ''}`);
+      const safeDetail = compactDetail(detail);
+      throw new Error(`${path} → HTTP ${res.status}${safeDetail ? ` ${safeDetail}` : ''}`);
     }
     if (res.status === 204) return null;
     return res.json();
