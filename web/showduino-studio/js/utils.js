@@ -1,3 +1,7 @@
+/**
+ * Showduino Studio – Utility helpers
+ */
+
 export function $(sel, root = document) {
   return root.querySelector(sel);
 }
@@ -41,6 +45,21 @@ export function formatTimestamp(ms) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
 }
 
+export function formatDuration(ms) {
+  if (ms == null || isNaN(ms)) return '--:--';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+export function formatPercent(value, total) {
+  if (total == null || total === 0) return 0;
+  return Math.round((value / total) * 100);
+}
+
 export function severityClass(sev) {
   const map = { debug: 'sev-debug', info: 'sev-info', warn: 'sev-warn', error: 'sev-error' };
   return map[sev] || 'sev-info';
@@ -58,4 +77,26 @@ export function archBlock(label, value) {
     el('dt', { text: label }),
     el('dd', { text: value ?? '—' })
   ]);
+}
+
+export function progressBar(value, total, variant = 'fill-teal') {
+  const pct = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+  const fill = el('div', { className: `progress-bar-fill ${variant}` });
+  fill.style.width = `${pct}%`;
+  return el('div', { className: 'progress-bar-track' }, [fill]);
+}
+
+export function healthDot(status) {
+  const cls = { ok: 'ok', good: 'ok', online: 'ok', connected: 'ok',
+                warn: 'warn', warning: 'warn', degraded: 'warn',
+                error: 'err', offline: 'err', critical: 'err' }[status] || 'dim';
+  return el('span', { className: `health-dot ${cls}` });
+}
+
+export function makeCleanupGroup() {
+  const fns = [];
+  return {
+    add(fn) { fns.push(fn); },
+    run() { for (const fn of fns) { try { fn(); } catch (_) {} } fns.length = 0; }
+  };
 }

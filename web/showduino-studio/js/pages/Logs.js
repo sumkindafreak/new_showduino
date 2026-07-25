@@ -1,13 +1,25 @@
-import { fetchLogs } from '../api.js';
-import { el, formatTimestamp, severityClass } from '../utils.js';
+/**
+ * Showduino Studio – Logs
+ *
+ * Web API request log ring buffer (250 entries in PSRAM).
+ * Auto-refreshes every 2 seconds.
+ */
 
-export async function LogsPage(container) {
+import { el, formatTimestamp, severityClass, makeCleanupGroup } from '../utils.js';
+import { fetchLogs } from '../api.js';
+
+export function LogsPage(container) {
+  const cleanup = makeCleanupGroup();
+
   container.append(el('p', { className: 'info-panel', text: 'Web API request log ring buffer (250 entries in PSRAM). Auto-refreshes every 2 seconds.' }));
 
-  const wrap = el('div', { className: 'card' });
+  const wrap  = el('div', { className: 'card' });
   const table = el('table', { className: 'log-table' });
-  table.innerHTML = '<thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Message</th></tr></thead>';
-  const tbody = el('tbody');
+  const thead = el('thead', {}, [
+    el('tr', {}, ['Time', 'Level', 'Source', 'Message'].map((t) => el('th', { text: t }))),
+  ]);
+  table.append(thead);
+  const tbody = el('tbody', {});
   table.append(tbody);
   wrap.append(table);
   container.append(wrap);
@@ -19,16 +31,15 @@ export async function LogsPage(container) {
       tbody.innerHTML = '';
       const list = Array.isArray(entries) ? entries : [];
       for (const entry of list.slice().reverse()) {
-        const tr = el('tr', {}, [
-          el('td', { text: formatTimestamp(entry.timestampMs) }),
+        tbody.append(el('tr', {}, [
+          el('td', { className: 'mono', text: formatTimestamp(entry.timestampMs) }),
           el('td', { className: severityClass(entry.severity), text: entry.severity }),
           el('td', { text: entry.source || '—' }),
-          el('td', { text: entry.message || '—' })
-        ]);
-        tbody.append(tr);
+          el('td', { text: entry.message || '—' }),
+        ]));
       }
       if (list.length === 0) {
-        tbody.append(el('tr', {}, [el('td', { colSpan: '4', text: 'No log entries yet.' })]));
+        tbody.append(el('tr', {}, [el('td', { colSpan: '4', className: 'text-muted', text: 'No log entries yet.' })]));
       }
     } catch (err) {
       tbody.innerHTML = '';
@@ -36,8 +47,11 @@ export async function LogsPage(container) {
     }
   }
 
-  await refresh();
+  refresh();
   const timer = setInterval(refresh, 2000);
-  return () => clearInterval(timer);
+  cleanup.add(() => clearInterval(timer));
+
+  return () => cleanup.run();
 }
+
 LogsPage.title = 'Logs';
