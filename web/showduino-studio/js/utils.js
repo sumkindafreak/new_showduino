@@ -35,6 +35,26 @@ export function formatUptime(ms) {
   return `${sec}s`;
 }
 
+export function formatDurationMs(ms) {
+  if (ms == null || isNaN(ms)) return '—';
+  if (ms < 1000) return `${Math.max(0, Math.floor(ms))} ms`;
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function formatAgeFromNow(seenAtMs) {
+  if (!seenAtMs) return '—';
+  const delta = Math.max(0, Date.now() - seenAtMs);
+  if (delta < 1000) return '<1s ago';
+  if (delta < 60000) return `${Math.floor(delta / 1000)}s ago`;
+  if (delta < 3600000) return `${Math.floor(delta / 60000)}m ago`;
+  return `${Math.floor(delta / 3600000)}h ago`;
+}
+
 export function formatTimestamp(ms) {
   if (ms == null) return '—';
   const d = new Date(ms);
@@ -42,7 +62,7 @@ export function formatTimestamp(ms) {
 }
 
 export function severityClass(sev) {
-  const map = { debug: 'sev-debug', info: 'sev-info', warn: 'sev-warn', error: 'sev-error' };
+  const map = { debug: 'sev-debug', info: 'sev-info', warn: 'sev-warn', warning: 'sev-warn', error: 'sev-error' };
   return map[sev] || 'sev-info';
 }
 

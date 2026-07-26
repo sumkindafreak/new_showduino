@@ -1,6 +1,10 @@
-import { fetchCommands, postCommand, cancelCommand } from '../api.js';
 import { el } from '../utils.js';
-import { connectLive, subscribeLive } from '../live.js';
+import {
+  cancelCommandById,
+  initializeRuntimeStore,
+  submitCommand,
+  subscribeRuntime
+} from '../runtimeStore.js';
 
 function cmdRow(cmd, { cancellable = false } = {}) {
   const row = el('tr', { 'data-id': cmd.id || '' }, [
@@ -19,7 +23,7 @@ function cmdRow(cmd, { cancellable = false } = {}) {
       className: 'btn-cancel',
       text: 'Cancel',
       onClick: async () => {
-        try { await cancelCommand(cmd.id); } catch (err) { alert(err.message); }
+        try { await cancelCommandById(cmd.id); } catch (err) { alert(err.message); }
       }
     }));
     row.append(td);
@@ -48,10 +52,11 @@ function section(title, rows, cancellable = false) {
   return card;
 }
 
-export async function CommandsPage(container) {
+export function CommandsPage(container) {
+  initializeRuntimeStore();
   container.append(el('p', {
     className: 'info-panel',
-    text: 'ShowCommand bus — validate, queue, dispatch (no hardware). Live via WebSocket.'
+    text: 'ShowCommand bus monitor backed by runtimeStore.'
   }));
 
   const form = el('div', { className: 'card command-form' });
@@ -73,7 +78,7 @@ export async function CommandsPage(container) {
     text: 'POST /api/command',
     onClick: async () => {
       try {
-        await postCommand({
+        await submitCommand({
           source: fields.source.value,
           destination: fields.destination.value,
           category: fields.category.value,
@@ -104,21 +109,7 @@ export async function CommandsPage(container) {
     status.textContent = `Live · queue ${cmds.queueDepth ?? 0} · emergency ${cmds.emergencyDepth ?? 0}`;
   }
 
-  connectLive();
-  const unsub = subscribeLive((snap) => paint(snap.commands || {}));
-
-  try {
-    const data = await fetchCommands();
-    paint({
-      queue: data.queue || [],
-      running: data.running || [],
-      history: data.history || [],
-      queueDepth: data.queueDepth,
-      emergencyDepth: data.emergencyDepth
-    });
-  } catch (err) {
-    status.textContent = err.message;
-  }
+  const unsub = subscribeRuntime((snap) => paint(snap.commands || {}));
 
   return () => unsub();
 }

@@ -13,8 +13,10 @@ import { LightingPage } from './pages/Lighting.js';
 import { NetworkPage } from './pages/Network.js';
 import { LogsPage } from './pages/Logs.js';
 import { SettingsPage } from './pages/Settings.js';
+import { initializeRuntimeStore } from './runtimeStore.js';
 
 Layout();
+initializeRuntimeStore();
 
 registerRoute('/', HomePage);
 registerRoute('/devices', DevicesPage);

@@ -1,60 +1,123 @@
-import { fetchSystem } from '../api.js';
-import { el, formatBytes, formatUptime, statRow } from '../utils.js';
+import { el, formatBytes, formatDurationMs, formatUptime, statRow } from '../utils.js';
 import { MemoryBar } from '../components/MemoryBar.js';
+import { initializeRuntimeStore, refreshRuntime, subscribeRuntime } from '../runtimeStore.js';
 
-export async function HomePage(container) {
-  container.append(el('p', { className: 'info-panel', text: 'Live telemetry from the Show Engine (ESP32-P4), via the C3 Wi-Fi front door.' }));
+export function HomePage(container) {
+  initializeRuntimeStore();
+  container.append(el('p', {
+    className: 'info-panel',
+    text: 'Runtime dashboard from firmware state + runtimeStore. Operator state stays available while reconnecting.'
+  }));
 
+  const connection = el('div', { className: 'live-status', text: 'Connecting runtime store…' });
   const grid = el('div', { className: 'page-grid' });
-  container.append(grid);
+  container.append(connection, grid);
 
-  async function refresh() {
-    try {
-      const sys = await fetchSystem();
-      grid.innerHTML = '';
+  const overview = el('div', { className: 'card' });
+  overview.append(el('h2', { text: 'Runtime State' }));
+  const runtimeValue = el('div', { className: 'value', text: '—' });
+  const runtimeSub = el('div', { className: 'sub', text: 'Waiting for firmware…' });
+  overview.append(runtimeValue, runtimeSub);
 
-      const overview = el('div', { className: 'card' });
-      overview.append(el('h2', { text: 'System' }));
-      overview.append(el('div', { className: 'value', text: sys.boardName || 'Show Engine' }));
-      overview.append(el('div', { className: 'sub', text: `Firmware ${sys.firmwareVersion}` }));
-      grid.append(overview);
+  const showCard = el('div', { className: 'card' });
+  showCard.append(el('h2', { text: 'Show' }));
+  const showBody = el('div');
+  showCard.append(showBody);
 
-      const uptime = el('div', { className: 'card' });
-      uptime.append(el('h2', { text: 'Uptime' }));
-      uptime.append(el('div', { className: 'value', text: formatUptime(sys.uptime) }));
-      uptime.append(el('div', { className: 'sub', text: `CPU ${sys.cpuMhz} MHz` }));
-      grid.append(uptime);
+  const uptimeCard = el('div', { className: 'card' });
+  uptimeCard.append(el('h2', { text: 'System' }));
+  const uptimeBody = el('div');
+  uptimeCard.append(uptimeBody);
 
-      const mem = el('div', { className: 'card' });
-      mem.append(el('h2', { text: 'Memory' }));
-      mem.append(MemoryBar({ label: 'Heap', used: sys.heapTotal - sys.heapFree, total: sys.heapTotal, variant: 'heap' }));
-      mem.append(MemoryBar({ label: 'PSRAM', used: sys.psramTotal - sys.psramFree, total: sys.psramTotal, variant: 'psram' }));
-      grid.append(mem);
+  const mem = el('div', { className: 'card' });
+  mem.append(el('h2', { text: 'Memory' }));
+  const memBody = el('div');
+  mem.append(memBody);
 
-      const storage = el('div', { className: 'card' });
-      storage.append(el('h2', { text: 'Storage' }));
-      storage.append(statRow('SD Ready', sys.storageReady ? 'Yes' : 'No'));
-      storage.append(statRow('Writable', sys.storageWritable ? 'Yes' : 'No'));
-      storage.append(statRow('WebUI on SD', sys.storageHasWww ? 'Yes' : 'No'));
-      storage.append(statRow('Card', sys.storageCardType || '-'));
-      if (sys.storageTotalMb != null) {
-        storage.append(statRow('Free / Total', `${sys.storageFreeMb || 0} / ${sys.storageTotalMb} MB`));
+  const networkCard = el('div', { className: 'card' });
+  networkCard.append(el('h2', { text: 'Network Health' }));
+  const networkBody = el('div');
+  networkCard.append(networkBody);
+
+  const storage = el('div', { className: 'card' });
+  storage.append(el('h2', { text: 'Storage' }));
+  const storageBody = el('div');
+  storage.append(storageBody);
+
+  grid.append(overview, showCard, uptimeCard, mem, networkCard, storage);
+
+  const refreshBtn = el('button', {
+    className: 'btn-primary',
+    text: 'Refresh Runtime',
+    onClick: async () => {
+      connection.textContent = 'Refreshing runtime…';
+      try {
+        await refreshRuntime('all');
+      } catch (_) {
+        // Runtime store already tracks the error; UI status updates via subscription.
       }
-      storage.append(statRow('Status', sys.storageMessage || '-'));
-      storage.append(statRow('Shows Path', sys.showsPath));
-      storage.append(statRow('WebUI Path', sys.webuiPath || '/showduino/www'));
-      grid.append(storage);
-    } catch (err) {
-      grid.innerHTML = '';
-      grid.append(el('div', { className: 'card' }, [
-        el('h2', { text: 'Connection Error' }),
-        el('p', { text: err.message })
-      ]));
     }
-  }
+  });
+  container.prepend(refreshBtn);
 
-  await refresh();
-  const timer = setInterval(refresh, 3000);
-  return () => clearInterval(timer);
+  const unsub = subscribeRuntime((snap) => {
+    const sys = snap.system || {};
+    const net = snap.network || {};
+    const timeline = snap.modules.timeline;
+    const time = snap.time || {};
+
+    connection.textContent = snap.connection.connected
+      ? `Connected · ws live${snap.connection.stale ? ' · stale data warning' : ''}`
+      : `Disconnected · reconnect in ${snap.connection.reconnectInSec || 0}s${snap.connection.lastError ? ` · ${snap.connection.lastError}` : ''}`;
+
+    runtimeValue.textContent = (sys.showState || timeline.playbackState || 'unknown').toUpperCase();
+    runtimeSub.textContent = `${sys.boardName || 'Show Engine'} · firmware ${sys.firmwareVersion || 'unknown'}${sys.emergencyActive ? ' · EMERGENCY ACTIVE' : ''}`;
+
+    showBody.innerHTML = '';
+    showBody.append(statRow('Current Show', timeline.currentShow || 'unreported'));
+    showBody.append(statRow('Active Cue', timeline.currentCue ?? 'unreported'));
+    showBody.append(statRow('Next Cue', timeline.nextCue ?? 'unreported'));
+    showBody.append(statRow('Playback', timeline.playbackState || 'unknown'));
+    showBody.append(statRow('Current Time', time.time || 'unreported'));
+    showBody.append(statRow('Elapsed', formatDurationMs(timeline.elapsedMs)));
+    showBody.append(statRow('Remaining', formatDurationMs(timeline.remainingMs)));
+
+    uptimeBody.innerHTML = '';
+    uptimeBody.append(statRow('Uptime', formatUptime(sys.uptime)));
+    uptimeBody.append(statRow('Connected Nodes', net.onlineCount ?? (snap.devices || []).filter((d) => d.online).length));
+    uptimeBody.append(statRow('Emergency', sys.emergencyActive ? 'ACTIVE' : 'clear'));
+    uptimeBody.append(statRow('CPU MHz', sys.cpuMhz != null ? `${sys.cpuMhz}` : 'unreported'));
+    uptimeBody.append(statRow('CPU Load', sys.cpuLoad != null ? `${sys.cpuLoad}%` : 'not provided by firmware'));
+
+    memBody.innerHTML = '';
+    if (sys.heapTotal != null && sys.heapFree != null) {
+      memBody.append(MemoryBar({ label: 'Heap', used: sys.heapTotal - sys.heapFree, total: sys.heapTotal, variant: 'heap' }));
+      memBody.append(statRow('Heap Free', formatBytes(sys.heapFree)));
+    } else {
+      memBody.append(statRow('Heap', 'unreported'));
+    }
+    if (sys.psramTotal != null && sys.psramFree != null) {
+      memBody.append(MemoryBar({ label: 'PSRAM', used: sys.psramTotal - sys.psramFree, total: sys.psramTotal, variant: 'psram' }));
+      memBody.append(statRow('PSRAM Free', formatBytes(sys.psramFree)));
+    } else {
+      memBody.append(statRow('PSRAM', 'unreported'));
+    }
+
+    networkBody.innerHTML = '';
+    networkBody.append(statRow('Health', net.networkHealth || net.health || 'unreported'));
+    networkBody.append(statRow('Signal (avg)', net.averageRssi != null ? `${net.averageRssi} dBm` : 'unreported'));
+    networkBody.append(statRow('Heartbeat', net.heartbeatRate != null ? `${net.heartbeatRate}/min` : 'unreported'));
+    networkBody.append(statRow('Offline Nodes', net.offlineCount ?? 'unreported'));
+
+    storageBody.innerHTML = '';
+    storageBody.append(statRow('SD Ready', sys.storageReady ? 'Yes' : 'No'));
+    storageBody.append(statRow('Writable', sys.storageWritable ? 'Yes' : 'No'));
+    storageBody.append(statRow('WebUI on SD', sys.storageHasWww ? 'Yes' : 'No'));
+    storageBody.append(statRow('Card', sys.storageCardType || '—'));
+    storageBody.append(statRow('Storage', sys.storageTotalMb != null ? `${sys.storageFreeMb || 0}/${sys.storageTotalMb} MB` : 'unreported'));
+    storageBody.append(statRow('Status', sys.storageMessage || '—'));
+  });
+
+  return () => unsub();
 }
-HomePage.title = 'Home';
+HomePage.title = 'Dashboard';

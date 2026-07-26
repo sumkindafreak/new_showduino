@@ -1,8 +1,8 @@
-import { fetchCapabilities, fetchDeviceCapabilities } from '../api.js';
 import { el } from '../utils.js';
-import { connectLive, subscribeLive } from '../live.js';
+import { initializeRuntimeStore, refreshRuntime, subscribeRuntime } from '../runtimeStore.js';
 
-export async function CapabilitiesPage(container) {
+export function CapabilitiesPage(container) {
+  initializeRuntimeStore();
   container.append(el('p', {
     className: 'info-panel',
     text: 'Capability inventory — what each device can do. No hardware execution.'
@@ -59,20 +59,11 @@ export async function CapabilitiesPage(container) {
     status.textContent = `Live · ${names.length} capabilities with providers`;
   }
 
-  async function reload() {
-    try {
-      const [catalog, grouped] = await Promise.all([fetchCapabilities(), fetchDeviceCapabilities()]);
-      paint(catalog, grouped);
-    } catch (err) {
-      status.textContent = err.message;
-    }
-  }
-
-  connectLive();
-  const unsub = subscribeLive((snap) => {
-    if (snap.capabilityTick != null) reload();
+  const unsub = subscribeRuntime((snap) => {
+    paint(snap.capabilities || { capabilities: [] }, snap.deviceCapabilities || { byCapability: {} });
   });
-  await reload();
+  refreshRuntime('capabilities').catch(() => {});
+  refreshRuntime('deviceCapabilities').catch(() => {});
   return () => unsub();
 }
 CapabilitiesPage.title = 'Capabilities';
