@@ -1,15 +1,15 @@
-import { fetchTime, fetchTimeStatus } from '../api.js';
 import { el } from '../utils.js';
-import { connectLive, subscribeLive } from '../live.js';
+import { initializeRuntimeStore, subscribeRuntime } from '../runtimeStore.js';
 
 function row(label, value) {
   return el('tr', {}, [el('th', { text: label }), el('td', { text: value == null || value === '' ? '—' : String(value) })]);
 }
 
-export async function TimePage(container) {
+export function TimePage(container) {
+  initializeRuntimeStore();
   container.append(el('p', {
     className: 'info-panel',
-    text: 'SUE Time Service — authoritative DS3231 clock. Live via WebSocket (1 Hz).'
+    text: 'SUE Time Service from runtimeStore (DS3231 + WebSocket updates).'
   }));
 
   const status = el('div', { className: 'live-status', text: 'Connecting…' });
@@ -25,8 +25,13 @@ export async function TimePage(container) {
   detail.append(table);
   container.append(status, card, detail);
 
-  function paint(time, st) {
-    if (!time) return;
+  function paint(time, st, conn) {
+    if (!time) {
+      status.textContent = conn.connected
+        ? 'Live · waiting for time payload'
+        : `Disconnected · reconnect in ${conn.reconnectInSec || 0}s`;
+      return;
+    }
     clock.textContent = time.time || '--:--:--';
     dateLine.textContent = `${time.date || ''} · ${time.dayOfWeek || ''} · ${time.timezone || 'UTC'}`;
     tbody.innerHTML = '';
@@ -45,20 +50,12 @@ export async function TimePage(container) {
       ['Firmware Build', time.firmwareBuild]
     ];
     for (const [k, v] of rows) tbody.append(row(k, v));
-    status.textContent = `Live · source ${time.source || '?'} · rtc ${time.rtcStatus || '?'}`;
+    status.textContent = conn.connected
+      ? `Live · source ${time.source || '?'} · rtc ${time.rtcStatus || '?'}`
+      : `Disconnected · reconnect in ${conn.reconnectInSec || 0}s`;
   }
 
-  connectLive();
-  const unsub = subscribeLive((snap) => {
-    if (snap.time) paint(snap.time, snap.timeStatus || null);
-  });
-
-  try {
-    const [time, st] = await Promise.all([fetchTime(), fetchTimeStatus()]);
-    paint(time, st);
-  } catch (err) {
-    status.textContent = err.message;
-  }
+  const unsub = subscribeRuntime((snap) => paint(snap.time, snap.timeStatus || null, snap.connection));
 
   return () => unsub();
 }

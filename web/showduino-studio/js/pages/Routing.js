@@ -1,8 +1,8 @@
-import { fetchRoutes, postRouteTest } from '../api.js';
 import { el } from '../utils.js';
-import { connectLive, subscribeLive } from '../live.js';
+import { initializeRuntimeStore, refreshRuntime, runRouteTest, subscribeRuntime } from '../runtimeStore.js';
 
-export async function RoutingPage(container) {
+export function RoutingPage(container) {
+  initializeRuntimeStore();
   container.append(el('p', {
     className: 'info-panel',
     text: 'Device Router — resolve ShowCommands to capable devices. Test only; no hardware execution.'
@@ -29,7 +29,7 @@ export async function RoutingPage(container) {
     onClick: async () => {
       try {
         status.textContent = 'Resolving…';
-        const data = await postRouteTest({
+        const data = await runRouteTest({
           source: fields.source.value,
           destination: fields.destination.value,
           category: fields.category.value,
@@ -53,10 +53,15 @@ export async function RoutingPage(container) {
     resultHost.innerHTML = '';
     const card = el('div', { className: 'card' });
     card.append(el('h2', { text: 'Routing Decision' }));
+    const device = data.resolvedDevice || {
+      id: data.deviceId,
+      name: data.deviceName,
+      board: data.board
+    };
     const rows = [
-      ['Resolved Device', data.resolvedDevice ? `${data.resolvedDevice.name || ''} (${data.resolvedDevice.id || ''})` : '—'],
-      ['Board', data.resolvedDevice?.board || '—'],
-      ['Decision', data.routingDecision || '—'],
+      ['Resolved Device', device?.id ? `${device.name || ''} (${device.id || ''})` : '—'],
+      ['Board', device?.board || '—'],
+      ['Decision', data.routingDecision || data.decision || '—'],
       ['Capability', data.capability || '—'],
       ['Path', data.path || '—'],
       ['Fallback Used', data.fallbackUsed ? 'yes' : 'no'],
@@ -100,16 +105,11 @@ export async function RoutingPage(container) {
     }
   }
 
-  connectLive();
-  const unsub = subscribeLive((snap) => {
-    if (snap.lastRoute) paintResult(snap.lastRoute);
+  const unsub = subscribeRuntime((snap) => {
+    if (snap.routes?.last) paintResult(snap.routes.last);
+    paintRules(snap.routes || { rules: [] });
   });
-
-  try {
-    paintRules(await fetchRoutes());
-  } catch (err) {
-    status.textContent = err.message;
-  }
+  refreshRuntime('routes').catch((err) => { status.textContent = err.message; });
 
   return () => unsub();
 }

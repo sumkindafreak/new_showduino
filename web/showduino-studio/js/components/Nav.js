@@ -2,18 +2,18 @@ import { el } from '../utils.js';
 import { navigate } from '../router.js';
 
 const NAV_ITEMS = [
-  { route: '/', label: 'Home', icon: '◉' },
-  { route: '/devices', label: 'Devices', icon: '⬡' },
+  { route: '/', label: 'Dashboard', icon: '◉' },
+  { route: '/devices', label: 'Node Manager', icon: '⬡' },
   { route: '/commands', label: 'Commands', icon: '⇢' },
   { route: '/capabilities', label: 'Capabilities', icon: '◈' },
   { route: '/routing', label: 'Routing', icon: '⤳' },
   { route: '/time', label: 'Time', icon: '◷' },
-  { route: '/shows', label: 'Shows', icon: '▶' },
-  { route: '/scenes', label: 'Scenes', icon: '◫' },
+  { route: '/shows', label: 'Timeline', icon: '▶' },
+  { route: '/scenes', label: 'Assets', icon: '◫' },
   { route: '/audio', label: 'Audio', icon: '♪' },
   { route: '/lighting', label: 'Lighting', icon: '☀' },
   { route: '/network', label: 'Network', icon: '⌁' },
-  { route: '/logs', label: 'Logs', icon: '≡' },
+  { route: '/logs', label: 'Event Log', icon: '≡' },
   { route: '/settings', label: 'Settings', icon: '⚙' }
 ];
 
