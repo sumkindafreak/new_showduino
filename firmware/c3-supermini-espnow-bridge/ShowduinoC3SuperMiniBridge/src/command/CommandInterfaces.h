@@ -5,9 +5,6 @@
 
 /**
  * Integration hooks for CommandDispatcher.
- * Stage 7: IDeviceRouter / ICapabilityManager implemented by
- * DeviceRouter and CapabilityManager.
- * IStageRuntimeBridge remains a null stub until Stage 8.
  */
 class IDeviceRouter {
  public:
@@ -26,7 +23,7 @@ class ICapabilityManager {
 class IStageRuntimeBridge {
  public:
   virtual ~IStageRuntimeBridge() {}
-  /** Returns false — Stage Runtime not connected until Stage 8. */
+  /** Submit a validated command to the authoritative Stage Runtime transport. */
   virtual bool submit(const ShowCommand &cmd) = 0;
 };
 
@@ -43,6 +40,16 @@ class NullCapabilityManager : public ICapabilityManager {
 class NullStageRuntimeBridge : public IStageRuntimeBridge {
  public:
   bool submit(const ShowCommand &cmd) override { (void)cmd; return false; }
+};
+
+/**
+ * C3 → P4 Stage Runtime bridge.
+ * Implementation maps ShowCommand actions onto the canonical colon-text
+ * commands already implemented by the P4 ShowRuntimeOwner.
+ */
+class StageRuntimeBridge : public IStageRuntimeBridge {
+ public:
+  bool submit(const ShowCommand &cmd) override;
 };
 
 #endif
