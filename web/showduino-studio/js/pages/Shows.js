@@ -1,4 +1,4 @@
-import { fetchSystem } from '../api.js';
+import { fetchSystem, postCommand } from '../api.js';
 import { el, archBlock } from '../utils.js';
 
 const TRACK_TYPES = [
@@ -27,6 +27,17 @@ function toggle(label, checked = true) {
   const input = el('input', { type: 'checkbox' });
   input.checked = checked;
   return el('label', { className: 'show-editor-toggle' }, [input, el('span', { text: label })]);
+}
+
+async function submitRuntimeCommand(category, action, priority = 'normal', payload = '') {
+  return postCommand({
+    source: 'web-studio',
+    destination: category === 'emergency' ? 'broadcast' : 'ian',
+    category,
+    action,
+    priority,
+    payload
+  });
 }
 
 function buildLibrary() {
@@ -136,16 +147,56 @@ function buildControlStrip(state) {
     button('💾 Save', 'show-editor-btn show-editor-btn-compact')
   ]);
 
-  const transportStatus = el('span', { className: 'show-editor-runtime-state', text: 'IDLE' });
+  const transportStatus = el('span', { className: 'show-editor-runtime-state', text: 'UNKNOWN' });
+  state.transportStatus = transportStatus;
+
+  const rewind = button('↩ Rewind', 'show-editor-btn');
+  rewind.disabled = true;
+  rewind.title = 'The current P4 Stage Runtime has no seek/rewind command yet.';
+
+  const play = button('▶ Play', 'show-editor-btn show-editor-btn-primary', async () => {
+    try {
+      const action = state.runtimeState === 'PAUSED' ? 'resume' : 'start';
+      await submitRuntimeCommand('show', action, 'high');
+      transportStatus.textContent = action === 'resume' ? 'RESUME QUEUED' : 'START QUEUED';
+    } catch (err) {
+      transportStatus.textContent = `ERROR: ${err.message}`;
+    }
+  });
+
+  const pause = button('⏸ Pause', 'show-editor-btn', async () => {
+    try {
+      await submitRuntimeCommand('show', 'pause', 'high');
+      transportStatus.textContent = 'PAUSE QUEUED';
+    } catch (err) {
+      transportStatus.textContent = `ERROR: ${err.message}`;
+    }
+  });
+
+  const stop = button('⏹ Stop', 'show-editor-btn', async () => {
+    try {
+      await submitRuntimeCommand('show', 'stop', 'high');
+      transportStatus.textContent = 'STOP QUEUED';
+      state.timeMs = 0;
+      state.paintTime();
+    } catch (err) {
+      transportStatus.textContent = `ERROR: ${err.message}`;
+    }
+  });
+
   const transport = el('div', { className: 'show-editor-transport' }, [
-    button('↩ Rewind', 'show-editor-btn', () => { state.timeMs = 0; state.paintTime(); }),
-    button('▶ Play', 'show-editor-btn show-editor-btn-primary', () => { transportStatus.textContent = 'PREVIEW'; }),
-    button('⏸ Pause', 'show-editor-btn', () => { transportStatus.textContent = 'PAUSED'; }),
-    button('⏹ Stop', 'show-editor-btn', () => { transportStatus.textContent = 'IDLE'; state.timeMs = 0; state.paintTime(); }),
+    rewind,
+    play,
+    pause,
+    stop,
     toggle('Loop', true)
   ]);
 
-  const time = el('div', { className: 'show-editor-time', text: '00:00.000' });
+  const time = el('div', {
+    className: 'show-editor-time',
+    text: '00:00.000',
+    title: 'Editor cursor. Authoritative runtime state is shown alongside the transport controls.'
+  });
   state.timeDisplay = time;
   state.paintTime = () => {
     const total = Math.max(0, state.timeMs || 0);
@@ -155,12 +206,36 @@ function buildControlStrip(state) {
     time.textContent = `${minutes}:${seconds}.${ms}`;
   };
 
+  const connectionBadge = el('span', { className: 'show-editor-status-badge offline', text: 'OFFLINE' });
+  state.connectionBadge = connectionBadge;
+
+  const clearEstop = button('CLEAR E-STOP', 'show-editor-btn', async () => {
+    if (!window.confirm('Clear the Showduino emergency stop? Outputs remain under Stage Runtime safety rules.')) return;
+    try {
+      await submitRuntimeCommand('emergency', 'clear', 'emergency');
+      transportStatus.textContent = 'E-STOP CLEAR QUEUED';
+    } catch (err) {
+      transportStatus.textContent = `ERROR: ${err.message}`;
+    }
+  });
+  clearEstop.hidden = true;
+  state.clearEstop = clearEstop;
+
+  const panic = button('PANIC', 'show-editor-btn show-editor-btn-danger', async () => {
+    if (!window.confirm('ACTIVATE SHOWDUINO EMERGENCY STOP?')) return;
+    try {
+      await submitRuntimeCommand('emergency', 'panic', 'emergency');
+      transportStatus.textContent = 'EMERGENCY STOP QUEUED';
+    } catch (err) {
+      transportStatus.textContent = `ERROR: ${err.message}`;
+    }
+  });
+
   const status = el('div', { className: 'show-editor-status' }, [
-    el('span', { className: 'show-editor-status-badge offline', text: 'OFFLINE' }),
+    connectionBadge,
     transportStatus,
-    button('PANIC', 'show-editor-btn show-editor-btn-danger', () => {
-      alert('PANIC is not armed in the editor UI yet. Hardware safety control remains with the existing Showduino command/runtime path.');
-    })
+    clearEstop,
+    panic
   ]);
 
   strip.append(project, transport, time, status);
@@ -249,8 +324,25 @@ async function buildProjectInfo() {
   return details;
 }
 
+async function refreshRuntime(state) {
+  try {
+    const sys = await fetchSystem();
+    state.runtimeState = sys.showState || 'UNKNOWN';
+    state.transportStatus.textContent = state.runtimeState;
+    state.connectionBadge.textContent = 'ONLINE';
+    state.connectionBadge.classList.remove('offline');
+    state.connectionBadge.classList.add('online');
+    const emergency = Boolean(sys.emergencyActive) || state.runtimeState === 'EMERGENCY_STOP';
+    state.clearEstop.hidden = !emergency;
+  } catch (_) {
+    state.connectionBadge.textContent = 'OFFLINE';
+    state.connectionBadge.classList.remove('online');
+    state.connectionBadge.classList.add('offline');
+  }
+}
+
 export async function ShowsPage(container) {
-  const state = { zoom: 100, timeMs: 0 };
+  const state = { zoom: 100, timeMs: 0, runtimeState: 'UNKNOWN' };
   const shell = el('div', { className: 'show-editor' });
 
   shell.append(buildControlStrip(state));
@@ -266,6 +358,10 @@ export async function ShowsPage(container) {
   shell.append(await buildProjectInfo());
 
   container.append(shell);
+  await refreshRuntime(state);
+  const runtimeTimer = window.setInterval(() => refreshRuntime(state), 1000);
+
+  return () => window.clearInterval(runtimeTimer);
 }
 
 ShowsPage.title = 'Show Editor';
