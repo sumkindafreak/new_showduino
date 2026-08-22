@@ -103,6 +103,7 @@ void WebSocketManager::sendNetworkStats(const NetworkStatistics &stats) {
 
 void WebSocketManager::sendSnapshot(const String &devicesJson, const String &networkJson) {
   String body = "{\"event\":\"snapshot\",\"devices\":";
+  /* devicesJson is {"devices":[...]} — extract array if needed */
   int arr = devicesJson.indexOf('[');
   int arrEnd = devicesJson.lastIndexOf(']');
   if (arr >= 0 && arrEnd > arr) body += devicesJson.substring(arr, arrEnd + 1);
@@ -113,39 +114,6 @@ void WebSocketManager::sendSnapshot(const String &devicesJson, const String &net
   broadcastText(body);
 }
 
-void WebSocketManager::sendCommandEvent(const char *eventName, const String &commandJson) {
-  String body = "{\"event\":\"";
-  body += eventName ? eventName : "command.updated";
-  body += "\"";
-  if (commandJson.length() > 0) {
-    body += ",\"command\":";
-    body += commandJson;
-  }
-  body += '}';
-  broadcastText(body);
-}
-
-void WebSocketManager::sendQueueUpdated(size_t depth, size_t emergencyDepth) {
-  String body = "{\"event\":\"queue.updated\",\"queueDepth\":";
-  body += String((unsigned)depth);
-  body += ",\"emergencyDepth\":";
-  body += String((unsigned)emergencyDepth);
-  body += '}';
-  broadcastText(body);
-}
-
-
-void WebSocketManager::sendJsonEvent(const char *eventName, const char *detailJson) {
-  String body = "{\"event\":\"";
-  body += eventName ? eventName : "event";
-  body += "\"";
-  if (detailJson && detailJson[0]) {
-    body += ",\"data\":";
-    body += detailJson;
-  }
-  body += '}';
-  broadcastText(body);
-}
 void WebSocketManager::acceptNew() {
   if (!server_) return;
   WiFiClient incoming = server_->available();

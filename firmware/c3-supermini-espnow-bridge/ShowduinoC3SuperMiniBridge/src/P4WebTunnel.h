@@ -13,5 +13,6 @@ void p4WebTunnelOnByte(char c);
 bool p4WebTunnelOnLine(const String &line);
 
 bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t timeoutMs = 800);
+bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, String &mimeOut, uint32_t timeoutMs);
 
 #endif

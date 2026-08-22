@@ -1,6 +1,7 @@
 #pragma once
 
 #include <TAMC_GT911.h>
+#include <stdint.h>
 
 /**
  * GT911 → LVGL (BankOfDad pin map + landscape calibration from SdTouchTest).
@@ -15,3 +16,7 @@ bool touchLvglReady();
 
 /** Direct GT911 poll while backlight is off (wake without relying on LVGL). */
 bool touchLvglPollActivity();
+
+/** Optional Phase-2 DisplayManager touch feed (coords already mapped to panel space). */
+typedef void (*TouchLvglHook)(int32_t x, int32_t y, bool pressed);
+void touchLvglSetHook(TouchLvglHook hook);

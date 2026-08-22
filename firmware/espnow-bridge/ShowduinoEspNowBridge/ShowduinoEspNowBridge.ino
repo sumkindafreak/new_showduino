@@ -59,7 +59,10 @@ void sendToStage(const String &message) {
   Serial.println(message);
 }
 
-void onEspNowSent(const uint8_t *macAddress, esp_now_send_status_t status) {
+/* Arduino-ESP32 3.3+ send callback (wifi_tx_info_t / esp_now_send_info_t).
+ * Do not wrap this signature in #if inside a .ino — Arduino auto-prototypes break. */
+void onEspNowSent(const esp_now_send_info_t *txInfo, esp_now_send_status_t status) {
+  (void)txInfo;
   lastSendOk = (status == ESP_NOW_SEND_SUCCESS);
   sendToStage(lastSendOk ? "OK:ESPNOW:SENT" : "ERR:ESPNOW:SEND_FAILED");
 }

@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include "BoardConfig.h"
 #include "DirectorStatusBar.h"
+#include "ShowduinoOsPalette.h"
 
 /**
  * Showduino OS — unified LVGL 9 design system.
@@ -43,26 +44,26 @@
 
 /* ---- Colour language ---------------------------------------------------- */
 namespace OsColor {
-  static const uint32_t Bg             = 0x020806;
-  static const uint32_t Panel          = 0x07130F;
-  static const uint32_t PanelRaised    = 0x0A1B15;
-  static const uint32_t PanelBorder    = 0x145C43;
-  static const uint32_t Button         = 0x0B241A;
-  static const uint32_t ButtonBorder   = 0x1F8A63;
-  static const uint32_t ButtonPressed  = 0x124D38;
-  static const uint32_t Danger         = 0x3A0B0B;
-  static const uint32_t DangerBorder   = 0xFF4D4D;
-  static const uint32_t Text           = 0xE8FFF5;
-  static const uint32_t TextMuted      = 0x79A892;
-  static const uint32_t TextDim        = 0xA8CDBB;
-  static const uint32_t Title          = 0xEFFFF7;
-  static const uint32_t Ok             = 0x39FF9A;
-  static const uint32_t Warn           = 0xFFD166;
-  static const uint32_t Fault          = 0xFF5A5F;
-  static const uint32_t Unknown        = 0x557066;
-  static const uint32_t Accent         = 0x2CFF88;
-  static const uint32_t AccentSoft     = 0x18B96A;
-  static const uint32_t ScanLine       = 0x0D3B2B;
+  static const uint32_t Bg             = ShowduinoPalette::Background;
+  static const uint32_t Panel          = ShowduinoPalette::Panel;
+  static const uint32_t PanelRaised    = ShowduinoPalette::PanelRaised;
+  static const uint32_t PanelBorder    = ShowduinoPalette::AccentDark;
+  static const uint32_t Button         = ShowduinoPalette::PanelRaised;
+  static const uint32_t ButtonBorder   = ShowduinoPalette::AccentDark;
+  static const uint32_t ButtonPressed  = ShowduinoPalette::AccentDim;
+  static const uint32_t Danger         = ShowduinoPalette::DangerPanel;
+  static const uint32_t DangerBorder   = ShowduinoPalette::Danger;
+  static const uint32_t Text           = ShowduinoPalette::Text;
+  static const uint32_t TextMuted      = ShowduinoPalette::Muted;
+  static const uint32_t TextDim        = ShowduinoPalette::Muted;
+  static const uint32_t Title          = ShowduinoPalette::Text;
+  static const uint32_t Ok             = ShowduinoPalette::Accent;
+  static const uint32_t Warn           = ShowduinoPalette::Warn;
+  static const uint32_t Fault          = ShowduinoPalette::Danger;
+  static const uint32_t Unknown        = ShowduinoPalette::AccentDark;
+  static const uint32_t Accent         = ShowduinoPalette::Accent;
+  static const uint32_t AccentSoft     = ShowduinoPalette::AccentBright;
+  static const uint32_t ScanLine       = ShowduinoPalette::AccentDim;
 }
 
 struct ShowduinoOsTheme {
@@ -220,6 +221,25 @@ struct ShowduinoOsTheme {
     return p;
   }
 
+  /** Re-enable LVGL 9 vertical finger scroll after makePanel/makeScreen clear SCROLLABLE.
+   *  Scroll only engages when child extents exceed the viewport (st/sb > 0). */
+  static void enableVerticalScroll(lv_obj_t *obj) {
+    if (!obj) return;
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_CHAIN);
+    lv_obj_set_scroll_dir(obj, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_AUTO);
+  }
+
+  /** Child rows/cards inside a scroll area must not claim scroll (no overflow of their own). */
+  static void disableNestedScroll(lv_obj_t *obj) {
+    if (!obj) return;
+    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_SCROLL_CHAIN);
+  }
+
   lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, int x, int y) {
     lv_obj_t *l = lv_label_create(parent);
     lv_label_set_text(l, text ? text : "");
@@ -281,13 +301,17 @@ struct ShowduinoOsTheme {
   }
 
   lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int x, int y, int w, int h,
-                       lv_event_cb_t cb, void *user, const char *command, bool danger = false) {
+                       lv_event_cb_t cb, void *user, const char *command, bool danger = false,
+                       bool scrollChain = true) {
     lv_obj_t *btn = lv_button_create(parent);
     lv_obj_remove_style_all(btn);
     lv_obj_add_style(btn, danger ? &buttonDanger : &button, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_style(btn, danger ? &buttonDangerPressed : &buttonPressed, LV_PART_MAIN | LV_STATE_PRESSED);
     lv_obj_set_pos(btn, x, y);
     lv_obj_set_size(btn, w, h);
+    /* scrollChain=true: drag can scroll a parent. false: keep tap as click (E-CLEAR / E-STOP). */
+    if (scrollChain) lv_obj_add_flag(btn, LV_OBJ_FLAG_SCROLL_CHAIN);
+    else lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLL_CHAIN);
     if (cb) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user);
     if (command) lv_obj_set_user_data(btn, (void *)command);
     lv_obj_t *lab = lv_label_create(btn);
@@ -317,7 +341,8 @@ struct ShowduinoOsTheme {
     makeButton(screen, "Live", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:LIVE"); x += navW + gap;
     makeButton(screen, "Shows", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SHOWS"); x += navW + gap;
     makeButton(screen, "Settings", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SETTINGS"); x += navW + gap;
-    makeButton(screen, "E-STOP", x, OS_DOCK_Y, estopW, OS_DOCK_H, cb, user, "EMERGENCY:STOP", true);
+    /* No scroll-chain — must never lose the tap to a parent scroll gesture. */
+    makeButton(screen, "E-STOP", x, OS_DOCK_Y, estopW, OS_DOCK_H, cb, user, "EMERGENCY:STOP", true, false);
   }
 
   static void setTextIfChanged(lv_obj_t *lab, const char *text) {

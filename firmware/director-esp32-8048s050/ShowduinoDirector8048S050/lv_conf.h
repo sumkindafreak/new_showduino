@@ -7,8 +7,9 @@
  *   2) Documents/Arduino/libraries/lv_conf.h  (next to the lvgl folder)
  * The libraries copy is required — Arduino compiles LVGL separately from the sketch.
  *
- * Without CLIB malloc the default ~64 KB LVGL pool is too small for six screens;
- * LV_USE_ASSERT_MALLOC then hangs in while(1) during LIVE screen build.
+ * Memory: use LVGL's built-in TLSF pool allocated from PSRAM.
+ * LV_STDLIB_CLIB used system malloc → internal SRAM, which falls to <1 KB after
+ * building all screens and then abort()s on the next String/log allocation.
  */
 
 /* clang-format off */
@@ -23,12 +24,15 @@
 #define LV_COLOR_16_SWAP        0
 #define LV_COLOR_CHROMA_KEY     lv_color_hex(0x00ff00)
 
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_BUILTIN
 #define LV_USE_STDLIB_STRING    LV_STDLIB_CLIB
 #define LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
 
-#define LV_MEM_SIZE             (256ul * 1024ul)
+/* Large TLSF pool in PSRAM — keeps Wi-Fi / ESP-NOW / Arduino String on internal heap. */
+#define LV_MEM_SIZE             (512ul * 1024ul)
 #define LV_MEM_ADR              0
+#define LV_MEM_POOL_INCLUDE     "esp_heap_caps.h"
+#define LV_MEM_POOL_ALLOC(size) heap_caps_malloc((size), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 
 #define LV_TICK_CUSTOM          0
 #define LV_DEF_REFR_PERIOD      8

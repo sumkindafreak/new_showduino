@@ -136,6 +136,11 @@ struct ShowRuntimeOwner {
   }
 
   bool handleLoadName(const char *name, uint32_t nowMs, ShowEngineState *legacy) {
+    if (legacy && legacy->emergency == EmergencyState::Active) {
+      Serial.println("[SHOW] Load rejected: EMERGENCY ACTIVE");
+      if (sendFn) sendFn("REJECTED:SHOW:EMERGENCY_ACTIVE");
+      return false;
+    }
     if (rt.state == SHOW_STATE_RUNNING || rt.state == SHOW_STATE_PAUSED ||
         rt.state == SHOW_STATE_EMERGENCY_STOP) {
       if (sendFn) sendFn("REJECTED:SHOW:BUSY");
@@ -197,6 +202,7 @@ struct ShowRuntimeOwner {
 
   bool handleRun(uint32_t nowMs, ShowEngineState *legacy) {
     if (legacy && legacy->emergency == EmergencyState::Active) {
+      Serial.println("[SHOW] Start rejected: EMERGENCY ACTIVE");
       if (sendFn) sendFn("REJECTED:SHOW:EMERGENCY_ACTIVE");
       return false;
     }
@@ -243,6 +249,7 @@ struct ShowRuntimeOwner {
 
   bool handleResume(uint32_t nowMs, ShowEngineState *legacy) {
     if (legacy && legacy->emergency == EmergencyState::Active) {
+      Serial.println("[SHOW] Resume rejected: EMERGENCY ACTIVE");
       if (sendFn) sendFn("REJECTED:SHOW:EMERGENCY_ACTIVE");
       return false;
     }
@@ -278,6 +285,19 @@ struct ShowRuntimeOwner {
     syncFromTimeline();
     rt.aborted = (rt.state == SHOW_STATE_RUNNING || rt.state == SHOW_STATE_PAUSED ||
                   rt.state == SHOW_STATE_EMERGENCY_STOP) ? 1 : 0;
+
+    if (abortFromEstop) {
+      /* Timeline is dead; the safety latch stays until EMERGENCY:CLEAR. */
+      if (rt.state != SHOW_STATE_EMERGENCY_STOP) {
+        transitionLogged(SHOW_STATE_EMERGENCY_STOP, nowMs);
+      }
+      showRuntimeSyncFlags(&rt);
+      syncLegacyShow(legacy);
+      if (sendFn) sendFn(SHOWDUINO_LEGACY_ACK_SHOW_STOP);
+      broadcastAll();
+      return true;
+    }
+
     if (rt.state == SHOW_STATE_FINISHED) {
       transitionLogged(SHOW_STATE_IDLE, nowMs);
     } else if (rt.state != SHOW_STATE_IDLE) {
@@ -286,13 +306,8 @@ struct ShowRuntimeOwner {
         rt.stateEnteredMs = nowMs;
         rt.revision++;
         showRuntimeSyncFlags(&rt);
-        Serial.println("[Runtime] forced → IDLE");
+        Serial.println("[Runtime] forced -> IDLE");
       }
-    }
-
-    /* Abort Show ends the emergency show session — outputs already forced safe. */
-    if (abortFromEstop && legacy) {
-      legacy->emergency = EmergencyState::Clear;
     }
 
     syncLegacyShow(legacy);
@@ -314,15 +329,21 @@ struct ShowRuntimeOwner {
 
   void onEmergencyCleared(uint32_t nowMs, ShowEngineState *legacy) {
     /* Mid-show E-stop left the timeline Paused → stay PAUSED (operator RESUME).
-       E-stop with no active playback → IDLE / SHOW_LOADED so Director can leave safe mode. */
+       E-stop with no active playback → IDLE / SHOW_LOADED so Director can leave safe mode.
+       Must actually leave EMERGENCY_STOP or Director re-locks from the runtime mirror. */
     if (rt.state == SHOW_STATE_EMERGENCY_STOP) {
+      ShowState target = SHOW_STATE_IDLE;
       if (timeline.state() == TimelinePlayState::Paused) {
-        transitionLogged(SHOW_STATE_PAUSED, nowMs);
+        target = SHOW_STATE_PAUSED;
       } else if (rt.showName[0] && (rt.totalCues > 0 || rt.loaded)) {
-        transitionLogged(SHOW_STATE_SHOW_LOADED, nowMs);
-      } else {
+        target = SHOW_STATE_SHOW_LOADED;
+      }
+      if (!transitionLogged(target, nowMs) && target != SHOW_STATE_IDLE) {
         transitionLogged(SHOW_STATE_IDLE, nowMs);
       }
+    }
+    if (legacy) {
+      legacy->emergency = EmergencyState::Clear;
     }
     syncFromTimeline();
     syncLegacyShow(legacy);

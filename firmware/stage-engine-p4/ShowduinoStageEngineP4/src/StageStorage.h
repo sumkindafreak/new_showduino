@@ -2,6 +2,7 @@
 #define SHOWDUINO_STAGE_STORAGE_H
 
 #include <Arduino.h>
+#include <FS.h>
 #include "../BoardConfig.h"
 
 struct StageStorageStatus {
@@ -20,13 +21,16 @@ struct StageStorageStatus {
 
 bool stageStorageBegin();
 void stageStorageLoop();
+void stageStorageSetLinkPump(void (*fn)());
 const StageStorageStatus &stageStorageStatus();
 bool stageStorageIsReady();
+fs::FS &stageStorageFs();
 
 #else
 
 inline bool stageStorageBegin() { return false; }
 inline void stageStorageLoop() {}
+inline void stageStorageSetLinkPump(void (*)()) {}
 inline bool stageStorageIsReady() { return false; }
 
 inline const StageStorageStatus &stageStorageStatus() {

@@ -42,10 +42,32 @@ It does **not** yet implement the full timeline engine, primary project store, D
 firmware/stage-engine-p4/ShowduinoStageEngineP4/
 ```
 
+### Arduino IDE / CLI flash (this hardware)
+
+The Stage Controller P4 on this bench reports **16 MB** SPI flash (`Detected size(16384k)`).  
+Do **not** build or flash a **32 MB** image. That writes `32768k` into the binary header; ESP-IDF then aborts in `init_flash` and reboot-loops.
+
+Arduino IDE:
+
+- Board: **ESP32P4 Dev Module**
+- Flash Size: **16MB (128Mb)**
+- PSRAM: **Enabled**
+- Partition Scheme: **Default** (not any 32M FAT / 13MB APP scheme)
+- Chip Variant: **v3.00 or newer** if the ROM banner is `ESP-ROM:esp32p4-eco2-…`
+
+arduino-cli:
+
+```text
+arduino-cli compile --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
+arduino-cli upload -p COMx --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
+```
+
+Replace `COMx` with the P4 USB serial port.
+
 ### SD card layout (FAT32)
 
 ```text
-/showduino/www/           Studio WebUI (optional on card)
+/showduino/webui/         Studio WebUI (served from SD via P4 HTTP origin)
 /showduino/shows/packages/
 /showduino/logs/
 /showduino/system/

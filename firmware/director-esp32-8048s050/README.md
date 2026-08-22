@@ -62,7 +62,7 @@ Logical device IDs (not raw MACs) are the long-term application addressing model
 - **PSRAM: OPI PSRAM** (required)  
 - Serial: 115200  
 
-Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`.
+Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` (ambient LEDs on GPIO17).
 
 ## Related active stack
 

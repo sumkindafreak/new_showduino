@@ -21,7 +21,8 @@ export async function SettingsPage(container) {
     card.append(statRow('Heap Free', formatBytes(sys.heapFree)));
     card.append(statRow('PSRAM Free', formatBytes(sys.psramFree)));
     card.append(statRow('Storage', sys.storageReady ? 'Ready' : 'Recovery'));
-    card.append(statRow('WebUI Root', sys.webuiPath));
+    card.append(statRow('WebUI Root', sys.webuiPath || '/showduino/webui'));
+    card.append(statRow('Emergency', sys.emergencyActive ? ('ACTIVE (' + (sys.emergencySource || '') + ')') : 'Clear'));
   } catch (err) {
     card.append(el('p', { text: err.message }));
   }

@@ -12,6 +12,13 @@
 #include "DirectorStatusBar.h"
 #include "DirectorAudioModel.h"
 #include "ShowduinoOsUi.h"
+#include "DisplayManager.h"
+#include "DirectorEmergencyScreen.h"
+#include "touch_lvgl.h"
+#include "page_01_home.h"
+#include "page_02_productions.h"
+#include "showduino_theme.h"
+#include "showduino_capabilities.h"
 
 // =========================================================
 // Showduino OS — LVGL Director shell (Stage 7.9 design system)
@@ -59,10 +66,6 @@ enum class DeskShowView : uint8_t {
 
 class ShowduinoUi {
 public:
-  enum class DeskPage : uint8_t {
-    Desktop = 0, Live, Shows, Details, Nodes, Settings, Audio, Logs
-  };
-
   void begin(ShowduinoCommandCallback callback) {
     commandCallback = callback;
     ensureEventLogStorage();
@@ -73,6 +76,12 @@ public:
     statusBar_.setLogCallback(statusBarLogThunk);
     statusBarSelf_ = this;
     statusBar_.begin();
+    displaySelf_ = this;
+    gDirectorEmergencyScreen.setClearRequestHandler(emergencyClearThunk);
+    gDirectorEmergencyScreen.setFinishedHandler(emergencyFinishedThunk);
+    displayManager_.begin();
+    displayManager_.setCommandHandler(displayCommandThunk);
+    touchLvglSetHook(displayTouchHook);
     Serial.println("[UI] building screens…");
     buildScreens();
     Serial.println("[UI] loading desktop…");
@@ -83,18 +92,28 @@ public:
 
   void setBootTime(unsigned long startedAt) { bootMs = startedAt; }
   void setLinkState(uint8_t state) {
+    const uint8_t prev = linkState;
     if (linkState == state) return;
     linkState = state;
     statusDirty = true;
     if (state == LINK_DISCONNECTED) statusBar_.noteLinkDown();
     else statusBar_.noteWaitingForSue();
     syncStatusBarHealth();
+    if (state == LINK_DISCONNECTED && prev == LINK_READY &&
+        !emergencyOverlayVisible && !completeOverlayVisible) {
+      showConnectionLost();
+    }
   }
   uint8_t getLinkState() const { return linkState; }
   void setEmergencyLocked(bool locked) {
     const bool wasLocked = emergencyLocked;
-    if (wasLocked == locked && emergencyOverlayBuilt) {
-      if (!locked) updateEmergencyResumeButton();
+    if (wasLocked == locked) {
+      if (locked) {
+        refreshEmergencyOverlayContent();
+        if (!gDirectorEmergencyScreen.isVisible() && !emergencyOverlayDismissed) {
+          showEmergencyOverlay();
+        }
+      }
       updatePersistentBanner();
       syncStatusBarHealth();
       return;
@@ -108,32 +127,43 @@ public:
       emergencySessionOpen = true;
       emergencyActiveSinceMs = millis();
       sessionEmergencyCount++;
+      if (pageBeforeEmergency == PAGE_NONE || pageBeforeEmergency == PAGE_EMERGENCY) {
+        pageBeforeEmergency = displayManager_.currentPage();
+      }
       captureEmergencySnapshot();
+      gDirectorEmergencyScreen.setSource(emergencyTriggeredByDirector_
+                                             ? DirectorEmergencyScreen::Source::Director
+                                             : DirectorEmergencyScreen::Source::Physical);
+      emergencyTriggeredByDirector_ = false;
+      gDirectorEmergencyScreen.setShowName(estopShowName);
+      gDirectorEmergencyScreen.setActiveSince(emergencyActiveSinceMs);
+      gDirectorEmergencyScreen.setLatchActive(true, emergencyActiveSinceMs);
       showEmergencyOverlay();
       pushOperatorEvent("Emergency Activated");
       emergencyAlarmOnHook();
     } else if (!locked && wasLocked) {
       pushOperatorEvent("Emergency Cleared");
       emergencyAlarmOffHook();
-      updateEmergencyResumeButton();
-      /* Mid-show: keep overlay so operator can RESUME or ABORT.
-         No active playback: return to desk immediately. */
-      if (mirroredState == SHOW_STATE_IDLE || mirroredState == SHOW_STATE_SHOW_LOADED ||
-          mirroredState == SHOW_STATE_BOOTING) {
-        emergencySessionOpen = false;
-        emergencyOverlayDismissed = true;
-        pendingAbortAwait = false;
-        pendingResumeAwait = false;
-        hideAbortConfirm();
-        hideEmergencyOverlay();
-        restorePageAfterEmergency();
-        setShowView(DeskShowView::Idle);
-      } else if (emergencyOverlayVisible && emergencyOverlayRoot) {
-        refreshEmergencyOverlayContent();
+      pendingAbortAwait = false;
+      pendingResumeAwait = false;
+      hideAbortConfirm();
+      gDirectorEmergencyScreen.setLatchActive(false, millis());
+      /* Stay on the emergency screen through the short CLEARED hold.
+         Finished handler restores a safe page. Do not resume the show. */
+      if (!gDirectorEmergencyScreen.isVisible()) {
+        finishEmergencyScreenReturn();
       }
     }
     updatePersistentBanner();
     syncStatusBarHealth();
+  }
+
+  void noteEmergencyTriggeredByDirector() { emergencyTriggeredByDirector_ = true; }
+
+  void noteEmergencyClearRejected() {
+    gDirectorEmergencyScreen.noteClearRejected(millis());
+    emergencyOverlayDismissed = false;
+    emergencyOverlayVisible = true;
   }
 
   bool isEmergencyLocked() const { return emergencyLocked; }
@@ -300,32 +330,14 @@ public:
   }
 
   void tickOperatorUx(unsigned long nowMs) {
-    /* Persistent banner pulse while runtime emergency. */
+    /* Persistent banner pulse while runtime emergency and the full screen is not up. */
     if (persistentBannerRoot && !lv_obj_has_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN)) {
       bool flashOn = ((nowMs / 500UL) % 2UL) == 0;
       lv_obj_set_style_bg_opa(persistentBannerRoot, flashOn ? LV_OPA_COVER : LV_OPA_80, 0);
     }
 
-    if (emergencyOverlayVisible && emergencyOverlayRoot) {
-      bool flashOn = ((nowMs / 500UL) % 2UL) == 0;
-      if (estopWarnIcon) {
-        lv_obj_set_style_opa(estopWarnIcon, flashOn ? LV_OPA_COVER : LV_OPA_40, 0);
-      }
-      /* Subtle dark-red breathe on overlay background. */
-      lv_obj_set_style_bg_color(emergencyOverlayRoot,
-                                lv_color_hex(flashOn ? 0x450A0A : 0x3F0A0A), 0);
-
-      if (estopTimerLabel && emergencyActiveSinceMs > 0) {
-        uint32_t activeMs = nowMs - emergencyActiveSinceMs;
-        char tbuf[48];
-        char clock[16];
-        formatClock(activeMs, clock, sizeof(clock));
-        snprintf(tbuf, sizeof(tbuf), "Emergency active: %s", clock);
-        const char *cur = lv_label_get_text(estopTimerLabel);
-        if (!cur || strcmp(cur, tbuf) != 0) lv_label_set_text(estopTimerLabel, tbuf);
-      }
-      updateEmergencyResumeButton();
-    }
+    gDirectorEmergencyScreen.tick(nowMs, linkState);
+    emergencyOverlayVisible = gDirectorEmergencyScreen.isVisible();
 
     if (liveProgressBar && liveStatusDirty) {
       refreshLiveStatusPanel();
@@ -749,6 +761,19 @@ public:
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
     syncStatusBarHealth();
     statusBar_.update(millis());
+    if (statusBar_.root()) {
+      if (displayManager_.isPhase2PageActive()) {
+        lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_clear_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+      }
+    }
+    if (displayManager_.isPhase2PageActive()) {
+      pushDisplaySnapshot();
+      if (displayManager_.currentPage() == PAGE_LIVE) {
+        refreshLiveStatusPanel();
+      }
+    }
 
     unsigned long now = millis();
     unsigned long uptimeSec = (now - bootMs) / 1000UL;
@@ -826,12 +851,119 @@ public:
     if (drawTraffic) trafficDirty = false;
   }
 
+  bool showThemedSystem(DisplayPageId page) {
+    if (!displayManager_.showPage(page)) return false;
+    pushDisplaySnapshot();
+    return true;
+  }
+  void showConnectionLost() { showThemedSystem(PAGE_CONNECTION_LOST); }
+  void showNoNetwork() { showThemedSystem(PAGE_NO_NETWORK); }
+  void showNoSd() { showThemedSystem(PAGE_NO_SD); }
+  void showLocked() { showThemedSystem(PAGE_LOCKED); }
+  void showBackup() { showThemedSystem(PAGE_BACKUP); }
+  void showRecovery() { showThemedSystem(PAGE_RECOVERY); }
+  void showFirmwareUpdate() { showThemedSystem(PAGE_FIRMWARE_UPDATE); }
+
 private:
   ShowduinoCommandCallback commandCallback = nullptr;
   DirectorStatusBar statusBar_;
+  DisplayManager displayManager_;
   static inline ShowduinoUi *statusBarSelf_ = nullptr;
+  static inline ShowduinoUi *displaySelf_ = nullptr;
   static void statusBarLogThunk(const char *msg) {
     if (statusBarSelf_) statusBarSelf_->pushOperatorEvent(msg);
+  }
+  static void displayCommandThunk(const char *command) {
+    if (displaySelf_ && command) displaySelf_->runCommand(String(command));
+  }
+  static void displayTouchHook(int32_t x, int32_t y, bool pressed) {
+    if (displaySelf_) displaySelf_->displayManager_.onTouch(x, y, pressed);
+  }
+  static void emergencyClearThunk() {
+    if (displaySelf_) displaySelf_->runCommand("EMERGENCY:CLEAR");
+  }
+  static void emergencyFinishedThunk() {
+    if (displaySelf_) displaySelf_->finishEmergencyScreenReturn();
+  }
+  void pushDisplaySnapshot() {
+    DisplaySnapshot snap;
+    displaySnapshotClear(snap);
+    snap.page = displayManager_.currentPage();
+
+    const char *tod = statusBar_.timeOfDay();
+    strncpy(snap.clock, tod ? tod : "--:--:--", sizeof(snap.clock) - 1);
+    const char *dod = statusBar_.dateOfDay();
+    strncpy(snap.date, dod ? dod : "--- -- --- ----", sizeof(snap.date) - 1);
+
+    const char *showVal = loadedShowNameBuf[0] ? loadedShowNameBuf : "No Show Loaded";
+    strncpy(snap.currentShow, showVal, sizeof(snap.currentShow) - 1);
+    strncpy(snap.runtimeState, deskRuntimeWord(), sizeof(snap.runtimeState) - 1);
+
+    const char *safetyVal = "CLEAR";
+    if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) safetyVal = "E-STOP";
+    else if (mirroredState == SHOW_STATE_ERROR) safetyVal = "FAULT";
+    strncpy(snap.safetyState, safetyVal, sizeof(snap.safetyState) - 1);
+
+    const char *linkVal = "LINK ?";
+    if (linkState == LINK_READY) linkVal = liveStageConnected ? "LINK OK" : "LINK NO STAGE";
+    else if (linkState == LINK_SEARCHING) linkVal = "LINK SEARCH";
+    else if (linkState == LINK_DISCONNECTED) linkVal = "LINK LOST";
+    strncpy(snap.linkState, linkVal, sizeof(snap.linkState) - 1);
+
+    snprintf(snap.cue, sizeof(snap.cue), "%lu / %lu",
+             (unsigned long)liveCue, (unsigned long)liveCueTotal);
+    formatClock(liveElapsedMs, snap.elapsed, sizeof(snap.elapsed));
+    formatClock(liveRemainMs, snap.remain, sizeof(snap.remain));
+    snprintf(snap.footer, sizeof(snap.footer), "%s | %s | Nodes %u/%u",
+             snap.linkState, snap.safetyState,
+             (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES);
+
+    if (eventLogCount > 0 && eventLog) {
+      strncpy(snap.notification, eventSlot(0), sizeof(snap.notification) - 1);
+      snap.notification[sizeof(snap.notification) - 1] = '\0';
+    }
+
+    snap.nodeCount = nodeCount;
+    snap.progressPct = liveProgressPct;
+    displayManager_.updateWidgets(snap);
+
+    /* Page 01 Home — refresh header / footer from real status only (no invented values). */
+    if (page_01_home_is_active() && snap.page == PAGE_DESKTOP) {
+      page_01_home_set_production(snap.currentShow[0] ? snap.currentShow : "NO PRODUCTION");
+      if (linkState == LINK_READY) {
+        page_01_home_set_link_text(liveStageConnected ? "LINK OK" : "NO STAGE");
+      } else if (linkState == LINK_SEARCHING) {
+        page_01_home_set_link_text("SEARCHING");
+      } else {
+        page_01_home_set_link_text("OFFLINE");
+      }
+      page_01_home_set_clock_text(snap.clock[0] ? snap.clock : "--:--");
+      page_01_home_set_footer_sue(snap.runtimeState[0] ? snap.runtimeState : "—");
+      page_01_home_set_footer_notify(snap.notification[0] ? snap.notification : "—");
+    }
+  }
+
+  void applyThemedLiveLayout(bool themed) {
+    if (!liveScreen) return;
+    if (themed) {
+      if (liveChromeRoot_) lv_obj_add_flag(liveChromeRoot_, LV_OBJ_FLAG_HIDDEN);
+      if (liveTitleBar_) lv_obj_add_flag(liveTitleBar_, LV_OBJ_FLAG_HIDDEN);
+      if (livePrimaryPanel_) {
+        lv_obj_set_pos(livePrimaryPanel_, 208, 132);
+        lv_obj_set_size(livePrimaryPanel_, 576, 260);
+        lv_obj_set_style_bg_opa(livePrimaryPanel_, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_opa(livePrimaryPanel_, LV_OPA_TRANSP, 0);
+      }
+    } else {
+      if (liveChromeRoot_) lv_obj_clear_flag(liveChromeRoot_, LV_OBJ_FLAG_HIDDEN);
+      if (liveTitleBar_) lv_obj_clear_flag(liveTitleBar_, LV_OBJ_FLAG_HIDDEN);
+      if (livePrimaryPanel_) {
+        lv_obj_set_pos(livePrimaryPanel_, OS_MARGIN, OS_PRIMARY_Y);
+        lv_obj_set_size(livePrimaryPanel_, OS_CONTENT_FULL_W, OS_PRIMARY_H);
+        lv_obj_set_style_bg_opa(livePrimaryPanel_, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_opa(livePrimaryPanel_, LV_OPA_COVER, 0);
+      }
+    }
   }
 
   /** Desktop SYSTEM SUMMARY — consistent operator vocabulary. */
@@ -850,6 +982,9 @@ private:
   }
   lv_obj_t *desktopScreen = nullptr;
   lv_obj_t *liveScreen = nullptr;
+  lv_obj_t *liveChromeRoot_ = nullptr;
+  lv_obj_t *liveTitleBar_ = nullptr;
+  lv_obj_t *livePrimaryPanel_ = nullptr;
   lv_obj_t *showsScreen = nullptr;
   lv_obj_t *showDetailsScreen = nullptr;
   lv_obj_t *diagnosticsScreen = nullptr;
@@ -875,26 +1010,18 @@ private:
   ShowIndexEntry showListCache[SHOW_INDEX_MAX] = {};
   uint8_t showListCount = 0;
 
-  DeskPage currentPage = DeskPage::Desktop;
-  DeskPage pageBeforeEmergency = DeskPage::Desktop;
+  DisplayPageId pageBeforeEmergency = PAGE_DESKTOP;
 
-  lv_obj_t *emergencyOverlayRoot = nullptr;
-  lv_obj_t *estopWarnIcon = nullptr;
-  lv_obj_t *estopTitleLabel = nullptr;
-  lv_obj_t *estopDetailLabel = nullptr;
-  lv_obj_t *estopTimerLabel = nullptr;
-  lv_obj_t *estopBannerLabel = nullptr;
-  lv_obj_t *estopResumeBtn = nullptr;
   lv_obj_t *persistentBannerRoot = nullptr;
   lv_obj_t *persistentBannerLabel = nullptr;
   lv_obj_t *abortConfirmRoot = nullptr;
   lv_obj_t *completeOverlayRoot = nullptr;
   lv_obj_t *completeDetailLabel = nullptr;
-  bool emergencyOverlayBuilt = false;
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
   bool emergencyVisitingDiag = false;
   bool emergencyAcknowledged = false;
+  bool emergencyTriggeredByDirector_ = false;
   bool pendingResumeAwait = false;
   bool pendingAbortAwait = false;
   bool emergencySessionOpen = false;
@@ -1037,30 +1164,29 @@ private:
       return;
     }
     if (command == "UI:ESTOP:DIAG") {
+      if (emergencyLocked || gDirectorEmergencyScreen.isVisible()) {
+        pushOperatorEvent("Emergency screen remains until Stage clears the latch");
+        return;
+      }
       emergencyVisitingDiag = true;
       hideEmergencyOverlay();
-      /* Persistent banner stays while EMERGENCY_STOP. */
       showDiagnostics();
       if (commandCallback) commandCallback("UI:ESTOP:DIAG");
       return;
     }
     if (command == "UI:ESTOP:DESK") {
-      /* Allow returning to desk UI; banner stays if Stage still in EMERGENCY_STOP.
-         After CLEAR, this fully exits the session. */
-      if (!emergencyLocked) {
-        emergencySessionOpen = false;
-        emergencyOverlayDismissed = true;
-        hideEmergencyOverlay();
-        hideAbortConfirm();
-        showDesktop();
-        setShowView(DeskShowView::Idle);
-        pushOperatorEvent("Returned to Desktop");
-      } else {
-        emergencyVisitingDiag = true;
-        hideEmergencyOverlay();
-        showDesktop();
-        pushOperatorEvent("Desktop — banner active until E-Stop cleared");
+      if (emergencyLocked || gDirectorEmergencyScreen.isVisible()) {
+        pushOperatorEvent("Emergency latch still active — CLEAR required");
+        return;
       }
+      emergencyOverlayDismissed = true;
+      emergencyVisitingDiag = false;
+      hideEmergencyOverlay();
+      hideAbortConfirm();
+      showDesktop();
+      emergencySessionOpen = false;
+      setShowView(DeskShowView::Idle);
+      pushOperatorEvent("Returned to Desktop");
       return;
     }
     if (command == "UI:ESTOP:ACK") {
@@ -1085,44 +1211,166 @@ private:
       return;
     }
 
+    if (command == "UI:NET:RETRY") {
+      pushOperatorEvent("Network retry requested");
+      if (commandCallback) commandCallback("UI:NET:RETRY");
+      return;
+    }
+    if (command == "UI:NET:SCAN") {
+      pushOperatorEvent("Network scan requested");
+      if (commandCallback) commandCallback("UI:NET:SCAN");
+      return;
+    }
+    if (command == "UI:LOCK:UNLOCK") {
+      if (displayManager_.showPage(PAGE_UNLOCK)) pushDisplaySnapshot();
+      return;
+    }
+    if (command == "UI:LOCK:CONFIRM") {
+      pushOperatorEvent("Director unlocked");
+      showDesktop();
+      return;
+    }
+    if (command == "UI:LOCK:CANCEL") {
+      if (displayManager_.showPage(PAGE_LOCKED)) pushDisplaySnapshot();
+      return;
+    }
+    if (command == "UI:DISCOVERY:SCAN") {
+      if (!displayManager_.showPage(PAGE_DISCOVERY)) {
+        pushOperatorEvent("Discovery scan requested");
+        if (commandCallback) commandCallback("UI:DISCOVERY:SCAN");
+      } else {
+        pushDisplaySnapshot();
+      }
+      return;
+    }
+    if (command == "UI:SYSTEM:REBOOT") {
+      pushOperatorEvent("Reboot requested");
+      if (displayManager_.showPage(PAGE_REBOOT)) pushDisplaySnapshot();
+      if (commandCallback) commandCallback("UI:SYSTEM:REBOOT");
+      return;
+    }
+    if (command == "UI:DIAG:PERF") {
+      pushOperatorEvent("Performance metrics — coming soon");
+      return;
+    }
+    if (command == "UI:DIAG:ERRORS") {
+      showLogs();
+      return;
+    }
+    if (command == "UI:DIAG:TOOLS") {
+      showSettings();
+      return;
+    }
+
     if (command == "SCREEN:DESKTOP") {
-      notePage(DeskPage::Desktop);
       showDesktop();
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == PAGE01_CMD_PRODUCTIONS || command == "HOME:PRODUCTIONS") {
+      Serial.println("[UI] Page01 → Productions (Page 02)");
+      showShows();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE02_CMD_BACK || command == "PAGE02:BACK") {
+      Serial.println("[UI] Page02 → Home");
+      showDesktop();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE02_CMD_OPEN || command == "PAGE02:OPEN") {
+      const char *name = page_02_productions_selected_name();
+      if (!name || !name[0]) name = "(none)";
+      Serial.printf("[UI] Page02 Open → toast (%s)\n", name);
+      char msg[96];
+      snprintf(msg, sizeof(msg), "Open \"%s\" — editor coming soon", name);
+      pushOperatorEvent(msg);
+      return;
+    }
+    if (command == PAGE02_CMD_NEW || command == "PAGE02:NEW") {
+      pushOperatorEvent("New production (local model only)");
+      return;
+    }
+    if (command == PAGE02_CMD_DUPLICATE || command == "PAGE02:DUPLICATE") {
+      pushOperatorEvent("Duplicated (local model only)");
+      return;
+    }
+    if (command == PAGE01_CMD_RUN_SHOW || command == "HOME:RUN_SHOW") {
+      Serial.println("[UI] Page01 → Run Show");
+      showLive();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY") {
+      Serial.println("[UI] Page01 → Cue Library (not built yet)");
+      pushOperatorEvent("Cue Library — coming soon");
+      return;
+    }
+    if (command == PAGE01_CMD_NODES || command == "HOME:NODES") {
+      Serial.println("[UI] Page01 → Nodes");
+      showDiagnostics();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
+      Serial.println("[UI] Page01 → Outputs (Page 05 not built yet)");
+      pushOperatorEvent("Outputs — coming soon");
+      return;
+    }
+    if (command == PAGE01_CMD_SETTINGS || command == "HOME:SETTINGS") {
+      Serial.println("[UI] Page01 → Settings");
+      showSettings();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE01_CMD_DIAGNOSTICS || command == "HOME:DIAGNOSTICS") {
+      Serial.println("[UI] Page01 → Diagnostics");
+      showDiagnostics();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command.startsWith("THEME:TEST:")) {
+      const String name = command.substring(strlen("THEME:TEST:"));
+      if (name.equalsIgnoreCase("NEXT")) {
+        showduino_theme_test_next();
+      } else {
+        showduino_theme_test_apply_named(name.c_str());
+      }
+      if (page_01_home_is_active()) {
+        page_01_home_apply_theme();
+      }
+      if (page_02_productions_is_active()) {
+        page_02_productions_apply_theme();
+      }
+      return;
+    }
     if (command == "SCREEN:LIVE") {
-      notePage(DeskPage::Live);
       showLive();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == "SCREEN:SHOWS") {
-      notePage(DeskPage::Shows);
       showShows();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == "SCREEN:DIAG" || command == "SCREEN:NODES") {
-      notePage(DeskPage::Nodes);
       showDiagnostics();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == "SCREEN:SETTINGS") {
-      notePage(DeskPage::Settings);
       showSettings();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == "SCREEN:AUDIO") {
-      notePage(DeskPage::Audio);
       showAudio();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == "SCREEN:LOGS") {
-      notePage(DeskPage::Logs);
       showLogs();
       maybeRestoreEmergencyOverlay();
       return;
@@ -1163,19 +1411,18 @@ private:
     }
 
     if (command == "UI:SHOW:BACK") {
-      notePage(DeskPage::Shows);
       showShows();
       maybeRestoreEmergencyOverlay();
       return;
     }
     if (command.startsWith("UI:SHOW:OPEN:")) {
-      notePage(DeskPage::Details);
       openShowDetails(command.substring(strlen("UI:SHOW:OPEN:")).c_str());
       return;
     }
 
-    /* Block desk commands while emergency overlay is up (except E-STOP / CLEAR). */
-    if (emergencyOverlayVisible && command != "EMERGENCY:STOP" && command != "EMERGENCY:CLEAR") {
+    /* Block desk commands while emergency overlay is up (except E-STOP actions). */
+    if (emergencyOverlayVisible && command != "EMERGENCY:STOP" && command != "EMERGENCY:CLEAR" &&
+        !command.startsWith("UI:ESTOP:")) {
       return;
     }
     if (completeOverlayVisible &&
@@ -1238,15 +1485,20 @@ private:
       }
     } else if (command == "EMERGENCY:STOP") {
       emergencyActivating = true;
-      pageBeforeEmergency = currentPage;
+      emergencyTriggeredByDirector_ = true;
+      pageBeforeEmergency = displayManager_.currentPage();
+      if (pageBeforeEmergency == PAGE_NONE) pageBeforeEmergency = PAGE_DESKTOP;
       for (uint8_t i = 0; i < 8; i++) {
         relayView[i] = DeskRelayView::PendingOff;
         refreshRelayButton(i);
       }
-      /* Overlay + timeline pause applied in handleUiCommand / Stage STATE path. */
+      Serial.println("[E-Stop] E-STOP pressed — sending EMERGENCY:STOP");
     } else if (command == "EMERGENCY:CLEAR") {
-      /* Do not clear lock until STATE:EMERGENCY:CLEAR */
+      /* Do not unlock until STATE:EMERGENCY:CLEAR. */
+      gDirectorEmergencyScreen.noteClearRequested(millis());
       appendLog("E-CLEAR requested…");
+      pushOperatorEvent("E-CLEAR → Stage (await STATE:EMERGENCY:CLEAR)");
+      Serial.println("[E-Stop] CLEAR E-STOP pressed — sending EMERGENCY:CLEAR");
     }
 
     statusDirty = true;
@@ -1279,6 +1531,7 @@ private:
 
   void initTheme() {
     os_.begin();
+    showduino_theme_init();
     /* Legacy style aliases — kept so existing overlay code continues to compile. */
     styleScreen = os_.screen;
     stylePanel = os_.panel;
@@ -1290,6 +1543,13 @@ private:
 
   lv_obj_t *makeScreen() { return os_.makeScreen(); }
 
+  lv_obj_t *makePagePanel(DisplayPageId page) {
+    lv_obj_t *panel = displayManager_.createPagePanel(page);
+    if (!panel) return nullptr;
+    lv_obj_set_style_text_color(panel, lv_color_hex(OsColor::Text), 0);
+    return panel;
+  }
+
   lv_obj_t *makePanel(lv_obj_t *parent, int x, int y, int w, int h) {
     return os_.makePanel(parent, x, y, w, h);
   }
@@ -1299,8 +1559,9 @@ private:
   }
 
   lv_obj_t *makeButton(lv_obj_t *parent, const char *text, int x, int y, int w, int h,
-                       const char *command, bool danger = false) {
-    return os_.makeButton(parent, text, x, y, w, h, staticEventHandler, this, command, danger);
+                       const char *command, bool danger = false, bool scrollChain = true) {
+    return os_.makeButton(parent, text, x, y, w, h, staticEventHandler, this, command, danger,
+                          scrollChain);
   }
 
   void createTopBar(lv_obj_t *screen, const char *title) {
@@ -1308,7 +1569,10 @@ private:
   }
 
   void createDock(lv_obj_t *screen) {
-    os_.makeDock(screen, staticEventHandler, this);
+    /* Child page panels use DisplayManager's one persistent dock. */
+    if (screen && lv_obj_get_parent(screen) == nullptr) {
+      os_.makeDock(screen, staticEventHandler, this);
+    }
   }
   void createSystemSummary(lv_obj_t *parent) {
     os_.makeHeading(parent, "SYSTEM SUMMARY", 10, 4);
@@ -1375,7 +1639,7 @@ private:
   void createLogPanel(lv_obj_t *screen) { (void)screen; }
 
   void buildLogsPage() {
-    logsScreen = makeScreen();
+    logsScreen = makePagePanel(PAGE_LOGS);
     createDock(logsScreen);
     lv_obj_t *sum = os_.makePageChrome(logsScreen, "SYSTEM LOGS");
     logsCountLabel_ = makeLabel(sum, "Events: 0", 10, 8);
@@ -1408,8 +1672,7 @@ private:
     lv_obj_set_pos(operatorLogScroll, 8, 118);
     lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 130);
     lv_obj_set_style_bg_opa(operatorLogScroll, LV_OPA_TRANSP, 0);
-    lv_obj_set_scroll_dir(operatorLogScroll, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(operatorLogScroll, LV_SCROLLBAR_MODE_AUTO);
+    ShowduinoOsTheme::enableVerticalScroll(operatorLogScroll);
     operatorLogLabel = lv_label_create(operatorLogScroll);
     lv_obj_set_pos(operatorLogLabel, 2, 0);
     lv_obj_set_width(operatorLogLabel, OS_CONTENT_FULL_W - 40);
@@ -1419,15 +1682,15 @@ private:
   }
 
   void buildAudioPage() {
-    audioScreen = makeScreen();
+    audioScreen = makePagePanel(PAGE_AUDIO);
     createDock(audioScreen);
     lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
     makeLabel(sum, "1× local P4 output  ·  remote zones = ESP-NOW command nodes", 10, 10);
     makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
 
     lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
-    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_AUTO);
+    /* Content extends past OS_PRIMARY_H (~y=466); makePanel clears SCROLLABLE — restore it. */
+    ShowduinoOsTheme::enableVerticalScroll(panel);
 
     os_.makeHeading(panel, "LOCAL OUTPUT — IAN / P4 AUDIO 1", 8, 2);
     audioLocalStatusLabel_ = makeLabel(panel, "Status: UNKNOWN", 8, 28);
@@ -1474,8 +1737,26 @@ private:
     createSharedOperatorLog();
     uiBuildPump();
 
-    /* ---- DESKTOP (design reference) — full width, no event log ---- */
-    Serial.println("[UI] desktop…");
+    /* ---- PAGE 01 HOME (LVGL tiles) ---- */
+    Serial.println("[UI] Page 01 Home…");
+    lv_obj_t *homePanel = makePagePanel(PAGE_DESKTOP);
+    if (homePanel != nullptr) {
+      page_01_home_create(homePanel, displayCommandThunk);
+      ShowduinoCapabilities caps = showduino_capabilities_defaults();
+      page_01_home_set_capabilities(&caps);
+      page_01_home_set_footer_p4("—");
+      page_01_home_set_footer_relay("—");
+      page_01_home_set_footer_mosfet("—");
+      page_01_home_set_footer_neopixel("—");
+      page_01_home_set_footer_audio("—");
+      page_01_home_set_footer_dmx("—");
+    } else {
+      Serial.println("[UI] Page 01 panel missing (theme/hybrid gate)");
+    }
+    uiBuildPump("[UI] Page 01");
+
+    /* ---- DESKTOP legacy fallback — full width, no event log ---- */
+    Serial.println("[UI] desktop legacy…");
     desktopScreen = makeScreen();
     uiBuildPump("[UI] desktop");
     createDock(desktopScreen);
@@ -1514,22 +1795,24 @@ private:
 
     /* ---- LIVE — What is happening right now? ---- */
     Serial.println("[UI] live…");
-    liveScreen = makeScreen();
+    liveScreen = makePagePanel(PAGE_LIVE);
     uiBuildPump("[UI] live");
     createDock(liveScreen);
-    lv_obj_t *liveSum = os_.makePageChrome(liveScreen, "LIVE");
-    os_.makeCaption(liveSum, "Cue", 10, 8);
-    liveCueLabel_ = makeLabel(liveSum, "0 / 0", 10, 28);
+    liveChromeRoot_ = os_.makePageChrome(liveScreen, "LIVE", &liveTitleBar_);
+    os_.makeCaption(liveChromeRoot_, "Cue", 10, 8);
+    liveCueLabel_ = makeLabel(liveChromeRoot_, "0 / 0", 10, 28);
     lv_obj_add_style(liveCueLabel_, &os_.title, 0);
-    os_.makeCaption(liveSum, "Elapsed", 160, 8);
-    liveElapsedLabel_ = makeLabel(liveSum, "0:00", 160, 28);
+    os_.makeCaption(liveChromeRoot_, "Elapsed", 160, 8);
+    liveElapsedLabel_ = makeLabel(liveChromeRoot_, "0:00", 160, 28);
     lv_obj_add_style(liveElapsedLabel_, &os_.body, 0);
-    os_.makeCaption(liveSum, "Remaining", 300, 8);
-    liveRemainLabel_ = makeLabel(liveSum, "0:00", 300, 28);
+    os_.makeCaption(liveChromeRoot_, "Remaining", 300, 8);
+    liveRemainLabel_ = makeLabel(liveChromeRoot_, "0:00", 300, 28);
     lv_obj_add_style(liveRemainLabel_, &os_.body, 0);
     /* Reserved icon/scene slots — no placeholder text */
 
-    lv_obj_t *live = os_.makePrimaryPanel(liveScreen);
+    livePrimaryPanel_ = os_.makePrimaryPanel(liveScreen);
+    lv_obj_t *live = livePrimaryPanel_;
+    /* Do not scroll the whole Live panel — E-Clear taps must not become drag-scroll. */
     os_.makeHeading(live, "TRANSPORT", 8, 2);
     makeButton(live, "Start", 10, 24, 84, 40, "SHOW:START");
     makeButton(live, "Pause", 102, 24, 76, 40, "SHOW:PAUSE");
@@ -1560,50 +1843,41 @@ private:
     timelineStatusLabel = makeLabel(live, "", 10, 88);
     lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
 
-    os_.makeHeading(live, "RELAYS", 8, 96);
+    os_.makeHeading(live, "RELAYS", 8, 88);
     for (uint8_t i = 0; i < 8; i++) {
       int row = i / 4;
       int col = i % 4;
       int x = 10 + col * 112;
-      int y = 118 + row * 40;
+      int y = 110 + row * 38;
       static const char *relayNames[8] = { "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8" };
-      relayButtons[i] = makeButton(live, relayNames[i], x, y, 104, 36, kRelayCmds[i]);
+      relayButtons[i] = makeButton(live, relayNames[i], x, y, 104, 34, kRelayCmds[i]);
       refreshRelayButton(i);
     }
-    makeButton(live, "All Off", 10, 202, 100, 36, "RELAY:ALL:OFF");
-    makeButton(live, "Pulse R1", 118, 202, 100, 36, "RELAY:1:PULSE:1000");
-    makeButton(live, "E-Clear", 226, 202, 100, 36, "EMERGENCY:CLEAR");
+    /* Bottom row fits in OS_PRIMARY_H (~216). E-Clear must not scroll-chain. */
+    makeButton(live, "All Off", 10, 188, 100, 36, "RELAY:ALL:OFF");
+    makeButton(live, "Pulse R1", 118, 188, 100, 36, "RELAY:1:PULSE:1000");
+    makeButton(live, "E-Clear", 226, 188, 100, 36, "EMERGENCY:CLEAR", false, false);
     uiBuildPump();
 
-    /* ---- SHOWS — What can I run? ---- */
-    Serial.println("[UI] shows…");
-    showsScreen = makeScreen();
-    uiBuildPump("[UI] shows");
-    createDock(showsScreen);
-    lv_obj_t *showSum = os_.makePageChrome(showsScreen, "SHOWS");
-    os_.makeCaption(showSum, "Library", 10, 8);
-    showsSummaryLabel_ = makeLabel(showSum, "Scan SD to list packages", 10, 28);
-    lv_obj_add_style(showsSummaryLabel_, &os_.body, 0);
-    lv_obj_set_width(showsSummaryLabel_, 440);
-
-    showsListPanel = os_.makePrimaryPanel(showsScreen);
-    os_.makeHeading(showsListPanel, "SHOW LIBRARY", 8, 2);
-    makeButton(showsListPanel, "Resync", 360, 2, 90, 36, "UI:SHOW:REFRESH");
-    showsListTitle = makeLabel(showsListPanel, "", 8, 4);
-    lv_obj_add_flag(showsListTitle, LV_OBJ_FLAG_HIDDEN);
-    showListScroll = lv_obj_create(showsListPanel);
-    lv_obj_remove_style_all(showListScroll);
-    lv_obj_set_pos(showListScroll, 4, 42);
-    lv_obj_set_size(showListScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 52);
-    lv_obj_set_style_bg_opa(showListScroll, LV_OPA_TRANSP, 0);
-    lv_obj_set_scroll_dir(showListScroll, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(showListScroll, LV_SCROLLBAR_MODE_AUTO);
-    makeLabel(showListScroll, "No shows yet — insert SD and tap Resync", 8, 8);
+    /* ---- PAGE 02 PRODUCTIONS (LVGL library shell) ---- */
+    Serial.println("[UI] Page 02 Productions…");
+    showsScreen = makePagePanel(PAGE_SHOWS);
+    uiBuildPump("[UI] Page 02");
+    if (showsScreen != nullptr) {
+      page_02_productions_create(showsScreen, displayCommandThunk);
+    } else {
+      Serial.println("[UI] Page 02 panel missing");
+    }
+    /* Legacy show-list widgets stay null — rebuildShowList is guarded. */
+    showListScroll = nullptr;
+    showsSummaryLabel_ = nullptr;
+    showsListTitle = nullptr;
+    showsListPanel = nullptr;
     uiBuildPump();
 
     /* ---- SHOW DETAILS ---- */
     Serial.println("[UI] details…");
-    showDetailsScreen = makeScreen();
+    showDetailsScreen = makePagePanel(PAGE_SHOW_DETAILS);
     uiBuildPump("[UI] details");
     createDock(showDetailsScreen);
     lv_obj_t *detSum = os_.makePageChrome(showDetailsScreen, "SHOW DETAILS");
@@ -1638,7 +1912,8 @@ private:
 
     /* ---- NODES (Quick Actions / future nav) ---- */
     Serial.println("[UI] nodes…");
-    diagnosticsScreen = makeScreen();
+    diagnosticsScreen = makePagePanel(PAGE_DIAGNOSTICS);
+    if (!diagnosticsScreen) diagnosticsScreen = makePagePanel(PAGE_NODES);
     uiBuildPump("[UI] nodes");
     createDock(diagnosticsScreen);
     lv_obj_t *nodeSum = os_.makePageChrome(diagnosticsScreen, "NODES");
@@ -1657,15 +1932,20 @@ private:
 
     /* ---- SETTINGS — How is the system configured? ---- */
     Serial.println("[UI] settings…");
-    settingsScreen = makeScreen();
+    settingsScreen = makePagePanel(PAGE_SETTINGS);
     uiBuildPump("[UI] settings");
     createDock(settingsScreen);
     lv_obj_t *setSum = os_.makePageChrome(settingsScreen, "SETTINGS");
     os_.makeCaption(setSum, "Display", 10, 8);
     timeoutLabel = makeLabel(setSum, "Auto backlight: 10 min", 10, 28);
     lv_obj_add_style(timeoutLabel, &os_.body, 0);
+    /* Always-visible Clear — not inside the scrollable primary panel. */
+    makeButton(setSum, "Clear E-Stop", OS_CONTENT_FULL_W - 160, 16, 140, 40, "EMERGENCY:CLEAR",
+               false, false);
 
     lv_obj_t *settings = os_.makePrimaryPanel(settingsScreen);
+    /* SYSTEM row sits below OS_PRIMARY_H — panel must be scrollable. */
+    ShowduinoOsTheme::enableVerticalScroll(settings);
     os_.makeHeading(settings, "MODULES", 8, 2);
     makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
     makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
@@ -1682,10 +1962,9 @@ private:
     os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
 
     os_.makeHeading(settings, "SYSTEM", 8, 210);
-    makeButton(settings, "Clear E-Stop", 8, 236, 150, 44, "EMERGENCY:CLEAR");
-    makeButton(settings, "Backup", 168, 236, 110, 44, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 288, 236, 90, 44, "STORAGE:EXPORT");
-    makeButton(settings, "About", 388, 236, 90, 44, "SETTINGS:ABOUT");
+    makeButton(settings, "Backup", 8, 236, 140, 44, "STORAGE:BACKUP");
+    makeButton(settings, "Export", 156, 236, 120, 44, "STORAGE:EXPORT");
+    makeButton(settings, "About", 284, 236, 120, 44, "SETTINGS:ABOUT");
 
     refreshTimeoutLabel();
     uiBuildPump();
@@ -1703,8 +1982,6 @@ private:
     Serial.println("[UI] overlays…");
     buildPersistentBanner();
     uiBuildPump();
-    buildEmergencyOverlay();
-    uiBuildPump();
     buildAbortConfirm();
     uiBuildPump();
     buildCompleteOverlay();
@@ -1713,8 +1990,6 @@ private:
     Serial.printf("[UI] screens built heap=%u psram=%u\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
   }
-  void notePage(DeskPage p) { currentPage = p; }
-
   void captureEmergencySnapshot() {
     estopOccurredMs = millis();
     if (loadedShowNameBuf[0]) {
@@ -1743,7 +2018,8 @@ private:
   void updatePersistentBanner() {
     if (!persistentBannerRoot) buildPersistentBanner();
     /* Banner follows Stage runtime state — hides when state leaves EMERGENCY_STOP. */
-    const bool show = (mirroredState == SHOW_STATE_EMERGENCY_STOP);
+    const bool show = (mirroredState == SHOW_STATE_EMERGENCY_STOP) &&
+                      !gDirectorEmergencyScreen.isVisible();
     if (show) {
       char et[16];
       formatClock(liveElapsedMs ? liveElapsedMs : estopElapsedMs, et, sizeof(et));
@@ -1756,89 +2032,12 @@ private:
       lv_obj_clear_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
       lv_obj_move_foreground(persistentBannerRoot);
       if (statusBar_.root()) lv_obj_move_foreground(statusBar_.root());
-      if (emergencyOverlayRoot && emergencyOverlayVisible) {
-        lv_obj_move_foreground(emergencyOverlayRoot);
-      }
       if (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_move_foreground(abortConfirmRoot);
       }
     } else {
       lv_obj_add_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
     }
-  }
-
-  void buildEmergencyOverlay() {
-    if (emergencyOverlayBuilt) return;
-    lv_obj_t *top = lv_layer_top();
-    emergencyOverlayRoot = lv_obj_create(top);
-    lv_obj_remove_style_all(emergencyOverlayRoot);
-    lv_obj_set_size(emergencyOverlayRoot, SCREEN_WIDTH, SCREEN_HEIGHT);
-    lv_obj_set_style_bg_color(emergencyOverlayRoot, lv_color_hex(0x450A0A), 0);
-    lv_obj_set_style_bg_opa(emergencyOverlayRoot, LV_OPA_COVER, 0);
-    lv_obj_add_flag(emergencyOverlayRoot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_clear_flag(emergencyOverlayRoot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(emergencyOverlayRoot, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *banner = lv_obj_create(emergencyOverlayRoot);
-    lv_obj_remove_style_all(banner);
-    lv_obj_set_size(banner, SCREEN_WIDTH, 48);
-    lv_obj_set_style_bg_color(banner, lv_color_hex(0x7F1D1D), 0);
-    lv_obj_set_style_bg_opa(banner, LV_OPA_COVER, 0);
-    estopBannerLabel = lv_label_create(banner);
-    lv_label_set_text(estopBannerLabel, "EMERGENCY STOP ACTIVE");
-    lv_obj_set_style_text_color(estopBannerLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(estopBannerLabel);
-
-    estopWarnIcon = lv_obj_create(emergencyOverlayRoot);
-    lv_obj_remove_style_all(estopWarnIcon);
-    lv_obj_set_size(estopWarnIcon, 88, 88);
-    lv_obj_set_pos(estopWarnIcon, (SCREEN_WIDTH - 88) / 2, 58);
-    lv_obj_set_style_bg_color(estopWarnIcon, lv_color_hex(0xEF4444), 0);
-    lv_obj_set_style_bg_opa(estopWarnIcon, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(estopWarnIcon, 12, 0);
-    lv_obj_t *bang = lv_label_create(estopWarnIcon);
-    lv_label_set_text(bang, "!");
-    lv_obj_set_style_text_color(bang, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_center(bang);
-
-    estopTitleLabel = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(estopTitleLabel, "EMERGENCY STOP ACTIVE");
-    lv_obj_set_style_text_color(estopTitleLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_add_style(estopTitleLabel, &styleTitle, 0);
-    lv_obj_set_pos(estopTitleLabel, 0, 156);
-    lv_obj_set_width(estopTitleLabel, SCREEN_WIDTH);
-    lv_obj_set_style_text_align(estopTitleLabel, LV_TEXT_ALIGN_CENTER, 0);
-
-    lv_obj_t *sub = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(sub, "Show halted. Press CLEAR E-STOP, then Resume or Abort.");
-    lv_obj_set_style_text_color(sub, lv_color_hex(0xFECACA), 0);
-    lv_obj_set_pos(sub, 40, 188);
-    lv_obj_set_width(sub, SCREEN_WIDTH - 80);
-    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
-
-    estopDetailLabel = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(estopDetailLabel, "Show: -");
-    lv_obj_set_style_text_color(estopDetailLabel, lv_color_hex(0xFFE4E6), 0);
-    lv_obj_set_pos(estopDetailLabel, 60, 240);
-    lv_obj_set_width(estopDetailLabel, SCREEN_WIDTH - 120);
-
-    estopTimerLabel = lv_label_create(emergencyOverlayRoot);
-    lv_label_set_text(estopTimerLabel, "Emergency active: 0:00");
-    lv_obj_set_style_text_color(estopTimerLabel, lv_color_hex(0xFCA5A5), 0);
-    lv_obj_set_pos(estopTimerLabel, 0, 360);
-    lv_obj_set_width(estopTimerLabel, SCREEN_WIDTH);
-    lv_obj_set_style_text_align(estopTimerLabel, LV_TEXT_ALIGN_CENTER, 0);
-
-    /* CLEAR must be on the overlay — Live/Settings E-CLEAR sits under this layer. */
-    makeButton(emergencyOverlayRoot, "CLEAR E-STOP", 20, 400, 150, 56, "EMERGENCY:CLEAR");
-    estopResumeBtn = makeButton(emergencyOverlayRoot, "RESUME", 180, 400, 110, 56, "UI:ESTOP:RESUME");
-    makeButton(emergencyOverlayRoot, "ABORT", 300, 400, 100, 56, "UI:ESTOP:ABORT", true);
-    makeButton(emergencyOverlayRoot, "NODES", 410, 400, 90, 56, "UI:ESTOP:DIAG");
-    makeButton(emergencyOverlayRoot, "ACK", 510, 400, 90, 56, "UI:ESTOP:ACK");
-    makeButton(emergencyOverlayRoot, "DESK", 610, 400, 90, 56, "UI:ESTOP:DESK");
-
-    emergencyOverlayBuilt = true;
-    updateEmergencyResumeButton();
   }
 
   void buildAbortConfirm() {
@@ -1918,8 +2117,14 @@ private:
   }
 
   void showCompleteScreen(const ShowRuntime &rt) {
-    if (!completeOverlayRoot) buildCompleteOverlay();
     if (emergencyOverlayVisible) return; /* emergency wins */
+    if (displayManager_.assetsReadyForPage(PAGE_COMPLETE) &&
+        displayManager_.showPage(PAGE_COMPLETE)) {
+      completeOverlayVisible = true;
+      pushDisplaySnapshot();
+      return;
+    }
+    if (!completeOverlayRoot) buildCompleteOverlay();
     char et[16], done[16];
     formatClock(rt.elapsedMs ? rt.elapsedMs : rt.totalDurationMs, et, sizeof(et));
     formatClock(millis() - bootMs, done, sizeof(done));
@@ -1941,6 +2146,9 @@ private:
   }
 
   void hideCompleteOverlay() {
+    if (displayManager_.currentPage() == PAGE_COMPLETE) {
+      showDesktop();
+    }
     if (completeOverlayRoot) lv_obj_add_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN);
     completeOverlayVisible = false;
   }
@@ -1974,82 +2182,65 @@ private:
   }
 
   void showEmergencyOverlay() {
-    if (!emergencyOverlayBuilt) buildEmergencyOverlay();
-    if (!emergencyOverlayRoot || emergencyOverlayDismissed) return;
+    if (emergencyOverlayDismissed && !emergencyLocked) return;
     emergencySessionOpen = true;
-    refreshEmergencyOverlayContent();
-    updateEmergencyResumeButton();
-    lv_obj_clear_flag(emergencyOverlayRoot, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_move_foreground(emergencyOverlayRoot);
-    emergencyOverlayVisible = true;
     emergencyVisitingDiag = false;
+    emergencyOverlayDismissed = false;
+    gDirectorEmergencyScreen.setShowName(estopShowName);
+    gDirectorEmergencyScreen.show(millis());
+    emergencyOverlayVisible = gDirectorEmergencyScreen.isVisible();
     updatePersistentBanner();
   }
 
   void hideEmergencyOverlay() {
-    if (emergencyOverlayRoot) {
-      lv_obj_add_flag(emergencyOverlayRoot, LV_OBJ_FLAG_HIDDEN);
+    if (displayManager_.currentPage() == PAGE_EMERGENCY) {
+      DisplayPageId restore = pageBeforeEmergency;
+      if (restore == PAGE_NONE || restore == PAGE_EMERGENCY) restore = PAGE_DESKTOP;
+      displayManager_.showPage(restore);
+      pushDisplaySnapshot();
     }
+    gDirectorEmergencyScreen.hide();
     emergencyOverlayVisible = false;
   }
 
   void maybeRestoreEmergencyOverlay() {
-    if (emergencyVisitingDiag) {
-      emergencyVisitingDiag = false;
-    }
-    if (emergencySessionOpen && !emergencyOverlayDismissed) {
+    if (!emergencyVisitingDiag) return;
+    emergencyVisitingDiag = false;
+    if (emergencySessionOpen && emergencyLocked && !emergencyOverlayDismissed) {
       showEmergencyOverlay();
     }
   }
 
   void restorePageAfterEmergency() {
     switch (pageBeforeEmergency) {
-      case DeskPage::Live: showLive(); break;
-      case DeskPage::Shows: showShows(); break;
-      case DeskPage::Details: showShows(); break;
-      case DeskPage::Nodes: showDiagnostics(); break;
-      case DeskPage::Settings: showSettings(); break;
-      case DeskPage::Audio: showAudio(); break;
-      case DeskPage::Logs: showLogs(); break;
+      case PAGE_LIVE: showLive(); break;
+      case PAGE_SHOWS: showShows(); break;
+      case PAGE_SHOW_DETAILS: showShows(); break;
+      case PAGE_NODES:
+      case PAGE_DIAGNOSTICS: showDiagnostics(); break;
+      case PAGE_SETTINGS: showSettings(); break;
+      case PAGE_AUDIO: showAudio(); break;
+      case PAGE_LOGS: showLogs(); break;
       default: showDesktop(); break;
     }
   }
 
-  void updateEmergencyResumeButton() {
-    if (!estopResumeBtn) return;
-    const bool canResume = !emergencyLocked && !pendingResumeAwait;
-    if (canResume) {
-      lv_obj_clear_state(estopResumeBtn, LV_STATE_DISABLED);
-      lv_obj_set_style_bg_opa(estopResumeBtn, LV_OPA_COVER, 0);
-      lv_obj_set_style_bg_color(estopResumeBtn, lv_color_hex(0x166534), 0);
-    } else {
-      lv_obj_add_state(estopResumeBtn, LV_STATE_DISABLED);
-      lv_obj_set_style_bg_opa(estopResumeBtn, LV_OPA_50, 0);
-      lv_obj_set_style_bg_color(estopResumeBtn, lv_color_hex(0x3F3F46), 0);
-    }
+  void finishEmergencyScreenReturn() {
+    emergencySessionOpen = false;
+    emergencyOverlayDismissed = true;
+    pendingAbortAwait = false;
+    pendingResumeAwait = false;
+    hideAbortConfirm();
+    hideEmergencyOverlay();
+    restorePageAfterEmergency();
+    setShowView(DeskShowView::Idle);
+    updatePersistentBanner();
   }
 
+  void updateEmergencyResumeButton() {}
+
   void refreshEmergencyOverlayContent() {
-    if (!estopDetailLabel) return;
-    char clock[16], rem[16], occurred[16];
-    formatClock(estopElapsedMs, clock, sizeof(clock));
-    formatClock(estopRemainMs, rem, sizeof(rem));
-    formatClock(estopOccurredMs > bootMs ? (estopOccurredMs - bootMs) : 0, occurred, sizeof(occurred));
-    char detail[360];
-    snprintf(detail, sizeof(detail),
-             "Show: %s\nPlayback before stop: %s\nCurrent cue: %u / %u\nElapsed: %s    Remaining: %s\nStage link: %s\nEmergency occurred: T+%s%s%s%s",
-             estopShowName,
-             estopPlayStateBefore,
-             (unsigned)estopCueIndex,
-             (unsigned)estopCueTotal,
-             clock, rem,
-             estopStageConnected ? "CONNECTED" : "DISCONNECTED",
-             occurred,
-             emergencyAcknowledged ? "\nAcknowledged: YES" : "\nAcknowledged: NO",
-             emergencyLocked ? "\nStage: LOCKED — press CLEAR E-STOP" : "\nStage: CLEARED — Resume or Abort",
-             pendingResumeAwait ? "\nWaiting for Stage RESUME…" :
-             (pendingAbortAwait ? "\nWaiting for Stage STOP…" : ""));
-    lv_label_set_text(estopDetailLabel, detail);
+    gDirectorEmergencyScreen.setShowName(estopShowName);
   }
 
   void refreshTimeoutLabel() {
@@ -2070,6 +2261,12 @@ private:
   }
 
   void rebuildShowList(const ShowManager &sm) {
+    /* Page 02 owns the production library shell. Legacy list widgets are unused. */
+    if (showListScroll == nullptr) {
+      Serial.printf("[UI] ShowManager index size=%u (Page 02 local model active)\n",
+                    (unsigned)sm.size());
+      return;
+    }
     showListCount = 0;
     clearShowListChildren();
     if (showsSummaryLabel_) {
@@ -2101,6 +2298,7 @@ private:
       lv_obj_remove_style_all(row);
       lv_obj_set_pos(row, 4, y);
       lv_obj_set_size(row, 448, 72);
+      ShowduinoOsTheme::disableNestedScroll(row);
       lv_obj_set_style_bg_color(row, lv_color_hex(OsColor::Button), 0);
       lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
       lv_obj_set_style_border_color(row, lv_color_hex(OsColor::PanelBorder), 0);
@@ -2148,6 +2346,8 @@ private:
       lv_obj_set_size(hit, 448, 72);
       lv_obj_set_pos(hit, 0, 0);
       lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+      /* Drag on the hit target must chain to showListScroll. */
+      lv_obj_add_flag(hit, LV_OBJ_FLAG_SCROLL_CHAIN);
       lv_obj_add_event_cb(hit, staticEventHandler, LV_EVENT_CLICKED, this);
       lv_obj_set_user_data(hit, (void *)showOpenCmds[showListCount]);
 
@@ -2213,58 +2413,104 @@ private:
       }
     }
 
-    lv_screen_load(showDetailsScreen);
+    if (!displayManager_.showPage(PAGE_SHOW_DETAILS)) {
+      Serial.println("[UI] show details panel unavailable");
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
 
   void showDesktop() {
-    notePage(DeskPage::Desktop);
-    lv_screen_load(desktopScreen);
+    if (displayManager_.showPage(PAGE_DESKTOP)) {
+      Serial.println("[UI] Page 01 Home (LVGL)");
+      pushDisplaySnapshot();
+    } else {
+      displayManager_.releasePage();
+      lv_screen_load(desktopScreen);
+      Serial.println("[UI] Desktop legacy LVGL (asset gate)");
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showLive() {
-    notePage(DeskPage::Live);
-    lv_screen_load(liveScreen);
+    if (displayManager_.showPage(PAGE_LIVE)) {
+      applyThemedLiveLayout(false);
+      pushDisplaySnapshot();
+    } else {
+      displayManager_.releasePage();
+      applyThemedLiveLayout(false);
+      lv_screen_load(liveScreen);
+      Serial.println("[UI] Live legacy LVGL");
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showShows() {
-    notePage(DeskPage::Shows);
-    lv_screen_load(showsScreen);
+    if (displayManager_.showPage(PAGE_SHOWS)) {
+      Serial.println("[UI] Page 02 Productions (LVGL)");
+      if (page_02_productions_is_active()) {
+        page_02_productions_apply_theme();
+      }
+      pushDisplaySnapshot();
+    } else {
+      displayManager_.releasePage();
+      if (showsScreen) {
+        lv_screen_load(showsScreen);
+        Serial.println("[UI] Shows legacy LVGL");
+      } else {
+        Serial.println("[UI] Productions page unavailable");
+        pushOperatorEvent("Productions unavailable");
+        showDesktop();
+      }
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showDiagnostics() {
-    notePage(DeskPage::Nodes);
-    lv_screen_load(diagnosticsScreen);
+    if (displayManager_.showPage(PAGE_DIAGNOSTICS)) {
+      pushDisplaySnapshot();
+    } else if (displayManager_.showPage(PAGE_NODES)) {
+      pushDisplaySnapshot();
+    } else {
+      displayManager_.releasePage();
+      lv_screen_load(diagnosticsScreen);
+      Serial.println("[UI] Nodes legacy LVGL");
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showSettings() {
-    notePage(DeskPage::Settings);
-    lv_screen_load(settingsScreen);
+    if (!displayManager_.showPage(PAGE_SETTINGS)) {
+      displayManager_.releasePage();
+      lv_screen_load(settingsScreen);
+      Serial.println("[UI] Settings legacy LVGL");
+    }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showAudio() {
-    notePage(DeskPage::Audio);
-    lv_screen_load(audioScreen);
+    if (!displayManager_.showPage(PAGE_AUDIO)) {
+      displayManager_.releasePage();
+      lv_screen_load(audioScreen);
+      Serial.println("[UI] Audio legacy LVGL");
+    }
     refreshAudioPresentation();
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showLogs() {
-    notePage(DeskPage::Logs);
-    lv_screen_load(logsScreen);
+    if (!displayManager_.showPage(PAGE_LOGS)) {
+      displayManager_.releasePage();
+      lv_screen_load(logsScreen);
+      Serial.println("[UI] Logs legacy LVGL");
+    }
     const bool wasPaused = logsLivePaused_;
     logsLivePaused_ = false;
     refreshLogsDisplay();

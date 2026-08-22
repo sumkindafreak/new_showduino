@@ -5,6 +5,7 @@
 #include <lvgl.h>
 #include <string.h>
 #include "BoardConfig.h"
+#include "ShowduinoOsPalette.h"
 
 /**
  * Persistent Director OS status bar — live ecosystem health (display-only).
@@ -40,20 +41,21 @@ class DirectorStatusBar {
     lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(root_, LV_OBJ_FLAG_CLICKABLE);
 
-    title_ = makeLabel(root_, "SHOWDUINO", 8, 10, 0xF87171);
+    title_ = makeLabel(root_, "SHOWDUINO", 8, 10, ShowduinoPalette::Text);
+    lv_obj_set_style_text_letter_space(title_, 1, 0);
 
-    date_ = makeLabel(root_, "--- -- --- ----", 108, 2, 0xD4D4D8);
-    time_ = makeLabel(root_, "--:--:--", 108, 20, 0xFAFAFA);
+    date_ = makeLabel(root_, "--- -- --- ----", 108, 2, ShowduinoPalette::Muted);
+    time_ = makeLabel(root_, "--:--:--", 108, 20, ShowduinoPalette::Text);
     lv_obj_set_style_text_font(time_, &lv_font_montserrat_16, 0);
 
     /* Global health only — RTC detail removed (date/time imply clock feed). */
-    sysLabel_ = makeLabel(root_, "SYS —", 280, 4, 0xA1A1AA);
-    netLabel_ = makeLabel(root_, "NET —", 280, 20, 0xA1A1AA);
-    nodesLabel_ = makeLabel(root_, "Nodes -/-", 520, 4, 0xA1A1AA);
-    emergLabel_ = makeLabel(root_, "CLEAR", 520, 20, 0x4ADE80);
+    sysLabel_ = makeLabel(root_, "SYS —", 280, 4, ShowduinoPalette::Muted);
+    netLabel_ = makeLabel(root_, "NET —", 280, 20, ShowduinoPalette::Muted);
+    nodesLabel_ = makeLabel(root_, "NODES -/-", 520, 4, ShowduinoPalette::Muted);
+    emergLabel_ = makeLabel(root_, "CLEAR", 520, 20, ShowduinoPalette::Accent);
 
     /* Reserved strip for future widgets */
-    expandSlot_ = makeLabel(root_, "", 680, 10, 0x52525B);
+    expandSlot_ = makeLabel(root_, "", 680, 10, ShowduinoPalette::AccentDark);
     lv_obj_set_width(expandSlot_, 110);
 
     syncState_ = SyncState::Synchronising;
@@ -62,6 +64,10 @@ class DirectorStatusBar {
 
   lv_obj_t *root() const { return root_; }
   int height() const { return HEIGHT; }
+  /** SUE wall-clock time-of-day string (e.g. "14:32:01"), or "--:--:--". */
+  const char *timeOfDay() const { return timeText_; }
+  /** Long date from SUE (e.g. "22 FEB 2027"), or placeholder. */
+  const char *dateOfDay() const { return dateText_; }
 
   bool applyTimeWire(const char *line) {
     if (!line || strncmp(line, "TIME:", 5) != 0) return false;
@@ -213,13 +219,13 @@ class DirectorStatusBar {
       dirtyEmerg_ = false;
       /* Word "NORMAL" reserved for Desktop Safety — keep emergency distinct. */
       const char *t = "CLEAR";
-      uint32_t c = 0x4ADE80;
+      uint32_t c = ShowduinoPalette::Accent;
       if (emergencyState_ == EmergencyState::EmergencyStop) {
         t = "E-STOP";
-        c = 0xF87171;
+        c = ShowduinoPalette::Danger;
       } else if (emergencyState_ == EmergencyState::Fault) {
         t = "FAULT";
-        c = 0xF87171;
+        c = ShowduinoPalette::Danger;
       }
       setLabelColor(emergLabel_, t, c);
     }
@@ -284,11 +290,11 @@ class DirectorStatusBar {
   void applyBarChrome(bool emergency) {
     if (!root_) return;
     if (emergency) {
-      lv_obj_set_style_bg_color(root_, lv_color_hex(0x450A0A), 0);
-      lv_obj_set_style_border_color(root_, lv_color_hex(0xDC2626), 0);
+      lv_obj_set_style_bg_color(root_, lv_color_hex(ShowduinoPalette::DangerDark), 0);
+      lv_obj_set_style_border_color(root_, lv_color_hex(ShowduinoPalette::Danger), 0);
     } else {
-      lv_obj_set_style_bg_color(root_, lv_color_hex(0x111113), 0);
-      lv_obj_set_style_border_color(root_, lv_color_hex(0x3F3F46), 0);
+      lv_obj_set_style_bg_color(root_, lv_color_hex(ShowduinoPalette::Panel), 0);
+      lv_obj_set_style_border_color(root_, lv_color_hex(ShowduinoPalette::AccentDark), 0);
     }
     lv_obj_set_style_bg_opa(root_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_side(root_, LV_BORDER_SIDE_BOTTOM, 0);
@@ -308,10 +314,10 @@ class DirectorStatusBar {
 
   static uint32_t levelColor(Level lv) {
     switch (lv) {
-      case Level::Ok: return 0x4ADE80;
-      case Level::Warn: return 0xFBBF24;
-      case Level::Fault: return 0xF87171;
-      default: return 0xA1A1AA;
+      case Level::Ok: return ShowduinoPalette::Accent;
+      case Level::Warn: return ShowduinoPalette::Warn;
+      case Level::Fault: return ShowduinoPalette::Danger;
+      default: return ShowduinoPalette::Muted;
     }
   }
 

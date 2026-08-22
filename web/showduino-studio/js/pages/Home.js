@@ -42,8 +42,21 @@ export async function HomePage(container) {
       }
       storage.append(statRow('Status', sys.storageMessage || '-'));
       storage.append(statRow('Shows Path', sys.showsPath));
-      storage.append(statRow('WebUI Path', sys.webuiPath || '/showduino/www'));
+      storage.append(statRow('WebUI Path', sys.webuiPath || '/showduino/webui'));
       grid.append(storage);
+
+      const safety = el('div', { className: 'card' });
+      safety.append(el('h2', { text: 'Emergency' }));
+      const active = !!sys.emergencyActive;
+      safety.append(el('div', { className: 'value', text: active ? 'ACTIVE' : 'Clear' }));
+      safety.append(el('div', { className: 'sub', text: active
+        ? `Authoritative P4 latch (${sys.emergencySource || 'unknown'})`
+        : 'P4 is the sole emergency authority' }));
+      if (sys.emergencyAudioPath) {
+        safety.append(statRow('Emergency audio', sys.emergencyAudioPath));
+      }
+      safety.append(statRow('Audio playing', sys.emergencyAudioPlaying ? 'Yes' : 'No'));
+      grid.append(safety);
     } catch (err) {
       grid.innerHTML = '';
       grid.append(el('div', { className: 'card' }, [

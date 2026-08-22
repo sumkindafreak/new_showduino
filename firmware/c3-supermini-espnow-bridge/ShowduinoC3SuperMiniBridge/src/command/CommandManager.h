@@ -29,7 +29,7 @@ class CommandManager {
   CommandQueue queue_;
   CommandHistory history_;
   CommandDispatcher dispatcher_;
-  StageRuntimeBridge stageRuntime_;
+  NullStageRuntimeBridge nullStage_;
   CommandBusEventFn eventFn_ = nullptr;
   uint32_t seq_ = 1;
   bool ready_ = false;

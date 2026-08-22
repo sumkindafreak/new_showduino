@@ -43,6 +43,8 @@ static const char *const STORAGE_REQUIRED_DIRS[] = {
   "/showduino/system",
   "/showduino/ui",
   "/showduino/ui/backgrounds",
+  "/showduino/ui/themes",
+  "/showduino/ui/themes/default",
   "/showduino/ui/icons",
   "/showduino/ui/icons/navigation",
   "/showduino/ui/icons/transport",
@@ -97,6 +99,8 @@ static const char *const STORAGE_REQUIRED_DIRS[] = {
 #define PATH_STORAGE_JSON    "/showduino/system/storage.json"
 #define PATH_VERSION_JSON    "/showduino/system/version.json"
 #define PATH_ASSET_MANIFEST  "/showduino/ui/asset_manifest.json"
+#define SHOWDUINO_UI_THEMES_DIR "/showduino/ui/themes"
+#define SHOWDUINO_UI_THEME_DEFAULT_DIR "/showduino/ui/themes/default"
 #define PATH_SHOW_INDEX      "/showduino/shows/index.json"
 #define PATH_SHOW_FAVOURITES "/showduino/shows/favourites.json"
 #define PATH_SHOW_RECENT     "/showduino/shows/recent.json"

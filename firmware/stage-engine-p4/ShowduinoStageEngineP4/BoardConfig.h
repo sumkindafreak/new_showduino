@@ -2,81 +2,89 @@
 #define SHOWDUINO_STAGE_BOARD_CONFIG_H
 
 #include <Arduino.h>
-#include "../../../protocol/showduino_protocol_version.h"
 
-#define SHOWDUINO_BOARD_NAME "ESP32-P4"
-#define STAGE_FW_VERSION     "0.9.0-stage"
+/*
+ * Showduino Stage Engine (ESP32-P4) - board / feature config.
+ *
+ * Onboard microSD is SDMMC slot 0 (not SPI): CLK/CMD/D0-D3 plus GPIO45
+ * power and on-chip LDO VO4 (channel 4) for GPIO 39-48.
+ * Boot continues if the card is missing.
+ *
+ * UART to Communications Engine (SUE C3) is the sketch mapping:
+ *   P4 GPIO18 RX <- SUE TX
+ *   P4 GPIO17 TX -> SUE RX
+ */
 
-#define SHOWDUINO_WEBUI_ENABLED 1
-
-// =========================================================
-// Link UART to Communications Engine (C3)
-// Canonical: C3 TX21 -> P4 RX, C3 RX20 <- P4 TX
-// Do not reuse these GPIOs for SD or I2S.
-// =========================================================
-#define SHOWDUINO_LINK_UART_BAUD  115200
-#define SHOWDUINO_LINK_RX_PIN     5
-#define SHOWDUINO_LINK_TX_PIN     6
-
-/* Legacy aliases used by existing Stage sketch */
-#ifndef LINK_RX_PIN
-#define LINK_RX_PIN SHOWDUINO_LINK_RX_PIN
-#endif
-#ifndef LINK_TX_PIN
-#define LINK_TX_PIN SHOWDUINO_LINK_TX_PIN
+// Stage Controller onboard microSD (SDMMC 4-bit, slot 0 IOMUX)
+// CLK=43  CMD=44  D0=39  D1=40  D2=41  D3=42  POWER=45 (active LOW)  LDO=4
+#ifndef SHOWDUINO_SD_ENABLED
+#define SHOWDUINO_SD_ENABLED           1
 #endif
 
-// =========================================================
-// Stage Controller microSD (SPI)
-// Defaults match Espressif / Waveshare ESP32-P4 Function EV
-// onboard microSD. Change these if you use a different board
-// or an external SPI SD module.
-// Link UART stays on GPIO5/6 — do not reuse those for SD.
-// =========================================================
-#define SHOWDUINO_SD_ENABLED     1
-#define SHOWDUINO_SD_SCK_PIN     43
-#define SHOWDUINO_SD_MISO_PIN    39
-#define SHOWDUINO_SD_MOSI_PIN    44
-#define SHOWDUINO_SD_CS_PIN      42
-/* Set to -1 if your board has no SD power-enable GPIO. */
-#define SHOWDUINO_SD_POWER_PIN   45
-#define SHOWDUINO_SD_POWER_ON_LEVEL LOW
-#define SHOWDUINO_SD_SPI_HZ      10000000UL
+#define SHOWDUINO_SD_CLK_PIN           43
+#define SHOWDUINO_SD_CMD_PIN           44
+#define SHOWDUINO_SD_D0_PIN            39
+#define SHOWDUINO_SD_D1_PIN            40
+#define SHOWDUINO_SD_D2_PIN            41
+#define SHOWDUINO_SD_D3_PIN            42
+#define SHOWDUINO_SD_POWER_PIN         45
+#define SHOWDUINO_SD_POWER_ON_LEVEL    LOW
+#define SHOWDUINO_SD_LDO_CHANNEL       4
+#define SHOWDUINO_SD_FREQ_KHZ          20000
 
-#define PATH_SHOWDUINO_ROOT      "/showduino"
-#define PATH_WEBUI_WWW           "/showduino/www"
-#define PATH_SHOW_PACKAGES       "/showduino/shows/packages"
-#define PATH_SHOW_INDEX          "/showduino/shows/index.json"
+#define PATH_WEBUI                     "/showduino/webui"
+#define PATH_WEBUI_WWW                 PATH_WEBUI
+#define PATH_EMERGENCY_AUDIO_DIR       "/showduino/audio"
 
-// =========================================================
-// Local P4 audio — ONE output only (IAN main/local channel)
-// Remote zone audio is ESP-NOW command -> audio nodes (own ESP32+I2S+SD).
-// Do NOT stream PCM/WAV over ESP-NOW.
-//
-// Repository audit (2026-07): no Waveshare P4 I2S pin map is defined for
-// Stage Engine. SUE docs use BCLK=5/WS=6/DOUT=7 which CONFLICT with link UART.
-// Pins remain unassigned (-1) until hardware confirmation — do not invent.
-// =========================================================
-#define SHOWDUINO_P4_LOCAL_AUDIO_ENABLED  0
-#define P4_AUDIO_I2S_BCLK                 (-1)
-#define P4_AUDIO_I2S_WS                   (-1)
-#define P4_AUDIO_I2S_DOUT                 (-1)
-/* Optional aliases */
-#define SHOWDUINO_P4_I2S_BCLK_PIN         P4_AUDIO_I2S_BCLK
-#define SHOWDUINO_P4_I2S_WS_PIN           P4_AUDIO_I2S_WS
-#define SHOWDUINO_P4_I2S_DOUT_PIN         P4_AUDIO_I2S_DOUT
+// Emergency audio: prefer organised Showduino path, then SD-root copies.
+#define PATH_EMERGENCY_WAV             "/showduino/audio/emergency.wav"
+#define PATH_EMERGENCY_WAV_ROOT        "/emergency.wav"
+#define PATH_EMERGENCY_MP3             "/showduino/audio/emergency.mp3"
+#define PATH_EMERGENCY_MP3_ROOT        "/emergency.mp3"
 
-// =========================================================
-// Emergency Neopixel line (local Stage Controller indicator)
-// One strip turns solid white on EMERGENCY:STOP / E-stop.
-// Blackout on CLEAR / Abort Show.
-// Change PIN / COUNT to match your wiring. Avoid UART 5/6
-// and SD pins 39/42/43/44/45.
-// Requires library: Adafruit NeoPixel
-// =========================================================
-#define SHOWDUINO_EMERGENCY_PIXEL_ENABLED     1
-#define SHOWDUINO_EMERGENCY_PIXEL_PIN         21
-#define SHOWDUINO_EMERGENCY_PIXEL_COUNT       30
-#define SHOWDUINO_EMERGENCY_PIXEL_BRIGHTNESS  255
-
+/*
+ * Physical E-stop: momentary push button, GPIO25 to GND.
+ * INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
+ * GPIO25 is a trigger input only. The P4 latches emergency in software.
+ * Release / second press does not clear. Director EMERGENCY:CLEAR does,
+ * including after a physical press, once the button is released (debounced).
+ * CLEAR is rejected only while the button is still held LOW.
+ */
+#ifndef SHOWDUINO_ESTOP_GPIO
+#define SHOWDUINO_ESTOP_GPIO           25
 #endif
+#ifndef SHOWDUINO_ESTOP_ASSERTED_LEVEL
+#define SHOWDUINO_ESTOP_ASSERTED_LEVEL LOW
+#endif
+#ifndef SHOWDUINO_ESTOP_PIN_MODE
+#define SHOWDUINO_ESTOP_PIN_MODE       INPUT_PULLUP
+#endif
+#ifndef SHOWDUINO_ESTOP_DEBOUNCE_MS
+#define SHOWDUINO_ESTOP_DEBOUNCE_MS    30UL
+#endif
+
+/*
+ * Emergency NeoPixel DATA on GPIO24.
+ * Count / colour order / timing come from the existing implementation
+ * (not from a newly confirmed strip datasheet).
+ */
+#ifndef SHOWDUINO_EMERGENCY_PIXEL_ENABLED
+#define SHOWDUINO_EMERGENCY_PIXEL_ENABLED  1
+#endif
+
+#define SHOWDUINO_EMERGENCY_PIXEL_PIN        24
+#define SHOWDUINO_EMERGENCY_PIXEL_COUNT      100
+#define SHOWDUINO_EMERGENCY_PIXEL_BRIGHTNESS 255
+
+// PCM5102A I2S DAC (physically wired).
+#ifndef P4_AUDIO_I2S_BCLK
+#define P4_AUDIO_I2S_BCLK   21
+#endif
+#ifndef P4_AUDIO_I2S_WS
+#define P4_AUDIO_I2S_WS     20
+#endif
+#ifndef P4_AUDIO_I2S_DOUT
+#define P4_AUDIO_I2S_DOUT   22
+#endif
+
+#endif /* SHOWDUINO_STAGE_BOARD_CONFIG_H */

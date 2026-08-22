@@ -11,6 +11,7 @@ enum TunnelRxState : uint8_t {
 
 static TunnelRxState sRxState = TUNNEL_IDLE;
 static String sProxyBody;
+static String sProxyMime;
 static int sProxyStatus = 0;
 static size_t sBodyExpected = 0;
 static size_t sBodyReceived = 0;
@@ -26,6 +27,7 @@ static void resetProxyWait() {
   sProxyWaiting = false;
   sProxyReady = false;
   sProxyBody = "";
+  sProxyMime = "";
   sProxyStatus = 0;
   sRxState = TUNNEL_IDLE;
   sBodyExpected = 0;
@@ -44,7 +46,16 @@ static void parseWebrHeader(const String &line) {
   if (colon < 0) return;
 
   sProxyStatus = line.substring(base, colon).toInt();
-  sBodyExpected = (size_t)line.substring(colon + 1).toInt();
+  String rest = line.substring(colon + 1);
+  int colon2 = rest.indexOf(':');
+  if (colon2 >= 0) {
+    sBodyExpected = (size_t)rest.substring(0, colon2).toInt();
+    sProxyMime = rest.substring(colon2 + 1);
+    sProxyMime.trim();
+  } else {
+    sBodyExpected = (size_t)rest.toInt();
+    sProxyMime = "";
+  }
   if (sBodyExpected > SHOWDUINO_WEB_TUNNEL_BODY_MAX) {
     sBodyExpected = SHOWDUINO_WEB_TUNNEL_BODY_MAX;
   }
@@ -81,13 +92,12 @@ bool p4WebTunnelOnLine(const String &line) {
   return true;
 }
 
-bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t timeoutMs) {
+bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, String &mimeOut, uint32_t timeoutMs) {
   if (!path) return false;
 
   resetProxyWait();
   sProxyWaiting = true;
 
-  /* Drain any stale line fragments so we sync on the next WEBR header. */
   if (sPumpFn) sPumpFn();
 
   Serial1.print(SHOWDUINO_WEB_TUNNEL_REQ_PREFIX);
@@ -96,14 +106,13 @@ bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t 
   Serial1.print('\n');
   Serial1.flush();
 
-  Serial.printf("[WebUI] UART → P4 WEB/GET%s (timeout %lums)\n", path, (unsigned long)timeoutMs);
-
   const uint32_t deadline = millis() + timeoutMs;
   while (millis() < deadline) {
     if (sPumpFn) sPumpFn();
     if (sProxyReady) {
       bodyOut = sProxyBody;
       statusOut = sProxyStatus;
+      mimeOut = sProxyMime;
       resetProxyWait();
       return true;
     }
@@ -111,24 +120,36 @@ bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t 
     yield();
   }
 
-  Serial.println("[WebUI] UART ← P4 timeout (no WEBR:)");
+  Serial.println("[WebUI] UART <- P4 timeout (no WEBR:)");
   resetProxyWait();
   return false;
+}
+
+bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t timeoutMs) {
+  String mime;
+  return p4WebTunnelGet(path, bodyOut, statusOut, mime, timeoutMs);
 }
 
 #else
 
 void p4WebTunnelBegin() {}
+void p4WebTunnelSetPump(P4LinkPumpFn fn) { (void)fn; }
 bool p4WebTunnelConsumingBytes() { return false; }
 void p4WebTunnelOnByte(char c) { (void)c; }
 bool p4WebTunnelOnLine(const String &line) { (void)line; return false; }
 
-bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t timeoutMs) {
+bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, String &mimeOut, uint32_t timeoutMs) {
   (void)path;
   (void)bodyOut;
   (void)statusOut;
+  (void)mimeOut;
   (void)timeoutMs;
   return false;
+}
+
+bool p4WebTunnelGet(const char *path, String &bodyOut, int &statusOut, uint32_t timeoutMs) {
+  String mime;
+  return p4WebTunnelGet(path, bodyOut, statusOut, mime, timeoutMs);
 }
 
 #endif

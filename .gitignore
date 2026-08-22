@@ -1,0 +1,23 @@
+# Arduino / ESP-IDF local compile trees
+**/_director_build/
+**/_p4_build_16m/
+**/.pio/
+**/.pioenvs/
+**/.piolibdeps/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Secrets
+.env
+.env.*
+*.pem
+credentials.json
+secrets.json

@@ -117,6 +117,11 @@ struct DirectorConfig {
   CommsLogMode commsLogMode;
   uint16_t maxLogAgeDays;
   uint32_t maxLogStorageMb;
+
+  /* Show-operation preferences (Phase 5) */
+  bool confirmBeforeStart;      /* Require confirmation before SHOW:START */
+  bool confirmBeforeStop;       /* Require confirmation before SHOW:STOP  */
+  bool autoOpenLiveAfterLoad;   /* Navigate to Live automatically after confirmed load */
 };
 
 struct ShowDefinition {

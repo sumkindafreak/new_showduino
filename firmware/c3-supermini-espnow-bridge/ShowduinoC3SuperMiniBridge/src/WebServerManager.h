@@ -8,11 +8,13 @@
 
 void webServerBegin(unsigned long bootMs);
 void webServerLoop();
+void webServerReassertAp();
 
 #else
 
 inline void webServerBegin(unsigned long bootMs) { (void)bootMs; }
 inline void webServerLoop() {}
+inline void webServerReassertAp() {}
 
 #endif
 

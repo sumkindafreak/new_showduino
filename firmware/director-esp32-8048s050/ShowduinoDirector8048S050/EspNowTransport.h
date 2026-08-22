@@ -5,7 +5,6 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <nvs_flash.h>
 #include <freertos/portmacro.h>
 #include "BoardConfig.h"
 #include "../../../protocol/showduino_desk_packet.h"
@@ -21,38 +20,24 @@ class ShowduinoEspNowTransport {
 public:
   bool begin() {
     Serial.println("ESP-NOW: starting portable Director transport...");
-    Serial.println("ESP-NOW: build stamp = early-wifi-v2");
-    Serial.printf("ESP-NOW: free heap before Wi-Fi = %u\n", (unsigned)ESP.getFreeHeap());
 
-    /* WiFi init often fails with 0x3001 noise if NVS was never opened. */
-    esp_err_t nvsErr = nvs_flash_init();
-    if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      nvs_flash_erase();
-      nvsErr = nvs_flash_init();
-    }
-    if (nvsErr != ESP_OK) {
-      Serial.printf("ESP-NOW: nvs_flash_init failed: %s\n", esp_err_to_name(nvsErr));
-    }
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(false, false);
+    delay(200);
 
-    if (!bringUpWifiSta()) {
-      online = false;
-      return false;
-    }
+    // Critical on RGB S3 boards: modem sleep kills ESP-NOW within seconds.
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    delay(50);
 
     uint8_t primary = 0;
     wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
     esp_wifi_get_channel(&primary, &second);
     Serial.printf("ESP-NOW: Wi-Fi channel = %u (PS=NONE)\n", primary);
 
-    String macStr = WiFi.macAddress();
     Serial.print("ESP-NOW: Director MAC = ");
-    Serial.println(macStr);
-
-    if (primary == 0 || macStr == "00:00:00:00:00:00" || macStr.length() < 11) {
-      Serial.println("ESP-NOW: Wi-Fi radio not up (channel/MAC invalid) — abort");
-      online = false;
-      return false;
-    }
+    Serial.println(WiFi.macAddress());
 
     if (esp_now_init() != ESP_OK) {
       Serial.println("ESP-NOW: init failed.");
@@ -81,26 +66,15 @@ public:
     return true;
   }
 
-  // Soft recover — channel drift / SoftAP side-effects. Avoids per-packet churn.
+  // Soft recover — only when stuck disconnected. Avoids per-packet churn.
   bool recover() {
-    if (!bringUpWifiSta()) {
-      online = false;
-      return false;
-    }
+    if (!online) return false;
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
     if (esp_now_is_peer_exist(stageBridgeMac)) {
       esp_now_del_peer(stageBridgeMac);
     }
-    if (!online) {
-      /* First bring-up failed earlier — complete ESP-NOW init now if possible. */
-      if (esp_now_init() != ESP_OK) {
-        /* May already be initialised from a partial begin(). */
-      }
-      esp_now_register_send_cb(onSentStatic);
-      esp_now_register_recv_cb(onRecvStatic);
-    }
-    bool ok = addBridgePeer();
-    online = ok;
-    return ok;
+    return addBridgePeer();
   }
 
   bool sendCommand(const String &command) {
@@ -121,26 +95,11 @@ public:
     lastCommand = command;
     lastSequence = packet.sequence;
 
-    uint8_t primary = 0;
-    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
-    esp_wifi_get_channel(&primary, &second);
-    if (primary != (uint8_t)SHOWDUINO_ESPNOW_CHANNEL) {
-      recover();
-    }
-
     sendBusy = true;
     lastCallbackOk = false;
     callbackSeen = false;
 
     esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
-    if (result == ESP_ERR_ESPNOW_CHAN) {
-      Serial.println("ESP-NOW: CHAN mismatch → recover");
-      recover();
-      sendBusy = true;
-      lastCallbackOk = false;
-      callbackSeen = false;
-      result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
-    }
     if (result != ESP_OK) {
       sendBusy = false;
       lastSendOk = false;
@@ -200,46 +159,6 @@ private:
     SHOWDUINO_P4_C6_MAC_5
   };
 
-  bool bringUpWifiSta() {
-    WiFi.persistent(false);
-
-    /* Arduino WiFi.mode() may log ESP_ERR_WIFI_NOT_INIT(0x3001) during a
-       failed re-init when internal heap is exhausted — call this early. */
-    if (!WiFi.mode(WIFI_STA)) {
-      Serial.println("ESP-NOW: WiFi.mode(WIFI_STA) failed — retry OFF→STA");
-      WiFi.mode(WIFI_OFF);
-      delay(100);
-      if (!WiFi.mode(WIFI_STA)) {
-        Serial.println("ESP-NOW: WiFi.mode(WIFI_STA) failed again");
-        return false;
-      }
-    }
-    WiFi.disconnect(false, false);
-    delay(100);
-
-    esp_err_t startErr = esp_wifi_start();
-    if (startErr != ESP_OK) {
-      Serial.printf("ESP-NOW: esp_wifi_start -> %s (%d)\n",
-                    esp_err_to_name(startErr), (int)startErr);
-    }
-
-    /* Critical on RGB S3 boards: modem sleep kills ESP-NOW within seconds. */
-    esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_err_t chErr = esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-    if (chErr != ESP_OK) {
-      Serial.printf("ESP-NOW: set_channel(%u) failed: %s\n",
-                    (unsigned)SHOWDUINO_ESPNOW_CHANNEL, esp_err_to_name(chErr));
-      return false;
-    }
-    delay(80);
-
-    uint8_t primary = 0;
-    wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
-    esp_wifi_get_channel(&primary, &second);
-    Serial.printf("ESP-NOW: mode=%d primary_ch=%u\n", (int)WiFi.getMode(), (unsigned)primary);
-    return primary == (uint8_t)SHOWDUINO_ESPNOW_CHANNEL;
-  }
-
   bool addBridgePeer() {
     if (esp_now_is_peer_exist(stageBridgeMac)) {
       // Already present — leave it alone (del/add churn breaks RX).
@@ -248,7 +167,7 @@ private:
 
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, stageBridgeMac, 6);
-    peerInfo.channel = 0; /* current home channel — SoftAP-safe */
+    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_STA;
 

@@ -20,6 +20,12 @@
 #define SCREEN_WIDTH  800
 #define SCREEN_HEIGHT 480
 
+// Showduino OS 2.0 Operator Workspace (LVGL shell — no BMP chrome).
+// 0 = legacy page UI (ShowduinoUi). 1 = OS 2.0 shell (apps + services + theme).
+#ifndef SHOWDUINO_OS2_SHELL
+#define SHOWDUINO_OS2_SHELL 0
+#endif
+
 // Backlight
 #define TFT_BL_PIN 2
 #define TFT_BL_ON  HIGH
@@ -97,6 +103,20 @@
 #define I2S_DOUT_PIN 17
 #define I2S_BCLK_PIN 0
 #define I2S_LRC_PIN  18
+
+// =========================================================
+// Ambient NeoPixel state LEDs (desk mood / status)
+// GPIO17 is free while I2S + Stage UART fallback stay deferred.
+// GPIO18 is GT911 INT — never use for pixels.
+// Two pixels on one data line (DIN → GPIO17).
+// =========================================================
+#ifndef SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
+#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED 1
+#endif
+#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN        17
+#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT      2
+#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_BRIGHTNESS 64
+#define SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS         40
 
 // =========================================================
 // Portable controller transport

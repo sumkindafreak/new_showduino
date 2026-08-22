@@ -272,6 +272,8 @@ int main() {
            "RUNNING→PAUSED allowed");
     expect(showRuntimeCanTransition(SHOW_STATE_EMERGENCY_STOP, SHOW_STATE_RUNNING) != 0,
            "EMERGENCY_STOP→RUNNING allowed");
+    expect(showRuntimeCanTransition(SHOW_STATE_EMERGENCY_STOP, SHOW_STATE_SHOW_LOADED) != 0,
+           "EMERGENCY_STOP→SHOW_LOADED allowed");
 
     ShowRuntime rt;
     showRuntimeClear(&rt);

@@ -1,18 +1,19 @@
 #include "DirectorUnlockScreen.h"
 #include "BoardConfig.h"
+#include "ShowduinoOsPalette.h"
 
 DirectorUnlockScreen gDirectorUnlockScreen;
 
 namespace {
-constexpr uint32_t COL_GREEN       = 0x84FF22;
-constexpr uint32_t COL_GREEN_DARK  = 0x2E690D;
-constexpr uint32_t COL_GREEN_DIM   = 0x17370B;
-constexpr uint32_t COL_PANEL       = 0x071007;
-constexpr uint32_t COL_BACKGROUND  = 0x020502;
-constexpr uint32_t COL_TEXT        = 0xF3F6F1;
-constexpr uint32_t COL_MUTED       = 0xA9B4A4;
-constexpr uint32_t COL_WARN        = 0xFFD54A;
-constexpr uint32_t COL_DANGER      = 0xFF4545;
+constexpr uint32_t COL_GREEN       = ShowduinoPalette::Accent;
+constexpr uint32_t COL_GREEN_DARK  = ShowduinoPalette::AccentDark;
+constexpr uint32_t COL_GREEN_DIM   = ShowduinoPalette::AccentDim;
+constexpr uint32_t COL_PANEL       = ShowduinoPalette::Panel;
+constexpr uint32_t COL_BACKGROUND  = ShowduinoPalette::Background;
+constexpr uint32_t COL_TEXT        = ShowduinoPalette::Text;
+constexpr uint32_t COL_MUTED       = ShowduinoPalette::Muted;
+constexpr uint32_t COL_WARN        = ShowduinoPalette::Warn;
+constexpr uint32_t COL_DANGER      = ShowduinoPalette::Danger;
 
 constexpr uint32_t STEP_INTERVAL_MS = 420UL;
 constexpr uint32_t MIN_VISIBLE_MS   = 4200UL;

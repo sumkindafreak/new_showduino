@@ -121,8 +121,12 @@ static inline int showRuntimeCanTransition(ShowState from, ShowState to) {
       return (to == SHOW_STATE_RUNNING || to == SHOW_STATE_EMERGENCY_STOP ||
               to == SHOW_STATE_IDLE || to == SHOW_STATE_ERROR);
     case SHOW_STATE_EMERGENCY_STOP:
+      /* CLEAR returns to the pre-stop desk state. SHOW_LOADED is required so a
+       * physical E-stop with a production selected (not running) can leave the
+       * latch; otherwise Director re-locks from the leftover EMERGENCY_STOP. */
       return (to == SHOW_STATE_RUNNING || to == SHOW_STATE_PAUSED ||
-              to == SHOW_STATE_IDLE || to == SHOW_STATE_ERROR);
+              to == SHOW_STATE_IDLE || to == SHOW_STATE_SHOW_LOADED ||
+              to == SHOW_STATE_ERROR);
     case SHOW_STATE_FINISHED:
       return (to == SHOW_STATE_IDLE || to == SHOW_STATE_SHOW_LOADED ||
               to == SHOW_STATE_ERROR);

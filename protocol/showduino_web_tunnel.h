@@ -18,12 +18,14 @@
  *   WEBR:<status>:<bodyLen>\n
  *   <bodyLen bytes of JSON body — no newlines required>
  *
- * C3 Wi-Fi front door serves static Studio assets; /api/* is proxied via this tunnel.
+ * C3 Wi-Fi is the HTTP radio. P4 is the origin: static files from SD
+ * (/showduino/webui/) and JSON APIs. Response header:
+ *   WEBR:<status>:<bodyLen>[:<mime>]
  */
 
 #define SHOWDUINO_WEB_TUNNEL_REQ_PREFIX "WEB/"
 #define SHOWDUINO_WEB_TUNNEL_RESP_PREFIX "WEBR:"
 
-#define SHOWDUINO_WEB_TUNNEL_BODY_MAX 4096u
+#define SHOWDUINO_WEB_TUNNEL_BODY_MAX 24576u
 
 #endif /* SHOWDUINO_WEB_TUNNEL_H */

@@ -17,10 +17,11 @@ void CommandManager::onDispatchEvent(const char *eventName, const ShowCommand &c
 
 void CommandManager::begin() {
   sSelf = this;
-  dispatcher_.begin(&queue_, &history_, &gDeviceRouter, &gCapabilityManager, &stageRuntime_);
+  /* Stage 7: wire real CapabilityManager + DeviceRouter; Stage Runtime still null. */
+  dispatcher_.begin(&queue_, &history_, &gDeviceRouter, &gCapabilityManager, &nullStage_);
   dispatcher_.setEventCallback(onDispatchEvent);
   ready_ = true;
-  Serial.println("[CommandBus] ShowCommand framework ready (router+caps+Stage Runtime)");
+  Serial.println("[CommandBus] ShowCommand framework ready (router+caps; no hardware sink)");
 }
 
 void CommandManager::loop(uint32_t nowMs) {
