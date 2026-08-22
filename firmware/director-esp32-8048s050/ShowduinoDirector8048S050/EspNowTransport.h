@@ -39,7 +39,8 @@ public:
     Serial.print("ESP-NOW: Director MAC = ");
     Serial.println(WiFi.macAddress());
 
-    if (esp_now_init() != ESP_OK) {
+    esp_err_t initErr = esp_now_init();
+    if (initErr != ESP_OK && initErr != ESP_ERR_ESPNOW_EXIST) {
       Serial.println("ESP-NOW: init failed.");
       online = false;
       return false;
@@ -66,9 +67,11 @@ public:
     return true;
   }
 
-  // Soft recover — only when stuck disconnected. Avoids per-packet churn.
+  // Soft recover — stuck link, or a failed first begin(). Avoids per-packet churn.
   bool recover() {
-    if (!online) return false;
+    if (!online) {
+      return begin();
+    }
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
     if (esp_now_is_peer_exist(stageBridgeMac)) {

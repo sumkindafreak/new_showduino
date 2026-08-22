@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "showduino_proof",
+  "name": "showduino_proof",
+  "description": "Temporary two-cue qualification show for Director to P4 WAV proof",
+  "author": "Showduino",
+  "version": "1.0.0",
+  "durationSeconds": 5,
+  "cueCount": 2,
+  "created": "2026-08-22",
+  "modified": "2026-08-22",
+  "startCue": 1,
+  "stageControllerRequired": true
+}
