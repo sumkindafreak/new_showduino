@@ -97,9 +97,12 @@ bool runtimeQuerySent = false;
 uint32_t txCount = 0;
 uint32_t rxCount = 0;
 uint8_t gNodesOnline = 0;
+bool tlEndAckSeen = false;
+int tlEndAckCount = -1;
 
 void markLinkDisconnected(const char *reason);
 void readEspNowReplies();
+void readStageSerial();
 void sendToStage(const String &command);
 void requestStateSync();
 void applyMirroredRuntime(const ShowRuntime &rt);
@@ -414,6 +417,11 @@ void handleStageLine(String line) {
     ui.appendLog("Stage rejected command (unknown) â€” check P4 firmware build");
   }
 
+  if (line.startsWith("ACK:SHOW:TL:END:")) {
+    tlEndAckSeen = true;
+    tlEndAckCount = line.substring(strlen("ACK:SHOW:TL:END:")).toInt();
+  }
+
   int relayCh = 0;
   ShowduinoRelayKnowledgeWire relayK = SHOWDUINO_RELAY_WIRE_INVALID;
   if (showduino_parse_state_relay(line.c_str(), &relayCh, &relayK) == 0) {
@@ -631,11 +639,33 @@ bool uploadShowTimelineToStage(const char *idOrName) {
     }
   }
 
+  tlEndAckSeen = false;
+  tlEndAckCount = -1;
   sendToStage("SHOW:TL:END");
-  ui.setLoadedShowName(showName);
 
-  char line[120];
-  snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues, %u skipped)",
+  const unsigned long TL_END_ACK_MS = 2000UL;
+  unsigned long t0 = millis();
+  while (!tlEndAckSeen && (millis() - t0) < TL_END_ACK_MS) {
+    readEspNowReplies();
+    readStageSerial();
+    delay(5);
+  }
+
+  char line[140];
+  if (!tlEndAckSeen) {
+    ui.appendLog("Timeline upload UNVERIFIED — no Stage confirmation");
+    return false;
+  }
+  if (tlEndAckCount != (int)sent) {
+    snprintf(line, sizeof(line),
+             "Timeline upload FAILED — Director sent %u cues, Stage received %d",
+             (unsigned)sent, tlEndAckCount);
+    ui.appendLog(line);
+    return false;
+  }
+
+  ui.setLoadedShowName(showName);
+  snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues verified, %u skipped)",
            showName, (unsigned)sent, (unsigned)skipped);
   ui.appendLog(line);
   logEvent(LogLevel::Event, LogCategory::UserAction, "Shows", line);
@@ -890,14 +920,9 @@ void handleUiCommand(const String &command) {
     sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
     ui.appendLog("E-CLEAR sent to Stage");
     if (linkState != LINK_READY) {
-      emergencyLocked = false;
-      ui.setEmergencyLocked(false);
-      gShowMirror.emergency = 0;
-      if (gShowMirror.state == SHOW_STATE_EMERGENCY_STOP) {
-        gShowMirror.state = SHOW_STATE_IDLE;
-      }
-      applyMirroredRuntime(gShowMirror);
-      ui.pushOperatorEvent("E-STOP cleared locally (Stage offline)");
+      /* Offline is not proof of safety — stay latched until Stage confirms. */
+      ui.appendLog("CLEAR requested — Stage offline, awaiting confirmation");
+      ui.pushOperatorEvent("Cannot confirm emergency clear — Stage offline");
     }
     return;
   }
@@ -1025,13 +1050,14 @@ void sendHelloIfNeeded() {
 
 void recoverEspNowIfNeeded() {
 #if SHOWDUINO_USE_ESPNOW
-  if (!espNowReady) return;
   if (linkState == LINK_READY) return;
 
   unsigned long now = millis();
   if (now - lastEspNowRecoverMs < ESPNOW_RECOVER_MS) return;
   lastEspNowRecoverMs = now;
-  espNowTransport.recover();
+  if (espNowTransport.recover()) {
+    espNowReady = true;
+  }
 #endif
 }
 
@@ -1062,6 +1088,13 @@ void setup() {
   Serial.printf("PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
 
   backlightInit(TFT_BL_PIN);
+
+#if SHOWDUINO_USE_ESPNOW
+  /* Wi-Fi/ESP-NOW before LVGL: the RGB UI build leaves too little internal heap. */
+  Serial.println("ESP-NOW: starting before display/UI...");
+  espNowReady = espNowTransport.begin();
+  Serial.println(espNowReady ? "ESP-NOW: begin ok" : "ESP-NOW: begin failed");
+#endif
 
   /* SD before RGB: heavy SPI while the panel DMA is running trips Interrupt WDT. */
   Serial.println("SHOWDUINO DIRECTOR");
@@ -1142,7 +1175,6 @@ void setup() {
   }
 
 #if SHOWDUINO_USE_ESPNOW
-  espNowReady = espNowTransport.begin();
   ui.appendLog(espNowReady ? "ESP-NOW ready: targeting P4/C6 bridge." : "ESP-NOW failed: using UART fallback if wired.");
 #endif
 

@@ -186,6 +186,11 @@ struct ShowRuntimeOwner {
       syncLegacyShow(legacy);
       return false;
     }
+    if (timeline.cueTotal() == 0) {
+      setError("timeline_empty", nowMs);
+      syncLegacyShow(legacy);
+      return false;
+    }
     syncFromTimeline();
     if (!transitionLogged(SHOW_STATE_SHOW_LOADED, nowMs) &&
         rt.state != SHOW_STATE_SHOW_LOADED) {
@@ -195,7 +200,11 @@ struct ShowRuntimeOwner {
       }
     }
     syncLegacyShow(legacy);
-    if (sendFn) sendFn("ACK:SHOW:TL:END");
+    if (sendFn) {
+      char ack[32];
+      snprintf(ack, sizeof(ack), "ACK:SHOW:TL:END:%u", (unsigned)timeline.cueTotal());
+      sendFn(ack);
+    }
     broadcastAll();
     return true;
   }
@@ -204,6 +213,11 @@ struct ShowRuntimeOwner {
     if (legacy && legacy->emergency == EmergencyState::Active) {
       Serial.println("[SHOW] Start rejected: EMERGENCY ACTIVE");
       if (sendFn) sendFn("REJECTED:SHOW:EMERGENCY_ACTIVE");
+      return false;
+    }
+    if (timeline.cueTotal() == 0) {
+      setError("timeline_empty", nowMs);
+      syncLegacyShow(legacy);
       return false;
     }
     if (rt.state != SHOW_STATE_SHOW_LOADED && rt.state != SHOW_STATE_PAUSED &&

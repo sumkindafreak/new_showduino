@@ -12,7 +12,6 @@
   - Latched EMERGENCY:STOP / EMERGENCY:CLEAR
   - Physical E-stop GPIO (when assigned in BoardConfig.h)
   - Emergency audio loop from SD
-  - RELAY:<channel>:ON / OFF / PULSE
   - SHOW: timeline runtime (ShowRuntimeOwner)
   - HEARTBEAT response
 
@@ -43,17 +42,6 @@
 #define DIRECTOR_RX_PIN 18
 #define DIRECTOR_TX_PIN 17
 
-// -----------------------------
-// Stage Engine hardware config
-// -----------------------------
-#define RELAY_COUNT 8
-
-// Starter relay pins. These must be changed to match the real ESP32-P4 board/PCB.
-const uint8_t RELAY_PINS[RELAY_COUNT] = { 2, 3, 4, 5, 6, 7, 8, 9 };
-
-// Most relay modules are active LOW. Set to false if your board uses active HIGH relays.
-#define RELAY_ACTIVE_LOW true
-
 // Status LED pin. Change when the final P4 board pinout is chosen.
 #define STATUS_LED_PIN 10
 
@@ -70,7 +58,6 @@ ShowRuntimeOwner gRuntime;
 
 bool emergencyLocked = false;
 uint8_t gEmergencySourceId = 0; /* 0 none, 1 director, 2 physical */
-bool relays[RELAY_COUNT] = { false, false, false, false, false, false, false, false };
 unsigned long lastHeartbeatMs = 0;
 
 String inputBuffer = "";
@@ -106,47 +93,6 @@ void sendToDirector(const String &message) {
 
 static void sendToDirectorC(const char *line) {
   if (line && line[0]) sendToDirector(String(line));
-}
-
-void setRelay(uint8_t channel, bool on) {
-  if (channel < 1 || channel > RELAY_COUNT) {
-    sendToDirector("ERR:INVALID_RELAY_CHANNEL");
-    return;
-  }
-
-  uint8_t index = channel - 1;
-  relays[index] = on;
-
-  bool outputLevel = RELAY_ACTIVE_LOW ? !on : on;
-  digitalWrite(RELAY_PINS[index], outputLevel ? HIGH : LOW);
-
-  sendToDirector(String("OK:RELAY:") + channel + (on ? ":ON" : ":OFF"));
-}
-
-void allRelaysOff() {
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    relays[i] = false;
-    bool outputLevel = RELAY_ACTIVE_LOW ? true : false;
-    digitalWrite(RELAY_PINS[i], outputLevel ? HIGH : LOW);
-  }
-  sendToDirector("OK:RELAY:ALL:OFF");
-}
-
-void pulseRelay(uint8_t channel, unsigned long pulseMs) {
-  if (channel < 1 || channel > RELAY_COUNT) {
-    sendToDirector("ERR:INVALID_RELAY_CHANNEL");
-    return;
-  }
-
-  if (pulseMs == 0 || pulseMs > 60000UL) {
-    sendToDirector("ERR:INVALID_PULSE_TIME");
-    return;
-  }
-
-  setRelay(channel, true);
-  delay(pulseMs);
-  setRelay(channel, false);
-  sendToDirector(String("OK:RELAY:") + channel + ":PULSE:" + pulseMs);
 }
 
 void triggerEmergency(EmergencySource source) {
@@ -186,8 +132,6 @@ void triggerEmergency(EmergencySource source) {
   stageAudioStopShow();
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
-  allRelaysOff();
-  Serial.println("[ESTOP] relays forced OFF");
   emergencyPixelsSetWhite();
   digitalWrite(STATUS_LED_PIN, HIGH);
 
@@ -248,7 +192,6 @@ void clearEmergencyStop() {
 void sendCapabilities() {
   sendToDirector("SHOWDUINO_STAGE_ENGINE");
   sendToDirector("FW:0.2.0");
-  sendToDirector(String("RELAYS:") + RELAY_COUNT);
   sendToDirector("DMX:PLANNED");
   sendToDirector("PIXELS:PLANNED");
   sendToDirector(stageAudioStatus().wavPresent ? "AUDIO:READY" : "AUDIO:PLANNED");
@@ -263,73 +206,8 @@ void sendStatus() {
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) +
                  (emergencyLocked ? SHOWDUINO_WIRE_EMERGENCY_ACTIVE : SHOWDUINO_WIRE_EMERGENCY_CLEAR));
   sendToDirector(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + showRuntimeWire(gEngine.show));
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    sendToDirector(String("RELAY:") + (i + 1) + (relays[i] ? ":ON" : ":OFF"));
-  }
   sendToDirector(SHOWDUINO_WIRE_SNAPSHOT_END);
   gRuntime.handleStateQuery();
-}
-
-int getTokenIndex(const String &command, uint8_t tokenIndex) {
-  int start = 0;
-  int currentToken = 0;
-
-  while (currentToken < tokenIndex) {
-    start = command.indexOf(':', start);
-    if (start < 0) return -1;
-    start++;
-    currentToken++;
-  }
-
-  return start;
-}
-
-String getToken(const String &command, uint8_t tokenIndex) {
-  int start = getTokenIndex(command, tokenIndex);
-  if (start < 0) return "";
-
-  int end = command.indexOf(':', start);
-  if (end < 0) end = command.length();
-
-  return command.substring(start, end);
-}
-
-void handleRelayCommand(const String &command) {
-  String channelToken = getToken(command, 1);
-  String action = getToken(command, 2);
-
-  if (channelToken == "ALL" && action == "OFF") {
-    allRelaysOff();
-    return;
-  }
-
-  uint8_t channel = channelToken.toInt();
-
-  if (action == "ON") {
-    if (emergencyLocked) {
-      sendToDirector("ERR:EMERGENCY_LOCKED");
-      return;
-    }
-    setRelay(channel, true);
-    return;
-  }
-
-  if (action == "OFF") {
-    setRelay(channel, false);
-    return;
-  }
-
-  if (action == "PULSE") {
-    if (emergencyLocked) {
-      sendToDirector("ERR:EMERGENCY_LOCKED");
-      return;
-    }
-    unsigned long pulseMs = getToken(command, 3).toInt();
-    pulseRelay(channel, pulseMs);
-    return;
-  }
-
-  sendToDirector("ERR:UNKNOWN_RELAY_ACTION");
 }
 
 void handleShowCommand(const String &command) {
@@ -419,8 +297,12 @@ void handleAudioCommand(const String &command) {
       sendToDirector("REJECTED:AUDIO:EMERGENCY_ACTIVE");
       return;
     }
-    int last = command.lastIndexOf(':');
-    String path = (last > 10) ? command.substring(last + 1) : "";
+    String path;
+    if (command.startsWith("AUDIO:LOCAL:PLAY:")) {
+      path = command.substring(strlen("AUDIO:LOCAL:PLAY:"));
+    } else if (command.startsWith("AUDIO:PLAY:")) {
+      path = command.substring(strlen("AUDIO:PLAY:"));
+    }
     path.trim();
     if (path.length() == 0) {
       sendToDirector("ERR:AUDIO:NO_PATH");
@@ -487,11 +369,6 @@ void handleCommand(String command) {
     return;
   }
 
-  if (command.startsWith("RELAY:")) {
-    handleRelayCommand(command);
-    return;
-  }
-
   if (command.startsWith("SHOW:") || command == "STOP:ALL") {
     handleShowCommand(command);
     return;
@@ -513,6 +390,11 @@ void handleCommand(String command) {
   }
 
   sendToDirector("ERR:UNKNOWN_COMMAND");
+}
+
+static void timelineDispatchCommand(const char *command) {
+  if (!command || !command[0]) return;
+  handleCommand(String(command));
 }
 
 void readDirectorSerial() {
@@ -576,14 +458,6 @@ void servicePhysicalEstop() {
 #endif
 }
 
-void setupRelays() {
-  for (uint8_t i = 0; i < RELAY_COUNT; i++) {
-    pinMode(RELAY_PINS[i], OUTPUT);
-    bool outputLevel = RELAY_ACTIVE_LOW ? true : false;
-    digitalWrite(RELAY_PINS[i], outputLevel ? HIGH : LOW);
-  }
-}
-
 void setup() {
   unsigned long bootMs = millis();
   Serial.begin(DEBUG_BAUD);
@@ -602,7 +476,6 @@ void setup() {
 
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
-  setupRelays();
 
   /* Button before pixels. Adafruit NeoPixel show() could wait forever on P4 RMT
    * and previously blocked this pin from ever being configured. */
@@ -626,6 +499,7 @@ void setup() {
   readDirectorSerial();
 
   gRuntime.begin(sendToDirectorC);
+  gRuntime.setDispatch(timelineDispatchCommand);
   gRuntime.bootToIdle();
   readDirectorSerial();
 

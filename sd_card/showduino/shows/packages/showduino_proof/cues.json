@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "cues": [
+    {
+      "time": 0,
+      "command": "AUDIO:PLAY:/showduino/audio/test.wav"
+    },
+    {
+      "time": 5000,
+      "command": "AUDIO:STOP"
+    }
+  ]
+}
