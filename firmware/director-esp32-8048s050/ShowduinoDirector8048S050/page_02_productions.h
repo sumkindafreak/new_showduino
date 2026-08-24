@@ -6,10 +6,11 @@
 #include <stdbool.h>
 
 /**
- * Page 02 — Productions (library shell)
+ * Page 02 — Productions (SD library)
  *
- * Visual shell + local placeholder model only.
- * No production editor, timeline editor, or SD destructive ops in this page.
+ * Lists packages from ShowManager on the Director SD card.
+ * Load uploads the timeline to Stage. Run requests SHOW:RUN.
+ * Open shows the existing details/transport page. No local mock entries.
  */
 
 #ifdef __cplusplus
@@ -18,9 +19,8 @@ extern "C" {
 
 #define PAGE02_CMD_BACK       "PAGE02:BACK"
 #define PAGE02_CMD_OPEN       "PAGE02:OPEN"
-#define PAGE02_CMD_NEW        "PAGE02:NEW"
-#define PAGE02_CMD_DUPLICATE  "PAGE02:DUPLICATE"
-#define PAGE02_CMD_DELETE     "PAGE02:DELETE"
+#define PAGE02_CMD_LOAD       "PAGE02:LOAD"
+#define PAGE02_CMD_RUN        "PAGE02:RUN"
 
 #ifndef PAGE02_MAX_PRODUCTIONS
 #define PAGE02_MAX_PRODUCTIONS 16
@@ -48,6 +48,7 @@ void page_02_productions_apply_theme(void);
 const char *page_02_productions_selected_id(void);
 const char *page_02_productions_selected_name(void);
 int page_02_productions_count(void);
+void page_02_productions_set_entries(const Page02ProductionEntry *entries, int count);
 
 #ifdef __cplusplus
 }

@@ -31,7 +31,6 @@ static const int16_t kBtnGap = 12;
 static Page02ProductionEntry s_entries[PAGE02_MAX_PRODUCTIONS];
 static int s_count = 0;
 static int s_selected = -1;
-static uint16_t s_next_id = 1;
 
 static lv_obj_t *s_root = nullptr;
 static lv_obj_t *s_header = nullptr;
@@ -46,9 +45,8 @@ static lv_obj_t *s_row_names[PAGE02_MAX_PRODUCTIONS];
 static lv_obj_t *s_row_descs[PAGE02_MAX_PRODUCTIONS];
 static lv_obj_t *s_row_dates[PAGE02_MAX_PRODUCTIONS];
 static lv_obj_t *s_btn_open = nullptr;
-static lv_obj_t *s_btn_new = nullptr;
-static lv_obj_t *s_btn_dup = nullptr;
-static lv_obj_t *s_btn_del = nullptr;
+static lv_obj_t *s_btn_load = nullptr;
+static lv_obj_t *s_btn_run = nullptr;
 static lv_obj_t *s_footer = nullptr;
 static lv_obj_t *s_count_label = nullptr;
 static lv_obj_t *s_storage_label = nullptr;
@@ -63,29 +61,6 @@ static void emit(const char *cmd) {
   if (s_command_cb != nullptr && cmd != nullptr) {
     s_command_cb(cmd);
   }
-}
-
-static void seed_defaults(void) {
-  memset(s_entries, 0, sizeof(s_entries));
-  s_count = 0;
-  s_selected = -1;
-  s_next_id = 1;
-
-  strncpy(s_entries[0].id, "demo", sizeof(s_entries[0].id) - 1);
-  strncpy(s_entries[0].name, "DEMO PRODUCTION", sizeof(s_entries[0].name) - 1);
-  strncpy(s_entries[0].description, "Interface test placeholder", sizeof(s_entries[0].description) - 1);
-  strncpy(s_entries[0].modified, "—", sizeof(s_entries[0].modified) - 1);
-  s_entries[0].used = true;
-
-  strncpy(s_entries[1].id, "untitled", sizeof(s_entries[1].id) - 1);
-  strncpy(s_entries[1].name, "UNTITLED SHOW", sizeof(s_entries[1].name) - 1);
-  strncpy(s_entries[1].description, "Empty local placeholder", sizeof(s_entries[1].description) - 1);
-  strncpy(s_entries[1].modified, "—", sizeof(s_entries[1].modified) - 1);
-  s_entries[1].used = true;
-
-  s_count = 2;
-  s_selected = 0;
-  s_next_id = 3;
 }
 
 static void style_action_button(lv_obj_t *btn, bool danger) {
@@ -126,7 +101,7 @@ static void update_summary_and_actions(void) {
   }
 
   const bool has = (s_selected >= 0 && s_selected < s_count && s_entries[s_selected].used);
-  lv_obj_t *gated[] = { s_btn_open, s_btn_dup, s_btn_del };
+  lv_obj_t *gated[] = { s_btn_open, s_btn_load, s_btn_run };
   for (uint8_t i = 0; i < 3; i++) {
     if (!gated[i]) continue;
     if (has) {
@@ -191,86 +166,6 @@ static void close_dialog(void) {
   }
 }
 
-static void dialog_event(lv_event_t *e) {
-  if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  const char *tag = (const char *)lv_event_get_user_data(e);
-  if (!tag) return;
-  if (strcmp(tag, "cancel") == 0) {
-    Serial.println("[Page02] Delete cancelled");
-    close_dialog();
-    return;
-  }
-  if (strcmp(tag, "confirm") == 0) {
-    if (s_selected >= 0 && s_selected < s_count && s_entries[s_selected].used) {
-      Serial.printf("[Page02] Delete confirmed: %s\n", s_entries[s_selected].name);
-      /* Local model only — no SD destructive ops. */
-      for (int i = s_selected; i + 1 < s_count; i++) {
-        s_entries[i] = s_entries[i + 1];
-      }
-      memset(&s_entries[s_count - 1], 0, sizeof(s_entries[0]));
-      s_count--;
-      if (s_selected >= s_count) s_selected = s_count - 1;
-      if (s_notify_label) lv_label_set_text(s_notify_label, "Deleted (local)");
-    }
-    close_dialog();
-    refresh_row_styles();
-  }
-}
-
-static void open_delete_dialog(void) {
-  if (!s_root || s_selected < 0 || s_selected >= s_count) return;
-  close_dialog();
-
-  s_dialog = lv_obj_create(s_root);
-  lv_obj_remove_style_all(s_dialog);
-  lv_obj_set_size(s_dialog, 420, 180);
-  lv_obj_center(s_dialog);
-  lv_obj_set_style_bg_color(s_dialog, lv_color_hex(ShowduinoPalette::Panel), 0);
-  lv_obj_set_style_bg_opa(s_dialog, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(s_dialog, 2, 0);
-  lv_obj_set_style_radius(s_dialog, 10, 0);
-  lv_obj_clear_flag(s_dialog, LV_OBJ_FLAG_SCROLLABLE);
-  showduino_theme_register(s_dialog, SHOWDUINO_THEME_ROLE_BORDER);
-
-  lv_obj_t *title = lv_label_create(s_dialog);
-  lv_label_set_text(title, "DELETE PRODUCTION?");
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_set_pos(title, 20, 16);
-
-  s_dialog_msg = lv_label_create(s_dialog);
-  char msg[96];
-  snprintf(msg, sizeof(msg), "Remove \"%s\" from the local list?",
-           s_entries[s_selected].name);
-  lv_label_set_text(s_dialog_msg, msg);
-  lv_obj_set_width(s_dialog_msg, 380);
-  lv_label_set_long_mode(s_dialog_msg, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_font(s_dialog_msg, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_dialog_msg, lv_color_hex(ShowduinoPalette::Muted), 0);
-  lv_obj_set_pos(s_dialog_msg, 20, 52);
-
-  lv_obj_t *cancel = lv_button_create(s_dialog);
-  style_action_button(cancel, false);
-  lv_obj_set_size(cancel, 150, 40);
-  lv_obj_set_pos(cancel, 40, 120);
-  lv_obj_add_event_cb(cancel, dialog_event, LV_EVENT_CLICKED, (void *)"cancel");
-  lv_obj_t *cl = lv_label_create(cancel);
-  lv_label_set_text(cl, "CANCEL");
-  lv_obj_set_style_text_color(cl, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_center(cl);
-
-  lv_obj_t *ok = lv_button_create(s_dialog);
-  style_action_button(ok, true);
-  lv_obj_set_size(ok, 150, 40);
-  lv_obj_set_pos(ok, 230, 120);
-  lv_obj_set_style_border_color(ok, lv_color_hex(ShowduinoPalette::Danger), 0);
-  lv_obj_add_event_cb(ok, dialog_event, LV_EVENT_CLICKED, (void *)"confirm");
-  lv_obj_t *ol = lv_label_create(ok);
-  lv_label_set_text(ol, "DELETE");
-  lv_obj_set_style_text_color(ol, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_center(ol);
-}
-
 static void row_event(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   const int index = (int)(intptr_t)lv_event_get_user_data(e);
@@ -292,57 +187,19 @@ static void action_event(lv_event_t *e) {
   }
   if (strcmp(cmd, PAGE02_CMD_OPEN) == 0) {
     if (s_selected >= 0) {
-      Serial.printf("[Page02] Open requested: %s\n", s_entries[s_selected].name);
+      Serial.printf("[Page02] Open details: %s\n", s_entries[s_selected].name);
     }
     emit(PAGE02_CMD_OPEN);
     return;
   }
-  if (strcmp(cmd, PAGE02_CMD_NEW) == 0) {
-    Serial.println("[Page02] New production requested");
-    if (s_count >= PAGE02_MAX_PRODUCTIONS) {
-      if (s_notify_label) lv_label_set_text(s_notify_label, "List full");
-      emit(PAGE02_CMD_NEW);
-      return;
-    }
-    Page02ProductionEntry &e = s_entries[s_count];
-    memset(&e, 0, sizeof(e));
-    snprintf(e.id, sizeof(e.id), "local_%u", (unsigned)s_next_id++);
-    snprintf(e.name, sizeof(e.name), "NEW PRODUCTION %u", (unsigned)(s_count + 1));
-    strncpy(e.description, "Created locally (not saved to SD)", sizeof(e.description) - 1);
-    strncpy(e.modified, "local", sizeof(e.modified) - 1);
-    e.used = true;
-    s_selected = s_count;
-    s_count++;
-    if (s_notify_label) lv_label_set_text(s_notify_label, "Created (local)");
-    refresh_row_styles();
-    emit(PAGE02_CMD_NEW);
+  if (strcmp(cmd, PAGE02_CMD_LOAD) == 0) {
+    Serial.println("[Page02] Load → Stage");
+    emit(PAGE02_CMD_LOAD);
     return;
   }
-  if (strcmp(cmd, PAGE02_CMD_DUPLICATE) == 0) {
-    if (s_selected < 0 || s_count >= PAGE02_MAX_PRODUCTIONS) {
-      emit(PAGE02_CMD_DUPLICATE);
-      return;
-    }
-    Page02ProductionEntry &src = s_entries[s_selected];
-    Page02ProductionEntry &dst = s_entries[s_count];
-    dst = src;
-    snprintf(dst.id, sizeof(dst.id), "dup_%u", (unsigned)s_next_id++);
-    char nbuf[48];
-    snprintf(nbuf, sizeof(nbuf), "%s COPY", src.name);
-    strncpy(dst.name, nbuf, sizeof(dst.name) - 1);
-    dst.name[sizeof(dst.name) - 1] = '\0';
-    strncpy(dst.modified, "local", sizeof(dst.modified) - 1);
-    dst.used = true;
-    s_selected = s_count;
-    s_count++;
-    Serial.printf("[Page02] Duplicated → %s\n", dst.name);
-    if (s_notify_label) lv_label_set_text(s_notify_label, "Duplicated (local)");
-    refresh_row_styles();
-    emit(PAGE02_CMD_DUPLICATE);
-    return;
-  }
-  if (strcmp(cmd, PAGE02_CMD_DELETE) == 0) {
-    open_delete_dialog();
+  if (strcmp(cmd, PAGE02_CMD_RUN) == 0) {
+    Serial.println("[Page02] Run → Stage");
+    emit(PAGE02_CMD_RUN);
     return;
   }
 }
@@ -456,13 +313,11 @@ static void build_list(lv_obj_t *parent) {
 
 static void build_actions(lv_obj_t *parent) {
   int16_t x = 20;
-  s_btn_open = make_action(parent, "OPEN", x, PAGE02_CMD_OPEN, false);
+  s_btn_load = make_action(parent, "LOAD", x, PAGE02_CMD_LOAD, false);
   x = (int16_t)(x + kBtnW + kBtnGap);
-  s_btn_new = make_action(parent, "NEW", x, PAGE02_CMD_NEW, false);
+  s_btn_run = make_action(parent, "RUN", x, PAGE02_CMD_RUN, false);
   x = (int16_t)(x + kBtnW + kBtnGap);
-  s_btn_dup = make_action(parent, "DUPLICATE", x, PAGE02_CMD_DUPLICATE, false);
-  x = (int16_t)(x + kBtnW + kBtnGap);
-  s_btn_del = make_action(parent, "DELETE", x, PAGE02_CMD_DELETE, true);
+  s_btn_open = make_action(parent, "DETAILS", x, PAGE02_CMD_OPEN, false);
 }
 
 static void build_footer(lv_obj_t *parent) {
@@ -480,7 +335,7 @@ static void build_footer(lv_obj_t *parent) {
   lv_obj_set_style_text_color(s_count_label, lv_color_hex(ShowduinoPalette::Muted), 0);
 
   s_storage_label = lv_label_create(s_footer);
-  lv_label_set_text(s_storage_label, "Storage: LOCAL MODEL");
+  lv_label_set_text(s_storage_label, "Storage: SD LIBRARY");
   lv_obj_set_pos(s_storage_label, 200, 12);
   lv_obj_set_style_text_font(s_storage_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_storage_label, lv_color_hex(ShowduinoPalette::Muted), 0);
@@ -504,7 +359,9 @@ void page_02_productions_create(lv_obj_t *parent, page02_command_fn command_cb) 
   showduino_theme_init();
   s_command_cb = command_cb;
   s_root = parent;
-  seed_defaults();
+  memset(s_entries, 0, sizeof(s_entries));
+  s_count = 0;
+  s_selected = -1;
 
   Serial.println("[Page02] creating Productions page…");
   build_header(parent);
@@ -527,9 +384,8 @@ void page_02_productions_destroy(void) {
   showduino_theme_unregister(s_title);
   showduino_theme_unregister(s_btn_back);
   showduino_theme_unregister(s_btn_open);
-  showduino_theme_unregister(s_btn_new);
-  showduino_theme_unregister(s_btn_dup);
-  showduino_theme_unregister(s_btn_del);
+  showduino_theme_unregister(s_btn_load);
+  showduino_theme_unregister(s_btn_run);
   for (int i = 0; i < PAGE02_MAX_PRODUCTIONS; i++) {
     showduino_theme_unregister(s_rows[i]);
   }
@@ -538,7 +394,7 @@ void page_02_productions_destroy(void) {
   s_root = nullptr;
   s_header = s_btn_back = s_title = s_selected_label = s_header_accent = nullptr;
   s_list = s_empty = nullptr;
-  s_btn_open = s_btn_new = s_btn_dup = s_btn_del = nullptr;
+  s_btn_open = s_btn_load = s_btn_run = nullptr;
   s_footer = s_count_label = s_storage_label = s_notify_label = nullptr;
   memset(s_rows, 0, sizeof(s_rows));
   memset(s_row_names, 0, sizeof(s_row_names));
@@ -554,14 +410,11 @@ void page_02_productions_apply_theme(void) {
   showduino_theme_apply();
   refresh_row_styles();
   const lv_color_t accent = showduino_theme_get_accent();
-  lv_obj_t *btns[] = { s_btn_back, s_btn_open, s_btn_new, s_btn_dup };
+  lv_obj_t *btns[] = { s_btn_back, s_btn_open, s_btn_load, s_btn_run };
   for (uint8_t i = 0; i < 4; i++) {
     if (!btns[i]) continue;
     lv_obj_set_style_border_color(btns[i], accent, 0);
     lv_obj_set_style_border_color(btns[i], accent, LV_STATE_PRESSED);
-  }
-  if (s_btn_del) {
-    lv_obj_set_style_border_color(s_btn_del, lv_color_hex(ShowduinoPalette::Danger), 0);
   }
   if (s_dialog) {
     lv_obj_set_style_border_color(s_dialog, accent, 0);
@@ -579,3 +432,23 @@ const char *page_02_productions_selected_name(void) {
 }
 
 int page_02_productions_count(void) { return s_count; }
+
+void page_02_productions_set_entries(const Page02ProductionEntry *entries, int count) {
+  memset(s_entries, 0, sizeof(s_entries));
+  s_count = 0;
+  s_selected = -1;
+  if (entries && count > 0) {
+    if (count > PAGE02_MAX_PRODUCTIONS) count = PAGE02_MAX_PRODUCTIONS;
+    for (int i = 0; i < count; i++) {
+      s_entries[i] = entries[i];
+      s_entries[i].used = true;
+    }
+    s_count = count;
+    s_selected = 0;
+  }
+  if (s_storage_label) lv_label_set_text(s_storage_label, "Storage: SD LIBRARY");
+  if (s_notify_label) {
+    lv_label_set_text(s_notify_label, s_count > 0 ? "SD library" : "No packages on SD");
+  }
+  refresh_row_styles();
+}

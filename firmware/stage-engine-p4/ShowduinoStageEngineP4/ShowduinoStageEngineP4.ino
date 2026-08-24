@@ -39,8 +39,8 @@
 #define DIRECTOR_BAUD 115200
 
 // UART pins between SUE / Director path and Stage Engine ESP32-P4.
-#define DIRECTOR_RX_PIN 18
-#define DIRECTOR_TX_PIN 17
+#define DIRECTOR_RX_PIN 5
+#define DIRECTOR_TX_PIN 6
 
 // Status LED pin. Change when the final P4 board pinout is chosen.
 #define STATUS_LED_PIN 10
@@ -85,7 +85,56 @@ static bool physicalEstopAssertedNow() {
 // -----------------------------
 // Helper functions
 // -----------------------------
+/* SUE's C3 ROM always prints on UART0 (GPIO20/21) — the P4 link pins.
+ * A C3 reset therefore looks like Director traffic. Replying
+ * ERR:UNKNOWN_COMMAND during ROM can keep the C3 in a software-reset loop. */
+static uint32_t sUartHushUntilMs = 0;
+static uint16_t sUartNoiseCount = 0;
+
+static bool uartHushActive() {
+  return (int32_t)(millis() - sUartHushUntilMs) < 0;
+}
+
+static bool isSueRomBanner(const String &c) {
+  if (c.startsWith("ESP-ROM:")) return true;
+  if (c.startsWith("Build:")) return true;
+  if (c.startsWith("rst:")) return true;
+  if (c.startsWith("Saved PC:")) return true;
+  if (c.startsWith("SPIWP:")) return true;
+  if (c.startsWith("mode:")) return true;
+  if (c.startsWith("load:")) return true;
+  if (c.startsWith("entry ")) return true;
+  if (c.startsWith("ets ")) return true;
+  if (c.startsWith("Guru Meditation")) return true;
+  if (c.indexOf("SPI_FAST_FLASH_BOOT") >= 0) return true;
+  if (c.indexOf("RTC_SW_SYS_RST") >= 0) return true;
+  return false;
+}
+
+static bool isKnownDirectorCommand(const String &c) {
+  if (c == "HELLO" || c == "HEARTBEAT" || c == "STOP:ALL") return true;
+  if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("EMERGENCY:")) return true;
+  if (c.startsWith("STATUS:") || c.startsWith("DMX:") || c.startsWith("PIXEL:")) return true;
+  if (c.startsWith("WEB/")) return true;
+  return false;
+}
+
+static void noteSueRomBanner() {
+  sUartHushUntilMs = millis() + 2000UL;
+  sUartNoiseCount++;
+}
+
+static void flushUartNoiseLog() {
+  if (sUartNoiseCount == 0 || uartHushActive()) return;
+  Serial.printf("[UART] ignored %u SUE/C3 boot line(s) — not Director commands\n",
+                (unsigned)sUartNoiseCount);
+  sUartNoiseCount = 0;
+}
+
 void sendToDirector(const String &message) {
+  if (uartHushActive()) {
+    return;
+  }
   Serial1.println(message);
   Serial.print("TX -> Director: ");
   Serial.println(message);
@@ -333,6 +382,15 @@ void handleCommand(String command) {
   command.trim();
   if (command.length() == 0) return;
 
+  if (isSueRomBanner(command)) {
+    noteSueRomBanner();
+    return;
+  }
+  if (uartHushActive() && !isKnownDirectorCommand(command)) {
+    sUartNoiseCount++;
+    return;
+  }
+
   if (command.startsWith("WEB/")) {
     webApiHandleTunnelRequest(command);
     return;
@@ -534,6 +592,7 @@ void setup() {
 
 void loop() {
   readDirectorSerial();
+  flushUartNoiseLog();
   servicePhysicalEstop();
   stageStorageLoop();
   stageAudioLoop();

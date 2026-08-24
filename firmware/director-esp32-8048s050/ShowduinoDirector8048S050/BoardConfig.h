@@ -13,8 +13,13 @@
 #define SHOWDUINO_TOUCH_GT911    1
 #define SHOWDUINO_TOUCH_XPT2046  0
 
-// USB debug serial
+// USB debug serial — JC8048W550C USB-C is CH340 → UART0 (GPIO43 TX / GPIO44 RX).
+// Native USB CDC uses GPIO19/20, which are GT911 SDA/SCL on this panel.
+// Arduino IDE: USB CDC On Boot = Disabled so Serial is this UART, not the USB PHY.
 #define USB_DEBUG_BAUD 115200
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#warning "Showduino Director: USB CDC On Boot is Enabled. Set it Disabled — Serial debug is the CH340 UART; GPIO19/20 are GT911."
+#endif
 
 // Screen size
 #define SCREEN_WIDTH  800
@@ -161,7 +166,7 @@ enum ShowduinoLinkState : uint8_t {
 // =========================================================
 // Stage 4 WebUI (Studio browser desk)
 // =========================================================
-#define SHOWDUINO_WEBUI_ENABLED 0
+#define SHOWDUINO_WEBUI_ENABLED 1
 #define SHOWDUINO_WEBUI_AP_SSID "Showduino-Studio"
 #define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
 #define SHOWDUINO_WEBUI_MDNS "showduino-studio"

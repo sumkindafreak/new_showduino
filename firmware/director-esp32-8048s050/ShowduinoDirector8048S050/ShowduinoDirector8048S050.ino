@@ -18,10 +18,12 @@
 
   Arduino IDE:
   - Board: ESP32S3 Dev Module
-  - USB CDC On Boot: Enabled
+  - USB CDC On Boot: Disabled   (required — USB-C serial is CH340 on UART0)
+  - USB Mode: USB-OTG (TinyUSB)
   - Flash Size: 16MB | QIO 80MHz
   - PSRAM: OPI PSRAM
   - Partition: app3M_fat9M_16MB
+  - Serial Monitor: 115200 on the same COM port that prints ESP-ROM
 */
 
 #include <Arduino.h>
@@ -101,6 +103,7 @@ bool tlEndAckSeen = false;
 int tlEndAckCount = -1;
 
 void markLinkDisconnected(const char *reason);
+void requestLinkRetry();
 void readEspNowReplies();
 void readStageSerial();
 void sendToStage(const String &command);
@@ -770,6 +773,18 @@ void handleUiCommand(const String &command) {
     return;
   }
 
+  if (command == "UI:NET:RETRY" || command == "UI:NET:SCAN") {
+    requestLinkRetry();
+    return;
+  }
+
+  if (command == "UI:SYSTEM:REBOOT") {
+    Serial.println("[Director] reboot requested");
+    delay(400);
+    ESP.restart();
+    return;
+  }
+
   if (command == "STORAGE:BACKUP") {
     ui.showBackup();
     ui.appendLog(createManualBackup() ? "Backup created" : "Backup failed");
@@ -928,6 +943,22 @@ void handleUiCommand(const String &command) {
   }
 
   backlightNotifyActivity();
+  if (command.startsWith("RELAY:")) {
+    ui.appendLog("Relay node not available");
+    return;
+  }
+  if (command.startsWith("AUDIO:") &&
+      command != "AUDIO:LOCAL:STOP" && command != "AUDIO:STOP" &&
+      !command.startsWith("AUDIO:LOCAL:PLAY:") &&
+      !command.startsWith("AUDIO:PLAY:")) {
+    ui.appendLog("Audio command not supported on Stage");
+    return;
+  }
+  if (command.startsWith("UI:") || command.startsWith("SCREEN:") ||
+      command.startsWith("HOME:") || command.startsWith("PAGE02:") ||
+      command.startsWith("SETTINGS:") || command == "SELFTEST:START") {
+    return;
+  }
   sendToStage(command);
 }
 
@@ -985,7 +1016,7 @@ void handleUsbLine(String command) {
   if (command.length() == 0) return;
 
   if (command == "HELP") {
-    ui.appendLog("USB: HELLO, STATUS:REQUEST, SHOW:RUN:<name>, SHOW:START, SHOW:PAUSE, SHOW:RESUME, SHOW:STOP, RELAY:1:ON/OFF, EMERGENCY:STOP/CLEAR");
+    ui.appendLog("USB: HELLO, STATUS:REQUEST, SHOW:RUN:<name>, SHOW:START, SHOW:PAUSE, SHOW:RESUME, SHOW:STOP, EMERGENCY:STOP/CLEAR");
     return;
   }
 
@@ -999,9 +1030,9 @@ void handleUsbLine(String command) {
   sendToStage(command);
 }
 
-void readUsbSerial() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
+void drainUsbFrom(Stream &port) {
+  while (port.available() > 0) {
+    char c = (char)port.read();
     if (c == '\n' || c == '\r') {
       if (usbInputBuffer.length() > 0) {
         handleUsbLine(usbInputBuffer);
@@ -1015,6 +1046,13 @@ void readUsbSerial() {
       }
     }
   }
+}
+
+void readUsbSerial() {
+  drainUsbFrom(Serial);
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  drainUsbFrom(Serial0);
+#endif
 }
 
 // =========================================================
@@ -1037,14 +1075,37 @@ void sendHelloIfNeeded() {
   unsigned long now = millis();
   if (now - lastHelloMs >= HELLO_RETRY_INTERVAL_MS) {
     lastHelloMs = now;
+    if (linkState == LINK_DISCONNECTED) {
+      applyLinkState(LINK_SEARCHING);
+    }
     sendToStage("HELLO");
 
     // Brief wait for READY/ACK so reconnect isn't delayed a full loop cycle.
     unsigned long t0 = millis();
     while ((millis() - t0) < 300UL && linkState != LINK_READY) {
       readEspNowReplies();
+      lvglPortLoop();
       delay(5);
     }
+  }
+}
+
+void requestLinkRetry() {
+  lastHelloMs = 0;
+  lastEspNowRecoverMs = 0;
+  linkLostLogged = false;
+  applyLinkState(LINK_SEARCHING);
+
+#if SHOWDUINO_USE_ESPNOW
+  espNowReady = espNowTransport.recover(true);
+  Serial.println(espNowReady ? "[Link] retry: ESP-NOW re-init ok" : "[Link] retry: ESP-NOW re-init failed");
+#endif
+
+  sendToStage("HELLO");
+  if (espNowReady) {
+    ui.appendLog("Retrying Stage link (HELLO)...");
+  } else {
+    ui.appendLog("Retry failed — ESP-NOW not ready");
   }
 }
 
@@ -1076,7 +1137,18 @@ void checkLinkWatchdog() {
 // =========================================================
 void setup() {
   Serial.begin(USB_DEBUG_BAUD);
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  /* CDC Serial is the unused USB PHY. Keep UART0 alive on the CH340 COM port. */
+  Serial0.begin(USB_DEBUG_BAUD);
+#endif
   delay(500);
+
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  Serial0.println();
+  Serial0.println("Showduino Director: USB CDC On Boot is Enabled.");
+  Serial0.println("This panel's USB-C serial is CH340 UART0 (the port that printed ESP-ROM).");
+  Serial0.println("Arduino IDE → USB CDC On Boot = Disabled, then reflash. GPIO19/20 are GT911.");
+#endif
 
   Serial.println();
   Serial.println("Showduino Portable Director 5in - JC8048W550C starting...");

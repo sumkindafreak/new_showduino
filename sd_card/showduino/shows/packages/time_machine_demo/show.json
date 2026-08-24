@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "time_machine_demo",
+  "name": "TIME MACHINE — DEMO ONE",
+  "description": "Showduino first full attraction demonstration — a journey through time ending in a machine failure.",
+  "author": "Showduino",
+  "version": "1.0.0",
+  "durationSeconds": 536,
+  "cueCount": 28,
+  "created": "2026-08-23",
+  "modified": "2026-08-23",
+  "startCue": 1,
+  "stageControllerRequired": true
+}

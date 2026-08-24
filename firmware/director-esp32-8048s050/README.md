@@ -57,10 +57,13 @@ Logical device IDs (not raw MACs) are the long-term application addressing model
 ## Arduino IDE (Director)
 
 - Board: ESP32S3 Dev Module  
-- USB CDC On Boot: Enabled  
+- **USB CDC On Boot: Disabled** (required)  
+- USB Mode: USB-OTG (TinyUSB)  
 - Flash: 16MB, QIO 80MHz  
 - **PSRAM: OPI PSRAM** (required)  
-- Serial: 115200  
+- Serial Monitor: **115200** on the CH340 COM port (the one that prints `ESP-ROM:esp32s3-…`)
+
+This panel’s USB-C serial chip is CH340 on UART0 (GPIO43/44). Native USB CDC uses GPIO19/20, which are the GT911 I2C pins. If CDC is left Enabled, the bootloader still prints on the CH340 port and then the sketch goes silent.
 
 Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` (ambient LEDs on GPIO17).
 

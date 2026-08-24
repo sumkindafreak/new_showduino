@@ -23,11 +23,12 @@ struct ShowduinoCapabilities {
 
 /**
  * Default bring-up flags.
- * Relay is expected on the current fabric; other outputs stay off until discovered.
+ * No specialist node is assumed present until discovery reports it.
+ * P4-local relays were removed; do not advertise relay control.
  */
 inline ShowduinoCapabilities showduino_capabilities_defaults(void) {
   ShowduinoCapabilities caps;
-  caps.relay = true;
+  caps.relay = false;
   caps.mosfet = false;
   caps.neopixel = false;
   caps.audio = false;

@@ -271,6 +271,21 @@ static void recompute_readiness(void) {
   }
 }
 
+static void set_tile_enabled(Page01Control *c, bool enabled) {
+  if (c == nullptr || c->btn == nullptr) {
+    return;
+  }
+  if (enabled) {
+    lv_obj_clear_state(c->btn, LV_STATE_DISABLED);
+    lv_obj_add_flag(c->btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_opa(c->btn, LV_OPA_COVER, 0);
+  } else {
+    lv_obj_add_state(c->btn, LV_STATE_DISABLED);
+    lv_obj_clear_flag(c->btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_opa(c->btn, LV_OPA_40, 0);
+  }
+}
+
 static void refresh_hero(void) {
   Page01Control *hero = &s_ctrls[PAGE01_CTRL_HERO];
   if (hero->btn == nullptr) {
@@ -307,7 +322,17 @@ static void refresh_hero(void) {
     if (hero->icon) {
       lv_label_set_text(hero->icon, LV_SYMBOL_PLAY);
     }
+    const bool canRun = (strcmp(s_link_text, "LINK OK") == 0);
+    set_tile_enabled(hero, canRun);
+    if (!canRun && hero->sublabel) {
+      char sub[96];
+      snprintf(sub, sizeof(sub), "%s · %s — cannot run until Stage is linked",
+               s_production_name, s_readiness_text);
+      lv_label_set_text(hero->sublabel, sub);
+    }
+    return;
   }
+  set_tile_enabled(hero, true);
 }
 
 static void build_header(lv_obj_t *parent) {
@@ -488,6 +513,9 @@ static void build_controls(void) {
   for (uint8_t i = 0; i < PAGE01_CTRL_COUNT; i++) {
     build_control(i);
   }
+  /* Cue Library and Outputs have no live page yet — visible, not tappable. */
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
   refresh_hero();
 
   for (uint8_t i = 0; i < PAGE01_CTRL_COUNT; i++) {
@@ -630,8 +658,10 @@ void page_01_home_set_capabilities(const ShowduinoCapabilities *caps) {
   if (caps != nullptr) {
     s_caps = *caps;
   }
-  /* Outputs stays navigable — gate individual controls on Page 05 later. */
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
   apply_footer_visibility();
+  refresh_hero();
   Serial.printf("[Page01] caps relay=%d mosfet=%d neo=%d audio=%d dmx=%d\n",
                 (int)s_caps.relay, (int)s_caps.mosfet, (int)s_caps.neopixel,
                 (int)s_caps.audio, (int)s_caps.dmx);

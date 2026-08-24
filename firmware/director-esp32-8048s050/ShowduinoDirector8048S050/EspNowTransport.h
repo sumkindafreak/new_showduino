@@ -67,17 +67,25 @@ public:
     return true;
   }
 
-  // Soft recover — stuck link, or a failed first begin(). Avoids per-packet churn.
-  bool recover() {
+  // Soft recover — keep a live peer (del/add churn drops RX).
+  // reinit: operator Retry — tear down and start ESP-NOW again.
+  bool recover(bool reinit = false) {
+    if (reinit) {
+      if (online) {
+        esp_now_deinit();
+        online = false;
+      }
+      return begin();
+    }
     if (!online) {
       return begin();
     }
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-    if (esp_now_is_peer_exist(stageBridgeMac)) {
-      esp_now_del_peer(stageBridgeMac);
+    if (!esp_now_is_peer_exist(stageBridgeMac)) {
+      return addBridgePeer();
     }
-    return addBridgePeer();
+    return true;
   }
 
   bool sendCommand(const String &command) {

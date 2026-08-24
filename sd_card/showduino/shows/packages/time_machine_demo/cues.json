@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "cues": [
+    {
+      "time": 0,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/door_open.wav"
+    },
+    {
+      "time": 1619,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/door.wav"
+    },
+    {
+      "time": 3290,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/booting_up.wav"
+    },
+    {
+      "time": 25000,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio1.wav"
+    },
+    {
+      "time": 29493,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio1a.wav"
+    },
+    {
+      "time": 37016,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio2.wav"
+    },
+    {
+      "time": 42344,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/victorian_london.wav"
+    },
+    {
+      "time": 102344,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/ripper_buildup.wav"
+    },
+    {
+      "time": 144401,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio3.wav"
+    },
+    {
+      "time": 150957,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/war_1944.wav"
+    },
+    {
+      "time": 210957,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/alarm.wav"
+    },
+    {
+      "time": 240736,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/blast_shield.wav"
+    },
+    {
+      "time": 244105,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio4.wav"
+    },
+    {
+      "time": 253012,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/dinosaur_scene.wav"
+    },
+    {
+      "time": 313012,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/roar.wav"
+    },
+    {
+      "time": 323434,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio5.wav"
+    },
+    {
+      "time": 327352,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/whales.wav"
+    },
+    {
+      "time": 387352,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio6.wav"
+    },
+    {
+      "time": 407048,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio7.wav"
+    },
+    {
+      "time": 414675,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio8.wav"
+    },
+    {
+      "time": 426273,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/radio9.wav"
+    },
+    {
+      "time": 432124,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/machine_ambience.wav"
+    },
+    {
+      "time": 472124,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/electric.wav"
+    },
+    {
+      "time": 512124,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/steam.wav"
+    },
+    {
+      "time": 513686,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/heavy_lightning.wav"
+    },
+    {
+      "time": 516687,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/machine_breaks.wav"
+    },
+    {
+      "time": 523713,
+      "command": "AUDIO:PLAY:/showduino/audio/demo_show/emergency.wav"
+    },
+    {
+      "time": 535413,
+      "command": "AUDIO:STOP"
+    }
+  ]
+}
