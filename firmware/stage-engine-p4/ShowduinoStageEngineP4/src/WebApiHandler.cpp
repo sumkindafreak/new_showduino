@@ -2,6 +2,7 @@
 
 #include <esp_heap_caps.h>
 #include "../BoardConfig.h"
+#include "../ShowRuntimeOwner.h"
 #include "../../../protocol/showduino_web_tunnel.h"
 #include "StageStorage.h"
 #include "StageAudio.h"
@@ -10,6 +11,7 @@
 
 extern bool emergencyLocked;
 extern uint8_t gEmergencySourceId;
+extern ShowRuntimeOwner gRuntime;
 
 static unsigned long sBootMs = 0;
 
@@ -48,9 +50,7 @@ static void sendWebr(int status, const char *mime, const char *body, size_t len)
     Serial1.print(mime);
   }
   Serial1.print('\n');
-  if (len > 0 && body) {
-    Serial1.write((const uint8_t *)body, len);
-  }
+  if (len > 0 && body) Serial1.write((const uint8_t *)body, len);
 }
 
 static bool pathHasDotDot(const String &p) {
@@ -70,9 +70,7 @@ static bool mapWebuiPath(const String &urlIn, String &sdOut) {
   int q = url.indexOf('?');
   if (q >= 0) url = url.substring(0, q);
   url.trim();
-  while (url.indexOf("//") >= 0) {
-    url.replace("//", "/");
-  }
+  while (url.indexOf("//") >= 0) url.replace("//", "/");
   if (url.length() == 0 || url == "/") url = "/index.html";
   if (!url.startsWith("/")) return false;
   if (url.indexOf('\\') >= 0 || url.indexOf('\0') >= 0) return false;
@@ -91,12 +89,14 @@ static void handleApiSystem() {
   gWebApiLogger.logHttpRequest("GET", "/api/system");
   const StageStorageStatus &st = stageStorageStatus();
   const StageAudioStatus &au = stageAudioStatus();
+  const ShowRuntime &rt = gRuntime.rt;
 
   String json = "{\n";
   json += "  \"firmwareVersion\": \"0.2.0\",\n";
   json += "  \"protocolVersion\": \"1.0\",\n";
   json += "  \"boardName\": \"ESP32-P4-IAN\",\n";
   json += "  \"role\": \"stage\",\n";
+  json += "  \"stageLink\": \"online\",\n";
   json += "  \"uptime\": " + String(millis() - sBootMs) + ",\n";
   json += "  \"heapFree\": " + String(ESP.getFreeHeap()) + ",\n";
   json += "  \"heapTotal\": " + String(ESP.getHeapSize()) + ",\n";
@@ -111,8 +111,24 @@ static void handleApiSystem() {
   json += "  \"storageFreeMb\": " + String((unsigned long)(st.freeBytes / (1024ULL * 1024ULL))) + ",\n";
   json += "  \"storageMessage\": \"" + ShowduinoWebJson::escape(String(st.message)) + "\",\n";
   json += "  \"showsPath\": \"/showduino/shows\",\n";
+  json += "  \"showIndexPath\": \"/showduino/shows/index.json\",\n";
+  json += "  \"showPackagesPath\": \"/showduino/shows/packages\",\n";
+  json += "  \"showTrashPath\": \"/showduino/shows/trash\",\n";
+  json += "  \"showFavouritesPath\": \"/showduino/shows/favourites.json\",\n";
+  json += "  \"showRecentPath\": \"/showduino/shows/recent.json\",\n";
   json += "  \"webuiPath\": \"" PATH_WEBUI "\",\n";
   json += "  \"webuiReady\": " + String(st.hasWww ? "true" : "false") + ",\n";
+  json += "  \"showState\": \"" + String(showStateName(rt.state)) + "\",\n";
+  json += "  \"showName\": \"" + ShowduinoWebJson::escape(String(rt.showName)) + "\",\n";
+  json += "  \"showElapsedMs\": " + String(rt.elapsedMs) + ",\n";
+  json += "  \"showRemainingMs\": " + String(rt.remainingMs) + ",\n";
+  json += "  \"showDurationMs\": " + String(rt.totalDurationMs) + ",\n";
+  json += "  \"currentCue\": " + String(rt.currentCue) + ",\n";
+  json += "  \"totalCues\": " + String(rt.totalCues) + ",\n";
+  json += "  \"showLoaded\": " + String(rt.loaded ? "true" : "false") + ",\n";
+  json += "  \"showRunning\": " + String(rt.running ? "true" : "false") + ",\n";
+  json += "  \"showPaused\": " + String(rt.paused ? "true" : "false") + ",\n";
+  json += "  \"showLastError\": \"" + ShowduinoWebJson::escape(String(rt.lastError)) + "\",\n";
   json += "  \"emergencyActive\": " + String(emergencyLocked ? "true" : "false") + ",\n";
   json += "  \"emergencySource\": \"" + String(sourceName()) + "\",\n";
   json += "  \"emergencyAudioPath\": \"" + ShowduinoWebJson::escape(String(au.selectedPath)) + "\",\n";
