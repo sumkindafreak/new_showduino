@@ -7,4 +7,11 @@
 void deskUartBridgeBegin();
 void deskUartBridgeOnP4Line(const String &line);
 
+/*
+ * Shared SUE -> P4 command path.
+ * Web Studio and the Director both use the same UART transport so the P4
+ * remains the authoritative Stage Runtime and emergency authority.
+ */
+void deskUartBridgeSendToP4(const char *command);
+
 #endif
