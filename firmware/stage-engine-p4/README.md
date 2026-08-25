@@ -5,6 +5,7 @@ Status: ACTIVE
 Role: Showduino Show Engine
 Product: Stage Controller
 Board: Waveshare ESP32-P4-Module-DEV-KIT
+Primary development workflow: Arduino IDE
 ```
 
 Canonical active Show Engine firmware. Folder name `stage-engine-p4` is historical and may be renamed later.
@@ -19,62 +20,49 @@ Browser  --Wi-Fi----> onboard ESP32-C6 ------------------------> P4 Web services
 
 ## C6 migration status
 
-The final hardware target is the onboard C6, but the current Arduino Show Engine sketch still contains the previously working UART link for the **external C3 SuperMini**.
-
-That old UART is a compatibility/rollback build while the onboard C6 is qualified.
+The final hardware target is the onboard C6, but the current Show Engine sketch still contains the previously working UART link for the external C3 SuperMini as rollback/reference code.
 
 ### Important pin conflict
 
-The current Arduino sketch maps the old external C3 UART to:
+The old external-C3 UART uses:
 
 ```text
 P4 RX GPIO18
 P4 TX GPIO17
 ```
 
-The Waveshare board physically uses those same pins for the onboard C6 SDIO bus:
+The onboard C6 uses those same pins as:
 
 ```text
 GPIO17 = C6 SDIO D3
 GPIO18 = C6 SDIO CLK
 ```
 
-Therefore the external-C3 UART and onboard-C6 SDIO path **cannot be active at the same time**.
+Therefore the external-C3 UART and onboard-C6 SDIO path **cannot be active at the same time**. Production migration must feature-gate/remove the GPIO17/18 UART before the main Show Engine enables the onboard C6.
 
-Do not graft ESP-Hosted/SDIO into the current Arduino build while it still initializes Serial1 on GPIO17/18. The migration must first make the two communications backends mutually exclusive.
+## First no-risk C6 qualification — Arduino IDE
 
-### First no-risk qualification
-
-Use the separate ESP-IDF project:
+Open and flash this **P4** sketch:
 
 ```text
-firmware/p4-c6-espnow-bridge/hosted-link-qualification/
+firmware/p4-c6-espnow-bridge/arduino-hosted-link-qualification/ShowduinoP4C6HostedQualification/ShowduinoP4C6HostedQualification.ino
 ```
 
-It runs on the P4 and leaves the factory C6 firmware untouched. It proves:
+It leaves the factory C6 firmware untouched and proves:
 
 ```text
-P4 -> internal SDIO -> C6 -> Wi-Fi radio
+P4 -> internal SDIO -> onboard C6 -> Wi-Fi radio
 ```
 
-by bringing up ESP-Hosted, reading the C6 STA MAC and running a Wi-Fi scan.
+using Arduino-ESP32's hosted Wi-Fi support. It sets the C6 pins, starts the hosted interface, reads the C6 STA MAC and performs a Wi-Fi scan.
 
-Only after that passes should we move to the custom Showduino ESP-NOW service.
+The older `hosted-link-qualification/` ESP-IDF project is retained only as a lower-level reference/alternate diagnostic.
 
 ## Constitution
 
 > The Show Engine decides.
 
-Owns:
-
-- Authoritative show/runtime/emergency state
-- Timeline/cues as implemented
-- Project/runtime storage
-- Safety policy
-- Web UI / Web API / WebSocket
-- Node command lifecycle
-- Stage Controller local outputs
-- System time
+The P4 owns authoritative show/runtime/emergency state, timeline/cues as implemented, project/runtime storage, safety policy, Web services, node command lifecycle, local Stage Controller outputs and system time.
 
 ## Current hardware baseline
 
@@ -92,25 +80,23 @@ GPIO25                       emergency push button
 
 See `docs/hardware-baseline-2026-08-25.md`.
 
-## Maturity — do not overstate
+## Maturity
 
-Already present in current P4 code includes the command/state path, emergency latch, SD/WebUI work, emergency pixel/button configuration and PCM show-audio pin configuration.
+Already present includes the command/state path, emergency latch, SD/WebUI work, emergency pixel/button configuration and PCM show-audio pin configuration.
 
-Still to integrate/qualify under the new hardware baseline:
+Still to integrate/qualify:
 
 - Onboard C6 as production Communications Engine
 - P4 RTC time service / backup behaviour
 - Onboard ES8311 system-sound output
 - Explicit I2S arbitration between onboard system audio and PCM show audio
-- Full timeline/output engine work not already present
+- Full timeline/output work not already present
 
 ## Known GPIO debt before onboard-audio enable
 
-The current Arduino sketch also defines its generic `STATUS_LED_PIN` as **GPIO10**.
+The current Arduino Show Engine sketch defines its old generic `STATUS_LED_PIN` as **GPIO10**.
 
-GPIO10 is the onboard ES8311 **LRCK/WS** signal. Under the final hardware baseline it is reserved for audio and must not remain a status LED output.
-
-This legacy assignment must be disabled/removed before the onboard ES8311 driver is enabled.
+GPIO10 is the onboard ES8311 **LRCK/WS** signal. It is reserved for audio and must not remain a status LED output before the onboard codec is enabled.
 
 ## Emergency hardware
 
@@ -130,9 +116,7 @@ Policy:
 
 ## Stage Controller microSD
 
-The Waveshare board uses **SDMMC 4-bit**, not an SPI SD breakout.
-
-Current `BoardConfig.h` mapping:
+The Waveshare board uses SDMMC 4-bit:
 
 ```text
 CLK    GPIO43
@@ -154,11 +138,7 @@ Runtime layout:
 /showduino/system/
 ```
 
-Boot must continue safely if the card is unavailable; missing media should be reported as a fault/status condition rather than corrupting show state.
-
 ## Show audio — PCM5102A
-
-Dedicated programme/show audio path:
 
 ```text
 WS/LRCK  GPIO20
@@ -169,8 +149,6 @@ DOUT     GPIO22
 Use for music, dialogue, ambience and timed SFX.
 
 ## Showduino/system audio — onboard ES8311
-
-Target local speaker path:
 
 ```text
 I2C SDA     GPIO7
@@ -185,17 +163,17 @@ PA enable  GPIO53
 
 Use for short boot/ready/loaded/armed/warning/error/emergency acknowledgement sounds.
 
-The P4 has one I2S peripheral. Firmware must explicitly own/arbitrate that resource; do not assume two independent simultaneous audio streams.
+The P4 has one I2S peripheral. Firmware must arbitrate ownership rather than assume two independent simultaneous audio streams.
 
 ## RTC
 
-The final Stage Controller uses the P4 RTC domain and the Waveshare rechargeable RTC battery connection.
+The final Stage Controller uses the P4 RTC domain and Waveshare rechargeable RTC battery connection.
 
 ```text
 External DS3231: not part of final hardware baseline
 ```
 
-Power-loss retention must be bench-qualified before it is marked confirmed.
+Power-loss retention must be bench-qualified.
 
 ## Communications Engine
 
@@ -205,45 +183,35 @@ Target:
 firmware/p4-c6-espnow-bridge/
 ```
 
-Compatibility/rollback:
+Compatibility/rollback reference:
 
 ```text
 firmware/c3-supermini-espnow-bridge/
 ```
 
-The board integrates the C6 with the P4 for wireless expansion over SDIO. The C6 UART header is a flash/debug path; old placeholder UART pin assumptions in the C6 bring-up sketch are not the final internal transport contract.
+The stock hosted API does not currently expose ESP-NOW directly to the P4 application, so Showduino's final C6 path requires a deliberate C6-side ESP-NOW service/extension with a matching internal transport to the P4.
 
-The stock hosted API does not currently expose ESP-NOW to the P4 application. Showduino's final C6 implementation therefore requires a deliberate C6-side ESP-NOW extension/custom service rather than pretending ordinary hosted Wi-Fi RPC is sufficient.
+## Arduino IDE — current P4 baseline
 
-## Arduino IDE / CLI — current rollback P4 build
-
-Bench configuration used successfully:
-
-- Board: **ESP32P4 Dev Module**
-- Flash Size: **16MB (128Mb)**
-- PSRAM: **Enabled**
-- Compatible chip revision setting for the fitted P4
-- Serial: 115200
-
-Do not build a 32 MB image for the current 16 MB board configuration.
-
-Example Arduino CLI shape:
+Use:
 
 ```text
-arduino-cli compile --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
-arduino-cli upload -p COMx --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
+Board: ESP32P4 Dev Module
+ESP32 board package: 3.3.x or newer
+Flash Size: 16MB (128Mb)
+PSRAM: Enabled
+Serial: 115200
 ```
 
-Replace `COMx` with the P4 USB serial port.
+Do not build a 32 MB image for the current 16 MB Stage Controller.
 
 ## Policy reminders
 
 - Absolute relay states only.
-- No false success for placeholder pixel/audio routes.
+- No false success for placeholder routes.
 - Address nodes by logical device ID at the application layer.
-- Publish authoritative state; Director/browser actions are requests.
+- Director/browser actions are requests; P4 state is authoritative.
 - Running shows must not require Director/browser presence.
-- Hardware target and firmware maturity must be documented separately.
-- Never activate the external-C3 UART and onboard-C6 SDIO on GPIO17/18 together.
+- Never activate external-C3 UART and onboard-C6 SDIO on GPIO17/18 together.
 
 See [`docs/architecture.md`](../../docs/architecture.md), [`docs/hardware-pinout.md`](../../docs/hardware-pinout.md), and [`docs/repository-status.md`](../../docs/repository-status.md).
