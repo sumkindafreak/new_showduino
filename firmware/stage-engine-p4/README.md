@@ -12,16 +12,54 @@ Canonical active Show Engine firmware. Folder name `stage-engine-p4` is historic
 ## Target product path
 
 ```text
-Director --ESP-NOW--> onboard ESP32-C6 --integrated transport--> this P4 Show Engine
-Node     --ESP-NOW--> onboard ESP32-C6 --integrated transport--> this P4 Show Engine
-Browser  --Wi-Fi----> onboard ESP32-C6 ----------------------> P4 Web services
+Director --ESP-NOW--> onboard ESP32-C6 --internal SDIO/service--> this P4 Show Engine
+Node     --ESP-NOW--> onboard ESP32-C6 --internal SDIO/service--> this P4 Show Engine
+Browser  --Wi-Fi----> onboard ESP32-C6 ------------------------> P4 Web services
 ```
 
-## Firmware transition note
+## C6 migration status
 
-The current sketch still contains the previously working UART path for the **external C3 SuperMini**. That UART remains a compatibility/rollback path while the onboard C6 migration is developed.
+The final hardware target is the onboard C6, but the current Arduino Show Engine sketch still contains the previously working UART link for the **external C3 SuperMini**.
 
-The separate C3 is no longer part of the final Stage Controller hardware baseline.
+That old UART is a compatibility/rollback build while the onboard C6 is qualified.
+
+### Important pin conflict
+
+The current Arduino sketch maps the old external C3 UART to:
+
+```text
+P4 RX GPIO18
+P4 TX GPIO17
+```
+
+The Waveshare board physically uses those same pins for the onboard C6 SDIO bus:
+
+```text
+GPIO17 = C6 SDIO D3
+GPIO18 = C6 SDIO CLK
+```
+
+Therefore the external-C3 UART and onboard-C6 SDIO path **cannot be active at the same time**.
+
+Do not graft ESP-Hosted/SDIO into the current Arduino build while it still initializes Serial1 on GPIO17/18. The migration must first make the two communications backends mutually exclusive.
+
+### First no-risk qualification
+
+Use the separate ESP-IDF project:
+
+```text
+firmware/p4-c6-espnow-bridge/hosted-link-qualification/
+```
+
+It runs on the P4 and leaves the factory C6 firmware untouched. It proves:
+
+```text
+P4 -> internal SDIO -> C6 -> Wi-Fi radio
+```
+
+by bringing up ESP-Hosted, reading the C6 STA MAC and running a Wi-Fi scan.
+
+Only after that passes should we move to the custom Showduino ESP-NOW service.
 
 ## Constitution
 
@@ -65,6 +103,14 @@ Still to integrate/qualify under the new hardware baseline:
 - Onboard ES8311 system-sound output
 - Explicit I2S arbitration between onboard system audio and PCM show audio
 - Full timeline/output engine work not already present
+
+## Known GPIO debt before onboard-audio enable
+
+The current Arduino sketch also defines its generic `STATUS_LED_PIN` as **GPIO10**.
+
+GPIO10 is the onboard ES8311 **LRCK/WS** signal. Under the final hardware baseline it is reserved for audio and must not remain a status LED output.
+
+This legacy assignment must be disabled/removed before the onboard ES8311 driver is enabled.
 
 ## Emergency hardware
 
@@ -167,7 +213,9 @@ firmware/c3-supermini-espnow-bridge/
 
 The board integrates the C6 with the P4 for wireless expansion over SDIO. The C6 UART header is a flash/debug path; old placeholder UART pin assumptions in the C6 bring-up sketch are not the final internal transport contract.
 
-## Arduino IDE / CLI — current P4 build
+The stock hosted API does not currently expose ESP-NOW to the P4 application. Showduino's final C6 implementation therefore requires a deliberate C6-side ESP-NOW extension/custom service rather than pretending ordinary hosted Wi-Fi RPC is sufficient.
+
+## Arduino IDE / CLI — current rollback P4 build
 
 Bench configuration used successfully:
 
@@ -196,5 +244,6 @@ Replace `COMx` with the P4 USB serial port.
 - Publish authoritative state; Director/browser actions are requests.
 - Running shows must not require Director/browser presence.
 - Hardware target and firmware maturity must be documented separately.
+- Never activate the external-C3 UART and onboard-C6 SDIO on GPIO17/18 together.
 
 See [`docs/architecture.md`](../../docs/architecture.md), [`docs/hardware-pinout.md`](../../docs/hardware-pinout.md), and [`docs/repository-status.md`](../../docs/repository-status.md).
