@@ -9,7 +9,7 @@ function row(label, value) {
 export async function TimePage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'SUE Time Service — authoritative DS3231 clock. Live via WebSocket (1 Hz).'
+    text: 'Show Engine Time Service — ESP32-P4 RTC / system time. Live state is authoritative from the Stage Controller.'
   }));
 
   const status = el('div', { className: 'live-status', text: 'Connecting…' });
@@ -35,9 +35,8 @@ export async function TimePage(container) {
       ['Unix Epoch', time.epoch],
       ['Timezone', time.timezone],
       ['DST', time.dst ? 'active' : (time.dstEnabled ? 'enabled' : 'off')],
-      ['RTC Status', time.rtcStatus || st?.health],
-      ['RTC Temperature', time.rtcTemperature != null ? `${time.rtcTemperature} °C` : '—'],
-      ['Battery', time.battery || st?.battery],
+      ['RTC / Clock Status', time.rtcStatus || st?.health],
+      ['RTC Backup', time.battery || st?.battery],
       ['Time Source', time.source],
       ['System Uptime', time.uptime],
       ['Last Synchronisation', st?.lastSynchronisation],
@@ -45,7 +44,7 @@ export async function TimePage(container) {
       ['Firmware Build', time.firmwareBuild]
     ];
     for (const [k, v] of rows) tbody.append(row(k, v));
-    status.textContent = `Live · source ${time.source || '?'} · rtc ${time.rtcStatus || '?'}`;
+    status.textContent = `Live · source ${time.source || '?'} · clock ${time.rtcStatus || st?.health || '?'}`;
   }
 
   connectLive();

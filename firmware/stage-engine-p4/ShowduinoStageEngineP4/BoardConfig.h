@@ -4,19 +4,29 @@
 #include <Arduino.h>
 
 /*
- * Showduino Stage Engine (ESP32-P4) - board / feature config.
+ * Showduino Show Engine / Stage Controller (ESP32-P4)
+ * Waveshare ESP32-P4-Module-DEV-KIT
  *
- * Onboard microSD is SDMMC slot 0 (not SPI): CLK/CMD/D0-D3 plus GPIO45
- * power and on-chip LDO VO4 (channel 4) for GPIO 39-48.
- * Boot continues if the card is missing.
+ * Hardware baseline: 2026-08-25
+ * - ESP32-P4 = Show Engine
+ * - onboard ESP32-C6 = Communications Engine hardware target
+ * - P4 RTC / rechargeable RTC battery connection replaces external DS3231
+ * - onboard ES8311 + NS4150B = Showduino/system sounds
+ * - external PCM5102A = dedicated show/programme audio
+ * - emergency NeoPixel = GPIO24
+ * - momentary emergency button = GPIO25
  *
- * UART to Communications Engine (SUE C3) is the sketch mapping:
- *   P4 GPIO18 RX <- SUE TX
- *   P4 GPIO17 TX -> SUE RX
+ * The old external C3 UART mapping remains in current firmware only as a
+ * compatibility/rollback path while the onboard-C6 transport is qualified.
+ * Do not treat it as the final product topology.
  */
 
-// Stage Controller onboard microSD (SDMMC 4-bit, slot 0 IOMUX)
-// CLK=43  CMD=44  D0=39  D1=40  D2=41  D3=42  POWER=45 (active LOW)  LDO=4
+// -----------------------------------------------------------------------------
+// Stage Controller onboard microSD
+// SDMMC 4-bit, slot 0 IOMUX. This is NOT an SPI SD breakout.
+// CLK=43 CMD=44 D0=39 D1=40 D2=41 D3=42 POWER=45 active LOW.
+// GPIO39-48 use on-chip LDO VO4 on this board path.
+// -----------------------------------------------------------------------------
 #ifndef SHOWDUINO_SD_ENABLED
 #define SHOWDUINO_SD_ENABLED           1
 #endif
@@ -42,14 +52,15 @@
 #define PATH_EMERGENCY_MP3             "/showduino/audio/emergency.mp3"
 #define PATH_EMERGENCY_MP3_ROOT        "/emergency.mp3"
 
-/*
- * Physical E-stop: momentary push button, GPIO25 to GND.
- * INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
- * GPIO25 is a trigger input only. The P4 latches emergency in software.
- * Release / second press does not clear. Director EMERGENCY:CLEAR does,
- * including after a physical press, once the button is released (debounced).
- * CLEAR is rejected only while the button is still held LOW.
- */
+// -----------------------------------------------------------------------------
+// Physical emergency button
+// Momentary push button from GPIO25 to GND.
+// INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
+//
+// GPIO25 is a trigger only. The P4 latches emergency in software.
+// Release / second press does not clear. Director EMERGENCY:CLEAR may clear
+// only after the physical button is released and debounced.
+// -----------------------------------------------------------------------------
 #ifndef SHOWDUINO_ESTOP_GPIO
 #define SHOWDUINO_ESTOP_GPIO           25
 #endif
@@ -63,11 +74,9 @@
 #define SHOWDUINO_ESTOP_DEBOUNCE_MS    30UL
 #endif
 
-/*
- * Emergency NeoPixel DATA on GPIO24.
- * Count / colour order / timing come from the existing implementation
- * (not from a newly confirmed strip datasheet).
- */
+// -----------------------------------------------------------------------------
+// Emergency NeoPixel line
+// -----------------------------------------------------------------------------
 #ifndef SHOWDUINO_EMERGENCY_PIXEL_ENABLED
 #define SHOWDUINO_EMERGENCY_PIXEL_ENABLED  1
 #endif
@@ -76,7 +85,10 @@
 #define SHOWDUINO_EMERGENCY_PIXEL_COUNT      100
 #define SHOWDUINO_EMERGENCY_PIXEL_BRIGHTNESS 255
 
-// PCM5102A I2S DAC (physically wired).
+// -----------------------------------------------------------------------------
+// External PCM5102A — SHOW / PROGRAMME AUDIO
+// Physically wired Stage Controller show-audio path.
+// -----------------------------------------------------------------------------
 #ifndef P4_AUDIO_I2S_BCLK
 #define P4_AUDIO_I2S_BCLK   21
 #endif
@@ -86,5 +98,79 @@
 #ifndef P4_AUDIO_I2S_DOUT
 #define P4_AUDIO_I2S_DOUT   22
 #endif
+
+// Semantic aliases for new code. Keep the older P4_AUDIO_* names above for
+// compatibility with existing source while the audio engine is refactored.
+#ifndef P4_SHOW_AUDIO_I2S_BCLK
+#define P4_SHOW_AUDIO_I2S_BCLK P4_AUDIO_I2S_BCLK
+#endif
+#ifndef P4_SHOW_AUDIO_I2S_WS
+#define P4_SHOW_AUDIO_I2S_WS   P4_AUDIO_I2S_WS
+#endif
+#ifndef P4_SHOW_AUDIO_I2S_DOUT
+#define P4_SHOW_AUDIO_I2S_DOUT P4_AUDIO_I2S_DOUT
+#endif
+
+// -----------------------------------------------------------------------------
+// Onboard ES8311 + NS4150B — SHOWDUINO / SYSTEM AUDIO
+// Waveshare ESP32-P4-Module-DEV-KIT board mapping.
+//
+// This configuration reserves the pins for the system-audio implementation.
+// Defining them here does not by itself enable the codec driver.
+// -----------------------------------------------------------------------------
+#ifndef P4_SYSTEM_AUDIO_I2C_SDA
+#define P4_SYSTEM_AUDIO_I2C_SDA       7
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2C_SCL
+#define P4_SYSTEM_AUDIO_I2C_SCL       8
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2S_DOUT
+// P4 -> ES8311 DSDIN
+#define P4_SYSTEM_AUDIO_I2S_DOUT      9
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2S_WS
+#define P4_SYSTEM_AUDIO_I2S_WS        10
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2S_DIN
+// ES8311 ASDOUT -> P4, used by microphone/codec input when required.
+#define P4_SYSTEM_AUDIO_I2S_DIN       11
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2S_BCLK
+#define P4_SYSTEM_AUDIO_I2S_BCLK      12
+#endif
+#ifndef P4_SYSTEM_AUDIO_I2S_MCLK
+#define P4_SYSTEM_AUDIO_I2S_MCLK      13
+#endif
+#ifndef P4_SYSTEM_AUDIO_PA_ENABLE
+#define P4_SYSTEM_AUDIO_PA_ENABLE     53
+#endif
+#ifndef P4_SYSTEM_AUDIO_PA_ON_LEVEL
+#define P4_SYSTEM_AUDIO_PA_ON_LEVEL   HIGH
+#endif
+
+/*
+ * IMPORTANT: ESP32-P4 exposes one I2S peripheral. The onboard ES8311 system
+ * audio and external PCM5102A show audio must be treated as an arbitrated
+ * resource. Do not start two independent streams without an implementation
+ * that explicitly proves that behaviour on this board.
+ */
+
+// -----------------------------------------------------------------------------
+// RTC baseline
+// The final Stage Controller uses the ESP32-P4 RTC domain and the Waveshare
+// rechargeable RTC battery connection. No DS3231 GPIO/I2C assignment belongs
+// in the final P4 board map. RTC backup behaviour still requires qualification.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Previous external C3/SUE UART — COMPATIBILITY ONLY
+// Current sketches historically used:
+//   P4 GPIO18 RX <- external C3 TX
+//   P4 GPIO17 TX -> external C3 RX
+//   115200 baud
+//
+// These pins must remain reserved until the onboard C6 path completely removes
+// that compatibility transport from the P4 firmware.
+// -----------------------------------------------------------------------------
 
 #endif /* SHOWDUINO_STAGE_BOARD_CONFIG_H */

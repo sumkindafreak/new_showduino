@@ -7,30 +7,54 @@ Role: Showduino Director
 
 Commands and displays only. Canonical active Director firmware.
 
+## Final target path
+
 ```text
 Director ESP32-S3
     → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
-Show Engine ESP32-P4 (Stage Controller)
+Communications Engine — onboard ESP32-C6 in the Stage Controller
+    → integrated P4/C6 transport
+Show Engine — ESP32-P4
 ```
 
-This sketch does **not** host or proxy the primary Web UI. USB Serial is for flash/diagnostics only, not the normal show path.
+The Director does not host authoritative show state. USB Serial remains flash/diagnostics only.
 
 ## Architectural notes
 
-- The Show Engine is the single source of truth. Director actions are **requests**.
-- Existing SD show/config helpers under `ShowduinoDirector8048S050/src/` are **temporary implementation details**, not the final authoritative project store.
-- Application policy: absolute relay states (ON/OFF), not distributed `TOGGLE` (firmware may still contain legacy TOGGLE — to be removed in a later stage).
-- Display of successful output state should follow Show Engine confirmation (ACK / state publish); that behaviour is a known follow-up, not claimed complete here.
+- The Show Engine is the single source of truth. Director actions are requests.
+- Successful output/show state must follow authoritative Show Engine confirmation.
+- The Director never directly controls Stage Controller/node GPIOs.
+- Director-local SD/UI assets are implementation details, not the final authoritative show store.
 
-## What this firmware includes today
+## What this firmware includes
 
-- 800×480 ST7262 RGB + GT911 touch + LVGL 9 UI
-- ESP‑NOW transport to the Communications Engine (`EspNowTransport.h`)
-- Optional UART fallback flags in `BoardConfig.h` (keep off for normal use)
+- 800×480 RGB display + GT911 touch + LVGL 9 UI
+- ESP-NOW transport through `EspNowTransport.h`
 - Emergency / live control / diagnostics screens
-- SD storage subsystem for UI assets and temporary data
+- SD storage for Director UI assets/local data
+- Optional diagnostic/legacy UART features kept off for normal operation
+
+## Communications migration
+
+The Director previously paired to the separate external C3 SuperMini Communications Engine. The final hardware target is now the **onboard ESP32-C6** in the Waveshare P4 Stage Controller.
+
+The existing peer macros named `SHOWDUINO_P4_C6_MAC_*` are historical but now happen to match the intended hardware role again: once the onboard C6 is brought up, they should contain the **onboard C6 ESP-NOW peer MAC**.
+
+Do not guess that MAC. Read it from the actual C6 firmware/board during bring-up.
+
+### Target pairing flow
+
+1. Bring up the Stage Controller's onboard C6 Communications Engine.
+2. Read/record its ESP-NOW station MAC.
+3. Set the Director peer MAC in `ShowduinoDirector8048S050/BoardConfig.h`.
+4. Flash the Director.
+5. Confirm Director → C6 → P4 requests.
+6. Confirm P4 → C6 → Director ACK/state replies.
+7. Confirm emergency traffic and link recovery.
+
+### Compatibility pairing
+
+The old external C3 path remains in `firmware/c3-supermini-espnow-bridge/` only as rollback/reference firmware during migration.
 
 ## Sketch location
 
@@ -38,38 +62,29 @@ This sketch does **not** host or proxy the primary Web UI. USB Serial is for fla
 firmware/director-esp32-8048s050/ShowduinoDirector8048S050/
 ```
 
-Diagnostic sibling (not product firmware):
+Diagnostic sibling:
 
 ```text
 firmware/director-esp32-8048s050/ShowduinoSdTouchTest/
 ```
 
-## Pairing (current implementation)
+## Arduino IDE
 
-1. Flash and run `firmware/c3-supermini-espnow-bridge/` (Communications Engine).
-2. Note the C3 MAC from Serial.
-3. Set peer MAC in `ShowduinoDirector8048S050/BoardConfig.h` (`SHOWDUINO_P4_C6_MAC_*` names are historical; values must be the **C3** Communications Engine MAC).
-4. Flash this Director.
-5. Confirm link READY via HELLO / HEARTBEAT.
+- Board: ESP32S3 Dev Module
+- USB CDC On Boot: Enabled
+- Flash: 16MB
+- PSRAM: OPI PSRAM
+- Serial: 115200
 
-Logical device IDs (not raw MACs) are the long-term application addressing model; MAC fields remain a transport-layer concern until the ID map lands on the Show Engine / Communications Engine.
+Libraries include LVGL 9.x, Arduino_GFX_Library, TAMC_GT911 and Adafruit NeoPixel where used by the current UI hardware.
 
-## Arduino IDE (Director)
-
-- Board: ESP32S3 Dev Module  
-- USB CDC On Boot: Enabled  
-- Flash: 16MB, QIO 80MHz  
-- **PSRAM: OPI PSRAM** (required)  
-- Serial: 115200  
-
-Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` (ambient LEDs on GPIO17).
-
-## Related active stack
+## Related stack
 
 | Role | Path |
 |------|------|
-| Communications Engine | `firmware/c3-supermini-espnow-bridge/` |
-| Show Engine (Stage Controller) | `firmware/stage-engine-p4/` |
+| Communications Engine target | `firmware/p4-c6-espnow-bridge/` |
+| Communications compatibility | `firmware/c3-supermini-espnow-bridge/` |
+| Show Engine / Stage Controller | `firmware/stage-engine-p4/` |
 | Relay Node | `firmware/relay-node-esp32/` |
 
-See `docs/architecture.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).
+See `docs/architecture.md`, `docs/hardware-baseline-2026-08-25.md`, and root `README.md`.

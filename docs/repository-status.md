@@ -1,205 +1,205 @@
 # Showduino Repository Status
 
-Classification of firmware projects. **No folders were moved or deleted** for this document. Status labels guide development priority only.
+Classification of firmware projects after the **25 August 2026 lean Stage Controller hardware decision**.
+
+No firmware folders are deleted by this document. Compatibility code stays available until replacement hardware paths are qualified.
 
 Related:
 
 - [Constitution](constitution.md)
 - [Architecture](architecture.md)
-- [Command protocol](command-protocol.md)
-- [State synchronisation (Stage 3)](state-synchronisation.md)
+- [Hardware baseline — 25 Aug 2026](hardware-baseline-2026-08-25.md)
 - [Final hardware architecture](final-hardware-architecture.md)
+- [Hardware pin/resource map](hardware-pinout.md)
 
-**Roadmap note:** Stage 0–3 complete for documentation / constitution / shared protocol / authoritative state. Stage 4+ (timeline, storage migration, Web UI, etc.) not started.
-
----
-
-## 1. Canonical active stack
+## 1. Canonical hardware target
 
 ```text
 Director ESP32-S3
     → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
-Show Engine ESP32-P4
+Communications Engine — onboard ESP32-C6
+    → integrated P4/C6 transport
+Show Engine — ESP32-P4
 ```
 
 ```text
 Showduino Node
     → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
-Show Engine ESP32-P4
+Onboard ESP32-C6
+    → Show Engine ESP32-P4
 ```
 
-Browser / phone access (conceptual target): Wi‑Fi → Communications Engine → Show Engine services. The Director does not host the primary Web UI.
+Browser target: Wi-Fi → onboard C6 → P4 Show Engine services.
 
-### Active firmware
+The separate C3/SUE board and separate DS3231 are no longer part of the physical Stage Controller baseline.
 
-| Folder | Role |
-|--------|------|
-| `firmware/director-esp32-8048s050/` | Director — operator UI, requests, display |
-| `firmware/c3-supermini-espnow-bridge/` | Communications Engine — ESP‑NOW + UART transport |
-| `firmware/stage-engine-p4/` | Show Engine on Stage Controller (folder name legacy) |
-| `firmware/relay-node-esp32/` | Relay Node — local relay actuation |
+## 2. Status values
 
----
+```text
+ACTIVE          canonical firmware currently developed for its role
+TARGET          selected replacement/target, still needs qualification
+COMPATIBILITY   previous known-good path retained for migration/rollback
+LEGACY          earlier architecture; reference only
+EXPERIMENTAL    prototype, not a selected product path
+DIAGNOSTIC      bring-up/probe utility
+INCOMPLETE      stub/non-operational placeholder
+ARCHIVE CANDIDATE suitable for later archive move
+```
 
-## 2. Complete firmware classification table
+## 3. Firmware classification
 
-Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMPLETE` · `ARCHIVE CANDIDATE`
+| Folder | Status | Target hardware | Purpose | Action |
+|--------|--------|-----------------|---------|--------|
+| `firmware/director-esp32-8048s050/` | **ACTIVE** | ESP32-S3 800×480 Director | Canonical operator UI / requests / display | Keep; repoint pairing to onboard C6 as migration lands |
+| `firmware/stage-engine-p4/` | **ACTIVE** | Waveshare ESP32-P4 Stage Controller | Canonical Show Engine | Keep; integrate RTC, onboard audio and onboard-C6 transport |
+| `firmware/p4-c6-espnow-bridge/` | **TARGET** | Stage Controller onboard ESP32-C6 | Communications Engine replacement / bring-up | Develop to parity; do not ship current placeholder transport as final |
+| `firmware/c3-supermini-espnow-bridge/` | **COMPATIBILITY** | External ESP32-C3 SuperMini | Previous working Communications Engine | Keep as rollback/reference until C6 parity; no longer required in final enclosure |
+| `firmware/relay-node-esp32/` | **ACTIVE** | ESP32 relay node | Canonical remote relay actuator | Keep |
+| `firmware/director-s3/` | **LEGACY** | Older ESP32-S3 | Earlier UART Director scaffold | Reference only |
+| `firmware/espnow-bridge/` | **LEGACY** | ESP32 variants | Earlier bridge scaffold | Reference only |
+| `firmware/touch-probe-8048/` | **DIAGNOSTIC** | Director hardware | Touch bring-up | Keep as tool |
+| `firmware/sue-esp32s3-node/` | **INCOMPLETE** | Historical separate SUE concept | Multi-function node placeholder | Do not treat as Stage Controller requirement |
+| `firmware/controller-cyd/` | **ARCHIVE CANDIDATE** | CYD 2.8" | Pre-P4 Director stack | Archive later |
+| `firmware/executor-mega/` | **ARCHIVE CANDIDATE** | Arduino Mega | Pre-P4 executor | Archive later |
 
-| Folder | Status | Target hardware | Current purpose | Reason for classification | Relationship to active architecture | Recommended future action |
-|--------|--------|-----------------|-----------------|---------------------------|--------------------------------------|---------------------------|
-| `firmware/director-esp32-8048s050/` | **ACTIVE** | ESP32-S3 800×480 (8048S043/S050) | Canonical Director LVGL + ESP‑NOW client | Supported operator desk | Desk → Comms via ESP‑NOW | Keep; align UI to constitution in later stages |
-| `firmware/c3-supermini-espnow-bridge/` | **ACTIVE** | ESP32-C3 SuperMini | Canonical Communications Engine | Live desk + node bridge | Centre of ESP‑NOW/UART fabric | Keep; add Wi‑Fi later without owning show state |
-| `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Canonical Show Engine (early hub) | Authoritative path for decisions | UART peer of Comms Engine | Keep; grow SoT features; rename folder later |
-| `firmware/relay-node-esp32/` | **ACTIVE** | ESP32 + relay module | Canonical Relay Node | Working node actuator | Node → Comms → Show Engine | Keep; device-ID addressing later |
-| `firmware/director-s3/` | **LEGACY** | ESP32-S3 + TFT_eSPI | Earlier UART-only Director scaffold | Older topology (Director↔UART↔engine) | Superseded by 8048 ESP‑NOW Director | Retain for reference; do not extend |
-| `firmware/espnow-bridge/` | **LEGACY** | ESP32-C3/C6/S3/ESP32 | Early P4↔node ESP‑NOW scaffold | Pre–dual-role C3 design | Superseded by C3 SuperMini | Retain for packet ideas; do not ship |
-| `firmware/p4-c6-espnow-bridge/` | **EXPERIMENTAL** | ESP32-C6 (P4 companion radio) | Alternate desk bridge prototype | Incomplete vs current C3 path (desk replies) | Not canonical Comms Engine | Extract useful notes only; do not use as product bridge |
-| `firmware/touch-probe-8048/` | **DIAGNOSTIC** | ESP32-8048S043/S050 | GT911 / XPT2046 touch probe | Hardware bring-up only | Supports Director hardware debug | Keep as tool; not runtime |
-| `firmware/sue-esp32s3-node/` | **INCOMPLETE** | ESP32-S3 (planned) | SUE multi-function node placeholder | README / intent only; no operational sketch set | Future node family candidate | Implement under `nodes/` later or archive stub |
-| `firmware/controller-cyd/` | **ARCHIVE CANDIDATE** | ESP32-2432S028R CYD | CYD front panels for Mega era | Pre–S3/P4 product direction | Parallel legacy stack | Future move to `archive/legacy-directors/` |
-| `firmware/executor-mega/` | **ARCHIVE CANDIDATE** | Arduino Mega 2560 | Legacy show executor | Replaced by Show Engine on P4 | Parallel legacy stack | Future move to `archive/legacy-executors/` |
+## 4. Current migration truth
 
-### Nested projects (not first-level, listed for completeness)
+### Hardware
 
-| Path | Status | Notes |
-|------|--------|-------|
-| `firmware/director-esp32-8048s050/ShowduinoSdTouchTest/` | **DIAGNOSTIC** | SD + touch bring-up; not production Director |
-| `firmware/controller-cyd/showduino_cyd_director_v1/` | **ARCHIVE CANDIDATE** | Parent folder status applies |
-| `firmware/controller-cyd/showduino_cyd_director_web_sd_v1/` | **ARCHIVE CANDIDATE** | Parent folder status applies |
-| `firmware/touch-probe-8048/TouchProbe8048/` | **DIAGNOSTIC** | Sketch under diagnostic folder |
-| `firmware/executor-mega/showduino_mega_v1/` | **ARCHIVE CANDIDATE** | Sketch under archive-candidate folder |
+Canonical now:
 
----
+```text
+P4 board + onboard C6 + P4 RTC/VBAT + onboard system audio + external PCM show audio
+```
 
-## 3. Active project boundaries
+### Communications firmware
 
-### Director (`firmware/director-esp32-8048s050/`)
+The last fully exercised path in the repository used:
 
-**Owns:**
+```text
+Director → external C3 → UART → P4
+```
 
-* Operator UI
-* Input handling
-* Display state
-* ESP‑NOW client transport
-* Director-local assets and diagnostics
+That path is now **compatibility**, not the final physical design.
 
-**Must not own:**
+The onboard C6 target must reach parity before the external-C3 code can be archived.
 
-* Authoritative show state
-* Authoritative projects
-* Timeline execution
-* Node routing policy
-* Physical completion assumptions
+### Time firmware
 
-### Communications Engine (`firmware/c3-supermini-espnow-bridge/`)
+The old C3 tree contains DS3231-specific services. They remain compatibility code only.
 
-**Owns:**
+The final time owner is the P4 Show Engine using the P4 RTC/system time. RTC backup retention must be tested before it is marked qualified.
 
-* ESP‑NOW fabric
-* Wi‑Fi transport (planned in this role)
-* UART transport
-* Packet routing
-* Link health
-* Transport-address resolution
+### Audio firmware
 
-**Must not own:**
+The final Stage Controller has two local audio roles:
 
-* Show decisions
-* Timelines
-* Cue state
-* Physical effects
-* False completion acknowledgements
+```text
+onboard ES8311 + amplifier → Showduino/system sounds
+external PCM5102A         → show/programme audio
+```
 
-### Show Engine (`firmware/stage-engine-p4/`)
+I2S arbitration still needs implementation/qualification.
 
-**Owns:**
+## 5. Project boundaries
 
-* Authoritative state
-* Timeline and cue execution (as implemented)
-* Project storage (target; early today)
-* Safety policy
-* Node coordination
-* Local DMX, pixels, audio, storage and Web services **as implemented**
+### Director
 
-**Must not own:**
+Owns:
 
-* ESP‑NOW radio implementation
-* Director visual logic
-* Node-local hardware drivers
+- Operator UI
+- Input handling
+- Display state
+- ESP-NOW client transport
+- Director-local assets/diagnostics
 
-### Relay Node (`firmware/relay-node-esp32/`)
+Must not own:
 
-**Owns:**
+- Show truth
+- Timeline execution
+- Global safety policy
+- Node completion assumptions
 
-* Relay GPIO
-* Local output enforcement
-* Local fail-safe behaviour
-* Reporting actual relay state
+### Communications Engine — onboard C6 target
 
-**Must not own:**
+Owns:
 
-* Show state
-* Timeline decisions
-* Operator UI state
-* Global emergency policy
+- ESP-NOW fabric
+- Wi-Fi transport
+- Link health
+- Transport framing/address resolution
+- P4-side transport
 
----
+Must not own:
 
-## 4. Archive plan — proposal only
+- Show decisions
+- Timeline/cue state
+- Safety authority
+- Physical-effect completion assumptions
 
-**Do not move files yet.** Suggested future layout:
+### Show Engine — P4
+
+Owns:
+
+- Authoritative state
+- Timeline/cues
+- Project/runtime storage
+- Safety/emergency policy
+- Node coordination
+- Local pixels/audio/IO as implemented
+- Web services
+- System time
+
+### Relay Node
+
+Owns:
+
+- Relay GPIO
+- Local fail-safe enforcement
+- Actual relay state reporting
+
+## 6. Onboard C6 acceptance gate
+
+Do not promote `firmware/p4-c6-espnow-bridge/` from **TARGET** to **ACTIVE** until it demonstrates:
+
+1. Director → C6 → P4 command delivery.
+2. P4 → C6 → Director ACK/state delivery.
+3. Node command forwarding and node replies.
+4. Emergency activate/clear traffic.
+5. Wi-Fi/WebUI transport required by the product.
+6. Stable link recovery.
+7. No false-success responses.
+8. A documented C6 flashing and factory-firmware recovery path.
+
+## 7. Archive plan
+
+Do not delete compatibility code just to make the tree look tidy.
+
+After C6 parity and the first complete scenario are proven, candidates can move under:
 
 ```text
 archive/
 ├── legacy-directors/
 ├── legacy-executors/
-├── experimental-bridges/
+├── compatibility-bridges/
 ├── diagnostic-sketches/
 └── incomplete-prototypes/
 ```
 
-| Current folder | Proposed future archive path | Reason | Extract first |
-|----------------|------------------------------|--------|---------------|
-| `firmware/controller-cyd/` | `archive/legacy-directors/controller-cyd/` | CYD+Mega era UI | Any still-useful SD/web patterns into docs |
-| `firmware/executor-mega/` | `archive/legacy-executors/executor-mega/` | Mega no longer Show Engine | Cue/timing ideas worth citing in docs |
-| `firmware/director-s3/` | `archive/legacy-directors/director-s3/` (optional later) | UART Director superseded | Confirm no unique UI patterns needed |
-| `firmware/espnow-bridge/` | `archive/experimental-bridges/espnow-bridge/` | Superseded by C3 SuperMini | Node packet comments if any unique |
-| `firmware/p4-c6-espnow-bridge/` | `archive/experimental-bridges/p4-c6-espnow-bridge/` | Incomplete alternate desk path | Pin/UART notes for Waveshare C6 if useful |
-| `firmware/sue-esp32s3-node/` | `archive/incomplete-prototypes/sue-esp32s3-node/` or revive under `nodes/` | Stub only | Source-repo links from README |
-| `firmware/touch-probe-8048/` | `archive/diagnostic-sketches/touch-probe-8048/` (optional) | Or keep beside Director as lab tool | None required |
-| `.../ShowduinoSdTouchTest/` | `archive/diagnostic-sketches/ShowduinoSdTouchTest/` (optional) | Or keep under Director tree | None required |
+The external C3 bridge should only move after the onboard C6 has passed the acceptance gate above.
 
-Active four folders stay under `firmware/`.
+## 8. Known naming/implementation debt
 
----
+| Debt | Location | Resolution |
+|------|----------|------------|
+| Folder `stage-engine-p4` | `firmware/stage-engine-p4/` | Rename later to Show Engine wording |
+| Macro `SHOWDUINO_P4_C6_MAC_*` | Director `BoardConfig.h` | Historical name; values should become onboard C6 peer MAC after migration |
+| Old external-C3 UART assumptions | P4 and C6 bridge code | Keep only as compatibility until SDIO/internal transport lands |
+| DS3231 service/UI labels | compatibility code / old Studio path | Replace with P4 time service as migration lands |
+| `SUE` as physical board | older docs/code | Treat as historical role name, not required hardware |
 
-## 5. Known naming debt
+## 9. Status summary
 
-Do **not** rename in Stage 1. Recorded for later stages:
+The **hardware architecture is now simpler than the current firmware tree**. That is intentional.
 
-| Debt | Location | Issue |
-|------|----------|-------|
-| Folder `stage-engine-p4` | `firmware/stage-engine-p4/` | Should eventually reflect **Show Engine** |
-| Sketch `ShowduinoStageEngineP4` | Same | “Stage Engine” retired; product is Stage Controller running Show Engine |
-| Macro names `SHOWDUINO_P4_C6_MAC_*` | Director `BoardConfig.h` | Historical; peer is Communications Engine **C3**, not P4-C6 |
-| Term “Stage Engine” | Older docs / comments / Serial strings | Replace with Show Engine / Stage Controller as edited |
-| Director↔UART↔P4 diagrams | Older docs (mostly corrected in Stage 0) | Must not reappear as “current” topology |
-| Bridge folder `p4-c6-espnow-bridge` | Firmware tree | Implies canonical C6 desk path; it is experimental only |
-| Root/history “ESP-NOW Bridge” as vague role | Mixed docs | Official role name is **Communications Engine** |
-
----
-
-## Status legend (quick)
-
-| Status | Meaning |
-|--------|---------|
-| ACTIVE | Canonical runtime / supported path |
-| LEGACY | Earlier working architecture, reference only |
-| EXPERIMENTAL | Prototype / alternate, not canonical |
-| DIAGNOSTIC | Bring-up / probe utility |
-| INCOMPLETE | Stub or non-operational placeholder |
-| ARCHIVE CANDIDATE | Suitable for a future archive move; still present in-tree |
+The repository must preserve working rollback code while making the target unambiguous: the Stage Controller is a P4 board using its onboard C6, RTC and system-audio hardware, plus the external PCM5102A for show audio.

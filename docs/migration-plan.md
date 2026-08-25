@@ -1,290 +1,199 @@
-# Showduino v1 Migration Plan
+# Showduino Migration Plan
 
-This plan turns the scattered Showduino repositories into one clean v1 system.
+This plan reflects the current P4-based architecture and the **25 August 2026 Stage Controller hardware simplification**.
 
-## Rule One
+The old CYD→Mega→separate-SUE migration plan is retired.
 
-Do not merge messy code just because it exists.
+## Goal
 
-Every file must earn its place in v1.
+Prove one complete, safe Showduino scenario on the final lean Stage Controller hardware without adding unnecessary modules.
 
-## Final Target Repo
-
-Current bootstrap repository:
+Final Stage Controller baseline:
 
 ```text
-sumkindafreak/new_showduino
+Waveshare ESP32-P4-Module-DEV-KIT
+├── ESP32-P4 Show Engine
+├── onboard ESP32-C6 Communications Engine
+├── P4 RTC / rechargeable backup connection
+├── onboard ES8311 system audio
+├── onboard microSD / Ethernet / USB
+├── emergency GPIO24/25
+└── external PCM5102A show audio
 ```
 
-Recommended rename:
+## Rule one — preserve working fallbacks during migration
+
+The external C3 and DS3231 are removed from the **physical target**, but their working firmware remains in the repository until the onboard replacements are proven.
+
+Do not delete rollback code before parity testing.
+
+## Phase 1 — freeze the hardware baseline
+
+Status: **DECIDED**
+
+- P4 remains the Show Engine.
+- Onboard C6 replaces separate C3/SUE hardware.
+- P4 RTC replaces external DS3231 hardware.
+- Onboard ES8311 handles Showduino/system sounds.
+- PCM5102A remains for show/programme audio.
+- GPIO24 remains emergency NeoPixel.
+- GPIO25 remains momentary emergency trigger.
+- microSD, Ethernet and USB remain native Stage Controller resources.
+
+Reference: `docs/hardware-baseline-2026-08-25.md`.
+
+## Phase 2 — qualify onboard C6 programming/recovery
+
+Before replacing factory C6 firmware:
+
+1. Record the board/module revision.
+2. Record/recover the factory C6 firmware source/version where possible.
+3. Verify the C6 UART flashing connection.
+4. Verify `C6_IO9` download-mode procedure.
+5. Prove the C6 can be reflashed/recovered without losing access to the P4.
+
+Waveshare documents C6 download mode as `C6_IO9` LOW during power/reset, with flashing over `C6_U0RXD` / `C6_U0TXD`.
+
+## Phase 3 — move Communications Engine to onboard C6
+
+Target tree:
 
 ```text
-sumkindafreak/showduino_v1
+firmware/p4-c6-espnow-bridge/
 ```
 
-GitHub rename path:
+Required parity with the previous external C3 bridge:
 
-```text
-Repository Settings → General → Repository name → showduino_v1 → Rename
-```
+1. Director ESP-NOW receive.
+2. P4 command delivery.
+3. P4 ACK/state replies back to Director.
+4. Relay/node forwarding.
+5. Node replies back to P4.
+6. Emergency activate/clear transport.
+7. Link heartbeat/recovery.
+8. Wi-Fi AP/STA front door for Studio/WebUI.
+9. No false success for unsupported routes.
 
-GitHub will normally redirect old links automatically after the rename.
+The board's integrated C6/P4 relationship uses SDIO for wireless expansion. The current experimental C6 sketch's placeholder UART assumptions are not the final product transport contract.
 
-## Phase 0 — Bootstrap
+**Exit criterion:** the Director, WebUI and one real node work through the onboard C6 with the external C3 physically absent.
 
-Status: Started
+## Phase 4 — move time authority to P4 RTC
+
+Remove the DS3231 dependency from the product path.
 
 Tasks:
 
-- Add README
-- Add architecture document
-- Add source repo audit
-- Add migration plan
-- Add serial protocol draft
-- Add hardware pinout draft
-- Add empty firmware/web/docs/hardware structure
+1. Create P4 time service owned by the Show Engine.
+2. Publish time to Director/WebUI.
+3. Define boot-time clock-set policy.
+4. Integrate rechargeable RTC backup support where the framework permits.
+5. Test time retention through the intended power/sleep sequence.
+6. Remove DS3231-specific UI labels from the production path.
 
-Outcome:
+**Exit criterion:** Showduino boots with useful time, publishes it consistently and passes the chosen backup-power test without a DS3231 connected.
 
-A clean planning foundation exists before code is copied.
+## Phase 5 — onboard Showduino/system audio
 
-## Phase 1 — Create Folder Skeleton
+Use the Waveshare ES8311 + NS4150B path.
 
-Create:
-
-```text
-firmware/controller-cyd/
-firmware/executor-mega/
-firmware/sue-esp32s3-node/
-firmware/addon-nodes/r3-terminal/
-web/gorefx-dashboard/
-docs/
-hardware/
-examples/
-tools/
-```
-
-Each firmware target should eventually contain:
+Initial system sounds:
 
 ```text
-README.md
-src or Arduino sketch files
-config.h
-pinout.md
-commands.md
-```
-
-## Phase 2 — CYD Controller Migration
-
-Source repo:
-
-```text
-sumkindafreak/Showduino-controller
-```
-
-Target folder:
-
-```text
-firmware/controller-cyd/
-```
-
-Migration steps:
-
-1. Identify newest working CYD sketch.
-2. Extract pin definitions.
-3. Remove hard-coded WiFi passwords.
-4. Split into modules:
-   - display
-   - touch
-   - menu
-   - sd card
-   - serial bridge
-   - settings
-   - diagnostics
-5. Compile test.
-6. Add upload instructions.
-7. Add wiring notes.
-
-Do not migrate until:
-
-- Board target is confirmed.
-- Touch pins are confirmed.
-- SD pins are confirmed.
-- Serial-to-Mega pins are confirmed.
-
-## Phase 3 — Mega Executor Migration
-
-Source repos:
-
-```text
-sumkindafreak/arduino_show_controller
-sumkindafreak/showduino-complete-code
-sumkindafreak/showduino-scare-control-system
-```
-
-Target folder:
-
-```text
-firmware/executor-mega/
-```
-
-Migration steps:
-
-1. Build a clean Mega sketch from scratch.
-2. Add relay control first.
-3. Add serial command parser.
-4. Add emergency stop.
-5. Add DMX.
-6. Add MP3 control.
-7. Add NeoPixel control.
-8. Add input handling.
-9. Add status reporting.
-10. Add timeline cue execution.
-
-Do not migrate until:
-
-- Relay pinout is locked.
-- DMX pin is locked.
-- MP3 serial pins are locked.
-- NeoPixel output pins are locked.
-- Emergency stop behaviour is defined.
-
-## Phase 4 — SUE Node Migration
-
-Source repo:
-
-```text
-sumkindafreak/SHOWDUINO---SUE
-```
-
-Target folder:
-
-```text
-firmware/sue-esp32s3-node/
-```
-
-Migration steps:
-
-1. Copy modular structure concept.
-2. Bring across `config.h` style pin mapping.
-3. Bring across LED, RTC, SD, relay, audio, and ESP-NOW modules carefully.
-4. Confirm PCM5102A audio library and compile requirements.
-5. Add standalone test commands.
-6. Add Showduino command bridge compatibility.
-
-Do not migrate until:
-
-- Board variant is confirmed.
-- ESP-NOW command direction is defined.
-- Audio hardware wiring is confirmed.
-
-## Phase 5 — GoreFX Dashboard Migration
-
-Source repo:
-
-```text
-sumkindafreak/gorefx-shadow-control
-```
-
-Target folder:
-
-```text
-web/gorefx-dashboard/
-```
-
-Migration steps:
-
-1. Bring across the Vite/React/TypeScript app.
-2. Rename from generic Lovable project to GoreFX / Showduino dashboard.
-3. Add API layer for Showduino commands.
-4. Add connection settings.
-5. Add live controls.
-6. Add timeline editor.
-7. Add show library.
-8. Add diagnostics.
-9. Add emergency stop.
-
-Do not migrate until:
-
-- Command protocol is stable enough.
-- Dashboard can target a local Showduino IP.
-- Emergency stop is always visible.
-
-## Phase 6 — Show File Format
-
-Target:
-
-```text
-.shdo
+boot
+ready
+loaded
+armed
+warning
+error
+emergency acknowledgement
+restart/shutdown
 ```
 
 Tasks:
 
-- Define show metadata.
-- Define cue format.
-- Define command format.
-- Define timeline timing.
-- Define loop/scene support.
-- Define emergency behaviour.
-- Add examples.
+1. Initialise I2C on GPIO7/8.
+2. Initialise ES8311 I2S on GPIO9-13.
+3. Control amplifier enable on GPIO53.
+4. Play one small WAV from P4 SD.
+5. Make missing sound assets non-fatal.
+6. Add simple system-volume control.
 
-## Phase 7 — Hardware Documentation
+**Exit criterion:** boot and ready sounds play from the onboard speaker without an extra audio controller.
 
-Create:
+## Phase 6 — restore/qualify PCM5102A show audio
 
-- Master pinout
-- CYD pinout
-- Mega executor pinout
-- SUE pinout
-- R3 terminal pinout
-- Relay wiring notes
-- DMX wiring notes
-- Audio wiring notes
-- NeoPixel wiring notes
-- Power notes
-
-## Phase 8 — First Working v1 Demo
-
-The first v1 demo should be simple and reliable:
-
-1. CYD boots.
-2. Mega boots.
-3. CYD sends heartbeat.
-4. Mega replies OK.
-5. CYD button triggers Relay 1.
-6. CYD button triggers Relay 1 pulse.
-7. Emergency stop turns all relays off.
-8. Serial log confirms each command.
-
-Only after this works should we add DMX, audio, pixels, timelines, and web dashboard control.
-
-## Phase 9 — Release Tags
-
-Suggested tags:
+Current show-audio pins:
 
 ```text
-v0.1.0-bootstrap-docs
-v0.2.0-mega-relay-baseline
-v0.3.0-cyd-controller-baseline
-v0.4.0-cyd-mega-serial
-v0.5.0-dmx-audio-pixels
-v0.6.0-gorefx-dashboard
-v0.7.0-show-file-playback
-v0.8.0-sue-node-support
-v0.9.0-release-candidate
-v1.0.0-showduino-v1
+WS    GPIO20
+BCLK  GPIO21
+DOUT  GPIO22
 ```
 
-## Success Definition
+Tasks:
 
-Showduino v1 is successful when:
+1. Play a show WAV from P4 SD.
+2. Stop/pause deterministically.
+3. Report play state/faults.
+4. Connect show audio to timeline cues.
+5. Verify emergency stops/replaces show audio according to safety policy.
 
-- A new user can clone the repo.
-- They can upload the Mega firmware.
-- They can upload the CYD firmware.
-- They can wire relays safely.
-- They can trigger effects from touchscreen.
-- They can trigger effects from dashboard.
-- They can load a show from SD.
-- They can stop everything safely.
-- The docs explain the full setup clearly.
+## Phase 7 — I2S arbitration
+
+The ESP32-P4 has one I2S peripheral, while the baseline has two physical audio output roles.
+
+Implement explicit ownership:
+
+```text
+IDLE
+SYSTEM_AUDIO
+SHOW_AUDIO
+FAULT
+```
+
+Rules:
+
+- Active show audio has priority over routine UI sounds.
+- Routine system sounds cannot corrupt show audio.
+- Emergency logic can deliberately seize/stop audio according to policy.
+- Do not claim simultaneous independent streams until proven.
+
+## Phase 8 — one complete scenario
+
+Minimum proof:
+
+1. Stage Controller boots.
+2. Onboard system boot/ready sound plays.
+3. Director connects through onboard C6.
+4. Show package loads from P4 SD.
+5. Show starts from Director.
+6. PCM show audio plays.
+7. Timeline drives at least one pixel/output action.
+8. Emergency button GPIO25 latches emergency.
+9. GPIO24 emergency pixels activate.
+10. Show audio stops/safes correctly.
+11. Clear is rejected while GPIO25 remains held.
+12. After release and explicit clear, runtime returns safe/idle and does not auto-resume.
+
+**This is the primary milestone.**
+
+## Phase 9 — tidy compatibility code only after proof
+
+After the complete scenario passes:
+
+- Mark external C3 bridge legacy/archive candidate.
+- Archive DS3231-only compatibility services if no longer needed.
+- Remove obsolete documentation paths.
+- Rename Stage Engine folder terminology when convenient.
+- Keep diagnostic sketches that still save bring-up time.
+
+## Success definition
+
+Showduino's current hardware migration succeeds when the Stage Controller can run the complete proof above using:
+
+```text
+Director + P4 board + onboard C6 + P4 RTC + onboard system audio + PCM show audio
+```
+
+with no separate C3/SUE or DS3231 module required inside the Stage Controller.

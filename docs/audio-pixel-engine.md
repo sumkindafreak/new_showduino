@@ -1,189 +1,191 @@
-# Showduino v1 Audio and Pixel Engine
+# Showduino Audio and Pixel Engine
 
-Audio and pixels are core to Showduino v1.
+Audio and pixels are core Showduino outputs. The Stage Controller now separates **system audio** from **show audio** by purpose while keeping the emergency pixel path local and deterministic.
 
-The system should be designed around local audio playback and rich LED effects, not just relay triggering.
+## 1. Audio architecture
 
-## Audio Direction
+### A. Showduino/system sounds — onboard ES8311
 
-Preferred final audio architecture:
-
-```text
-ESP32-S3 + SD Card + PCM5102A I2S DAC
-```
-
-Why:
-
-- Audio can be stored locally on SD card.
-- No need to rely on external serial MP3 modules as the main design.
-- ESP32 can handle file browsing, volume, play/stop, and future sync logic.
-- PCM5102A gives proper stereo line-level audio output.
-- Audio nodes can become modular Showduino add-ons.
-
-## Audio Board Role
-
-The PCM audio board should become the standard Showduino audio output module.
-
-Possible setups:
-
-### Option A — Audio inside SUE node
+The Waveshare ESP32-P4-Module-DEV-KIT already includes:
 
 ```text
-SUE ESP32-S3
-├── SD card
-├── PCM5102A I2S DAC
-├── Pixel output
-├── Relay/PWM output
-└── ESP-NOW / WiFi command input
+ES8311 codec
+NS4150B power amplifier
+onboard microphone
+8Ω / 2W speaker header
 ```
 
-Best for:
-
-- Local scene props
-- Wireless rooms
-- Self-contained effects
-- Future product module
-
-### Option B — Dedicated audio node
+Showduino reserves this path for short local sounds that belong to the controller itself:
 
 ```text
-ESP32-S3 Audio Node
-├── SD card
-├── PCM5102A I2S DAC
-└── WiFi / ESP-NOW command receiver
+boot
+ready
+production loaded
+show armed
+link warning
+error
+emergency acknowledgement
+restart / shutdown
 ```
 
-Best for:
-
-- Multi-room audio
-- Ambience zones
-- Independent speaker outputs
-
-### Option C — Controller audio preview only
-
-The CYD controller may preview short sounds later, but should not be the main show audio output.
-
-## Audio File Layout
-
-Recommended SD card layout:
+Official board mapping:
 
 ```text
-/audio/
-  thunder.mp3
-  scream.wav
-  heartbeat.mp3
-  ambience_loop.mp3
-
-/scenes/
-  chamber_intro.shdo
-  whitechapel_scare.shdo
-
-/shows/
-  chamber_full_show.shdo
+I2C SDA     GPIO7
+I2C SCL     GPIO8
+I2S DSDIN  GPIO9
+I2S LRCK   GPIO10
+I2S ASDOUT GPIO11
+I2S SCLK   GPIO12
+I2S MCLK   GPIO13
+PA enable  GPIO53
 ```
 
-## Audio Commands
+System sounds should be small, fast to load and available without relying on a separate audio node.
 
-Local audio command format:
+### B. Show/programme audio — external PCM5102A
+
+The external PCM5102A remains part of the Stage Controller because show audio is a separate responsibility.
+
+Use it for:
 
 ```text
-AUDIO:PLAY:/audio/thunder.mp3
-AUDIO:STOP
-AUDIO:PAUSE
-AUDIO:RESUME
-AUDIO:VOLUME:80
-AUDIO:STATUS
-AUDIO:LIST
+music
+voice / dialogue
+ambience
+scare SFX
+timeline audio
+show emergency track where required
 ```
 
-Scene cue example:
+Current wiring:
+
+```text
+WS/LRCK  GPIO20
+BCLK     GPIO21
+DOUT     GPIO22
+```
+
+The PCM path is the primary line-level show-audio output.
+
+## 2. I2S arbitration rule
+
+The ESP32-P4 has one I2S peripheral.
+
+Therefore the two audio paths are **logically separate roles**, not a promise of two fully independent simultaneous hardware streams.
+
+V1 policy:
+
+- Show audio has priority while a timeline audio stream is active.
+- A routine system sound must not interrupt or corrupt active show audio.
+- Boot/ready/loaded sounds normally occur while show audio is idle.
+- Emergency policy may deliberately stop show audio before playing an emergency/system acknowledgement where required.
+- Any future shared-bus or rapid-switching implementation must be tested before simultaneous behaviour is claimed.
+
+## 3. Audio storage
+
+Recommended P4 SD layout:
+
+```text
+/showduino/audio/system/
+  boot.wav
+  ready.wav
+  loaded.wav
+  armed.wav
+  warning.wav
+  error.wav
+
+/showduino/audio/show/
+  ambience/
+  music/
+  dialogue/
+  sfx/
+
+/showduino/shows/
+  packages/
+```
+
+System sound names should be configurable; missing system sounds must never stop the Show Engine booting.
+
+## 4. Audio command model
+
+Show-level commands should remain explicit about the output role.
+
+Examples:
+
+```text
+AUDIO:SHOW:PLAY:/showduino/audio/show/sfx/thunder.wav
+AUDIO:SHOW:STOP
+AUDIO:SHOW:VOLUME:80
+
+AUDIO:SYSTEM:PLAY:ready
+AUDIO:SYSTEM:PLAY:error
+```
+
+The exact wire protocol may evolve, but the distinction between `SHOW` and `SYSTEM` should remain so the scheduler can enforce I2S ownership safely.
+
+## 5. Timeline audio
+
+Show audio is timeline-first.
+
+Example cue shape:
 
 ```json
 {
   "time_ms": 0,
   "type": "AUDIO",
-  "target": "local",
-  "file": "/audio/thunder.mp3",
+  "target": "show",
+  "file": "/showduino/audio/show/ambience/chamber.wav",
   "volume": 85
 }
 ```
 
-## Audio Sync Requirements
+Required behaviour:
 
-For v1, perfect sample-accurate sync is not required.
+- Start on cue.
+- Allow pixel/output cues to overlap.
+- Avoid blocking delays.
+- Keep show timing independent of file-decoder blocking.
+- Report playback faults to the Show Engine.
 
-Required:
+Perfect sample-accurate distributed sync is not required for the first release.
 
-- Start audio on cue.
-- Start pixel effect on cue.
-- Keep scene timing based on `millis()`.
-- Allow audio and pixel cues to overlap.
-- Avoid blocking delay-based playback logic.
+## 6. Pixel engine direction
 
-Later:
-
-- Waveform preview
-- Audio markers
-- Beat sync
-- SMPTE/MIDI-style timing
-- Multi-node sync
-
-## Pixel Engine Direction
-
-Pixels are not decoration. They are part of the scare design language.
+Pixels are part of the show language, not decoration.
 
 The pixel engine should support:
 
-- Multiple lines
-- Sub-strip effects
-- Brightness control
-- Colour control
-- Speed control
-- Direction/reverse
+- Multiple named pixel lines
+- Sub-strip / segment effects
+- Multiple simultaneous segments on one physical line
+- Brightness and colour control
+- Speed and direction
 - Duration
-- Layer-like behaviour later
+- Layer/lane behaviour in Studio
 
-## Pixel Command Format
-
-Simple commands:
+Example desired use:
 
 ```text
-PIXEL:1:OFF
-PIXEL:1:COLOR:255,0,0
-PIXEL:1:BRIGHTNESS:180
-PIXEL:1:EFFECT:FIRE
+Pixel line 1:
+  pixels 0-7   → LIGHTNING
+  pixels 8-10  → SOLID BLUE
+  pixels 11+   → WARM WHITE GLOW
 ```
 
-Advanced effect command:
+## 7. Emergency pixel line
+
+The Stage Controller's local emergency strip remains independent from normal show pixel assignments.
 
 ```text
-PIXEL:1:EFFECT:FIRE:START:0:COUNT:60:COLOR:255,80,0:BRIGHTNESS:200:SPEED:50:DURATION:5000
+DATA GPIO24
 ```
 
-## Pixel Effect Function Shape
+Normal Showduino Studio timelines must not treat the emergency line as an ordinary editable show-output lane.
 
-Each effect should eventually be written in a consistent shape:
+## 8. Pixel effect vocabulary
 
-```cpp
-void fxFire(uint8_t line, uint16_t start, uint16_t count, uint32_t color, uint8_t speed, uint8_t brightness, bool reverse);
-```
-
-Preferred parameter set:
-
-```text
-line
-start
-count
-color
-speed
-brightness
-reverse
-duration_ms
-```
-
-## Essential v1 Pixel Effects
-
-The first pixel effects should be practical for scare scenes:
+Initial effects:
 
 ```text
 OFF
@@ -202,11 +204,20 @@ WARNING_RED
 BLACKOUT
 ```
 
-## Scene Timeline Priority
+Preferred effect parameters:
 
-Audio and pixels should be timeline-first.
+```text
+line
+start
+count
+color
+speed
+brightness
+reverse
+duration_ms
+```
 
-Example:
+## 9. Example audio + pixel scene
 
 ```json
 {
@@ -216,13 +227,16 @@ Example:
     {
       "time_ms": 0,
       "type": "AUDIO",
-      "file": "/audio/heartbeat.mp3",
+      "target": "show",
+      "file": "/showduino/audio/show/ambience/heartbeat.wav",
       "volume": 80
     },
     {
       "time_ms": 0,
       "type": "PIXEL",
       "line": 1,
+      "start": 0,
+      "count": 8,
       "effect": "PULSE",
       "color": [255, 0, 0],
       "brightness": 150,
@@ -233,54 +247,34 @@ Example:
       "time_ms": 4000,
       "type": "PIXEL",
       "line": 1,
-      "effect": "BUILD",
+      "start": 8,
+      "count": 3,
+      "effect": "SOLID",
       "color": [0, 120, 255],
       "brightness": 200,
-      "speed": 25,
       "duration_ms": 3000
-    },
-    {
-      "time_ms": 7000,
-      "type": "PIXEL",
-      "line": 1,
-      "effect": "STROBE",
-      "color": [255, 255, 255],
-      "brightness": 255,
-      "speed": 80,
-      "duration_ms": 1000
-    },
-    {
-      "time_ms": 8000,
-      "type": "PIXEL",
-      "line": 1,
-      "effect": "BLACKOUT",
-      "duration_ms": 500
     }
   ]
 }
 ```
 
-## Hardware Split Decision
+## 10. First audio milestone under the new baseline
 
-For the first v1 hardware proof:
+1. Initialise the onboard ES8311 and play a short boot/ready WAV through the board speaker.
+2. Verify the PCM5102A show path on GPIO20/21/22.
+3. Add an audio-resource owner/state machine so only the permitted path owns I2S at a time.
+4. Confirm a missing system-sound file cannot block startup.
+5. Confirm emergency handling can stop show audio deterministically.
+6. Add Studio/runtime status showing `SYSTEM`, `SHOW`, `IDLE`, or `FAULT` audio ownership.
+
+## 11. Hardware split decision
 
 ```text
-Mega = safe physical outputs such as relays
-ESP32-S3/SUE = audio + pixels
-Dashboard = scene creator
-CYD = scene trigger/control panel
+P4 Show Engine
+├── onboard ES8311 → Showduino/system sounds
+├── external PCM5102A → show/programme audio
+├── local emergency pixel line
+└── dispatch to specialist remote nodes as required
 ```
 
-This prevents the Mega from being overloaded with things it is not best at.
-
-## First Audio + Pixel Milestone
-
-Build a standalone ESP32-S3 sketch that:
-
-1. Mounts SD card.
-2. Plays `/audio/test.mp3` through PCM5102A.
-3. Runs a NeoPixel pulse effect at the same time.
-4. Accepts serial command `SCENE:TEST`.
-5. Uses no blocking delays during playback/effects.
-
-This becomes the first real creative Showduino proof.
+Audio nodes remain useful for remote zones and multi-room systems, but they are no longer required just to give the Stage Controller basic system audio.
