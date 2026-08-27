@@ -1,7 +1,7 @@
 #include "CommandInterfaces.h"
 #include "ShowCommand.h"
 #include "../DeskUartBridge.h"
-#include "../../../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_legacy_strings.h"
 #include <ctype.h>
 
 namespace {

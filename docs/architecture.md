@@ -20,7 +20,7 @@ Firmware path `firmware/stage-engine-p4/` is the current Show Engine sketch loca
 ### Non-negotiable ownership
 
 - The Show Engine owns authoritative show state, safety policy, primary project/configuration storage, Web UI, Web API, and WebSocket state.
-- The Communications Engine owns Wi‑Fi and ESP‑NOW transport (and UART to the Show Engine). It must **not** make show-level decisions, run the timeline, or invent output state.
+- The Communications Engine owns ESP‑NOW transport and UART to the Show Engine. It must **not** make show-level decisions, run the timeline, or invent output state. Wi‑Fi and BLE on this role are **FUTURE / RESERVED / NOT IMPLEMENTED**.
 - The Director commands and displays. It does **not** host or proxy the primary Web UI. USB is not the normal Director link.
 - Nodes act. Application addressing uses **logical Showduino device IDs**, not MAC addresses at the application layer.
 - Relay requests use **absolute** ON/OFF (and timed pulse) states — not distributed `TOGGLE`.
@@ -44,8 +44,8 @@ Director SD show/storage features that exist today are **current implementation 
 ```text
 Director ESP32-S3
     → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
+ESP32-S3 Comms Controller
+    → UART 115200 8N1
 Show Engine ESP32-P4 (Stage Controller)
 ```
 
@@ -54,7 +54,7 @@ Show Engine ESP32-P4 (Stage Controller)
 ```text
 Showduino Node
     → ESP-NOW
-Communications Engine ESP32-C3
+ESP32-S3 Comms Controller
     → UART
 Show Engine ESP32-P4 (Stage Controller)
 ```
@@ -63,8 +63,7 @@ Show Engine ESP32-P4 (Stage Controller)
 
 ```text
 Phone / Tablet / Laptop
-    → Wi-Fi
-Communications Engine ESP32-C3
+    → Wi-Fi (FUTURE / RESERVED / NOT IMPLEMENTED on the S3 Comms Controller)
     → Show Engine services
 ```
 
@@ -77,10 +76,10 @@ Do **not** describe the Director as the normal Web UI host or proxy.
 └────────────┬─────────────┘
              │ ESP-NOW
              ▼
-┌──────────────────────────┐     Wi-Fi (planned)
-│ Communications Engine    │◄──────────────── Phone / tablet / laptop
-│ (ESP32-C3)               │
-│ ESP-NOW + UART (+ Wi-Fi) │
+┌──────────────────────────┐
+│ Communications Engine    │
+│ (ESP32-S3 Dev Module)    │
+│ ESP-NOW + UART           │
 └────────────┬─────────────┘
              │ UART
              ▼
@@ -123,19 +122,26 @@ Not responsibilities:
 
 UART from the Director to the P4 is **not** the normal product path (optional bench/service only).
 
-### 2. Communications Engine (ESP32-C3)
+### 2. Communications Engine (dedicated ESP32-S3)
 
-**Active firmware:** `firmware/c3-supermini-espnow-bridge/`
+**Active firmware:** `firmware/s3-comms-controller/`
+
+Hardware: standard USB-programmable ESP32-S3 Dev Module. Application link to the P4 is UART (P4 GPIO4 RX / GPIO5 TX, S3 GPIO17 TX / GPIO18 RX). Native USB on the S3 is for programming/debug only.
 
 Responsibilities:
 
 - ESP‑NOW desk link to the Director
-- ESP‑NOW fabric to nodes
 - UART framing/forwarding to the Show Engine
+- Remember Director MAC; return P4 newline-framed status over ESP-NOW
 - Device connection monitoring and transport health
-- Planned: Wi‑Fi AP/STA so browsers reach Show Engine services
 
-Must not: run shows, own show state, control DMX/pixels/audio as an authority, or return **false success** for unimplemented routes.
+Must not: run shows, own show state, host SoftAP/WebUI, initialise BLE, install ESP-Hosted, or return **false success** for unimplemented routes.
+
+The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**. Do not flash it or wait for it.
+
+The previous external Communications Engine (`firmware/c3-supermini-espnow-bridge/`, ESP32-C3 SuperMini / SUE) is **LEGACY / SUPERSEDED**.
+
+**FUTURE / RESERVED / NOT IMPLEMENTED** on this S3: Bluetooth LE, Wi-Fi SoftAP/STA networking, WebUI proxy, OTA.
 
 ### 3. Show Engine on Stage Controller (ESP32-P4)
 
@@ -165,7 +171,7 @@ Nodes execute absolute commands and report results. Expandable family: audio, li
 
 ```text
 firmware/director-esp32-8048s050/
-firmware/c3-supermini-espnow-bridge/
+firmware/s3-comms-controller/             # Communications Engine (ESP32-S3)
 firmware/stage-engine-p4/                 # Show Engine (rename planned)
 firmware/relay-node-esp32/
 ```
@@ -174,8 +180,9 @@ firmware/relay-node-esp32/
 
 | Path | Classification |
 |------|----------------|
+| `firmware/p4-c6-espnow-bridge/` | Unused / reserved — onboard C6, not current application firmware |
+| `firmware/c3-supermini-espnow-bridge/` | Legacy / superseded — previous external C3 / SUE Communications Engine |
 | `firmware/director-s3/` | Legacy / experimental |
-| `firmware/p4-c6-espnow-bridge/` | Experimental / incomplete |
 | `firmware/espnow-bridge/` | Legacy scaffold |
 | `firmware/controller-cyd/` | Legacy — archive candidate |
 | `firmware/executor-mega/` | Legacy — archive candidate |
@@ -214,12 +221,13 @@ Placeholder pixel/audio routes must **not** report success when no real action o
 ## UART (Communications Engine ↔ Show Engine)
 
 ```text
-Communications Engine ESP32-C3  ↔  Show Engine ESP32-P4
-Baud: 115200 (current sketches)
+Dedicated ESP32-S3 Comms Controller  ↔  Show Engine ESP32-P4
+Baud: 115200 8N1, newline-framed ASCII
+P4 GPIO4 RX / GPIO5 TX  (S3 GPIO17 TX / GPIO18 RX)
 GND shared
 ```
 
-Pin details live in the active firmware READMEs / sketches. The Director does not sit on this UART in the normal product path.
+Factory P4↔C6 SDIO is **not** the current command transport. Pin details: [`docs/final-hardware-architecture.md`](final-hardware-architecture.md). The Director does not sit on this UART in the normal product path.
 
 ---
 
@@ -263,6 +271,6 @@ A lost Director or browser must **not** by itself stop a running show, unless a 
 
 ## Development status relative to this document
 
-**Aligned:** role names in this doc; live Director→ESP‑NOW→C3→UART→P4 path; relay nodes off the P4; Comms must not own show logic.
+**Aligned:** role names in this doc; live Director→ESP‑NOW→S3 Comms Controller→UART→P4 path; relay nodes off the P4; Comms must not own show logic.
 
 **Still firmware debt (docs only — not fixed here):** optimistic Director relay UI; `TOGGLE` still present in places; MAC-centric node config; stub routes that can look like success; Show Engine Web UI not on P4; Director SD still holding show packages; folder still named `stage-engine-p4`.

@@ -17,16 +17,33 @@ powershell -File tools/deploy-webui-to-sd.ps1
 
 ## Architecture
 
+**Current product path (this hardware generation):**
+
 ```text
-Browser → Wi-Fi → ESP32-C3 SUE (HTTP radio, WebSocket :81)
-                    └─ UART tunnel → ESP32-P4
+Browser  →  (not hosted on the current S3 Comms Controller)
+Director → ESP-NOW → ESP32-S3 Comms Controller → UART → ESP32-P4
                          ├─ Static files from SD /showduino/webui/
                          └─ JSON APIs (/api/system, /api/logs, /api/devices)
 ```
 
 The production frontend is **not** embedded in firmware. A tiny HTML fallback is shown only if the P4 SD origin is unreachable.
 
+### Previous generation (legacy C3 / SUE)
+
+The external ESP32-C3 SuperMini hosted SoftAP `Showduino-Studio` and proxied `/api/*` over UART. That path remains documented for the legacy C3 firmware only:
+
+```text
+Browser → Wi-Fi → ESP32-C3 SUE (HTTP radio, WebSocket :81)
+                    └─ UART tunnel → ESP32-P4
+```
+
 ## Connect
+
+Current generation: flash **P4**, **S3 Comms Controller**, **Director**. Wire UART (S3 GPIO17→P4 GPIO4, S3 GPIO18←P4 GPIO5). Copy the S3 boot MAC into Director `SHOWDUINO_COMMS_MAC_*`.
+
+There is **no external DS3231** on the current P4-module stack. Time follows the P4 internal RTC.
+
+### Legacy C3 connect (previous hardware)
 
 1. Flash **P4**, **C3**, **Director**
 2. Wire DS3231 to C3: **SDA=GPIO4**, **SCL=GPIO5**, 3V3, GND
@@ -50,7 +67,9 @@ Install **Adafruit RTClib** (v2.1.4+) and dependency **Adafruit BusIO** in Ardui
 
 `time.updated` (1 Hz) · `time.sync` · `time.unsynced` · `rtc.status` · `time.alarm` · `time.alarm.armed` · `time.alarm.cleared`
 
-## DS3231 wiring (SUE / C3)
+## DS3231 wiring (legacy SUE / C3 only)
+
+Not used on the current P4-module generation. Retained for the previous C3 firmware:
 
 | RTC pin | C3 GPIO |
 |---------|---------|

@@ -1,8 +1,11 @@
 # Showduino v1 Hardware Pinout Draft
 
+> **Current P4-module pin map lives in [`docs/final-hardware-architecture.md`](final-hardware-architecture.md).**  
+> This file is the **historical** CYD / Arduino Mega / SUE ESP32-S3 draft. It is not the Waveshare ESP32-P4-Module-DEV-KIT map.
+
 This is the first central pinout document for Showduino v1.
 
-Nothing should be considered final until it has been tested on real hardware and marked as confirmed.
+Nothing in **this** historical draft should be treated as the current Stage Controller pinout.
 
 ## Hardware Families
 

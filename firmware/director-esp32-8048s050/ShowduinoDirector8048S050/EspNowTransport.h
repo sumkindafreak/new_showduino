@@ -12,7 +12,7 @@
 
 // =========================================================
 // Showduino ESP-NOW transport
-// Director S3 <-> C3 SuperMini bridge
+// This touchscreen Director <-> standalone ESP32-S3 Comms Controller
 // Desk packet: protocol/showduino_desk_packet.h (wire-compatible)
 // =========================================================
 
@@ -162,12 +162,12 @@ private:
   static char rxQueue[RX_QUEUE_DEPTH][SHOWDUINO_ESPNOW_COMMAND_MAX];
 
   uint8_t stageBridgeMac[6] = {
-    SHOWDUINO_P4_C6_MAC_0,
-    SHOWDUINO_P4_C6_MAC_1,
-    SHOWDUINO_P4_C6_MAC_2,
-    SHOWDUINO_P4_C6_MAC_3,
-    SHOWDUINO_P4_C6_MAC_4,
-    SHOWDUINO_P4_C6_MAC_5
+    SHOWDUINO_COMMS_MAC_0,
+    SHOWDUINO_COMMS_MAC_1,
+    SHOWDUINO_COMMS_MAC_2,
+    SHOWDUINO_COMMS_MAC_3,
+    SHOWDUINO_COMMS_MAC_4,
+    SHOWDUINO_COMMS_MAC_5
   };
 
   bool addBridgePeer() {

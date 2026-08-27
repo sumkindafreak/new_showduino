@@ -1247,7 +1247,7 @@ void setup() {
   }
 
 #if SHOWDUINO_USE_ESPNOW
-  ui.appendLog(espNowReady ? "ESP-NOW ready: targeting P4/C6 bridge." : "ESP-NOW failed: using UART fallback if wired.");
+  ui.appendLog(espNowReady ? "ESP-NOW ready: targeting standalone S3 Comms Controller." : "ESP-NOW failed.");
 #endif
 
 #if SHOWDUINO_WEBUI_ENABLED

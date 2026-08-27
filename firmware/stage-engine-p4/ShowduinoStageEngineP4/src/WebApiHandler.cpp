@@ -1,5 +1,6 @@
 #include "WebApiHandler.h"
 
+#include <string.h>
 #include <esp_heap_caps.h>
 #include "../BoardConfig.h"
 #include "../ShowRuntimeOwner.h"
@@ -14,6 +15,7 @@ extern uint8_t gEmergencySourceId;
 extern ShowRuntimeOwner gRuntime;
 
 static unsigned long sBootMs = 0;
+static bool sOriginReady = false;
 
 static const char *sourceName() {
   if (!emergencyLocked) return "";
@@ -64,7 +66,9 @@ static bool pathHasDotDot(const String &p) {
   return false;
 }
 
-/* Map a public URL onto /showduino/webui/... and refuse escape. */
+/* Map a public URL onto /showduino/webui/... and refuse escape.
+ * Do not use String::indexOf('\0'): Arduino strchr() matches the terminator
+ * and would refuse every valid URL. */
 static bool mapWebuiPath(const String &urlIn, String &sdOut) {
   String url = urlIn;
   int q = url.indexOf('?');
@@ -73,7 +77,7 @@ static bool mapWebuiPath(const String &urlIn, String &sdOut) {
   while (url.indexOf("//") >= 0) url.replace("//", "/");
   if (url.length() == 0 || url == "/") url = "/index.html";
   if (!url.startsWith("/")) return false;
-  if (url.indexOf('\\') >= 0 || url.indexOf('\0') >= 0) return false;
+  if (url.indexOf('\\') >= 0) return false;
   if (pathHasDotDot(url)) return false;
 
   const String root = PATH_WEBUI;
@@ -153,7 +157,7 @@ static void handleApiDevices() {
   json += "      \"board\": \"ESP32-P4\",\n";
   json += "      \"role\": \"stage\",\n";
   json += "      \"online\": true,\n";
-  json += "      \"connectionStatus\": \"uart\"\n";
+  json += "      \"connectionStatus\": \"c6-uart\"\n";
   json += "    }\n  ]\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
@@ -211,8 +215,9 @@ static void handleStaticFile(const String &urlPath) {
 
 void webApiBegin(unsigned long bootMs) {
   sBootMs = bootMs;
+  sOriginReady = true;
   gWebApiLogger.log(WEB_LOG_INFO, "WebUI", "P4 HTTP origin ready");
-  Serial.println("[WEB] HTTP origin ready (SUE UART tunnel)");
+  Serial.println("[WEB] HTTP origin ready (P4 SD; comms WebUI proxy is not implemented)");
   if (stageStorageIsReady()) {
     Serial.println("[WEB] Serving WebUI from SD: " PATH_WEBUI "/");
   } else {
@@ -254,4 +259,86 @@ bool webApiHandleTunnelRequest(const String &command) {
 
   handleStaticFile(path);
   return true;
+}
+
+bool webApiOriginReady() {
+  return sOriginReady;
+}
+
+static bool probeMappedUrl(const char *url, char *resolved, size_t resolvedLen,
+                           char *err, size_t errLen) {
+  String sdPath;
+  if (!mapWebuiPath(String(url), sdPath)) {
+    if (err && errLen) {
+      strncpy(err, "origin refused URL", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  if (resolved && resolvedLen) {
+    strncpy(resolved, sdPath.c_str(), resolvedLen - 1);
+    resolved[resolvedLen - 1] = '\0';
+  }
+  if (!stageStorageIsReady()) {
+    if (err && errLen) {
+      strncpy(err, "SD not mounted", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  if (!stageStorageFs().exists(sdPath.c_str())) {
+    if (err && errLen) {
+      strncpy(err, "mapped file missing", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  File f = stageStorageFs().open(sdPath.c_str(), FILE_READ);
+  if (!f || f.isDirectory()) {
+    if (f) f.close();
+    if (err && errLen) {
+      strncpy(err, "mapped file open failed", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  uint8_t buf[64];
+  int n = f.read(buf, sizeof(buf));
+  f.close();
+  if (n <= 0) {
+    if (err && errLen) {
+      strncpy(err, "mapped file empty", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  return true;
+}
+
+bool webApiProbePublicUrl(const char *url, char *resolved, size_t resolvedLen,
+                          char *err, size_t errLen) {
+  if (err && errLen) err[0] = '\0';
+  if (resolved && resolvedLen) resolved[0] = '\0';
+  if (!url || !url[0]) {
+    if (err && errLen) {
+      strncpy(err, "empty URL", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  if (!sOriginReady) {
+    if (err && errLen) {
+      strncpy(err, "origin not initialised", errLen - 1);
+      err[errLen - 1] = '\0';
+    }
+    return false;
+  }
+  return probeMappedUrl(url, resolved, resolvedLen, err, errLen);
+}
+
+bool webApiProbeIndex(char *err, size_t errLen) {
+  char resolved[64];
+  /* Public origin URLs, not SD paths. "/" is what a browser requests first. */
+  if (webApiProbePublicUrl("/", resolved, sizeof(resolved), err, errLen)) return true;
+  return webApiProbePublicUrl("/index.html", resolved, sizeof(resolved), err, errLen);
 }

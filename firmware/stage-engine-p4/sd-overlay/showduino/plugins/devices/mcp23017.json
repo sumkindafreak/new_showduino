@@ -1,0 +1,11 @@
+{
+  "showduino_plugin_schema": 1,
+  "id": "microchip.mcp23017",
+  "name": "MCP23017 GPIO Expander",
+  "transport": "i2c",
+  "addresses": ["0x20-0x27"],
+  "driver": "mcp23017",
+  "capabilities": ["digital.input", "digital.output"],
+  "channels": 16,
+  "safe_state": "off"
+}

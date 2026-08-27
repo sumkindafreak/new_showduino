@@ -1,0 +1,24 @@
+{
+  "showduino_plugin_schema": 1,
+  "id": "example.temperature",
+  "name": "Example register thermometer",
+  "transport": "i2c",
+  "addresses": ["0x48-0x4F"],
+  "driver": "generic.i2c.register",
+  "capabilities": ["temperature"],
+  "identify": {
+    "register": "0x0F",
+    "mask": "0xFF",
+    "equals": "0xBC"
+  },
+  "values": [
+    {
+      "name": "temperature",
+      "register": "0x00",
+      "type": "int16",
+      "endian": "big",
+      "scale": 0.0625,
+      "unit": "C"
+    }
+  ]
+}

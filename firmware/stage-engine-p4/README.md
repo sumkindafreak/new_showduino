@@ -9,8 +9,8 @@ Product: Stage Controller (ESP32-P4)
 Canonical active Show Engine firmware. Folder name `stage-engine-p4` is temporary; rename planned.
 
 ```text
-Director --ESP-NOW--> Communications Engine --UART--> this Show Engine
-Node     --ESP-NOW--> Communications Engine --UART--> this Show Engine
+Director --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
+Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 ```
 
 ## Constitution
@@ -30,9 +30,9 @@ Current sketch is an **early command hub**:
 
 It does **not** yet implement the full timeline engine, primary project store, DMX, or real pixel/audio engines.
 
-**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. Browser access is via the C3 Wi-Fi front door (static assets on C3, API proxied over UART). See `web/showduino-studio/README.md`.
+**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. Static files come from SD `/showduino/webui/`. The current S3 Comms Controller does **not** host SoftAP. Previous-generation C3 Wi-Fi front door is documented as legacy. See `web/showduino-studio/README.md`.
 
-**Stage Controller SD:** Optional SPI microSD mount (`SHOWDUINO_SD_ENABLED`). Creates `/showduino/...` folders, reports mount status in `/api/system`. Defaults target Espressif/Waveshare P4 Function EV pins — edit `BoardConfig.h` for your board. Boot continues if the card is missing.
+**Stage Controller SD:** Onboard microSD on **SDMMC Slot 0**, GPIO39–45 (`SHOWDUINO_SD_ENABLED`). Creates `/showduino/...` folders, reports mount status in `/api/system`. Boot continues if the card is missing. Do not move the card onto the internal C6 SDIO pins.
 
 **Emergency Neopixel:** optional local strip on the Stage Controller turns solid white on E-stop (`BoardConfig.h`: pin/count/brightness). Requires **Adafruit NeoPixel** library. Remote PIXEL nodes remain unsupported until that engine exists.
 
@@ -58,8 +58,8 @@ Arduino IDE:
 arduino-cli:
 
 ```text
-arduino-cli compile --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
-arduino-cli upload -p COMx --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M" firmware/stage-engine-p4/ShowduinoStageEngineP4
+arduino-cli compile --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3" firmware/stage-engine-p4/ShowduinoStageEngineP4
+arduino-cli upload -p COMx --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3" firmware/stage-engine-p4/ShowduinoStageEngineP4
 ```
 
 Replace `COMx` with the P4 USB serial port.
@@ -74,13 +74,74 @@ Replace `COMx` with the P4 USB serial port.
 ...
 ```
 
-Pins (defaults in `BoardConfig.h`):
+SDMMC pins (defaults in `BoardConfig.h`):
 
 ```text
-SCK=43  MISO=39  MOSI=44  CS=42  POWER=45 (active LOW)
+D0=39  D1=40  D2=41  D3=42  CLK=43  CMD=44  POWER=45 (active LOW)
 ```
 
-Link UART remains GPIO5 (RX) / GPIO6 (TX) to the C3.
+Comms UART (dedicated ESP32-S3; P4 pins unchanged):
+
+```text
+P4 GPIO4 RX  <-  S3 GPIO17 TX
+P4 GPIO5 TX  ->  S3 GPIO18 RX
+115200 8N1, newline-framed ASCII
+```
+
+Reserved onboard C6 infrastructure (do not allocate): GPIO6, GPIO14–19, GPIO54. The onboard C6 is unused reserved hardware.
+
+Authoritative pin map: [`docs/final-hardware-architecture.md`](../../docs/final-hardware-architecture.md).
+
+## Local USB maintenance console
+
+The P4 USB Serial/debug connection is an **additional** command input. It does **not** replace:
+
+```text
+Director --ESP-NOW--> ESP32-S3 Comms Controller --UART GPIO4/5--> this Show Engine
+```
+
+Open Arduino Serial Monitor (or any terminal) on the P4 USB port:
+
+- Baud: **115200** (same as existing debug output)
+- Line ending: **Newline** or **Both NL & CR**
+- Type Showduino colon-text commands and press Enter
+
+USB and Comms UART both call the same Stage Engine command dispatcher. Authoritative state changes (for example `EMERGENCY:STOP` or `SHOW:START`) still notify the Director over UART if the comms controller is up.
+
+`HELP` and local `STATUS:REQUEST` replies stay on USB Serial. They are not forwarded to the Director.
+
+`EMERGENCY:CLEAR` from USB uses the **same** GPIO25 assertion check as a Director/comms clear. There is no force-clear. Holding GPIO25 LOW rejects CLEAR. Releasing the button does not clear the latch; a second CLEAR is required. Clearing emergency does not restart the show.
+
+Implemented console commands:
+
+```text
+HELP
+STATUS:REQUEST
+SHOW:START
+SHOW:STOP
+SHOW:PAUSE
+SHOW:RESUME
+SHOW:LOAD:<name>
+EMERGENCY:STOP
+EMERGENCY:CLEAR
+```
+
+Existing debug lines (`[SD]`, `[AUDIO]`, `[COMMS]`, `[WEB]`, `[Runtime]`, `[ESTOP]`) continue on the same Serial port.
+
+## Showduino Plug-in Bus
+
+3.3V I²C peripheral bus on the Waveshare I²C header:
+
+```text
+SDA = GPIO7
+SCL = GPIO8
+100 kHz
+```
+
+USB commands: `PLUGIN:SCAN`, `PLUGIN:LIST`, `PLUGIN:STATUS`, `PLUGIN:INFO:<instance|address>`.
+
+Unknown devices are listed, not treated as faults. See [`docs/plugin-bus.md`](../../docs/plugin-bus.md).
+
 ## Policy reminders for later firmware work
 
 - Absolute relay states only (no distributed `TOGGLE`)

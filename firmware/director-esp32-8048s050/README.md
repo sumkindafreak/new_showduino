@@ -8,12 +8,14 @@ Role: Showduino Director
 Commands and displays only. Canonical active Director firmware.
 
 ```text
-Director ESP32-S3
-    → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
-Show Engine ESP32-P4 (Stage Controller)
+This touchscreen Director ESP32-S3   (firmware/director-esp32-8048s050/)
+    → ESP-NOW (wireless only; no P4 UART)
+Standalone ESP32-S3 Comms Controller (firmware/s3-comms-controller/)
+    → UART 115200
+Show Engine ESP32-P4                 (firmware/stage-engine-p4/)
 ```
+
+This board is the operator desk. It is **not** the Comms Controller. The Comms Controller is a separate ESP32-S3 Dev Module with no touchscreen.
 
 This sketch does **not** host or proxy the primary Web UI. USB Serial is for flash/diagnostics only, not the normal show path.
 
@@ -46,9 +48,9 @@ firmware/director-esp32-8048s050/ShowduinoSdTouchTest/
 
 ## Pairing (current implementation)
 
-1. Flash and run `firmware/c3-supermini-espnow-bridge/` (Communications Engine).
-2. Note the C3 MAC from Serial.
-3. Set peer MAC in `ShowduinoDirector8048S050/BoardConfig.h` (`SHOWDUINO_P4_C6_MAC_*` names are historical; values must be the **C3** Communications Engine MAC).
+1. Flash and run `firmware/s3-comms-controller/` on a **separate** ESP32-S3 Dev Module (not this touchscreen).
+2. Note that board's Wi-Fi MAC from USB Serial at boot (`[COMMS] Wi-Fi MAC: …`).
+3. Set peer MAC in `ShowduinoDirector8048S050/BoardConfig.h` (`SHOWDUINO_COMMS_MAC_*` — ESP-NOW destination of that standalone Comms Controller).
 4. Flash this Director.
 5. Confirm link READY via HELLO / HEARTBEAT.
 
@@ -71,7 +73,7 @@ Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` 
 
 | Role | Path |
 |------|------|
-| Communications Engine | `firmware/c3-supermini-espnow-bridge/` |
+| Communications Engine | `firmware/s3-comms-controller/` |
 | Show Engine (Stage Controller) | `firmware/stage-engine-p4/` |
 | Relay Node | `firmware/relay-node-esp32/` |
 

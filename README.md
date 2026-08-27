@@ -10,7 +10,7 @@
 > The Nodes act.
 
 - The **Show Engine** is the single source of truth for show state, safety policy, project storage, configuration, Web UI, Web API, and WebSocket state.
-- The **Communications Engine** provides Wi‑Fi and ESP‑NOW transport. It must not make show-level decisions.
+- The **Communications Engine** provides ESP‑NOW and UART transport. It must not make show-level decisions. The current hardware is a dedicated ESP32-S3 Comms Controller.
 - The **Director** is an operator interface only. It does **not** host or proxy the primary Web UI.
 - A running show must **not** depend on an active Director, browser, Wi‑Fi client, or internet connection.
 - Application code addresses devices by **logical Showduino device IDs**, not MAC addresses (transport may resolve IDs internally).
@@ -35,7 +35,10 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 | [`docs/constitution.md`](docs/constitution.md) | Permanent architectural rules |
 | [`docs/architecture.md`](docs/architecture.md) | System architecture and maturity |
 | [`docs/repository-status.md`](docs/repository-status.md) | Firmware classification (ACTIVE / LEGACY / …) |
-| [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Hardware topology and board roles |
+| [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Current hardware topology, P4 pin map, UART wiring |
+| [`docs/future-p4-c6-sdio-transport.md`](docs/future-p4-c6-sdio-transport.md) | Future SDIO / ESP-Hosted notes (not implemented) |
+| [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus (I²C) |
+| [`docs/creating-showduino-i2c-plugin.md`](docs/creating-showduino-i2c-plugin.md) | Adding an I²C plugin definition or driver |
 
 ## Canonical communication paths
 
@@ -44,8 +47,8 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 ```text
 Director ESP32-S3
     → ESP-NOW
-Communications Engine ESP32-C3
-    → UART
+ESP32-S3 Comms Controller
+    → UART 115200 8N1
 Show Engine ESP32-P4 (Stage Controller)
 ```
 
@@ -54,7 +57,7 @@ Show Engine ESP32-P4 (Stage Controller)
 ```text
 Showduino Node
     → ESP-NOW
-Communications Engine ESP32-C3
+ESP32-S3 Comms Controller
     → UART
 Show Engine ESP32-P4 (Stage Controller)
 ```
@@ -63,8 +66,7 @@ Show Engine ESP32-P4 (Stage Controller)
 
 ```text
 Phone / Tablet / Laptop
-    → Wi-Fi
-Communications Engine ESP32-C3
+    → Wi-Fi (FUTURE / RESERVED / NOT IMPLEMENTED on the S3 Comms Controller)
     → Show Engine services (Web UI / Web API / WebSocket)
 ```
 
@@ -84,14 +86,16 @@ Owns authoritative:
 
 **Maturity:** Current firmware under `firmware/stage-engine-p4/` is an **early command hub**. It does **not** yet contain the full planned timeline engine, project storage, DMX, pixel, audio, or Web UI/API. Do not overstate capability.
 
-### Communications Engine (ESP32-C3)
+### Communications Engine (dedicated ESP32-S3)
 
 - ESP‑NOW with the Director
-- ESP‑NOW with Showduino nodes
-- UART with the Show Engine
-- Planned: Wi‑Fi AP/STA for browser access to Show Engine services
+- UART with the Show Engine (P4 GPIO4/5; S3 GPIO17 TX / GPIO18 RX)
+- Must not host SoftAP/WebUI, BLE, or OTA in this phase
+- Must not run the timeline or invent show state
 
-Transports only. Does not run the timeline or invent show state.
+The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**. Do not flash or require it.
+
+The previous external Communications Engine was an ESP32-C3 SuperMini (`firmware/c3-supermini-espnow-bridge/`). It remains in-tree as **LEGACY / SUPERSEDED**.
 
 ### Director (ESP32-S3 touchscreen)
 
@@ -112,7 +116,7 @@ Specialist devices (relay, audio, lighting, sensor, motor, etc.) that **act** on
 
 ```text
 firmware/director-esp32-8048s050/          Director (ESP32-S3)              [ACTIVE]
-firmware/c3-supermini-espnow-bridge/       Communications Engine (ESP32-C3) [ACTIVE]
+firmware/s3-comms-controller/              Communications Engine (ESP32-S3) [ACTIVE]
 firmware/stage-engine-p4/                  Show Engine / Stage Controller    [ACTIVE]
 firmware/relay-node-esp32/                 Relay Node                        [ACTIVE]
 ```
@@ -120,9 +124,10 @@ firmware/relay-node-esp32/                 Relay Node                        [AC
 **Other** (not the supported production stack):
 
 ```text
+firmware/p4-c6-espnow-bridge/              [UNUSED / RESERVED] onboard C6
+firmware/c3-supermini-espnow-bridge/       [LEGACY / SUPERSEDED] previous external C3 / SUE
 firmware/director-s3/                      [LEGACY]
 firmware/espnow-bridge/                    [LEGACY]
-firmware/p4-c6-espnow-bridge/              [EXPERIMENTAL]
 firmware/touch-probe-8048/                 [DIAGNOSTIC]
 firmware/sue-esp32s3-node/                 [INCOMPLETE]
 firmware/controller-cyd/                   [ARCHIVE CANDIDATE]
@@ -141,7 +146,7 @@ docs/         Constitution, architecture, repository status, hardware
 
 ## Current progress (honest)
 
-- Live transport path: Director ↔ ESP‑NOW ↔ C3 ↔ UART ↔ P4, with C3 also bridging ESP‑NOW nodes
+- Live transport path: Director ↔ ESP‑NOW ↔ dedicated ESP32-S3 Comms Controller ↔ UART ↔ P4. Onboard C6 is unused/reserved. Factory P4↔C6 SDIO and ESP-Hosted are not used.
 - Early Show Engine command parsing, emergency gate, and relay routing via Communications Engine
 - Director LVGL UI and ESP‑NOW client
 - Relay Node ESP‑NOW actuator

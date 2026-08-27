@@ -28,6 +28,8 @@ static size_t sBufLen = 0;
 static size_t sBufOff = 0;
 
 static uint32_t sLastOpenFailMs = 0;
+static uint32_t sI2sBytesWritten = 0;
+static uint32_t sEmergencyLoopCount = 0;
 
 static bool i2sPinsAssigned() {
   return P4_AUDIO_I2S_BCLK >= 0 && P4_AUDIO_I2S_WS >= 0 && P4_AUDIO_I2S_DOUT >= 0;
@@ -43,13 +45,29 @@ static void closeFile() {
   sDataPos = 0;
 }
 
+static void setErr(char *err, size_t errLen, const char *msg) {
+  if (!err || errLen == 0) return;
+  strncpy(err, msg, errLen - 1);
+  err[errLen - 1] = '\0';
+}
+
 static bool parseWav(File &f, uint32_t *dataStart, uint32_t *dataSize,
-                     uint32_t *rate, uint16_t *channels, uint16_t *bits) {
-  if (!f) return false;
+                     uint32_t *rate, uint16_t *channels, uint16_t *bits,
+                     char *err, size_t errLen) {
+  if (!f) {
+    setErr(err, errLen, "WAV open failed");
+    return false;
+  }
   f.seek(0);
   uint8_t hdr[12];
-  if (f.read(hdr, 12) != 12) return false;
-  if (memcmp(hdr, "RIFF", 4) != 0 || memcmp(hdr + 8, "WAVE", 4) != 0) return false;
+  if (f.read(hdr, 12) != 12) {
+    setErr(err, errLen, "WAV header truncated");
+    return false;
+  }
+  if (memcmp(hdr, "RIFF", 4) != 0 || memcmp(hdr + 8, "WAVE", 4) != 0) {
+    setErr(err, errLen, "not RIFF/WAVE");
+    return false;
+  }
 
   bool gotFmt = false;
   uint32_t dataOff = 0;
@@ -57,6 +75,7 @@ static bool parseWav(File &f, uint32_t *dataStart, uint32_t *dataSize,
   uint32_t sr = 0;
   uint16_t ch = 0;
   uint16_t bps = 0;
+  uint16_t format = 0;
 
   while (f.available()) {
     uint8_t chunk[8];
@@ -68,16 +87,15 @@ static bool parseWav(File &f, uint32_t *dataStart, uint32_t *dataSize,
     if (memcmp(chunk, "fmt ", 4) == 0) {
       uint8_t fmt[16];
       size_t n = (sz > 16) ? 16 : (size_t)sz;
-      if (f.read(fmt, n) != (int)n) return false;
-      uint16_t format = (uint16_t)fmt[0] | ((uint16_t)fmt[1] << 8);
+      if (f.read(fmt, n) != (int)n) {
+        setErr(err, errLen, "WAV fmt truncated");
+        return false;
+      }
+      format = (uint16_t)fmt[0] | ((uint16_t)fmt[1] << 8);
       ch = (uint16_t)fmt[2] | ((uint16_t)fmt[3] << 8);
       sr = (uint32_t)fmt[4] | ((uint32_t)fmt[5] << 8) |
            ((uint32_t)fmt[6] << 16) | ((uint32_t)fmt[7] << 24);
       bps = (uint16_t)fmt[14] | ((uint16_t)fmt[15] << 8);
-      if (format != 1) {
-        strncpy(sStatus.lastError, "WAV not PCM", sizeof(sStatus.lastError) - 1);
-        return false;
-      }
       gotFmt = true;
       if (sz > n) f.seek(chunkPos + sz + (sz & 1));
     } else if (memcmp(chunk, "data", 4) == 0) {
@@ -89,8 +107,20 @@ static bool parseWav(File &f, uint32_t *dataStart, uint32_t *dataSize,
     }
   }
 
-  if (!gotFmt || dataLen == 0 || (ch != 1 && ch != 2) || (bps != 16 && bps != 8)) {
-    strncpy(sStatus.lastError, "WAV header invalid", sizeof(sStatus.lastError) - 1);
+  if (!gotFmt) {
+    setErr(err, errLen, "WAV fmt chunk missing");
+    return false;
+  }
+  if (format != 1) {
+    setErr(err, errLen, "WAV not PCM");
+    return false;
+  }
+  if (dataLen == 0) {
+    setErr(err, errLen, "WAV data chunk missing");
+    return false;
+  }
+  if ((ch != 1 && ch != 2) || (bps != 16 && bps != 8)) {
+    setErr(err, errLen, "WAV header invalid");
     return false;
   }
 
@@ -186,7 +216,8 @@ static bool openWavPath(const char *path, bool looping) {
     return false;
   }
 
-  if (!parseWav(sFile, &sDataStart, &sDataSize, &sSampleRate, &sChannels, &sBits)) {
+  if (!parseWav(sFile, &sDataStart, &sDataSize, &sSampleRate, &sChannels, &sBits,
+                sStatus.lastError, sizeof(sStatus.lastError))) {
     sFile.close();
     return false;
   }
@@ -217,6 +248,7 @@ static void rewindEmergency() {
   sDataPos = 0;
   sBufLen = 0;
   sBufOff = 0;
+  sEmergencyLoopCount++;
 }
 
 static void pumpPlayback() {
@@ -266,6 +298,7 @@ static void pumpPlayback() {
   esp_err_t err = i2s_channel_write(sTx, sBuf + sBufOff, todo, &written, 0);
   if (err == ESP_OK || err == ESP_ERR_TIMEOUT) {
     sBufOff += written;
+    sI2sBytesWritten += (uint32_t)written;
   }
 }
 
@@ -415,4 +448,75 @@ bool stageAudioIsEmergencyPlaying() {
 
 bool stageAudioIsShowPlaying() {
   return sMode == StageAudioMode::Show && sFileOpen;
+}
+
+bool stageAudioInspectWav(const char *path, StageWavInfo *out) {
+  if (!out) return false;
+  memset(out, 0, sizeof(*out));
+  if (!path || !path[0] || !stageStorageIsReady() || !stageStorageFs().exists(path)) {
+    setErr(out->error, sizeof(out->error), "WAV missing");
+    return false;
+  }
+
+  File f = stageStorageFs().open(path, FILE_READ);
+  if (!f) {
+    setErr(out->error, sizeof(out->error), "WAV open failed");
+    return false;
+  }
+
+  uint32_t dataStart = 0;
+  uint32_t dataSize = 0;
+  uint32_t rate = 0;
+  uint16_t channels = 0;
+  uint16_t bits = 0;
+  if (!parseWav(f, &dataStart, &dataSize, &rate, &channels, &bits,
+                out->error, sizeof(out->error))) {
+    f.close();
+    return false;
+  }
+
+  out->valid = true;
+  out->pcm = true;
+  out->bits = bits;
+  out->channels = channels;
+  out->sampleRate = rate;
+  out->dataBytes = dataSize;
+  out->engineSupported = (bits == 16 && (channels == 1 || channels == 2));
+
+  f.seek(dataStart);
+  uint8_t sample[64];
+  size_t n = (dataSize < sizeof(sample)) ? (size_t)dataSize : sizeof(sample);
+  int got = f.read(sample, n);
+  f.close();
+  if (got > 0) {
+    for (int i = 0; i < got; i++) {
+      if (sample[i] != 0) {
+        out->dataNonZero = true;
+        break;
+      }
+    }
+  }
+  if (!out->engineSupported) {
+    setErr(out->error, sizeof(out->error), "format not supported by I2S engine");
+  } else if (!out->dataNonZero) {
+    setErr(out->error, sizeof(out->error), "data chunk empty or silent");
+  }
+  return out->valid;
+}
+
+bool stageAudioI2sStarted() {
+  return sI2sStarted && sTx != nullptr;
+}
+
+uint32_t stageAudioI2sBytesWritten() {
+  return sI2sBytesWritten;
+}
+
+uint32_t stageAudioEmergencyLoopCount() {
+  return sEmergencyLoopCount;
+}
+
+void stageAudioResetDiagCounters() {
+  sI2sBytesWritten = 0;
+  sEmergencyLoopCount = 0;
 }

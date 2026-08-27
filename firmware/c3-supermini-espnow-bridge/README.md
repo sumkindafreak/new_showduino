@@ -1,11 +1,13 @@
-# Showduino Communications Engine — ESP32-C3 SuperMini
+# Showduino Communications Engine — ESP32-C3 SuperMini (legacy)
 
 ```text
-Status: ACTIVE
-Role: Showduino Communications Engine
+Status: LEGACY / SUPERSEDED
+Role: Previous external Communications Engine (ESP32-C3 SuperMini / SUE)
 ```
 
-Transports only. Canonical active bridge firmware.
+This firmware remains in-tree as the **previous** Communications Engine.
+
+The current Waveshare P4-module generation uses `firmware/s3-comms-controller/` (dedicated ESP32-S3). The onboard C6 path (`firmware/p4-c6-espnow-bridge/`) is unused/reserved. Do not treat this C3 sketch as the live desk path.
 
 ```text
 Director  --ESP-NOW-->  this C3  --UART-->  Show Engine (P4)
@@ -51,7 +53,8 @@ Connect: join **`Showduino-Studio`** / **`showduino`**, open **`http://192.168.4
 
 | Path | Status |
 |------|--------|
-| `firmware/p4-c6-espnow-bridge/` | Experimental / incomplete |
+| `firmware/s3-comms-controller/` | **ACTIVE** current Communications Engine (dedicated ESP32-S3) |
+| `firmware/p4-c6-espnow-bridge/` | UNUSED / RESERVED onboard C6 |
 | `firmware/espnow-bridge/` | Legacy scaffold |
 
 Related documents: [`docs/constitution.md`](../../docs/constitution.md), [`docs/repository-status.md`](../../docs/repository-status.md).

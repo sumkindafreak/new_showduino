@@ -1,0 +1,10 @@
+{
+  "showduino_plugin_schema": 1,
+  "id": "nxp.tca9548a",
+  "name": "TCA9548A I2C Multiplexer",
+  "transport": "i2c",
+  "addresses": ["0x70-0x77"],
+  "driver": "tca9548a",
+  "capabilities": ["mux"],
+  "channels": 8
+}

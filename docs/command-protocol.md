@@ -5,11 +5,11 @@ Canonical documentation for the shared protocol package under `protocol/`.
 **Ownership:** architecture / shared protocol (not a single board firmware).  
 **Constitution:** Show Engine decides · Communications Engine transports · Director commands and displays · Nodes act.
 
-Transport topology (**current, unchanged**):
+Transport topology (**current, this hardware generation**):
 
 ```text
-Director ESP32-S3  → ESP-NOW →  Communications Engine ESP32-C3  → UART →  Show Engine ESP32-P4
-Showduino Node     → ESP-NOW →  Communications Engine ESP32-C3  → UART →  Show Engine ESP32-P4
+Director ESP32-S3  → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
+Showduino Node     → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
 ```
 
 ESP-NOW and UART are **transports**. Application messages describe **intent**. MAC addresses must not appear in application-level message meaning.

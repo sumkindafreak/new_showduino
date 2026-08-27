@@ -11,6 +11,9 @@ void emergencyPixelsSetWhite();
 void emergencyPixelsBlackout();
 void emergencyPixelsService();
 bool emergencyPixelsReady();
+bool emergencyPixelsWhiteActive();
+/* Diagnostic RGB write. Does not latch emergency or change white-refresh state. */
+bool emergencyPixelsWriteRgb(uint8_t r, uint8_t g, uint8_t b);
 
 #else
 
@@ -19,6 +22,8 @@ inline void emergencyPixelsSetWhite() {}
 inline void emergencyPixelsBlackout() {}
 inline void emergencyPixelsService() {}
 inline bool emergencyPixelsReady() { return false; }
+inline bool emergencyPixelsWhiteActive() { return false; }
+inline bool emergencyPixelsWriteRgb(uint8_t, uint8_t, uint8_t) { return false; }
 
 #endif
 

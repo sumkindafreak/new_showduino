@@ -17,7 +17,8 @@ ESP32-S3 + 5in Touch
 Built-in ESP32-C6
 Wireless bridge on P4 board
         |
-  Internal board link
+  UART (current; two crossed jumpers)
+  Factory SDIO unused — see docs/future-p4-c6-sdio-transport.md
         |
 ESP32-P4 Stage Engine
         |
@@ -50,14 +51,14 @@ The Director is not authoritative. If it disconnects, the Stage Engine continues
 
 The built-in C6 provides the wireless gateway to the P4 Stage Engine.
 
+Current implementation: ESP-NOW in, UART out (`firmware/p4-c6-espnow-bridge/`). Factory SDIO and ESP-Hosted are not used.
+
 Responsibilities:
 
 - ESP-NOW receive/transmit
-- Discovery
-- ACK/retry handling
-- Wireless provisioning
-- Forwarding messages to the P4
-- Future Wi-Fi services where appropriate
+- Forwarding messages to the P4 over UART
+- Returning P4 UART lines to the Director over ESP-NOW
+- Future Wi-Fi services where appropriate (not on this C6 sketch)
 
 The C6 is a transport processor, not the show engine.
 

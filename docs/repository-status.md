@@ -19,7 +19,7 @@ Related:
 ```text
 Director ESP32-S3
     → ESP-NOW
-Communications Engine ESP32-C3
+Communications Engine ESP32-S3 (dedicated Dev Module)
     → UART
 Show Engine ESP32-P4
 ```
@@ -27,19 +27,19 @@ Show Engine ESP32-P4
 ```text
 Showduino Node
     → ESP-NOW
-Communications Engine ESP32-C3
+Communications Engine ESP32-S3 (dedicated Dev Module)
     → UART
 Show Engine ESP32-P4
 ```
 
-Browser / phone access (conceptual target): Wi‑Fi → Communications Engine → Show Engine services. The Director does not host the primary Web UI.
+Browser / phone access remains a conceptual target. The current S3 Comms Controller does not host SoftAP. The Director does not host the primary Web UI.
 
 ### Active firmware
 
 | Folder | Role |
 |--------|------|
 | `firmware/director-esp32-8048s050/` | Director — operator UI, requests, display |
-| `firmware/c3-supermini-espnow-bridge/` | Communications Engine — ESP‑NOW + UART transport |
+| `firmware/s3-comms-controller/` | Communications Engine — dedicated ESP32-S3 ESP‑NOW + UART |
 | `firmware/stage-engine-p4/` | Show Engine on Stage Controller (folder name legacy) |
 | `firmware/relay-node-esp32/` | Relay Node — local relay actuation |
 
@@ -52,12 +52,13 @@ Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMP
 | Folder | Status | Target hardware | Current purpose | Reason for classification | Relationship to active architecture | Recommended future action |
 |--------|--------|-----------------|-----------------|---------------------------|--------------------------------------|---------------------------|
 | `firmware/director-esp32-8048s050/` | **ACTIVE** | ESP32-S3 800×480 (8048S043/S050) | Canonical Director LVGL + ESP‑NOW client | Supported operator desk | Desk → Comms via ESP‑NOW | Keep; align UI to constitution in later stages |
-| `firmware/c3-supermini-espnow-bridge/` | **ACTIVE** | ESP32-C3 SuperMini | Canonical Communications Engine | Live desk + node bridge | Centre of ESP‑NOW/UART fabric | Keep; add Wi‑Fi later without owning show state |
+| `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Canonical Communications Engine | Dedicated ESP‑NOW + UART bridge | Centre of ESP‑NOW/UART fabric | Keep; do not move show logic here |
+| `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 (Waveshare P4 module) | Historical C6 ESP‑NOW UART bridge | Superseded by dedicated S3 Comms Controller | Physical C6 nets remain reserved; do not flash | Retain source; not current architecture |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Canonical Show Engine (early hub) | Authoritative path for decisions | UART peer of Comms Engine | Keep; grow SoT features; rename folder later |
 | `firmware/relay-node-esp32/` | **ACTIVE** | ESP32 + relay module | Canonical Relay Node | Working node actuator | Node → Comms → Show Engine | Keep; device-ID addressing later |
+| `firmware/c3-supermini-espnow-bridge/` | **LEGACY / SUPERSEDED** | ESP32-C3 SuperMini (SUE) | Previous external Communications Engine | External C3 + Wi‑Fi AP generation | Superseded first by onboard C6, now by dedicated S3 | Retain as reference; do not treat as current path |
 | `firmware/director-s3/` | **LEGACY** | ESP32-S3 + TFT_eSPI | Earlier UART-only Director scaffold | Older topology (Director↔UART↔engine) | Superseded by 8048 ESP‑NOW Director | Retain for reference; do not extend |
-| `firmware/espnow-bridge/` | **LEGACY** | ESP32-C3/C6/S3/ESP32 | Early P4↔node ESP‑NOW scaffold | Pre–dual-role C3 design | Superseded by C3 SuperMini | Retain for packet ideas; do not ship |
-| `firmware/p4-c6-espnow-bridge/` | **EXPERIMENTAL** | ESP32-C6 (P4 companion radio) | Alternate desk bridge prototype | Incomplete vs current C3 path (desk replies) | Not canonical Comms Engine | Extract useful notes only; do not use as product bridge |
+| `firmware/espnow-bridge/` | **LEGACY** | ESP32-C3/C6/S3/ESP32 | Early P4↔node ESP‑NOW scaffold | Pre–dual-role C3 design | Superseded by C3 then by onboard C6 | Retain for packet ideas; do not ship |
 | `firmware/touch-probe-8048/` | **DIAGNOSTIC** | ESP32-8048S043/S050 | GT911 / XPT2046 touch probe | Hardware bring-up only | Supports Director hardware debug | Keep as tool; not runtime |
 | `firmware/sue-esp32s3-node/` | **INCOMPLETE** | ESP32-S3 (planned) | SUE multi-function node placeholder | README / intent only; no operational sketch set | Future node family candidate | Implement under `nodes/` later or archive stub |
 | `firmware/controller-cyd/` | **ARCHIVE CANDIDATE** | ESP32-2432S028R CYD | CYD front panels for Mega era | Pre–S3/P4 product direction | Parallel legacy stack | Future move to `archive/legacy-directors/` |
@@ -95,13 +96,12 @@ Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMP
 * Node routing policy
 * Physical completion assumptions
 
-### Communications Engine (`firmware/c3-supermini-espnow-bridge/`)
+### Communications Engine (`firmware/s3-comms-controller/`)
 
 **Owns:**
 
 * ESP‑NOW fabric
-* Wi‑Fi transport (planned in this role)
-* UART transport
+* UART transport to the P4
 * Packet routing
 * Link health
 * Transport-address resolution
@@ -112,7 +112,10 @@ Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMP
 * Timelines
 * Cue state
 * Physical effects
+* SoftAP / WebUI / BLE / OTA in this phase
 * False completion acknowledgements
+
+The onboard C6 firmware (`firmware/p4-c6-espnow-bridge/`) is **UNUSED / RESERVED**. The previous Communications Engine (`firmware/c3-supermini-espnow-bridge/`) remains **LEGACY / SUPERSEDED**.
 
 ### Show Engine (`firmware/stage-engine-p4/`)
 
@@ -167,8 +170,8 @@ archive/
 | `firmware/controller-cyd/` | `archive/legacy-directors/controller-cyd/` | CYD+Mega era UI | Any still-useful SD/web patterns into docs |
 | `firmware/executor-mega/` | `archive/legacy-executors/executor-mega/` | Mega no longer Show Engine | Cue/timing ideas worth citing in docs |
 | `firmware/director-s3/` | `archive/legacy-directors/director-s3/` (optional later) | UART Director superseded | Confirm no unique UI patterns needed |
-| `firmware/espnow-bridge/` | `archive/experimental-bridges/espnow-bridge/` | Superseded by C3 SuperMini | Node packet comments if any unique |
-| `firmware/p4-c6-espnow-bridge/` | `archive/experimental-bridges/p4-c6-espnow-bridge/` | Incomplete alternate desk path | Pin/UART notes for Waveshare C6 if useful |
+| `firmware/espnow-bridge/` | `archive/experimental-bridges/espnow-bridge/` | Superseded by C3 then onboard C6 | Node packet comments if any unique |
+| `firmware/c3-supermini-espnow-bridge/` | `archive/legacy-bridges/c3-supermini-espnow-bridge/` (optional later) | Previous external SUE C3 | Confirm no unique Wi‑Fi/Web tunnel notes needed |
 | `firmware/sue-esp32s3-node/` | `archive/incomplete-prototypes/sue-esp32s3-node/` or revive under `nodes/` | Stub only | Source-repo links from README |
 | `firmware/touch-probe-8048/` | `archive/diagnostic-sketches/touch-probe-8048/` (optional) | Or keep beside Director as lab tool | None required |
 | `.../ShowduinoSdTouchTest/` | `archive/diagnostic-sketches/ShowduinoSdTouchTest/` (optional) | Or keep under Director tree | None required |
@@ -185,10 +188,11 @@ Do **not** rename in Stage 1. Recorded for later stages:
 |------|----------|-------|
 | Folder `stage-engine-p4` | `firmware/stage-engine-p4/` | Should eventually reflect **Show Engine** |
 | Sketch `ShowduinoStageEngineP4` | Same | “Stage Engine” retired; product is Stage Controller running Show Engine |
-| Macro names `SHOWDUINO_P4_C6_MAC_*` | Director `BoardConfig.h` | Historical; peer is Communications Engine **C3**, not P4-C6 |
+| Macro names `SHOWDUINO_COMMS_MAC_*` | Director `BoardConfig.h` | Values must be copied from the S3 Comms Controller boot Serial (`SHOWDUINO_P4_C6_MAC_*` remains an alias) |
 | Term “Stage Engine” | Older docs / comments / Serial strings | Replace with Show Engine / Stage Controller as edited |
 | Director↔UART↔P4 diagrams | Older docs (mostly corrected in Stage 0) | Must not reappear as “current” topology |
-| Bridge folder `p4-c6-espnow-bridge` | Firmware tree | Implies canonical C6 desk path; it is experimental only |
+| External C3 / SUE as “current Comms Engine” | Older docs / C3 firmware README | Previous generation; current path is dedicated ESP32-S3 |
+| Onboard C6 as “current Comms Engine” | Older docs / `firmware/p4-c6-espnow-bridge/` | Superseded; C6 hardware remains reserved unused |
 | Root/history “ESP-NOW Bridge” as vague role | Mixed docs | Official role name is **Communications Engine** |
 
 ---
@@ -197,6 +201,7 @@ Do **not** rename in Stage 1. Recorded for later stages:
 
 | Status | Meaning |
 |--------|---------|
+| UNUSED / RESERVED | Hardware present but not used by Showduino application firmware |
 | ACTIVE | Canonical runtime / supported path |
 | LEGACY | Earlier working architecture, reference only |
 | EXPERIMENTAL | Prototype / alternate, not canonical |
