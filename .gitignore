@@ -1,4 +1,6 @@
 # Arduino / ESP-IDF local compile trees
+.build/
+**/.build/
 **/_director_build/
 **/_p4_build_16m/
 **/.pio/

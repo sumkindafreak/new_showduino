@@ -1,0 +1,11 @@
+{
+  "showduino_plugin_schema": 1,
+  "id": "nxp.pca9685",
+  "name": "PCA9685 PWM Controller",
+  "transport": "i2c",
+  "addresses": ["0x40-0x7F"],
+  "driver": "pca9685",
+  "capabilities": ["pwm.output", "servo.output"],
+  "channels": 16,
+  "safe_state": "off"
+}

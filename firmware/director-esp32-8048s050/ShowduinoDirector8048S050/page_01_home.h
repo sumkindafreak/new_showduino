@@ -11,7 +11,8 @@
  * clock, warning, and theme accent. No BMP chrome.
  *
  * Hierarchy (approved production UI):
- *   RUN SHOW hero → Productions / Cue Library → Nodes / Outputs / Settings / Diagnostics
+ *   RUN SHOW hero → Productions → Nodes / Settings / Diagnostics
+ *   Cue Library and Outputs remain in the layout but are not tappable.
  */
 
 #ifdef __cplusplus

@@ -41,11 +41,11 @@ The current Show Engine hardware is the ESP32-P4 Stage Controller.
 The Communications Engine:
 
 * Provides ESP-NOW
-* Provides Wi-Fi
-* Provides UART transport
+* Provides UART transport to the Show Engine
 * Routes messages
 * Tracks communication health
 * Maps logical device IDs to transport addresses
+* May provide Wi-Fi when that transport is implemented on this role
 
 It must not:
 
@@ -55,7 +55,7 @@ It must not:
 * Independently start or stop shows
 * Claim that physical actions completed without confirmation
 
-The current Communications Engine hardware is the ESP32-C3.
+The current Communications Engine hardware is a dedicated ESP32-S3 Dev Module (UART to the P4). The Waveshare onboard ESP32-C6 is unused reserved hardware. The previous generation used an external ESP32-C3 SuperMini.
 
 ---
 

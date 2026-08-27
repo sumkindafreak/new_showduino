@@ -13,8 +13,13 @@
 #define SHOWDUINO_TOUCH_GT911    1
 #define SHOWDUINO_TOUCH_XPT2046  0
 
-// USB debug serial
+// USB debug serial — JC8048W550C USB-C is CH340 → UART0 (GPIO43 TX / GPIO44 RX).
+// Native USB CDC uses GPIO19/20, which are GT911 SDA/SCL on this panel.
+// Arduino IDE: USB CDC On Boot = Disabled so Serial is this UART, not the USB PHY.
 #define USB_DEBUG_BAUD 115200
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#warning "Showduino Director: USB CDC On Boot is Enabled. Set it Disabled — Serial debug is the CH340 UART; GPIO19/20 are GT911."
+#endif
 
 // Screen size
 #define SCREEN_WIDTH  800
@@ -122,22 +127,35 @@
 // Portable controller transport
 // =========================================================
 #define SHOWDUINO_USE_ESPNOW 1
-// Keep off while C3 owns P4 UART pins 5/6 (also avoids GT911 INT conflict on GPIO18).
+// MUST stay off. This touchscreen Director has no P4 UART.
+// Product path is wireless ESP-NOW to a separate standalone S3 Comms Controller.
 #define SHOWDUINO_USE_UART_FALLBACK 0
 #define SHOWDUINO_ESPNOW_CHANNEL 1
 /* Magic / wire version / command max: protocol/showduino_protocol_version.h */
 #include "../../../protocol/showduino_protocol_version.h"
 
-// C3 SuperMini ESP-NOW bridge peer MAC: 88:56:A6:6E:80:0C
-#define SHOWDUINO_P4_C6_MAC_0 0x88
-#define SHOWDUINO_P4_C6_MAC_1 0x56
-#define SHOWDUINO_P4_C6_MAC_2 0xA6
-#define SHOWDUINO_P4_C6_MAC_3 0x6E
-#define SHOWDUINO_P4_C6_MAC_4 0x80
-#define SHOWDUINO_P4_C6_MAC_5 0x0C
+// ESP-NOW MAC of the SEPARATE standalone ESP32-S3 Comms Controller
+// (firmware/s3-comms-controller/). This panel is the Director, not that board.
+// Bench board USB boot: 20:6E:F1:98:B5:38
+#define SHOWDUINO_COMMS_MAC_0 0x20
+#define SHOWDUINO_COMMS_MAC_1 0x6E
+#define SHOWDUINO_COMMS_MAC_2 0xF1
+#define SHOWDUINO_COMMS_MAC_3 0x98
+#define SHOWDUINO_COMMS_MAC_4 0xB5
+#define SHOWDUINO_COMMS_MAC_5 0x38
 
-// Optional direct UART fallback to P4 (only if C3 is NOT using P4 pins 5/6).
-// Preferred wireless path: Director --ESP-NOW--> C3 --UART--> P4 GPIO5/6
+#ifndef SHOWDUINO_P4_C6_MAC_0
+#define SHOWDUINO_P4_C6_MAC_0 SHOWDUINO_COMMS_MAC_0
+#define SHOWDUINO_P4_C6_MAC_1 SHOWDUINO_COMMS_MAC_1
+#define SHOWDUINO_P4_C6_MAC_2 SHOWDUINO_COMMS_MAC_2
+#define SHOWDUINO_P4_C6_MAC_3 SHOWDUINO_COMMS_MAC_3
+#define SHOWDUINO_P4_C6_MAC_4 SHOWDUINO_COMMS_MAC_4
+#define SHOWDUINO_P4_C6_MAC_5 SHOWDUINO_COMMS_MAC_5
+#endif
+
+// Historical optional Director↔P4 UART fallback. KEEP OFF.
+// These are NOT the standalone Comms Controller UART pins.
+// On this panel GPIO17 is ambient NeoPixels and GPIO18 is GT911 INT.
 #define STAGE_ENGINE_BAUD   115200
 #define STAGE_ENGINE_RX_PIN 18
 #define STAGE_ENGINE_TX_PIN 17
@@ -161,7 +179,7 @@ enum ShowduinoLinkState : uint8_t {
 // =========================================================
 // Stage 4 WebUI (Studio browser desk)
 // =========================================================
-#define SHOWDUINO_WEBUI_ENABLED 0
+#define SHOWDUINO_WEBUI_ENABLED 1
 #define SHOWDUINO_WEBUI_AP_SSID "Showduino-Studio"
 #define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
 #define SHOWDUINO_WEBUI_MDNS "showduino-studio"

@@ -4,6 +4,8 @@ Target board: **Waveshare ESP32-P4-Module-DEV-KIT**.
 
 This replaces the old CYD/Mega/SUE-era pinout as the canonical Stage Controller resource document.
 
+Current live command path is **Director → ESP-NOW → dedicated ESP32-S3 Comms Controller → UART (P4 GPIO4/5) → P4**. The onboard C6 is unused/reserved. Topology: [`final-hardware-architecture.md`](final-hardware-architecture.md).
+
 ## Status labels
 
 ```text
@@ -13,6 +15,16 @@ TARGET      = selected for Showduino but not yet qualified in final firmware
 RESERVED    = do not allocate to unrelated features
 COMPAT      = retained only for previous/rollback hardware
 ```
+
+## 0. Dedicated S3 Comms UART — CURRENT
+
+```text
+P4 GPIO4  RX  <-  S3 GPIO17 TX
+P4 GPIO5  TX  ->  S3 GPIO18 RX
+115200 8N1, newline-framed ASCII
+```
+
+**Reserved:** GPIO4, GPIO5. GPIO6 remains reserved for onboard C6 control and must not be used as UART.
 
 ## 1. Onboard microSD — CURRENT / BOARD
 
@@ -95,7 +107,9 @@ MCLK             13
 PA enable        53   active HIGH
 ```
 
-Showduino reserves this path for local system sounds: boot, ready, loaded, armed, warning/error, emergency acknowledgement and restart/shutdown cues.
+GPIO7/8 are also the Showduino Plug-in Bus (I²C header). The onboard ES8311 (typical address 0x18) is a shared I²C device on that bus.
+
+Showduino reserves the ES8311 I2S path for local system sounds: boot, ready, loaded, armed, warning/error, emergency acknowledgement and restart/shutdown cues. Show/programme audio remains the external PCM5102A.
 
 **Reserved:** GPIO7-13 and GPIO53.
 
@@ -109,9 +123,9 @@ That legacy status-LED assignment must be disabled/removed before the onboard au
 
 The ESP32-P4 provides one I2S peripheral. The onboard ES8311 and external PCM5102A are separate physical output paths but must be treated as a shared/arbitrated I2S resource until simultaneous operation is deliberately proven.
 
-## 6. Onboard ESP32-C6 — BOARD / TARGET
+## 6. Onboard ESP32-C6 — BOARD / UNUSED / RESERVED
 
-The Communications Engine hardware moves to the ESP32-C6 already integrated into the Waveshare P4 module.
+The Waveshare module includes an ESP32-C6. **Showduino application firmware does not currently use it.** Current Communications Engine hardware is the dedicated ESP32-S3. Keep these nets reserved; do not flash the onboard C6 for the live product path.
 
 ### Internal P4/C6 SDIO link
 
@@ -128,7 +142,7 @@ C6 SDIO CMD       19
 C6 CHIP_PU/reset  54
 ```
 
-**Reserved whenever the onboard C6 is active:** GPIO14-19 and GPIO54.
+**Reserved (do not allocate):** GPIO6, GPIO14-19 and GPIO54.
 
 Do not invent exposed P4 UART GPIOs as the final product transport. The module separately exposes C6 UART pins for flashing/debugging.
 
@@ -142,19 +156,9 @@ firmware/p4-c6-espnow-bridge/hosted-link-qualification/
 
 This runs on the P4, preserves the factory C6 firmware, brings up the SDIO hosted link, reads the C6 STA MAC and performs a Wi-Fi scan.
 
-### Current compatibility conflict
+### Do not reuse C6 SDIO pins for UART
 
-The current Arduino Stage Controller firmware still uses:
-
-```text
-P4 RX GPIO18 <- external C3 TX
-P4 TX GPIO17 -> external C3 RX
-baud 115200
-```
-
-Those pins are also the **onboard C6 SDIO CLK and D3 lines**. Therefore the old external-C3 UART and onboard-C6 SDIO transport are mutually exclusive firmware modes.
-
-The old UART mapping remains a rollback implementation only. It must be removed or feature-gated before the main Show Engine enables the onboard C6 SDIO path.
+Live Showduino UART is **P4 GPIO4/5** to the dedicated S3 Comms Controller. Do not revive the old external-C3 UART on GPIO17/18: those pins are onboard C6 SDIO D3/CLK and stay reserved.
 
 ### ESP-NOW software note
 
@@ -203,8 +207,10 @@ Do not allocate these P4 pins to unrelated new features under the current baseli
 
 ```text
 GPIO0-1    RTC 32.768 kHz crystal path
-GPIO7-13   onboard I2C/I2S audio codec
-GPIO14-19  onboard C6 SDIO transport
+GPIO4-5    dedicated S3 Comms UART
+GPIO6      onboard C6 control (reserved unused)
+GPIO7-13   onboard I2C/I2S audio codec + Plug-in Bus SDA/SCL
+GPIO14-19  onboard C6 SDIO transport (reserved unused)
 GPIO20-22  external PCM5102A show audio
 GPIO24     emergency NeoPixel
 GPIO25     emergency button
@@ -219,9 +225,12 @@ Additional board-integrated Ethernet, USB, camera/display and boot resources are
 
 ```text
 GPIO0-1  - RTC crystal path
+GPIO4    - S3 Comms UART RX
+GPIO5    - S3 Comms UART TX
+GPIO6    - onboard C6 control (reserved unused)
 
-GPIO7    - onboard audio I2C SDA
-GPIO8    - onboard audio I2C SCL
+GPIO7    - Plug-in Bus / onboard audio I2C SDA
+GPIO8    - Plug-in Bus / onboard audio I2C SCL
 GPIO9    - onboard audio DSDIN
 GPIO10   - onboard audio LRCK   [NOT status LED]
 GPIO11   - onboard audio ASDOUT

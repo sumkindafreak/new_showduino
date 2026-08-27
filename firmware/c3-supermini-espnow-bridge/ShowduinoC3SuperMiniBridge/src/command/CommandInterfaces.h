@@ -3,12 +3,7 @@
 
 #include "ShowCommand.h"
 
-/**
- * Integration hooks for CommandDispatcher.
- * Stage 7: IDeviceRouter / ICapabilityManager implemented by
- * DeviceRouter and CapabilityManager.
- * IStageRuntimeBridge remains a null stub until Stage 8.
- */
+/** Integration hooks for the Web Studio command dispatcher. */
 class IDeviceRouter {
  public:
   virtual ~IDeviceRouter() {}
@@ -26,7 +21,7 @@ class ICapabilityManager {
 class IStageRuntimeBridge {
  public:
   virtual ~IStageRuntimeBridge() {}
-  /** Returns false — Stage Runtime not connected until Stage 8. */
+  /** Submit a validated command to the authoritative Stage Runtime transport. */
   virtual bool submit(const ShowCommand &cmd) = 0;
 };
 
@@ -43,6 +38,16 @@ class NullCapabilityManager : public ICapabilityManager {
 class NullStageRuntimeBridge : public IStageRuntimeBridge {
  public:
   bool submit(const ShowCommand &cmd) override { (void)cmd; return false; }
+};
+
+/**
+ * SUE -> P4 Stage Runtime bridge.
+ * Maps validated ShowCommand actions onto the P4's canonical colon-text
+ * command vocabulary. The P4 remains the sole runtime/safety authority.
+ */
+class StageRuntimeBridge : public IStageRuntimeBridge {
+ public:
+  bool submit(const ShowCommand &cmd) override;
 };
 
 #endif

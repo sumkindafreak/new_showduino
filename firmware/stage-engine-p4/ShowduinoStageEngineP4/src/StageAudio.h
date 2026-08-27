@@ -21,6 +21,18 @@ struct StageAudioStatus {
   char lastError[48] = "audio not started";
 };
 
+struct StageWavInfo {
+  bool valid = false;
+  bool pcm = false;
+  bool engineSupported = false;
+  bool dataNonZero = false;
+  uint16_t bits = 0;
+  uint16_t channels = 0;
+  uint32_t sampleRate = 0;
+  uint32_t dataBytes = 0;
+  char error[48] = "";
+};
+
 bool stageAudioBegin();
 void stageAudioLoop();
 const StageAudioStatus &stageAudioStatus();
@@ -46,5 +58,13 @@ bool stageAudioIsShowPlaying();
  * emergency is active. Returns false on failure without affecting emergency.
  */
 bool stageAudioStartShow(const char *path);
+
+/* Inspect a WAV without starting playback or changing emergency state. */
+bool stageAudioInspectWav(const char *path, StageWavInfo *out);
+
+bool stageAudioI2sStarted();
+uint32_t stageAudioI2sBytesWritten();
+uint32_t stageAudioEmergencyLoopCount();
+void stageAudioResetDiagCounters();
 
 #endif

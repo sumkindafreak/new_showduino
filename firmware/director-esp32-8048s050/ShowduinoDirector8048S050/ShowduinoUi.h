@@ -101,7 +101,18 @@ public:
     syncStatusBarHealth();
     if (state == LINK_DISCONNECTED && prev == LINK_READY &&
         !emergencyOverlayVisible && !completeOverlayVisible) {
+      const DisplayPageId cur = displayManager_.currentPage();
+      if (cur != PAGE_CONNECTION_LOST && cur != PAGE_NO_NETWORK) {
+        pageBeforeLinkLost = cur;
+      }
       showConnectionLost();
+    } else if (state == LINK_READY && prev != LINK_READY &&
+               !emergencyOverlayVisible) {
+      const DisplayPageId cur = displayManager_.currentPage();
+      if (cur == PAGE_CONNECTION_LOST || cur == PAGE_NO_NETWORK) {
+        restoreAfterLinkLost();
+        pushOperatorEvent("Stage link restored");
+      }
     }
   }
   uint8_t getLinkState() const { return linkState; }
@@ -1011,12 +1022,14 @@ private:
   uint8_t showListCount = 0;
 
   DisplayPageId pageBeforeEmergency = PAGE_DESKTOP;
+  DisplayPageId pageBeforeLinkLost = PAGE_DESKTOP;
 
   lv_obj_t *persistentBannerRoot = nullptr;
   lv_obj_t *persistentBannerLabel = nullptr;
   lv_obj_t *abortConfirmRoot = nullptr;
   lv_obj_t *completeOverlayRoot = nullptr;
   lv_obj_t *completeDetailLabel = nullptr;
+  lv_obj_t *aboutRoot_ = nullptr;
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
   bool emergencyVisitingDiag = false;
@@ -1207,18 +1220,17 @@ private:
       return;
     }
     if (command == "UI:COMPLETE:EXPORT") {
-      pushOperatorEvent("Export Log — coming soon");
       return;
     }
 
     if (command == "UI:NET:RETRY") {
-      pushOperatorEvent("Network retry requested");
+      pushOperatorEvent("Retrying Stage link");
       if (commandCallback) commandCallback("UI:NET:RETRY");
       return;
     }
     if (command == "UI:NET:SCAN") {
-      pushOperatorEvent("Network scan requested");
-      if (commandCallback) commandCallback("UI:NET:SCAN");
+      pushOperatorEvent("Retrying Stage link");
+      if (commandCallback) commandCallback("UI:NET:RETRY");
       return;
     }
     if (command == "UI:LOCK:UNLOCK") {
@@ -1235,22 +1247,16 @@ private:
       return;
     }
     if (command == "UI:DISCOVERY:SCAN") {
-      if (!displayManager_.showPage(PAGE_DISCOVERY)) {
-        pushOperatorEvent("Discovery scan requested");
-        if (commandCallback) commandCallback("UI:DISCOVERY:SCAN");
-      } else {
-        pushDisplaySnapshot();
-      }
+      if (commandCallback) commandCallback("UI:NET:RETRY");
       return;
     }
     if (command == "UI:SYSTEM:REBOOT") {
-      pushOperatorEvent("Reboot requested");
+      pushOperatorEvent("Rebooting Director");
       if (displayManager_.showPage(PAGE_REBOOT)) pushDisplaySnapshot();
       if (commandCallback) commandCallback("UI:SYSTEM:REBOOT");
       return;
     }
     if (command == "UI:DIAG:PERF") {
-      pushOperatorEvent("Performance metrics — coming soon");
       return;
     }
     if (command == "UI:DIAG:ERRORS") {
@@ -1280,42 +1286,57 @@ private:
       return;
     }
     if (command == PAGE02_CMD_OPEN || command == "PAGE02:OPEN") {
-      const char *name = page_02_productions_selected_name();
-      if (!name || !name[0]) name = "(none)";
-      Serial.printf("[UI] Page02 Open → toast (%s)\n", name);
-      char msg[96];
-      snprintf(msg, sizeof(msg), "Open \"%s\" — editor coming soon", name);
-      pushOperatorEvent(msg);
+      const char *id = page_02_productions_selected_id();
+      if (!id || !id[0]) {
+        pushOperatorEvent("No production selected");
+        return;
+      }
+      openShowDetails(id);
       return;
     }
-    if (command == PAGE02_CMD_NEW || command == "PAGE02:NEW") {
-      pushOperatorEvent("New production (local model only)");
+    if (command == PAGE02_CMD_LOAD || command == "PAGE02:LOAD") {
+      const char *id = page_02_productions_selected_id();
+      if (!id || !id[0]) {
+        pushOperatorEvent("No production selected");
+        return;
+      }
+      strncpy(selectedShowIdBuf, id, sizeof(selectedShowIdBuf) - 1);
+      selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+      if (commandCallback) commandCallback("UI:SHOW:LOAD");
       return;
     }
-    if (command == PAGE02_CMD_DUPLICATE || command == "PAGE02:DUPLICATE") {
-      pushOperatorEvent("Duplicated (local model only)");
+    if (command == PAGE02_CMD_RUN || command == "PAGE02:RUN") {
+      const char *id = page_02_productions_selected_id();
+      if (!id || !id[0]) {
+        pushOperatorEvent("No production selected");
+        return;
+      }
+      strncpy(selectedShowIdBuf, id, sizeof(selectedShowIdBuf) - 1);
+      selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+      showLive();
+      if (commandCallback) commandCallback("UI:SHOW:RUN");
       return;
     }
     if (command == PAGE01_CMD_RUN_SHOW || command == "HOME:RUN_SHOW") {
-      Serial.println("[UI] Page01 → Run Show");
+      Serial.println("[UI] Page01 → RUN SHOW");
+      const char *id = page_02_productions_selected_id();
+      if (id && id[0]) {
+        strncpy(selectedShowIdBuf, id, sizeof(selectedShowIdBuf) - 1);
+        selectedShowIdBuf[sizeof(selectedShowIdBuf) - 1] = '\0';
+      }
       showLive();
       maybeRestoreEmergencyOverlay();
+      if (commandCallback) commandCallback("UI:SHOW:RUN");
       return;
     }
-    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY") {
-      Serial.println("[UI] Page01 → Cue Library (not built yet)");
-      pushOperatorEvent("Cue Library — coming soon");
+    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY" ||
+        command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
       return;
     }
     if (command == PAGE01_CMD_NODES || command == "HOME:NODES") {
       Serial.println("[UI] Page01 → Nodes");
       showDiagnostics();
       maybeRestoreEmergencyOverlay();
-      return;
-    }
-    if (command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
-      Serial.println("[UI] Page01 → Outputs (Page 05 not built yet)");
-      pushOperatorEvent("Outputs — coming soon");
       return;
     }
     if (command == PAGE01_CMD_SETTINGS || command == "HOME:SETTINGS") {
@@ -1360,6 +1381,14 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == "SETTINGS:ABOUT") {
+      showAboutDialog();
+      return;
+    }
+    if (command == "UI:ABOUT:CLOSE") {
+      hideAboutDialog();
+      return;
+    }
     if (command == "SCREEN:SETTINGS") {
       showSettings();
       maybeRestoreEmergencyOverlay();
@@ -1395,7 +1424,6 @@ private:
       return;
     }
     if (command == "UI:LOGS:EXPORT") {
-      pushOperatorEvent("Export Logs — placeholder (not available)");
       return;
     }
     if (command == "UI:LOGS:PAUSE") {
@@ -1433,26 +1461,13 @@ private:
 
     String outbound = command;
 
+    if (command.startsWith("UI:RELAY:") || command == "RELAY:ALL:OFF" ||
+        command.startsWith("RELAY:")) {
+      return;
+    }
+
     /* Absolute relay request from channel tap — never send TOGGLE */
-    if (command.startsWith("UI:RELAY:")) {
-      uint8_t ch = (uint8_t)command.substring(9).toInt();
-      if (ch < 1 || ch > 8) return;
-      DeskRelayView v = relayView[ch - 1];
-      if (v == DeskRelayView::PendingOn || v == DeskRelayView::PendingOff) {
-        appendLog(String("R") + ch + " busy (pending)");
-        return;
-      }
-      if (v != DeskRelayView::ConfirmedOn && v != DeskRelayView::ConfirmedOff) {
-        appendLog(String("R") + ch + " state unknown — wait for sync");
-        return;
-      }
-      bool wantOn = (v == DeskRelayView::ConfirmedOff);
-      lastConfirmed[ch - 1] = v;
-      relayView[ch - 1] = wantOn ? DeskRelayView::PendingOn : DeskRelayView::PendingOff;
-      refreshRelayButton(ch - 1);
-      outbound = String("RELAY:") + ch + (wantOn ? ":ON" : ":OFF");
-    } else if (command == "RELAY:ALL:OFF" || command == "STOP:ALL" || command == "SHOW:STOP" ||
-               command == "UI:SHOW:STOP") {
+    if (command == "STOP:ALL" || command == "SHOW:STOP" || command == "UI:SHOW:STOP") {
       for (uint8_t i = 0; i < 8; i++) {
         if (relayView[i] == DeskRelayView::ConfirmedOn ||
             relayView[i] == DeskRelayView::ConfirmedOff) {
@@ -1472,17 +1487,10 @@ private:
       outbound = "SHOW:RESUME";
     } else if (command == "UI:SHOW:REFRESH") {
       outbound = "UI:SHOW:REFRESH";
-    } else if (command == "AUDIO:LOCAL:VOLUME:+") {
-      outbound = "AUDIO:LOCAL:VOLUME:+";
-    } else if (command == "AUDIO:LOCAL:VOLUME:-") {
-      outbound = "AUDIO:LOCAL:VOLUME:-";
-    } else if (command.startsWith("AUDIO:LOCAL:") || command.startsWith("AUDIO:NODE:")) {
-      outbound = command; /* colon-text to Stage; no PCM over ESP-NOW */
-      {
-        char note[96];
-        snprintf(note, sizeof(note), "Audio cmd %.80s", command.c_str());
-        pushOperatorEvent(note);
-      }
+    } else if (command == "AUDIO:LOCAL:STOP" || command == "AUDIO:STOP") {
+      outbound = "AUDIO:LOCAL:STOP";
+    } else if (command.startsWith("AUDIO:")) {
+      return;
     } else if (command == "EMERGENCY:STOP") {
       emergencyActivating = true;
       emergencyTriggeredByDirector_ = true;
@@ -1661,10 +1669,9 @@ private:
     lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
 
     makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
-    makeButton(panel, "Export", 106, 72, 90, 36, "UI:LOGS:EXPORT");
-    makeButton(panel, "Pause", 204, 72, 90, 36, "UI:LOGS:PAUSE");
-    makeButton(panel, "Resume", 302, 72, 90, 36, "UI:LOGS:RESUME");
-    makeButton(panel, "Back", 400, 72, 90, 36, "SCREEN:SETTINGS");
+    makeButton(panel, "Pause", 106, 72, 90, 36, "UI:LOGS:PAUSE");
+    makeButton(panel, "Resume", 204, 72, 90, 36, "UI:LOGS:RESUME");
+    makeButton(panel, "Back", 302, 72, 90, 36, "SCREEN:SETTINGS");
 
     operatorLogRoot = panel;
     operatorLogScroll = lv_obj_create(panel);
@@ -1685,7 +1692,7 @@ private:
     audioScreen = makePagePanel(PAGE_AUDIO);
     createDock(audioScreen);
     lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
-    makeLabel(sum, "1× local P4 output  ·  remote zones = ESP-NOW command nodes", 10, 10);
+    makeLabel(sum, "P4 local output: Stop is live. Play needs an asset path from a loaded show.", 10, 10);
     makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
 
     lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
@@ -1700,23 +1707,13 @@ private:
     lv_obj_set_width(audioLocalDetailLabel_, OS_CONTENT_FULL_W - 40);
     lv_label_set_long_mode(audioLocalDetailLabel_, LV_LABEL_LONG_WRAP);
 
-    makeButton(panel, "Play", 8, 150, 70, 36, "AUDIO:LOCAL:PLAY");
-    makeButton(panel, "Pause", 84, 150, 70, 36, "AUDIO:LOCAL:PAUSE");
-    makeButton(panel, "Stop", 160, 150, 70, 36, "AUDIO:LOCAL:STOP", true);
-    makeButton(panel, "Mute", 236, 150, 70, 36, "AUDIO:LOCAL:MUTE");
-    makeButton(panel, "Vol -", 312, 150, 64, 36, "AUDIO:LOCAL:VOLUME:-");
-    makeButton(panel, "Vol +", 382, 150, 64, 36, "AUDIO:LOCAL:VOLUME:+");
-    makeButton(panel, "Test", 452, 150, 70, 36, "AUDIO:LOCAL:TEST");
+    makeButton(panel, "Stop", 8, 150, 100, 36, "AUDIO:LOCAL:STOP", true);
 
     os_.makeHeading(panel, "REMOTE AUDIO NODES", 8, 198);
-    audioNodesLabel_ = makeLabel(panel, "Scanning…", 8, 224);
+    audioNodesLabel_ = makeLabel(panel, "No audio node on the fabric.", 8, 224);
     lv_obj_add_style(audioNodesLabel_, &os_.caption, 0);
     lv_obj_set_width(audioNodesLabel_, OS_CONTENT_FULL_W - 40);
     lv_label_set_long_mode(audioNodesLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(panel, "Refresh", 8, 300, 100, 36, "AUDIO:NODE:STATUS");
-    makeButton(panel, "Stop All", 116, 300, 100, 36, "AUDIO:NODE:STOP", true);
-    makeButton(panel, "Mute All", 224, 300, 100, 36, "AUDIO:NODE:MUTE");
-    makeButton(panel, "Test", 332, 300, 80, 36, "AUDIO:NODE:TEST");
 
     os_.makeHeading(panel, "AUDIO ROUTING", 8, 348);
     audioRoutingLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 374);
@@ -1819,11 +1816,12 @@ private:
     makeButton(live, "Resume", 186, 24, 84, 40, "SHOW:RESUME");
     makeButton(live, "Stop", 278, 24, 68, 40, "SHOW:STOP", true);
     makeButton(live, "Status", 354, 24, 76, 40, "STATUS:REQUEST");
+    makeButton(live, "E-Clear", 442, 24, 100, 40, "EMERGENCY:CLEAR", false, false);
 
     liveEmergencyDot = lv_obj_create(live);
     lv_obj_remove_style_all(liveEmergencyDot);
     lv_obj_set_size(liveEmergencyDot, 12, 12);
-    lv_obj_set_pos(liveEmergencyDot, 442, 6);
+    lv_obj_set_pos(liveEmergencyDot, 552, 6);
     lv_obj_set_style_radius(liveEmergencyDot, 6, 0);
     lv_obj_set_style_bg_color(liveEmergencyDot, lv_color_hex(OsColor::Unknown), 0);
     lv_obj_set_style_bg_opa(liveEmergencyDot, LV_OPA_COVER, 0);
@@ -1842,21 +1840,6 @@ private:
 
     timelineStatusLabel = makeLabel(live, "", 10, 88);
     lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
-
-    os_.makeHeading(live, "RELAYS", 8, 88);
-    for (uint8_t i = 0; i < 8; i++) {
-      int row = i / 4;
-      int col = i % 4;
-      int x = 10 + col * 112;
-      int y = 110 + row * 38;
-      static const char *relayNames[8] = { "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8" };
-      relayButtons[i] = makeButton(live, relayNames[i], x, y, 104, 34, kRelayCmds[i]);
-      refreshRelayButton(i);
-    }
-    /* Bottom row fits in OS_PRIMARY_H (~216). E-Clear must not scroll-chain. */
-    makeButton(live, "All Off", 10, 188, 100, 36, "RELAY:ALL:OFF");
-    makeButton(live, "Pulse R1", 118, 188, 100, 36, "RELAY:1:PULSE:1000");
-    makeButton(live, "E-Clear", 226, 188, 100, 36, "EMERGENCY:CLEAR", false, false);
     uiBuildPump();
 
     /* ---- PAGE 02 PRODUCTIONS (LVGL library shell) ---- */
@@ -1868,7 +1851,7 @@ private:
     } else {
       Serial.println("[UI] Page 02 panel missing");
     }
-    /* Legacy show-list widgets stay null — rebuildShowList is guarded. */
+    /* Page 02 is filled from ShowManager by refreshShowLibrary(). */
     showListScroll = nullptr;
     showsSummaryLabel_ = nullptr;
     showsListTitle = nullptr;
@@ -1926,8 +1909,7 @@ private:
     makeButton(nodes, "Export", 308, 36, 140, 48, "STORAGE:EXPORT");
     makeButton(nodes, "Repair Dirs", 12, 96, 140, 48, "STORAGE:REPAIR");
     makeButton(nodes, "Stage Status", 160, 96, 140, 48, "STATUS:REQUEST");
-    makeButton(nodes, "Self Test", 308, 96, 140, 48, "SELFTEST:START");
-    makeButton(nodes, "Stage Hello", 12, 156, 140, 48, "HELLO");
+    makeButton(nodes, "Stage Hello", 308, 96, 140, 48, "HELLO");
     uiBuildPump();
 
     /* ---- SETTINGS — How is the system configured? ---- */
@@ -1949,7 +1931,7 @@ private:
     os_.makeHeading(settings, "MODULES", 8, 2);
     makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
     makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
-    os_.makeCaption(settings, "Audio: local P4 + remote nodes   ·   Logs: operator event history", 8, 86);
+    os_.makeCaption(settings, "Audio: P4 Stop is live   ·   Logs: operator event history", 8, 86);
 
     os_.makeHeading(settings, "DISPLAY", 8, 112);
     makeButton(settings, "Never", 8, 140, 70, 40, "SETTINGS:TIMEOUT:0");
@@ -2111,9 +2093,8 @@ private:
     lv_obj_set_pos(completeDetailLabel, 80, 140);
     lv_obj_set_width(completeDetailLabel, SCREEN_WIDTH - 160);
 
-    makeButton(completeOverlayRoot, "RUN AGAIN", 120, 360, 160, 56, "UI:COMPLETE:RUN");
-    makeButton(completeOverlayRoot, "RETURN TO MENU", 300, 360, 180, 56, "UI:COMPLETE:MENU");
-    makeButton(completeOverlayRoot, "EXPORT LOG", 500, 360, 160, 56, "UI:COMPLETE:EXPORT");
+    makeButton(completeOverlayRoot, "RUN AGAIN", 180, 360, 180, 56, "UI:COMPLETE:RUN");
+    makeButton(completeOverlayRoot, "RETURN TO MENU", 400, 360, 220, 56, "UI:COMPLETE:MENU");
   }
 
   void showCompleteScreen(const ShowRuntime &rt) {
@@ -2211,6 +2192,78 @@ private:
     }
   }
 
+  void hideAboutDialog() {
+    if (aboutRoot_) lv_obj_add_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  void showAboutDialog() {
+    if (!aboutRoot_) {
+      aboutRoot_ = lv_obj_create(lv_layer_top());
+      lv_obj_remove_style_all(aboutRoot_);
+      lv_obj_set_size(aboutRoot_, SCREEN_WIDTH, SCREEN_HEIGHT);
+      lv_obj_set_style_bg_color(aboutRoot_, lv_color_hex(0x000000), 0);
+      lv_obj_set_style_bg_opa(aboutRoot_, LV_OPA_70, 0);
+      lv_obj_add_flag(aboutRoot_, LV_OBJ_FLAG_CLICKABLE);
+
+      lv_obj_t *box = lv_obj_create(aboutRoot_);
+      lv_obj_remove_style_all(box);
+      lv_obj_set_size(box, 520, 280);
+      lv_obj_center(box);
+      lv_obj_set_style_bg_color(box, lv_color_hex(ShowduinoPalette::Panel), 0);
+      lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_width(box, 2, 0);
+      lv_obj_set_style_border_color(box, lv_color_hex(ShowduinoPalette::AccentDark), 0);
+      lv_obj_set_style_radius(box, 10, 0);
+      lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+      lv_obj_t *title = lv_label_create(box);
+      lv_label_set_text(title, "ABOUT");
+      lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+      lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
+      lv_obj_set_pos(title, 24, 20);
+
+      lv_obj_t *body = lv_label_create(box);
+      char text[280];
+      snprintf(text, sizeof(text),
+               "Showduino Director\n"
+               "Firmware  %s\n"
+               "Board     %s\n"
+               "Protocol  %d.%d\n"
+               "Role      control surface\n"
+               "Stage is the show authority.",
+               STORAGE_FW_VERSION,
+               SHOWDUINO_BOARD_NAME,
+               SHOWDUINO_PROTOCOL_VERSION_MAJOR,
+               SHOWDUINO_PROTOCOL_VERSION_MINOR);
+      lv_label_set_text(body, text);
+      lv_obj_set_style_text_font(body, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(body, lv_color_hex(ShowduinoPalette::Muted), 0);
+      lv_obj_set_pos(body, 24, 64);
+      lv_obj_set_width(body, 470);
+      lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
+
+      makeButton(box, "CLOSE", 180, 210, 160, 44, "UI:ABOUT:CLOSE");
+    }
+    lv_obj_clear_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(aboutRoot_);
+  }
+
+  void restoreAfterLinkLost() {
+    DisplayPageId back = pageBeforeLinkLost;
+    pageBeforeLinkLost = PAGE_DESKTOP;
+    switch (back) {
+      case PAGE_LIVE: showLive(); break;
+      case PAGE_SHOWS: showShows(); break;
+      case PAGE_SHOW_DETAILS: showShows(); break;
+      case PAGE_NODES:
+      case PAGE_DIAGNOSTICS: showDiagnostics(); break;
+      case PAGE_SETTINGS: showSettings(); break;
+      case PAGE_AUDIO: showAudio(); break;
+      case PAGE_LOGS: showLogs(); break;
+      default: showDesktop(); break;
+    }
+  }
+
   void restorePageAfterEmergency() {
     switch (pageBeforeEmergency) {
       case PAGE_LIVE: showLive(); break;
@@ -2261,9 +2314,31 @@ private:
   }
 
   void rebuildShowList(const ShowManager &sm) {
+    showListCount = 0;
+    Page02ProductionEntry rows[PAGE02_MAX_PRODUCTIONS];
+    memset(rows, 0, sizeof(rows));
+    int n = 0;
+    for (uint8_t i = 0; i < sm.size() && showListCount < SHOW_INDEX_MAX; i++) {
+      const ShowIndexEntry *e = sm.get(i);
+      if (!e || !e->id[0]) continue;
+      showListCache[showListCount] = *e;
+      snprintf(showOpenCmds[showListCount], sizeof(showOpenCmds[showListCount]),
+               "UI:SHOW:OPEN:%s", e->id);
+      if (n < PAGE02_MAX_PRODUCTIONS) {
+        strncpy(rows[n].id, e->id, sizeof(rows[n].id) - 1);
+        strncpy(rows[n].name, e->name[0] ? e->name : e->id, sizeof(rows[n].name) - 1);
+        strncpy(rows[n].description, e->description, sizeof(rows[n].description) - 1);
+        strncpy(rows[n].modified, e->modified[0] ? e->modified : "—", sizeof(rows[n].modified) - 1);
+        rows[n].used = true;
+        n++;
+      }
+      showListCount++;
+    }
+    page_02_productions_set_entries(rows, n);
+
     /* Page 02 owns the production library shell. Legacy list widgets are unused. */
     if (showListScroll == nullptr) {
-      Serial.printf("[UI] ShowManager index size=%u (Page 02 local model active)\n",
+      Serial.printf("[UI] ShowManager index size=%u (Page 02 SD library)\n",
                     (unsigned)sm.size());
       return;
     }

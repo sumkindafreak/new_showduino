@@ -1,84 +1,60 @@
-# Showduino Communications Engine — External ESP32-C3 SuperMini
+# Showduino Communications Engine — ESP32-C3 SuperMini (legacy)
 
 ```text
-Status: COMPATIBILITY / ROLLBACK
-Role: previous Showduino Communications Engine implementation
-Final Stage Controller hardware: NOT REQUIRED
+Status: LEGACY / SUPERSEDED
+Role: Previous external Communications Engine (ESP32-C3 SuperMini / SUE)
 ```
 
-This firmware is the previously working external C3 communications path.
+This firmware remains in-tree as the **previous** Communications Engine.
 
-It remains in the repository because it is valuable migration and rollback code while the Stage Controller's **onboard ESP32-C6** is brought to feature parity.
-
-It is no longer the canonical physical communications board for new Stage Controller builds.
-
-## Previous working topology
+The current Waveshare P4-module generation uses `firmware/s3-comms-controller/` (dedicated ESP32-S3). The onboard C6 path (`firmware/p4-c6-espnow-bridge/`) is unused/reserved. Do not treat this C3 sketch as the live desk path.
 
 ```text
-Director  --ESP-NOW-->  external C3  --UART-->  P4 Show Engine
-Node      --ESP-NOW-->  external C3  --UART-->  P4 Show Engine
-Browser   --Wi-Fi---->  external C3  --UART-->  P4 Web services
-```
-
-## Final target topology
-
-```text
-Director / Nodes / Browser
-        → onboard ESP32-C6
-        → integrated Stage Controller transport
-        → ESP32-P4 Show Engine
-```
-
-Target C6 tree:
-
-```text
-firmware/p4-c6-espnow-bridge/
+Director  --ESP-NOW-->  this C3  --UART-->  Show Engine (P4)
+Node      --ESP-NOW-->  this C3  --UART-->  Show Engine (P4)
+Browser   --Wi-Fi-->    this C3  --UART tunnel-->  Show Engine REST API
 ```
 
 ## Constitution
 
 > The Communications Engine transports.
 
-This compatibility firmware must not:
+It must **not**:
 
 - Run the show timeline
 - Own authoritative show state
 - Make show-level decisions
-- Return success for unimplemented pixel/audio actions
+- Return success for unimplemented pixel/audio (or other) actions
 
-## What this compatibility firmware contains
-
-- Director ESP-NOW ↔ P4 UART transport
-- Relay-node ESP-NOW routing
-- Node replies back to P4
-- Wi-Fi AP front door for Studio
-- Web/API tunnel behaviour
-- Link/heartbeat logic
-- DS3231-based time service from the previous hardware generation
-
-The DS3231 code is retained only because this tree represents the last working external-C3 stack. The final Stage Controller time source is the ESP32-P4 RTC/system time.
-
-## Do not extend this as the final product
-
-New Stage Controller work should go toward:
-
-- onboard C6 transport parity
-- P4 RTC time service
-- P4-hosted Web services
-- preserving the same authority/transport separation
-
-Fix this compatibility tree only when needed to understand, test or recover the migration.
-
-## Archive gate
-
-Do not archive/delete this folder until the onboard C6 proves:
+## Sketch
 
 ```text
-Director commands + replies
-node routing + replies
-emergency traffic
-WebUI/Wi-Fi transport
-link recovery
+firmware/c3-supermini-espnow-bridge/ShowduinoC3SuperMiniBridge/
 ```
 
-See [`docs/repository-status.md`](../../docs/repository-status.md), [`docs/architecture.md`](../../docs/architecture.md), and [`docs/hardware-baseline-2026-08-25.md`](../../docs/hardware-baseline-2026-08-25.md).
+## Behaviour today
+
+- Desk ESP‑NOW packets ↔ UART lines to the Show Engine
+- Intercept Show Engine `ROUTE:RELAY:…` and forward via ESP‑NOW to the relay node
+- Forward node replies as `NODE:…` on UART
+- Learn Director MAC from inbound desk traffic
+- **Wi‑Fi AP front door** (`Showduino-Studio`) serves Studio WebUI static assets
+- Proxies `/api/*` to P4 via UART web tunnel (`protocol/showduino_web_tunnel.h`)
+
+Connect: join **`Showduino-Studio`** / **`showduino`**, open **`http://192.168.4.1/`**
+
+## Configuration notes
+
+- Set relay peer MAC in the sketch for the current bring-up (transport detail).
+- Long-term, application code uses **logical Showduino device IDs**; the Communications Engine resolves transport addresses.
+- AP runs on ESP-NOW channel 1 so desk link stays stable.
+
+## Not this project
+
+| Path | Status |
+|------|--------|
+| `firmware/s3-comms-controller/` | **ACTIVE** current Communications Engine (dedicated ESP32-S3) |
+| `firmware/p4-c6-espnow-bridge/` | UNUSED / RESERVED onboard C6 |
+| `firmware/espnow-bridge/` | Legacy scaffold |
+
+Related documents: [`docs/constitution.md`](../../docs/constitution.md), [`docs/repository-status.md`](../../docs/repository-status.md).

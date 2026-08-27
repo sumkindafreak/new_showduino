@@ -1,5 +1,6 @@
 #include "DeskUartBridge.h"
 #include "../BoardConfig.h"
+#include "DeviceManager.h"
 
 #include <WiFi.h>
 #include <esp_now.h>
@@ -32,7 +33,8 @@ static bool addPeer(const uint8_t mac[6]) {
   return err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST;
 }
 
-static void forwardToP4(const char *command) {
+void deskUartBridgeSendToP4(const char *command) {
+  if (!command || !command[0]) return;
   Serial1.println(command);
   Serial.print("[SUE] UART → P4: ");
   Serial.println(command);
@@ -58,7 +60,7 @@ static void onRecv(const uint8_t *src, const uint8_t *data, int len) {
 
   Serial.print("[SUE] ESP-NOW ← Director cmd=");
   Serial.println(packet.command);
-  forwardToP4(packet.command);
+  deskUartBridgeSendToP4(packet.command);
 }
 
 void deskUartBridgeBegin() {
@@ -80,7 +82,18 @@ void deskUartBridgeBegin() {
 }
 
 void deskUartBridgeOnP4Line(const String &line) {
-  if (!sReady || !sHaveDirector || line.length() == 0) return;
+  if (line.length() == 0) return;
+
+  /*
+   * A real UART response is also the Stage Controller heartbeat for Web Studio.
+   * Register it as the canonical IAN destination so Show/Scene commands can be
+   * routed to the StageRuntimeBridge without inventing a second control path.
+   */
+  gDeviceManager.noteUartSighting(
+      "ian", "Stage Controller", "ian",
+      "SceneRuntime,Scheduler,RelayOutput,Lighting,AudioPlayback,PixelOutput,Temperature,Humidity,Logging");
+
+  if (!sReady || !sHaveDirector) return;
   if (line.startsWith(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX)) return;
 
   ShowduinoDeskPacket packet = {};

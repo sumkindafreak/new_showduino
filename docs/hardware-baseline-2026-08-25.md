@@ -1,6 +1,8 @@
 # Showduino Hardware Baseline — 25 August 2026
 
-This document records the current physical Stage Controller baseline after the enclosure/hardware simplification.
+This document records the 25 August 2026 physical Stage Controller baseline after the enclosure/hardware simplification.
+
+**Current live communications path (later decision):** a dedicated ESP32-S3 Comms Controller over UART, not the onboard C6. The C6 remains **UNUSED BY SHOWDUINO / RESERVED HARDWARE**. Qualification sketches under `firmware/p4-c6-espnow-bridge/` are retained as reserved-hardware diagnostics only. See [`final-hardware-architecture.md`](final-hardware-architecture.md).
 
 ## Decision
 
@@ -13,7 +15,7 @@ The final product should not carry separate modules for functions already availa
 ```text
 Waveshare ESP32-P4-Module-DEV-KIT
 ├── ESP32-P4                 Show Engine / authority
-├── onboard ESP32-C6         Communications Engine target
+├── onboard ESP32-C6         UNUSED / RESERVED (not current Comms Engine)
 ├── ESP32-P4 RTC domain      system clock / RTC target
 ├── RTC rechargeable battery header
 ├── ES8311 + NS4150B         local Showduino/system audio
@@ -42,11 +44,9 @@ The **PCM5102A remains** because it has a different job: it is the dedicated sho
 
 Owns show state, safety policy, timeline/cues, project/runtime storage, local outputs and the Web services as they are implemented.
 
-### Onboard ESP32-C6 — Communications Engine
+### Onboard ESP32-C6 — unused / reserved
 
-Selected hardware target for Wi-Fi/Bluetooth/ESP-NOW transport. The Waveshare module integrates the C6 with the P4 using SDIO. The C6 also exposes a UART programming header.
-
-**Migration status:** the repository still contains the previously working external C3/UART bridge. Do not delete that code until the onboard C6 implementation has parity for Director traffic, nodes, WebUI transport, replies/state and emergency handling.
+The Waveshare module still integrates an ESP32-C6 with the P4 over SDIO. Showduino application firmware does **not** currently use it. Current Communications Engine hardware is the dedicated ESP32-S3 (`firmware/s3-comms-controller/`). Keep C6 nets reserved (P4 GPIO6, GPIO14–19, GPIO54). Do not flash the onboard C6 for the live product path.
 
 ### ESP32-P4 RTC
 

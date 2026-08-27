@@ -4,29 +4,86 @@
 #include <Arduino.h>
 
 /*
- * Showduino Show Engine / Stage Controller (ESP32-P4)
- * Waveshare ESP32-P4-Module-DEV-KIT
+ * Showduino Stage Engine (ESP32-P4) — Waveshare ESP32-P4-Module-DEV-KIT
  *
- * Hardware baseline: 2026-08-25
- * - ESP32-P4 = Show Engine
- * - onboard ESP32-C6 = Communications Engine hardware target
- * - P4 RTC / rechargeable RTC battery connection replaces external DS3231
- * - onboard ES8311 + NS4150B = Showduino/system sounds
- * - external PCM5102A = dedicated show/programme audio
- * - emergency NeoPixel = GPIO24
- * - momentary emergency button = GPIO25
+ * Authoritative command path (this hardware generation):
+ *   Director --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this P4
+ * Do not migrate Showduino commands to SDIO. Do not install ESP-Hosted.
+ * Do not use the onboard ESP32-C6 for Showduino application firmware.
  *
- * The old external C3 UART mapping remains in current firmware only as a
- * compatibility/rollback path while the onboard-C6 transport is qualified.
- * Do not treat it as the final product topology.
+ * UART to dedicated ESP32-S3 Comms Controller (application transport):
+ *   P4 GPIO4 RX  <-  S3 GPIO17 TX
+ *   P4 GPIO5 TX  ->  S3 GPIO18 RX
+ *   115200 8N1, newline-framed ASCII.
+ *   P4 RX/TX pins do not change. S3 GPIOs are defined on the S3 BoardConfig
+ *   and are documented here only as the expected cable pairing.
+ *
+ * Onboard microSD is SDMMC slot 0 (not SPI): CLK/CMD/D0-D3 plus GPIO45
+ * power and on-chip LDO VO4 (channel 4) for GPIO 39-48.
+ * Boot continues if the card is missing.
+ *
+ * Onboard ESP32-C6 is UNUSED BY SHOWDUINO / RESERVED HARDWARE.
+ * Do not require C6 firmware, ESP-NOW, SDIO, ESP-Hosted, or WebUI on C6.
+ * Do not allocate these P4 pins to peripherals:
+ *   GPIO14-19  RESERVED — onboard C6 SDIO (CLK=18 CMD=19 D0=14 D1=15 D2=16 D3=17)
+ *   GPIO54     RESERVED — onboard C6 reset / CHIP_PU
+ *   GPIO6      RESERVED — onboard C6 control (C6 GPIO2)
+ *
+ * Obsolete (do not use):
+ *   P4 GPIO5 RX / GPIO6 TX  — old Stage Engine sketch to external SUE C3
+ *   P4 GPIO18 RX / GPIO17 TX — stale SUE comment; those pins are C6 SDIO
+ *   Onboard C6 GPIO4/5 UART jumpers — superseded by the dedicated S3
  */
 
-// -----------------------------------------------------------------------------
-// Stage Controller onboard microSD
-// SDMMC 4-bit, slot 0 IOMUX. This is NOT an SPI SD breakout.
-// CLK=43 CMD=44 D0=39 D1=40 D2=41 D3=42 POWER=45 active LOW.
-// GPIO39-48 use on-chip LDO VO4 on this board path.
-// -----------------------------------------------------------------------------
+#ifndef SHOWDUINO_COMMS_UART_BAUD
+#define SHOWDUINO_COMMS_UART_BAUD      115200
+#endif
+#ifndef SHOWDUINO_COMMS_UART_RX_PIN
+#define SHOWDUINO_COMMS_UART_RX_PIN    4
+#endif
+#ifndef SHOWDUINO_COMMS_UART_TX_PIN
+#define SHOWDUINO_COMMS_UART_TX_PIN    5
+#endif
+#ifndef SHOWDUINO_COMMS_UART_RX_BUFFER
+#define SHOWDUINO_COMMS_UART_RX_BUFFER 1024
+#endif
+#ifndef SHOWDUINO_COMMS_LINK_TIMEOUT_MS
+#define SHOWDUINO_COMMS_LINK_TIMEOUT_MS 8000UL
+#endif
+#ifndef SHOWDUINO_COMMS_CMD_MAX
+#define SHOWDUINO_COMMS_CMD_MAX        240
+#endif
+
+/* Expected S3 Comms Controller UART GPIOs — documentation / RUN:TEST hint only. */
+#ifndef SHOWDUINO_COMMS_PEER_TX_PIN
+#define SHOWDUINO_COMMS_PEER_TX_PIN    17
+#endif
+#ifndef SHOWDUINO_COMMS_PEER_RX_PIN
+#define SHOWDUINO_COMMS_PEER_RX_PIN    18
+#endif
+
+/* Compatibility aliases for older local patches. Do not use in new code. */
+#ifndef SHOWDUINO_C6_UART_BAUD
+#define SHOWDUINO_C6_UART_BAUD         SHOWDUINO_COMMS_UART_BAUD
+#endif
+#ifndef SHOWDUINO_C6_UART_RX_PIN
+#define SHOWDUINO_C6_UART_RX_PIN       SHOWDUINO_COMMS_UART_RX_PIN
+#endif
+#ifndef SHOWDUINO_C6_UART_TX_PIN
+#define SHOWDUINO_C6_UART_TX_PIN       SHOWDUINO_COMMS_UART_TX_PIN
+#endif
+#ifndef SHOWDUINO_C6_UART_RX_BUFFER
+#define SHOWDUINO_C6_UART_RX_BUFFER    SHOWDUINO_COMMS_UART_RX_BUFFER
+#endif
+#ifndef SHOWDUINO_C6_LINK_TIMEOUT_MS
+#define SHOWDUINO_C6_LINK_TIMEOUT_MS   SHOWDUINO_COMMS_LINK_TIMEOUT_MS
+#endif
+#ifndef SHOWDUINO_C6_CMD_MAX
+#define SHOWDUINO_C6_CMD_MAX           SHOWDUINO_COMMS_CMD_MAX
+#endif
+
+// Stage Controller onboard microSD (SDMMC 4-bit, slot 0 IOMUX)
+// CLK=43  CMD=44  D0=39  D1=40  D2=41  D3=42  POWER=45 (active LOW)  LDO=4
 #ifndef SHOWDUINO_SD_ENABLED
 #define SHOWDUINO_SD_ENABLED           1
 #endif
@@ -52,15 +109,14 @@
 #define PATH_EMERGENCY_MP3             "/showduino/audio/emergency.mp3"
 #define PATH_EMERGENCY_MP3_ROOT        "/emergency.mp3"
 
-// -----------------------------------------------------------------------------
-// Physical emergency button
-// Momentary push button from GPIO25 to GND.
-// INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
-//
-// GPIO25 is a trigger only. The P4 latches emergency in software.
-// Release / second press does not clear. Director EMERGENCY:CLEAR may clear
-// only after the physical button is released and debounced.
-// -----------------------------------------------------------------------------
+/*
+ * Physical E-stop: momentary push button, GPIO25 to GND.
+ * INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
+ * GPIO25 is a trigger input only. The P4 latches emergency in software.
+ * Release / second press does not clear. Director EMERGENCY:CLEAR does,
+ * including after a physical press, once the button is released (debounced).
+ * CLEAR is rejected only while the button is still held LOW.
+ */
 #ifndef SHOWDUINO_ESTOP_GPIO
 #define SHOWDUINO_ESTOP_GPIO           25
 #endif
@@ -74,9 +130,11 @@
 #define SHOWDUINO_ESTOP_DEBOUNCE_MS    30UL
 #endif
 
-// -----------------------------------------------------------------------------
-// Emergency NeoPixel line
-// -----------------------------------------------------------------------------
+/*
+ * Emergency NeoPixel DATA on GPIO24.
+ * Count / colour order / timing come from the existing implementation
+ * (not from a newly confirmed strip datasheet).
+ */
 #ifndef SHOWDUINO_EMERGENCY_PIXEL_ENABLED
 #define SHOWDUINO_EMERGENCY_PIXEL_ENABLED  1
 #endif
@@ -87,7 +145,6 @@
 
 // -----------------------------------------------------------------------------
 // External PCM5102A — SHOW / PROGRAMME AUDIO
-// Physically wired Stage Controller show-audio path.
 // -----------------------------------------------------------------------------
 #ifndef P4_AUDIO_I2S_BCLK
 #define P4_AUDIO_I2S_BCLK   21
@@ -99,8 +156,7 @@
 #define P4_AUDIO_I2S_DOUT   22
 #endif
 
-// Semantic aliases for new code. Keep the older P4_AUDIO_* names above for
-// compatibility with existing source while the audio engine is refactored.
+// Semantic aliases for new code. Keep the older P4_AUDIO_* names above.
 #ifndef P4_SHOW_AUDIO_I2S_BCLK
 #define P4_SHOW_AUDIO_I2S_BCLK P4_AUDIO_I2S_BCLK
 #endif
@@ -113,10 +169,8 @@
 
 // -----------------------------------------------------------------------------
 // Onboard ES8311 + NS4150B — SHOWDUINO / SYSTEM AUDIO
-// Waveshare ESP32-P4-Module-DEV-KIT board mapping.
-//
-// This configuration reserves the pins for the system-audio implementation.
-// Defining them here does not by itself enable the codec driver.
+// Pin reservations only. Defining them does not enable the codec driver.
+// GPIO7/8 are shared with the Plug-in Bus (onboard ES8311 is typically 0x18).
 // -----------------------------------------------------------------------------
 #ifndef P4_SYSTEM_AUDIO_I2C_SDA
 #define P4_SYSTEM_AUDIO_I2C_SDA       7
@@ -125,14 +179,12 @@
 #define P4_SYSTEM_AUDIO_I2C_SCL       8
 #endif
 #ifndef P4_SYSTEM_AUDIO_I2S_DOUT
-// P4 -> ES8311 DSDIN
 #define P4_SYSTEM_AUDIO_I2S_DOUT      9
 #endif
 #ifndef P4_SYSTEM_AUDIO_I2S_WS
 #define P4_SYSTEM_AUDIO_I2S_WS        10
 #endif
 #ifndef P4_SYSTEM_AUDIO_I2S_DIN
-// ES8311 ASDOUT -> P4, used by microphone/codec input when required.
 #define P4_SYSTEM_AUDIO_I2S_DIN       11
 #endif
 #ifndef P4_SYSTEM_AUDIO_I2S_BCLK
@@ -149,28 +201,49 @@
 #endif
 
 /*
- * IMPORTANT: ESP32-P4 exposes one I2S peripheral. The onboard ES8311 system
- * audio and external PCM5102A show audio must be treated as an arbitrated
- * resource. Do not start two independent streams without an implementation
- * that explicitly proves that behaviour on this board.
+ * ESP32-P4 exposes one I2S peripheral. Onboard ES8311 system audio and
+ * external PCM5102A show audio must be treated as an arbitrated resource.
  */
 
-// -----------------------------------------------------------------------------
-// RTC baseline
-// The final Stage Controller uses the ESP32-P4 RTC domain and the Waveshare
-// rechargeable RTC battery connection. No DS3231 GPIO/I2C assignment belongs
-// in the final P4 board map. RTC backup behaviour still requires qualification.
-// -----------------------------------------------------------------------------
+/*
+ * Showduino Plug-in Bus (I²C) — Waveshare ESP32-P4-Module-DEV-KIT
+ *
+ * Official board I²C (Waveshare wiki + schematic nets ESP_I2C_SDA/SCL):
+ *   SDA = GPIO7
+ *   SCL = GPIO8
+ * Exposed on the dedicated SH1.0 I²C header and on the 40-pin header
+ * (Raspberry Pi-style pin 3 / pin 5). Shared with onboard ES8311 (0x18)
+ * and MIPI CSI/DSI touch/control. Board already has 3.3V I²C pull-ups;
+ * do not add 5V pull-ups. Showduino show audio remains PCM5102A I2S,
+ * not the ES8311.
+ *
+ * Default 100 kHz. 3.3V logic only on SDA/SCL.
+ */
+#ifndef SHOWDUINO_PLUGIN_BUS_ENABLED
+#define SHOWDUINO_PLUGIN_BUS_ENABLED   1
+#endif
+#ifndef SHOWDUINO_PLUGIN_BUS_ID
+#define SHOWDUINO_PLUGIN_BUS_ID        0
+#endif
+#ifndef SHOWDUINO_PLUGIN_BUS_SDA_PIN
+#define SHOWDUINO_PLUGIN_BUS_SDA_PIN   7
+#endif
+#ifndef SHOWDUINO_PLUGIN_BUS_SCL_PIN
+#define SHOWDUINO_PLUGIN_BUS_SCL_PIN   8
+#endif
+#ifndef SHOWDUINO_PLUGIN_BUS_HZ
+#define SHOWDUINO_PLUGIN_BUS_HZ        100000UL
+#endif
+#ifndef SHOWDUINO_PLUGIN_BUS_TIMEOUT_MS
+#define SHOWDUINO_PLUGIN_BUS_TIMEOUT_MS 50UL
+#endif
 
-// -----------------------------------------------------------------------------
-// Previous external C3/SUE UART — COMPATIBILITY ONLY
-// Current sketches historically used:
-//   P4 GPIO18 RX <- external C3 TX
-//   P4 GPIO17 TX -> external C3 RX
-//   115200 baud
-//
-// These pins must remain reserved until the onboard C6 path completely removes
-// that compatibility transport from the P4 firmware.
-// -----------------------------------------------------------------------------
+#define PATH_PLUGINS                   "/showduino/plugins"
+#define PATH_PLUGIN_DEVICES            "/showduino/plugins/devices"
+#define PATH_PLUGIN_REGISTRY           "/showduino/plugins/registry.json"
+
+#define PATH_DIAGNOSTICS               "/showduino/diagnostics"
+#define PATH_DIAG_LAST_TEST            PATH_DIAGNOSTICS "/last-test.txt"
+#define PATH_DIAG_PROBE                "/showduino/.diagnostic_test.tmp"
 
 #endif /* SHOWDUINO_STAGE_BOARD_CONFIG_H */

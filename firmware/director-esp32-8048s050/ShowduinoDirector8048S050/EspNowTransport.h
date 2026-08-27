@@ -12,7 +12,7 @@
 
 // =========================================================
 // Showduino ESP-NOW transport
-// Director S3 <-> C3 SuperMini bridge
+// This touchscreen Director <-> standalone ESP32-S3 Comms Controller
 // Desk packet: protocol/showduino_desk_packet.h (wire-compatible)
 // =========================================================
 
@@ -67,17 +67,25 @@ public:
     return true;
   }
 
-  // Soft recover — stuck link, or a failed first begin(). Avoids per-packet churn.
-  bool recover() {
+  // Soft recover — keep a live peer (del/add churn drops RX).
+  // reinit: operator Retry — tear down and start ESP-NOW again.
+  bool recover(bool reinit = false) {
+    if (reinit) {
+      if (online) {
+        esp_now_deinit();
+        online = false;
+      }
+      return begin();
+    }
     if (!online) {
       return begin();
     }
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-    if (esp_now_is_peer_exist(stageBridgeMac)) {
-      esp_now_del_peer(stageBridgeMac);
+    if (!esp_now_is_peer_exist(stageBridgeMac)) {
+      return addBridgePeer();
     }
-    return addBridgePeer();
+    return true;
   }
 
   bool sendCommand(const String &command) {
@@ -154,12 +162,12 @@ private:
   static char rxQueue[RX_QUEUE_DEPTH][SHOWDUINO_ESPNOW_COMMAND_MAX];
 
   uint8_t stageBridgeMac[6] = {
-    SHOWDUINO_P4_C6_MAC_0,
-    SHOWDUINO_P4_C6_MAC_1,
-    SHOWDUINO_P4_C6_MAC_2,
-    SHOWDUINO_P4_C6_MAC_3,
-    SHOWDUINO_P4_C6_MAC_4,
-    SHOWDUINO_P4_C6_MAC_5
+    SHOWDUINO_COMMS_MAC_0,
+    SHOWDUINO_COMMS_MAC_1,
+    SHOWDUINO_COMMS_MAC_2,
+    SHOWDUINO_COMMS_MAC_3,
+    SHOWDUINO_COMMS_MAC_4,
+    SHOWDUINO_COMMS_MAC_5
   };
 
   bool addBridgePeer() {

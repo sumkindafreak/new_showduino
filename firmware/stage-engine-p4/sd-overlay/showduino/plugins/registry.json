@@ -1,0 +1,8 @@
+{
+  "showduino_plugin_schema": 1,
+  "bus": {
+    "id": 0,
+    "frequency_hz": 100000
+  },
+  "instances": []
+}

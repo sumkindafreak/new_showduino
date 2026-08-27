@@ -129,4 +129,26 @@ bool emergencyPixelsReady() {
   return sReady;
 }
 
+bool emergencyPixelsWhiteActive() {
+  return sWhiteActive;
+}
+
+bool emergencyPixelsWriteRgb(uint8_t r, uint8_t g, uint8_t b) {
+#if !SOC_RMT_SUPPORTED
+  (void)r;
+  (void)g;
+  (void)b;
+  return false;
+#else
+  if (!sReady && !emergencyPixelsBegin()) return false;
+  if (!sItems) return false;
+  fillFrame(g, r, b);
+  const bool ok = rmtWrite(SHOWDUINO_EMERGENCY_PIXEL_PIN, sItems, sSymbolCount, 80);
+  if (!ok) {
+    Serial.println("[PIXEL] RMT write failed or timed out");
+  }
+  return ok;
+#endif
+}
+
 #endif

@@ -96,11 +96,12 @@ main/
 
 ## Next implementation steps
 
-1. Add the supported P4-to-C6 SDIO transport.
-2. Feed received Showduino protocol packets into `showduino_command_router_handle()`.
-3. Send ACK and status responses back through the C6.
-4. Add Ethernet service startup.
-5. Add USB Host service startup.
-6. Replace the proof GPIO with modular relay, DMX, audio and lighting services.
+1. Keep the Arduino P4 UART path as the product transport (`firmware/stage-engine-p4/`).
+2. Optional later: a custom P4↔C6 SDIO application transport — documentation only until proven. See `docs/future-p4-c6-sdio-transport.md`. Do not install ESP-Hosted as the Director path.
+3. Feed received Showduino protocol packets into `showduino_command_router_handle()`.
+4. Send ACK and status responses back through the C6.
+5. Add Ethernet service startup.
+6. Add USB Host service startup.
+7. Replace the proof GPIO with modular relay, DMX, audio and lighting services.
 
-The command router is deliberately transport-independent. SDIO, Ethernet, USB, simulator and local console inputs will all use the same runtime API.
+The command router is deliberately transport-independent. UART (current), SDIO (future), Ethernet, USB, simulator and local console inputs will all use the same runtime API.

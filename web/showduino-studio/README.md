@@ -9,82 +9,78 @@ Browser control desk for Showduino Studio.
 | **Source (version control)** | `web/showduino-studio/` |
 | **Runtime (P4 SD card)** | `D:\showduino\webui\` → ESP32 `/showduino/webui/` |
 
-Deploy to the inserted P4 SD card without formatting it:
+Deploy to the inserted P4 SD card (does not format the card):
 
 ```powershell
 powershell -File tools/deploy-webui-to-sd.ps1
 ```
 
-## Final target architecture
+## Architecture
+
+**Current product path (this hardware generation):**
 
 ```text
-Browser
-   → Wi-Fi
-Stage Controller onboard ESP32-C6
-   → P4 Show Engine services
-      ├─ static files from SD /showduino/webui/
-      ├─ REST API
-      └─ WebSocket/live state
+Browser  →  (not hosted on the current S3 Comms Controller)
+Director → ESP-NOW → ESP32-S3 Comms Controller → UART → ESP32-P4
+                         ├─ Static files from SD /showduino/webui/
+                         └─ JSON APIs (/api/system, /api/logs, /api/devices)
 ```
 
-The production frontend is stored on the P4 SD card. The Communications Engine is transport; the P4 Show Engine remains authoritative.
+The production frontend is **not** embedded in firmware. A tiny HTML fallback is shown only if the P4 SD origin is unreachable.
 
-## Communications migration note
+### Previous generation (legacy C3 / SUE)
 
-The repository still contains the previously working WebUI front door through the **external C3 SuperMini + UART tunnel**. That implementation is retained as compatibility/reference code while the onboard C6 gains equivalent Wi-Fi/WebUI transport.
-
-Final hardware does not require the separate C3 board.
-
-## Time service migration
-
-The old Studio implementation described a C3-hosted **DS3231** service. That is no longer the final hardware architecture.
-
-Final target:
+The external ESP32-C3 SuperMini hosted SoftAP `Showduino-Studio` and proxied `/api/*` over UART. That path remains documented for the legacy C3 firmware only:
 
 ```text
-ESP32-P4 RTC / system time
-    → P4 Show Engine time service
-    → Studio / Director clients
+Browser → Wi-Fi → ESP32-C3 SUE (HTTP radio, WebSocket :81)
+                    └─ UART tunnel → ESP32-P4
 ```
 
-No DS3231 wiring is required in the final Stage Controller.
+## Connect
 
-RTC backup/power-loss retention must not be claimed until the P4 RTC/VBAT behaviour has been qualified on the actual board/firmware.
+Current generation: flash **P4**, **S3 Comms Controller**, **Director**. Wire UART (S3 GPIO17→P4 GPIO4, S3 GPIO18←P4 GPIO5). Copy the S3 boot MAC into Director `SHOWDUINO_COMMS_MAC_*`.
 
-Existing API names such as `/api/time` may remain useful, but the backend authority moves to the P4.
+There is **no external DS3231** on the current P4-module stack. Time follows the P4 internal RTC.
 
-Recommended target endpoints:
+### Legacy C3 connect (previous hardware)
+
+1. Flash **P4**, **C3**, **Director**
+2. Wire DS3231 to C3: **SDA=GPIO4**, **SCL=GPIO5**, 3V3, GND
+3. Join Wi-Fi: `Showduino-Studio` / `showduino`
+4. Open `http://192.168.4.1/`
+
+## REST API (additions)
+
+Install **Adafruit RTClib** (v2.1.4+) and dependency **Adafruit BusIO** in Arduino Library Manager.
+
+## REST API (additions)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/time` | Current Show Engine clock / ISO / epoch / source |
-| `GET /api/time/status` | P4 RTC/system-time health and synchronisation status |
-| `POST /api/time/alarm` | Timed-show scheduling request where supported |
-| `DELETE /api/time/alarm` | Clear scheduled alarm where supported |
+| `GET /api/time` | Live clock / ISO / epoch / RTC status / temperature |
+| `GET /api/time/status` | RTC present/healthy/lostPower/battery/sync/drift/SQW/alarm |
+| `POST /api/time/alarm` | Arm timed-show alarm (`{"epoch":…}` or `{"daily":true,"hour":h,"minute":m}`) |
+| `DELETE /api/time/alarm` | Clear RTC alarm |
 
-DS3231-only fields such as chip temperature/SQW state should not be presented as canonical P4 time-service data.
+## WebSocket events (additions)
 
-## Connection target
+`time.updated` (1 Hz) · `time.sync` · `time.unsynced` · `rtc.status` · `time.alarm` · `time.alarm.armed` · `time.alarm.cleared`
 
-Once onboard C6 migration is complete:
+## DS3231 wiring (legacy SUE / C3 only)
 
-1. Flash P4 Show Engine.
-2. Bring up/flash onboard C6 Communications Engine using the documented recovery procedure.
-3. Flash Director with the onboard C6 ESP-NOW peer MAC.
-4. Join the Showduino Wi-Fi network exposed by the onboard C6.
-5. Open the Studio WebUI address provided by the Communications Engine configuration.
+Not used on the current P4-module generation. Retained for the previous C3 firmware:
 
-Until that migration is complete, `firmware/c3-supermini-espnow-bridge/` remains the compatibility implementation for the previous `Showduino-Studio` AP/tunnel behaviour.
+| RTC pin | C3 GPIO |
+|---------|---------|
+| SDA | 4 |
+| SCL | 5 |
+| SQW / INT / DS | **6** (timed-show alarm interrupt) |
+| VCC / GND | 3V3 / GND |
+| 32K | unused |
 
-## Regenerate embedded/fallback assets
+## Regenerate embedded assets
 
 ```powershell
 powershell -File tools/embed-web-studio-assets.ps1
 ```
-
-## Related docs
-
-- `docs/architecture.md`
-- `docs/hardware-baseline-2026-08-25.md`
-- `docs/final-hardware-architecture.md`
-- `docs/repository-status.md`

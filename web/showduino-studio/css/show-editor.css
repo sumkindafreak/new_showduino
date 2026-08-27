@@ -1,0 +1,295 @@
+/* Showduino Studio — restored Show Editor styles.
+ * Kept separate from studio.css so the rescued editor can evolve without
+ * disturbing the proven shell/mobile styles used by the rest of Web Studio.
+ */
+
+.show-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: calc(100vh - var(--header-h) - 2.5rem);
+}
+
+.show-editor-control-strip,
+.show-editor-toolbar,
+.show-editor-panel,
+.show-editor-timeline,
+.show-editor-project-info {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.show-editor-control-strip {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem;
+}
+
+.show-editor-project,
+.show-editor-transport,
+.show-editor-status,
+.show-editor-toolbar-group,
+.show-editor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.show-editor-project { min-width: 0; }
+
+.show-editor-kicker,
+.show-editor-toolbar-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.show-editor-project-name {
+  min-width: 90px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.3rem 0.45rem;
+  background: var(--bg);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.show-editor-project-name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.show-editor-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.show-editor-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent-dim);
+}
+
+.show-editor-btn:active:not(:disabled) { transform: translateY(1px); }
+.show-editor-btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.show-editor-btn-primary { background: var(--accent); border-color: var(--accent); }
+.show-editor-btn-danger { background: var(--error); border-color: var(--error); color: #fff; font-weight: 700; }
+.show-editor-btn-small { padding: 0.36rem 0.5rem; font-size: 0.72rem; }
+.show-editor-btn-compact { padding: 0.35rem 0.5rem; }
+
+.show-editor-toggle {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.show-editor-toggle input { accent-color: var(--accent); }
+
+.show-editor-time {
+  min-width: 104px;
+  padding: 0.38rem 0.6rem;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.show-editor-status-badge,
+.show-editor-runtime-state {
+  padding: 0.22rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.show-editor-status-badge.offline { background: rgba(231, 76, 60, 0.17); color: var(--error); }
+.show-editor-status-badge.online { background: rgba(46, 204, 113, 0.17); color: var(--success); }
+.show-editor-runtime-state { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+
+.show-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  padding: 0.6rem 0.7rem;
+}
+
+.show-editor-toolbar-group { flex-wrap: wrap; }
+
+.show-editor-workspace {
+  display: grid;
+  grid-template-columns: 235px minmax(420px, 1fr) 235px;
+  gap: 0.75rem;
+  min-height: 470px;
+  flex: 1;
+}
+
+.show-editor-panel,
+.show-editor-timeline {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.show-editor-panel-title {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+
+.show-editor-search {
+  margin: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.show-editor-search:focus { border-color: var(--accent); }
+.show-editor-library-list { overflow-y: auto; padding-bottom: 0.5rem; }
+.show-editor-fx-category { padding: 0.4rem 0.65rem; }
+.show-editor-fx-category h4 {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.show-editor-fx-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: grab;
+}
+
+.show-editor-fx-item:hover { background: var(--bg-hover); border-color: var(--border); }
+.show-editor-duration { color: var(--text-muted); font-family: monospace; font-size: 0.72rem; }
+.show-editor-timeline-title { justify-content: space-between; }
+.show-editor-zoom-readout { color: var(--text-muted); font-family: monospace; font-size: 0.72rem; }
+
+.show-editor-ruler {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0.6rem 0.25rem 118px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 0.68rem;
+  background: var(--bg);
+}
+
+.show-editor-tracks {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  min-width: calc(100% * var(--timeline-zoom, 1));
+  background-image: linear-gradient(to right, transparent calc(10% - 1px), rgba(255,255,255,0.035) 10%);
+  background-size: calc(10% * var(--timeline-zoom, 1)) 100%;
+}
+
+.show-editor-track {
+  display: grid;
+  grid-template-columns: 110px minmax(420px, 1fr);
+  min-height: 56px;
+  border-bottom: 1px solid var(--border);
+}
+
+.show-editor-track.selected { background: rgba(196, 30, 30, 0.08); }
+.show-editor-track-name {
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  text-align: left;
+  padding: 0 0.7rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.show-editor-track.selected .show-editor-track-name { color: #fff; box-shadow: inset 3px 0 0 var(--accent); }
+.show-editor-track-lane { display: flex; align-items: center; padding: 0.4rem 0.7rem; }
+.show-editor-track-hint { color: #555; font-size: 0.72rem; }
+
+.show-editor-empty {
+  flex: 1;
+  min-height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.show-editor-inspector-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem;
+}
+
+.show-editor-muted { color: var(--text-muted); font-size: 0.8rem; }
+.show-editor-project-info { overflow: hidden; }
+
+.show-editor-project-info summary {
+  cursor: pointer;
+  padding: 0.65rem 0.8rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.show-editor-project-info-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0 1rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+@media (max-width: 1180px) {
+  .show-editor-control-strip { grid-template-columns: 1fr 1fr; }
+  .show-editor-workspace { grid-template-columns: 200px minmax(360px, 1fr); }
+  .show-editor-inspector { grid-column: 1 / -1; min-height: 160px; }
+}
+
+@media (max-width: 820px) {
+  .content { padding: 0.75rem; }
+  .show-editor-control-strip { grid-template-columns: 1fr; align-items: stretch; }
+  .show-editor-project, .show-editor-transport, .show-editor-status { flex-wrap: wrap; }
+  .show-editor-workspace { grid-template-columns: 1fr; }
+  .show-editor-library { max-height: 260px; }
+  .show-editor-timeline { min-height: 430px; }
+  .show-editor-inspector { grid-column: auto; }
+}

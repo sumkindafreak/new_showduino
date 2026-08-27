@@ -114,6 +114,37 @@ void WebSocketManager::sendSnapshot(const String &devicesJson, const String &net
   broadcastText(body);
 }
 
+void WebSocketManager::sendCommandEvent(const char *eventName, const String &commandJson) {
+  String body;
+  body.reserve(commandJson.length() + 64);
+  body += "{\"event\":\"";
+  body += eventName ? eventName : "command.updated";
+  body += "\",\"command\":";
+  body += commandJson.length() ? commandJson : "{}";
+  body += '}';
+  broadcastText(body);
+}
+
+void WebSocketManager::sendQueueUpdated(size_t depth, size_t emergencyDepth) {
+  String body = "{\"event\":\"queue.updated\",\"queueDepth\":";
+  body += String((unsigned)depth);
+  body += ",\"emergencyDepth\":";
+  body += String((unsigned)emergencyDepth);
+  body += '}';
+  broadcastText(body);
+}
+
+void WebSocketManager::sendJsonEvent(const char *eventName, const char *detailJson) {
+  String body;
+  body.reserve((detailJson ? strlen(detailJson) : 2) + 64);
+  body += "{\"event\":\"";
+  body += eventName ? eventName : "event";
+  body += "\",\"data\":";
+  body += (detailJson && detailJson[0]) ? detailJson : "{}";
+  body += '}';
+  broadcastText(body);
+}
+
 void WebSocketManager::acceptNew() {
   if (!server_) return;
   WiFiClient incoming = server_->available();

@@ -45,8 +45,7 @@ static const DisplayPage kNodesPage = {
 };
 
 static const TouchRegion kDiscoveryTouchRegions[] = {
-  {{120, 300, 680, 380}, "UI:DISCOVERY:SCAN", 0},
-  {{120, 390, 680, 450}, "SCREEN:NODES", 0},
+  {{120, 300, 680, 380}, "SCREEN:NODES", 0},
   {{280, 450, 520, 478}, "SCREEN:DESKTOP", 0},
 };
 
@@ -87,9 +86,8 @@ static const DisplayPage kEmergencyPage = {
 };
 
 static const TouchRegion kConnectionLostTouchRegions[] = {
-  {{40, 360, 260, 430}, "UI:NET:RETRY", 0},
-  {{280, 360, 500, 430}, "UI:NET:SCAN", 0},
-  {{520, 360, 760, 430}, "SCREEN:DESKTOP", 0},
+  {{40, 360, 360, 430}, "UI:NET:RETRY", 0},
+  {{440, 360, 760, 430}, "SCREEN:DESKTOP", 0},
 };
 
 static const DisplayPage kConnectionLostPage = {
@@ -100,9 +98,8 @@ static const DisplayPage kConnectionLostPage = {
 };
 
 static const TouchRegion kNoNetworkTouchRegions[] = {
-  {{40, 360, 260, 430}, "UI:NET:RETRY", 0},
-  {{280, 360, 500, 430}, "UI:NET:SCAN", 0},
-  {{520, 360, 760, 430}, "SCREEN:DESKTOP", 0},
+  {{40, 360, 360, 430}, "UI:NET:RETRY", 0},
+  {{440, 360, 760, 430}, "SCREEN:DESKTOP", 0},
 };
 
 static const DisplayPage kNoNetworkPage = {
@@ -172,8 +169,7 @@ static const DisplayPage kRecoveryPage = {
 
 static const TouchRegion kCompleteTouchRegions[] = {
   {{200, 360, 600, 430}, "UI:COMPLETE:MENU", 0},
-  {{120, 300, 320, 360}, "UI:COMPLETE:RUN", 0},
-  {{480, 300, 680, 360}, "UI:COMPLETE:EXPORT", 0},
+  {{120, 300, 380, 360}, "UI:COMPLETE:RUN", 0},
 };
 
 static const DisplayPage kCompletePage = {
