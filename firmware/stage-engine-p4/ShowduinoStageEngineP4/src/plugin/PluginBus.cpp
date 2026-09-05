@@ -166,7 +166,7 @@ static void classify(PluginInstance &inst, bool present) {
                pluginDriverFind("waveshare.es8311")->identify(inst.loc, nullptr)) {
       copyStr(inst.deviceId, sizeof(inst.deviceId), "waveshare.es8311");
       copyStr(inst.driver, sizeof(inst.driver), "waveshare.es8311");
-      copyStr(inst.friendly, sizeof(inst.friendly), "Onboard ES8311");
+      copyStr(inst.friendly, sizeof(inst.friendly), "ES8311 - P4 Internal Audio");
       inst.status = PluginStatus::Online;
     } else {
       copyStr(inst.deviceId, sizeof(inst.deviceId), "generic.i2c.unknown");

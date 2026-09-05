@@ -42,6 +42,9 @@ public:
   lv_obj_t *rootScreen() const { return screen_; }
   lv_obj_t *layer(DisplayLayerId id) const;
 
+  /** Replace the system-page body copy (SHOW COMPLETE detail, etc.). */
+  void setSystemDetail(const char *text);
+
 private:
   const DisplayPage *pageDesc(DisplayPageId id) const;
   void probeCapabilities();
@@ -49,11 +52,13 @@ private:
   void ensureShell();
   void buildDock();
   void setDockVisible(bool visible);
+  void highlightDock(DisplayPageId page);
   void hidePagePanels();
   void raiseLayers();
   void applyLvglPage(DisplayPageId page, const DisplayPage *desc, bool hasPanel);
   void clearSystemChrome();
   void buildSystemChrome(DisplayPageId page, const DisplayPage *desc);
+  void refreshSystemStatus(const DisplaySnapshot &snapshot);
   static void dockEventThunk(lv_event_t *event);
   static const char *commandButtonLabel(const char *command);
 
@@ -65,7 +70,10 @@ private:
   lv_obj_t *layers_[DISPLAY_LAYER_COUNT] = {};
   lv_obj_t *pagePanels_[PAGE_COUNT] = {};
   lv_obj_t *dock_ = nullptr;
+  lv_obj_t *dockButtons_[5] = {};
   lv_obj_t *chromeRoot_ = nullptr;
+  lv_obj_t *chromeBody_ = nullptr;
+  lv_obj_t *chromeStatus_ = nullptr;
 
   DisplayPageId currentPage_ = PAGE_NONE;
   DisplayState state_ = DISPLAY_LOADING;

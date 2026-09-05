@@ -42,6 +42,7 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 | [`docs/future-p4-c6-sdio-transport.md`](docs/future-p4-c6-sdio-transport.md) | Future SDIO / ESP-Hosted notes (not implemented) |
 | [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus (I²C) |
 | [`docs/creating-showduino-i2c-plugin.md`](docs/creating-showduino-i2c-plugin.md) | Adding an I²C plugin definition or driver |
+| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production and timeline format |
 
 ## Canonical communication paths
 
@@ -87,7 +88,7 @@ Owns authoritative:
 - Node command dispatch and result handling
 - Web UI, Web API, WebSocket state, configuration
 
-**Maturity:** Current firmware under `firmware/stage-engine-p4/` is an **early command hub**. It does **not** yet contain the full planned timeline engine, project storage, DMX, pixel, audio, or Web UI/API. Do not overstate capability.
+**Maturity:** Current firmware under `firmware/stage-engine-p4/` includes an authoritative Stage 6 runtime, transactional loading of versioned productions from P4 SD, and a RAM-backed timeline engine with ordered cue dispatch, start, pause, resume, stop, finish, and emergency interruption handling. Broader project/assets storage, DMX, physical cue engines, and the Web UI/API remain incomplete. Do not overstate capability.
 
 ### Communications Engine (dedicated ESP32-S3)
 
@@ -121,12 +122,12 @@ Specialist devices (relay, audio, lighting, sensor, motor, etc.) that **act** on
 firmware/director-esp32-8048s050/          Director (ESP32-S3)              [ACTIVE]
 firmware/s3-comms-controller/              Communications Engine (ESP32-S3) [ACTIVE]
 firmware/stage-engine-p4/                  Show Engine / Stage Controller    [ACTIVE]
-firmware/relay-node-esp32/                 Relay Node                        [ACTIVE]
 ```
 
 **Other** (not the supported production stack):
 
 ```text
+firmware/relay-node-esp32/                 [EXPERIMENTAL / FUTURE] relay prototype
 firmware/p4-c6-espnow-bridge/              [UNUSED / RESERVED] onboard C6
 firmware/c3-supermini-espnow-bridge/       [LEGACY / SUPERSEDED] previous external C3 / SUE
 firmware/director-s3/                      [LEGACY]
@@ -150,12 +151,14 @@ docs/         Constitution, architecture, repository status, hardware
 ## Current progress (honest)
 
 - Live transport path: Director ↔ ESP‑NOW ↔ dedicated ESP32-S3 Comms Controller ↔ UART ↔ P4. Onboard C6 is unused/reserved. Factory P4↔C6 SDIO and ESP-Hosted are not used.
-- Early Show Engine command parsing, emergency gate, and relay routing via Communications Engine
+- Show Engine command parsing, emergency gate, and an experimental relay route retained for future node work
 - Director LVGL UI and ESP‑NOW client
-- Relay Node ESP‑NOW actuator
+- Relay Node ESP‑NOW prototype (not part of the supported current stack)
 - Host-side GoreFX / Scene Manager prototypes under `web/`
 
-**Not yet:** full Show Engine timeline, primary project store on P4, Show Engine Web UI/API, Communications Engine Wi‑Fi front door, shared protocol package, ACK-driven Director relay display, logical device-ID addressing throughout firmware.
+**Implemented foundation:** shared protocol package, authoritative runtime/state publication, confirmed Director relay display, RAM-backed Stage 6 timeline playback, and transactional loading of versioned TEST/LOG productions from P4 SD.
+
+**Not yet:** broader P4 asset/project management, a complete authoritative Show Engine Web UI/API product, Communications Engine Wi‑Fi front door, completion-driven node state/fault handling, logical device-ID addressing throughout firmware, or a supported node product path.
 
 ## Long-term vision
 

@@ -10,7 +10,7 @@ Related:
 - [State synchronisation (Stage 3)](state-synchronisation.md)
 - [Final hardware architecture](final-hardware-architecture.md)
 
-**Roadmap note:** Stage 0–3 complete for documentation / constitution / shared protocol / authoritative state. Stage 4+ (timeline, storage migration, Web UI, etc.) not started.
+**Roadmap note:** Stages 0–3 established documentation, constitution, shared protocol, and authoritative state. The active P4 firmware now also contains the Stage 6 RAM timeline/runtime plus transactional loading of versioned TEST/LOG productions from P4 SD. Broader asset storage, a complete authoritative Web UI product, structured v2 routing, and completion-driven node state remain future work.
 
 ---
 
@@ -24,13 +24,7 @@ Communications Engine ESP32-S3 (dedicated Dev Module)
 Show Engine ESP32-P4
 ```
 
-```text
-Showduino Node
-    → ESP-NOW
-Communications Engine ESP32-S3 (dedicated Dev Module)
-    → UART
-Show Engine ESP32-P4
-```
+The supported current stack ends at the P4. Node firmware and node routing remain experimental/future work.
 
 Browser / phone access remains a conceptual target. The current S3 Comms Controller does not host SoftAP. The Director does not host the primary Web UI.
 
@@ -41,7 +35,6 @@ Browser / phone access remains a conceptual target. The current S3 Comms Control
 | `firmware/director-esp32-8048s050/` | Director — operator UI, requests, display |
 | `firmware/s3-comms-controller/` | Communications Engine — dedicated ESP32-S3 ESP‑NOW + UART |
 | `firmware/stage-engine-p4/` | Show Engine on Stage Controller (folder name legacy) |
-| `firmware/relay-node-esp32/` | Relay Node — local relay actuation |
 
 ---
 
@@ -54,8 +47,8 @@ Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMP
 | `firmware/director-esp32-8048s050/` | **ACTIVE** | ESP32-S3 800×480 (8048S043/S050) | Canonical Director LVGL + ESP‑NOW client | Supported operator desk | Desk → Comms via ESP‑NOW | Keep; align UI to constitution in later stages |
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Canonical Communications Engine | Dedicated ESP‑NOW + UART bridge | Centre of ESP‑NOW/UART fabric | Keep; do not move show logic here |
 | `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 (Waveshare P4 module) | Historical C6 ESP‑NOW UART bridge | Superseded by dedicated S3 Comms Controller | Physical C6 nets remain reserved; do not flash | Retain source; not current architecture |
-| `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Canonical Show Engine (early hub) | Authoritative path for decisions | UART peer of Comms Engine | Keep; grow SoT features; rename folder later |
-| `firmware/relay-node-esp32/` | **ACTIVE** | ESP32 + relay module | Canonical Relay Node | Working node actuator | Node → Comms → Show Engine | Keep; device-ID addressing later |
+| `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Canonical Show Engine runtime + timeline hub | Authoritative state, safety, SD production loading, and cue scheduling | UART peer of Comms Engine | Keep; grow SoT features; rename folder later |
+| `firmware/relay-node-esp32/` | **EXPERIMENTAL / FUTURE** | ESP32 + relay module | Relay-node prototype | Source exists, but completion semantics and logical-ID routing are incomplete | Outside the supported current stack | Retain for a future node milestone; do not present as shipping |
 | `firmware/c3-supermini-espnow-bridge/` | **LEGACY / SUPERSEDED** | ESP32-C3 SuperMini (SUE) | Previous external Communications Engine | External C3 + Wi‑Fi AP generation | Superseded first by onboard C6, now by dedicated S3 | Retain as reference; do not treat as current path |
 | `firmware/director-s3/` | **LEGACY** | ESP32-S3 + TFT_eSPI | Earlier UART-only Director scaffold | Older topology (Director↔UART↔engine) | Superseded by 8048 ESP‑NOW Director | Retain for reference; do not extend |
 | `firmware/espnow-bridge/` | **LEGACY** | ESP32-C3/C6/S3/ESP32 | Early P4↔node ESP‑NOW scaffold | Pre–dual-role C3 design | Superseded by C3 then by onboard C6 | Retain for packet ideas; do not ship |
@@ -123,7 +116,7 @@ The onboard C6 firmware (`firmware/p4-c6-espnow-bridge/`) is **UNUSED / RESERVED
 
 * Authoritative state
 * Timeline and cue execution (as implemented)
-* Project storage (target; early today)
+* Versioned SD production manifests and TEST/LOG timelines (implemented foundation); broader project/assets storage remains a target
 * Safety policy
 * Node coordination
 * Local DMX, pixels, audio, storage and Web services **as implemented**
@@ -134,7 +127,9 @@ The onboard C6 firmware (`firmware/p4-c6-espnow-bridge/`) is **UNUSED / RESERVED
 * Director visual logic
 * Node-local hardware drivers
 
-### Relay Node (`firmware/relay-node-esp32/`)
+### Relay Node prototype (`firmware/relay-node-esp32/`)
+
+**Classification:** EXPERIMENTAL / FUTURE. It documents the intended node boundary, but it is not part of the supported current product path.
 
 **Owns:**
 
@@ -176,7 +171,7 @@ archive/
 | `firmware/touch-probe-8048/` | `archive/diagnostic-sketches/touch-probe-8048/` (optional) | Or keep beside Director as lab tool | None required |
 | `.../ShowduinoSdTouchTest/` | `archive/diagnostic-sketches/ShowduinoSdTouchTest/` (optional) | Or keep under Director tree | None required |
 
-Active four folders stay under `firmware/`.
+The three active folders stay under `firmware/`. The relay prototype remains in place as experimental source.
 
 ---
 
@@ -208,3 +203,14 @@ Do **not** rename in Stage 1. Recorded for later stages:
 | DIAGNOSTIC | Bring-up / probe utility |
 | INCOMPLETE | Stub or non-operational placeholder |
 | ARCHIVE CANDIDATE | Suitable for a future archive move; still present in-tree |
+
+---
+
+## Implementation maturity
+
+| Maturity | Current repository scope |
+|----------|--------------------------|
+| **IMPLEMENTED** | Director → ESP-NOW → dedicated S3 Comms → UART → P4 transport; P4 authoritative runtime/emergency state; RAM timeline; P4 SD discovery and transactional loading of versioned TEST/LOG productions |
+| **PARTIAL** | P4 storage/assets beyond the production manifest and timeline; audio and local output services; host-side Web UI/API integration; compatibility relay state surfaces |
+| **PLANNED** | Supported node products; logical device-ID routing end to end; structured/versioned transport messages; completion-driven node state and faults; broader production cue types |
+| **LEGACY** | C3/SUE Communications Engine, earlier Director/bridge firmware, CYD/Mega generation, and Director-authoritative show storage assumptions |

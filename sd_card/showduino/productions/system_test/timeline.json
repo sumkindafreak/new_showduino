@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "cues": [
+    {
+      "id": "test_start",
+      "timeMs": 0,
+      "type": "TEST",
+      "action": "LOG",
+      "value": "SHOWDUINO TIMELINE TEST START"
+    },
+    {
+      "id": "cue_1",
+      "timeMs": 1000,
+      "type": "TEST",
+      "action": "LOG",
+      "value": "CUE 1 FIRED"
+    },
+    {
+      "id": "cue_2",
+      "timeMs": 2500,
+      "type": "TEST",
+      "target": "diagnostic.timeline",
+      "action": "LOG",
+      "value": "CUE 2 FIRED",
+      "parameters": {
+        "level": "info"
+      }
+    },
+    {
+      "id": "cue_3",
+      "timeMs": 4000,
+      "type": "LOG",
+      "value": "CUE 3 FIRED"
+    },
+    {
+      "id": "test_complete",
+      "timeMs": 5000,
+      "type": "TEST",
+      "action": "LOG",
+      "value": "SHOWDUINO TIMELINE TEST COMPLETE"
+    }
+  ]
+}

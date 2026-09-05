@@ -1,6 +1,6 @@
 # Showduino State Synchronisation (Stage 3)
 
-**Status:** Implemented in Stage 3 for the currently supported runtime surface (show start/stop flags, emergency, relay channels, relay-node availability).
+**Status:** Show and emergency synchronisation are implemented. Relay channel and relay-node fields are retained compatibility/prototype surfaces; no production node is currently supported.
 
 ## Ownership
 
@@ -9,11 +9,11 @@
 | Authoritative show / emergency / relay knowledge | Show Engine |
 | Transport | Communications Engine |
 | Display + pending UI | Director |
-| Physical GPIO | Relay Node |
+| Physical GPIO | Future specialist Node (relay prototype exists) |
 
 Acceptance ≠ completion. Confirmed relay display uses `STATE:RELAY` only.
 
-## Relay lifecycle
+## Future relay lifecycle (prototype / not a supported current path)
 
 ```text
 Director  RELAY:n:ON|OFF

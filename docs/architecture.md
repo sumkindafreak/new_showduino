@@ -29,7 +29,7 @@ Firmware path `firmware/stage-engine-p4/` is the current Show Engine sketch loca
 
 ### Maturity (do not overstate)
 
-The Show Engine now owns an explicit Stage 3 runtime state model (show IDLE/PLAYING/EMERGENCY, emergency CLEAR/ACTIVE, per-channel relay knowledge, relay-node availability) and publishes `STATE:*` / snapshots. It does **not** yet contain timeline execution, project storage migration, DMX, pixel, audio, or Web UI.
+The Show Engine owns the Stage 3 state model and the newer Stage 6 authoritative `ShowRuntime`. It discovers and validates versioned productions from P4 SD, transactionally loads TEST/LOG cues into the RAM timeline, publishes state/snapshots, and runs ordered cue dispatch with pause/resume, finish, and emergency interruption handling. Broader asset/project management, physical cue engines, DMX, and Web UI remain incomplete.
 
 Director display of relays/show/emergency follows confirmed `STATE:*` (and snapshot sync). Optimistic relay TOGGLE UI is removed.
 
@@ -157,13 +157,13 @@ Responsibilities (target):
 - Local show outputs where fitted (DMX, pixels, audio) when implemented
 - Web UI / Web API / WebSocket
 
-**Today:** early command hub (parse requests, emergency gate, route relay work through the Communications Engine, return simple ACK/status lines). Treat deeper capabilities as **planned**.
+**Today:** command hub plus authoritative runtime and RAM-backed Stage 6 timeline execution. It parses requests, applies the emergency gate, publishes runtime/state, dispatches loaded cues, and transactionally loads versioned TEST/LOG productions from P4 SD. Deeper output/service capabilities remain planned. An experimental relay route is retained in source but is not part of the supported current stack.
 
 ### 4. Nodes
 
-**Active example:** `firmware/relay-node-esp32/`
+**Experimental / future example:** `firmware/relay-node-esp32/`
 
-Nodes execute absolute commands and report results. Expandable family: audio, lighting, sensor, motor, environmental, etc.
+The current supported stack ends at the P4. Future nodes will execute absolute commands and report results; the retained relay source is a prototype, not a supported product path. Expandable family: audio, lighting, sensor, motor, environmental, etc.
 
 ---
 
@@ -173,13 +173,13 @@ Nodes execute absolute commands and report results. Expandable family: audio, li
 firmware/director-esp32-8048s050/
 firmware/s3-comms-controller/             # Communications Engine (ESP32-S3)
 firmware/stage-engine-p4/                 # Show Engine (rename planned)
-firmware/relay-node-esp32/
 ```
 
 ### Other trees (not the active product path)
 
 | Path | Classification |
 |------|----------------|
+| `firmware/relay-node-esp32/` | Experimental / future — retained prototype, not the supported current stack |
 | `firmware/p4-c6-espnow-bridge/` | Unused / reserved — onboard C6, not current application firmware |
 | `firmware/c3-supermini-espnow-bridge/` | Legacy / superseded — previous external C3 / SUE Communications Engine |
 | `firmware/director-s3/` | Legacy / experimental |
@@ -203,7 +203,7 @@ Communications Engine → Director (and Web clients when Wi-Fi exists)
 Director / browser display PLAYING
 ```
 
-Relay example (absolute state):
+Future relay lifecycle example (absolute state; not yet a supported product path):
 
 ```text
 Director → relay channel N requested ON (by device ID)
@@ -238,7 +238,7 @@ Emergency stop overrides entertainment commands.
 When the Show Engine accepts an emergency activate request it must:
 
 - Enter emergency locked state
-- Stop or freeze show timelines (when implemented)
+- Pause the active timeline while preserving its position for an explicit operator resume
 - Command dangerous outputs and nodes toward safe states
 - Keep status reporting available
 - Require an explicit clear / authorised reset policy before normal operation
@@ -271,6 +271,6 @@ A lost Director or browser must **not** by itself stop a running show, unless a 
 
 ## Development status relative to this document
 
-**Aligned:** role names in this doc; live Director→ESP‑NOW→S3 Comms Controller→UART→P4 path; relay nodes off the P4; Comms must not own show logic.
+**Aligned:** role names in this doc; live Director→ESP‑NOW→S3 Comms Controller→UART→P4 path; current supported stack ends at the P4; Comms must not own show logic.
 
-**Still firmware debt (docs only — not fixed here):** optimistic Director relay UI; `TOGGLE` still present in places; MAC-centric node config; stub routes that can look like success; Show Engine Web UI not on P4; Director SD still holding show packages; folder still named `stage-engine-p4`.
+**Still firmware debt:** `TOGGLE` remains in compatibility paths; node routing is MAC-centric; stub routes can look like success; Show Engine Web UI is not on P4; Director SD still has legacy show-package helpers; folder is still named `stage-engine-p4`.

@@ -1,14 +1,14 @@
 # Showduino Migration Plan
 
-This plan reflects the current P4-based architecture and the **25 August 2026 Stage Controller hardware simplification**.
+**Status: LEGACY / SUPERSEDED.** This document records the 25 August 2026 onboard-C6 migration proposal; it is not the current implementation plan and must not be executed as the product baseline.
 
-The old CYD→Mega→separate-SUE migration plan is retired.
+The supported current path is Director ESP32-S3 → ESP-NOW → dedicated ESP32-S3 Communications Engine → UART → ESP32-P4 Show Engine. The onboard C6 is unused/reserved. See [`final-hardware-architecture.md`](final-hardware-architecture.md).
 
 ## Goal
 
 Prove one complete, safe Showduino scenario on the final lean Stage Controller hardware without adding unnecessary modules.
 
-Final Stage Controller baseline:
+Historical proposed baseline:
 
 ```text
 Waveshare ESP32-P4-Module-DEV-KIT
@@ -32,7 +32,7 @@ Do not delete rollback code before parity testing.
 Status: **DECIDED**
 
 - P4 remains the Show Engine.
-- Onboard C6 replaces separate C3/SUE hardware.
+- This superseded proposal would have replaced separate C3/SUE hardware with the onboard C6.
 - P4 RTC replaces external DS3231 hardware.
 - Onboard ES8311 handles Showduino/system sounds.
 - PCM5102A remains for show/programme audio.
@@ -54,7 +54,7 @@ Before replacing factory C6 firmware:
 
 Waveshare documents C6 download mode as `C6_IO9` LOW during power/reset, with flashing over `C6_U0RXD` / `C6_U0TXD`.
 
-## Phase 3 — move Communications Engine to onboard C6
+## Historical Phase 3 — move Communications Engine to onboard C6 (superseded; do not execute)
 
 Target tree:
 

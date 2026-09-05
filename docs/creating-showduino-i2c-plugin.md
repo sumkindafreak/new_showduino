@@ -118,6 +118,6 @@ Unknown ACKs are expected and safe.
 Plugin JSON cannot:
 
 - execute code
-- reassign GPIO25, GPIO24, C6 UART, SDMMC, or reserved C6/SDIO pins
+- reassign GPIO25, GPIO24, the Communications Engine UART, SDMMC, or reserved C6/SDIO pins
 - bypass emergency latch
 - allocate unbounded buffers or polling loops

@@ -13,7 +13,9 @@
 #include "DirectorAudioModel.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayManager.h"
+#include "DisplayPages.h"
 #include "DirectorEmergencyScreen.h"
+#include "DirectorUnlockScreen.h"
 #include "touch_lvgl.h"
 #include "page_01_home.h"
 #include "page_02_productions.h"
@@ -773,10 +775,18 @@ public:
     syncStatusBarHealth();
     statusBar_.update(millis());
     if (statusBar_.root()) {
-      if (displayManager_.isPhase2PageActive()) {
+      const bool cover =
+          gDirectorUnlockScreen.isVisible() ||
+          gDirectorEmergencyScreen.isVisible() ||
+          displayPageIsSystemModal(displayManager_.currentPage()) ||
+          (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) ||
+          (aboutRoot_ && !lv_obj_has_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN)) ||
+          (completeOverlayRoot && !lv_obj_has_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN));
+      if (cover) {
         lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
       } else {
         lv_obj_clear_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(statusBar_.root());
       }
     }
     if (displayManager_.isPhase2PageActive()) {
@@ -801,11 +811,11 @@ public:
       }
 
       const char *rt = deskRuntimeWord();
-      lv_color_t runtimeColor = lv_color_hex(0xE5E7EB);
-      if (mirroredState == SHOW_STATE_RUNNING) runtimeColor = lv_color_hex(0x4ADE80);
-      else if (mirroredState == SHOW_STATE_PAUSED) runtimeColor = lv_color_hex(0xFBBF24);
+      lv_color_t runtimeColor = lv_color_hex(OsColor::Text);
+      if (mirroredState == SHOW_STATE_RUNNING) runtimeColor = lv_color_hex(OsColor::Ok);
+      else if (mirroredState == SHOW_STATE_PAUSED) runtimeColor = lv_color_hex(OsColor::Warn);
       else if (mirroredState == SHOW_STATE_EMERGENCY_STOP || mirroredState == SHOW_STATE_ERROR)
-        runtimeColor = lv_color_hex(0xF87171);
+        runtimeColor = lv_color_hex(OsColor::Fault);
       if (sumRuntimeValue_) {
         const char *cur = lv_label_get_text(sumRuntimeValue_);
         if (!cur || strcmp(cur, rt) != 0) {
@@ -815,13 +825,13 @@ public:
       }
 
       const char *safetyVal = "CLEAR";
-      lv_color_t safetyColor = lv_color_hex(0x4ADE80);
+      lv_color_t safetyColor = lv_color_hex(OsColor::Ok);
       if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
         safetyVal = "E-STOP";
-        safetyColor = lv_color_hex(0xF87171);
+        safetyColor = lv_color_hex(OsColor::Fault);
       } else if (mirroredState == SHOW_STATE_ERROR) {
         safetyVal = "FAULT";
-        safetyColor = lv_color_hex(0xF87171);
+        safetyColor = lv_color_hex(OsColor::Fault);
       }
       if (sumSafetyValue_) {
         const char *cur = lv_label_get_text(sumSafetyValue_);
@@ -1093,6 +1103,7 @@ private:
   lv_obj_t *liveCueLabel_ = nullptr;
   lv_obj_t *liveElapsedLabel_ = nullptr;
   lv_obj_t *liveRemainLabel_ = nullptr;
+  lv_obj_t *livePendingLabel_ = nullptr;
   lv_obj_t *showsSummaryLabel_ = nullptr;
   lv_obj_t *sumRuntimeValue_ = nullptr;
   lv_obj_t *sumSafetyValue_ = nullptr;
@@ -1517,21 +1528,21 @@ private:
   void refreshRelayButton(uint8_t idx) {
     if (idx >= 8 || relayButtons[idx] == nullptr) return;
     DeskRelayView v = relayView[idx];
-    uint32_t bg = 0x3F3F46;
-    uint32_t border = 0x71717A;
+    uint32_t bg = ShowduinoPalette::PanelRaised;
+    uint32_t border = ShowduinoPalette::AccentDark;
     switch (v) {
       case DeskRelayView::ConfirmedOn:
-        bg = 0xB91C1C; border = 0xEF4444; break;
+        bg = ShowduinoPalette::AccentDim; border = ShowduinoPalette::Accent; break;
       case DeskRelayView::ConfirmedOff:
-        bg = 0x3F3F46; border = 0x71717A; break;
+        bg = ShowduinoPalette::PanelRaised; border = ShowduinoPalette::AccentDark; break;
       case DeskRelayView::PendingOn:
       case DeskRelayView::PendingOff:
-        bg = 0x1E3A5F; border = 0x60A5FA; break;
+        bg = ShowduinoPalette::Panel; border = ShowduinoPalette::Pending; break;
       case DeskRelayView::Fault:
-        bg = 0x7C2D12; border = 0xF59E0B; break;
+        bg = ShowduinoPalette::DangerPanel; border = ShowduinoPalette::Warn; break;
       case DeskRelayView::Unknown:
       default:
-        bg = 0x27272A; border = 0x52525B; break;
+        bg = ShowduinoPalette::Panel; border = ShowduinoPalette::AccentDark; break;
     }
     lv_obj_set_style_bg_color(relayButtons[idx], lv_color_hex(bg), 0);
     lv_obj_set_style_border_color(relayButtons[idx], lv_color_hex(border), 0);
@@ -1614,7 +1625,7 @@ private:
     lv_obj_set_size(deskProgressBar_, OS_CONTENT_LEFT_W - 36, 14);
     lv_bar_set_range(deskProgressBar_, 0, 100);
     lv_bar_set_value(deskProgressBar_, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(deskProgressBar_, lv_color_hex(0x14532D), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(deskProgressBar_, lv_color_hex(OsColor::ScanLine), LV_PART_MAIN);
     lv_obj_set_style_bg_color(deskProgressBar_, lv_color_hex(OsColor::Accent), LV_PART_INDICATOR);
   }
 
@@ -1752,43 +1763,7 @@ private:
     }
     uiBuildPump("[UI] Page 01");
 
-    /* ---- DESKTOP legacy fallback — full width, no event log ---- */
-    Serial.println("[UI] desktop legacy…");
-    desktopScreen = makeScreen();
-    uiBuildPump("[UI] desktop");
-    createDock(desktopScreen);
-    const int deskLeftW = OS_CONTENT_LEFT_W;
-    const int deskRightW = OS_CONTENT_RIGHT_W;
-    const int deskRightX = OS_CONTENT_RIGHT_X;
-    const int deskSumH = 240;
-    const int deskActY = OS_BODY_Y + deskSumH + OS_GAP;
-    const int deskActH = OS_BODY_H - deskSumH - OS_GAP;
-
-    lv_obj_t *summary = makePanel(desktopScreen, OS_MARGIN, OS_BODY_Y, deskLeftW, deskSumH);
-    createSystemSummary(summary);
-    makeButton(summary, "Start", 10, 204, 90, 36, "SHOW:START");
-    makeButton(summary, "Pause", 108, 204, 90, 36, "SHOW:PAUSE");
-    makeButton(summary, "Stop", 206, 204, 90, 36, "SHOW:STOP", true);
-
-    lv_obj_t *fabric = makePanel(desktopScreen, deskRightX, OS_BODY_Y, deskRightW, 128);
-    os_.makeHeading(fabric, "FABRIC", 8, 2);
-    deskFabricLabel_ = makeLabel(fabric, "ESP-NOW: UNKNOWN", 8, 28);
-    lv_obj_add_style(deskFabricLabel_, &os_.caption, 0);
-    lv_obj_set_width(deskFabricLabel_, deskRightW - 20);
-    lv_label_set_long_mode(deskFabricLabel_, LV_LABEL_LONG_WRAP);
-
-    lv_obj_t *audioCard = makePanel(desktopScreen, deskRightX, OS_BODY_Y + 128 + OS_GAP, deskRightW,
-                                    deskSumH - 128 - OS_GAP);
-    os_.makeHeading(audioCard, "AUDIO", 8, 2);
-    deskAudioSummaryLabel_ = makeLabel(audioCard, "Local: UNKNOWN\nNodes: 0 ONLINE\nPlaying: 0", 8, 28);
-    lv_obj_add_style(deskAudioSummaryLabel_, &os_.caption, 0);
-    lv_obj_set_width(deskAudioSummaryLabel_, deskRightW - 20);
-    lv_label_set_long_mode(deskAudioSummaryLabel_, LV_LABEL_LONG_WRAP);
-    makeButton(audioCard, "Open", 8, 60, deskRightW - 24, 36, "SCREEN:AUDIO");
-
-    lv_obj_t *actions = makePanel(desktopScreen, OS_MARGIN, deskActY, OS_CONTENT_FULL_W, deskActH);
-    createQuickActions(actions);
-    uiBuildPump();
+    /* Legacy full-screen desktop is retired. Page 01 is the operator home. */
 
     /* ---- LIVE — What is happening right now? ---- */
     Serial.println("[UI] live…");
@@ -1805,7 +1780,11 @@ private:
     os_.makeCaption(liveChromeRoot_, "Remaining", 300, 8);
     liveRemainLabel_ = makeLabel(liveChromeRoot_, "0:00", 300, 28);
     lv_obj_add_style(liveRemainLabel_, &os_.body, 0);
-    /* Reserved icon/scene slots — no placeholder text */
+    livePendingLabel_ = makeLabel(liveChromeRoot_, "", 430, 28);
+    lv_obj_add_style(livePendingLabel_, &os_.caption, 0);
+    lv_obj_set_width(livePendingLabel_, 300);
+    lv_label_set_long_mode(livePendingLabel_, LV_LABEL_LONG_CLIP);
+    ShowduinoOsTheme::setTextColor(livePendingLabel_, OsColor::Pending);
 
     livePrimaryPanel_ = os_.makePrimaryPanel(liveScreen);
     lv_obj_t *live = livePrimaryPanel_;
@@ -1835,8 +1814,8 @@ private:
     lv_obj_set_size(liveProgressBar, 380, 10);
     lv_bar_set_range(liveProgressBar, 0, 100);
     lv_bar_set_value(liveProgressBar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(0x27272A), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(OsColor::DangerBorder), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(OsColor::ScanLine), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(OsColor::Accent), LV_PART_INDICATOR);
 
     timelineStatusLabel = makeLabel(live, "", 10, 88);
     lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
@@ -1987,13 +1966,17 @@ private:
     lv_obj_remove_style_all(persistentBannerRoot);
     lv_obj_set_size(persistentBannerRoot, SCREEN_WIDTH, 36);
     lv_obj_set_pos(persistentBannerRoot, 0, SHOWDUINO_EMERGENCY_BANNER_Y);
-    lv_obj_set_style_bg_color(persistentBannerRoot, lv_color_hex(0x991B1B), 0);
+    lv_obj_set_style_bg_color(persistentBannerRoot, lv_color_hex(ShowduinoPalette::DangerPanel), 0);
     lv_obj_set_style_bg_opa(persistentBannerRoot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_side(persistentBannerRoot, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_width(persistentBannerRoot, 1, 0);
+    lv_obj_set_style_border_color(persistentBannerRoot, lv_color_hex(ShowduinoPalette::Danger), 0);
     lv_obj_add_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(persistentBannerRoot, LV_OBJ_FLAG_CLICKABLE);
     persistentBannerLabel = lv_label_create(persistentBannerRoot);
     lv_label_set_text(persistentBannerLabel, "EMERGENCY STOP ACTIVE");
-    lv_obj_set_style_text_color(persistentBannerLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(persistentBannerLabel, lv_color_hex(ShowduinoPalette::DangerText), 0);
+    lv_obj_set_style_text_font(persistentBannerLabel, &lv_font_montserrat_14, 0);
     lv_obj_center(persistentBannerLabel);
   }
 
@@ -2025,37 +2008,27 @@ private:
   void buildAbortConfirm() {
     if (abortConfirmRoot) return;
     lv_obj_t *top = lv_layer_top();
-    abortConfirmRoot = lv_obj_create(top);
-    lv_obj_remove_style_all(abortConfirmRoot);
-    lv_obj_set_size(abortConfirmRoot, SCREEN_WIDTH, SCREEN_HEIGHT);
-    lv_obj_set_style_bg_color(abortConfirmRoot, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(abortConfirmRoot, LV_OPA_70, 0);
-    lv_obj_add_flag(abortConfirmRoot, LV_OBJ_FLAG_CLICKABLE);
+    abortConfirmRoot = os_.makeDialogScrim(top);
     lv_obj_add_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *box = lv_obj_create(abortConfirmRoot);
-    lv_obj_remove_style_all(box);
-    lv_obj_set_size(box, 420, 200);
-    lv_obj_center(box);
-    lv_obj_set_style_bg_color(box, lv_color_hex(0x1C1917), 0);
-    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(box, lv_color_hex(0xEF4444), 0);
-    lv_obj_set_style_border_width(box, 2, 0);
-    lv_obj_set_style_radius(box, 10, 0);
+    lv_obj_t *box = os_.makeDialogBox(abortConfirmRoot, 440, 210, true);
 
     lv_obj_t *t = lv_label_create(box);
     lv_label_set_text(t, "ABORT SHOW?");
-    lv_obj_set_style_text_color(t, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_pos(t, 24, 24);
+    lv_obj_set_style_text_color(t, lv_color_hex(ShowduinoPalette::Text), 0);
+    lv_obj_set_style_text_font(t, &lv_font_montserrat_20, 0);
+    lv_obj_set_pos(t, 24, 20);
 
     lv_obj_t *m = lv_label_create(box);
-    lv_label_set_text(m, "Stop playback and return to Desktop.\nShow package remains loaded on Stage.");
-    lv_obj_set_style_text_color(m, lv_color_hex(0xD1D5DB), 0);
-    lv_obj_set_pos(m, 24, 60);
-    lv_obj_set_width(m, 370);
+    lv_label_set_text(m, "Request Stage to stop playback and return to Desktop.\nThe production remains loaded. Awaiting Stage confirmation.");
+    lv_obj_set_style_text_color(m, lv_color_hex(ShowduinoPalette::Muted), 0);
+    lv_obj_set_style_text_font(m, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(m, 24, 58);
+    lv_obj_set_width(m, 390);
+    lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
 
-    makeButton(box, "CONFIRM ABORT", 24, 130, 180, 48, "UI:ESTOP:ABORT:YES", true);
-    makeButton(box, "CANCEL", 220, 130, 160, 48, "UI:ESTOP:ABORT:NO");
+    makeButton(box, "CONFIRM ABORT", 24, 140, 190, OS_BTN_H, "UI:ESTOP:ABORT:YES", true, false);
+    makeButton(box, "CANCEL", 230, 140, 170, OS_BTN_H, "UI:ESTOP:ABORT:NO", false, false);
   }
 
   void showAbortConfirm() {
@@ -2074,44 +2047,48 @@ private:
     completeOverlayRoot = lv_obj_create(top);
     lv_obj_remove_style_all(completeOverlayRoot);
     lv_obj_set_size(completeOverlayRoot, SCREEN_WIDTH, SCREEN_HEIGHT);
-    lv_obj_set_style_bg_color(completeOverlayRoot, lv_color_hex(0x052e16), 0);
+    lv_obj_set_style_bg_color(completeOverlayRoot, lv_color_hex(ShowduinoPalette::Background), 0);
     lv_obj_set_style_bg_opa(completeOverlayRoot, LV_OPA_COVER, 0);
     lv_obj_add_flag(completeOverlayRoot, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(completeOverlayRoot, LV_OBJ_FLAG_SCROLLABLE);
+
+    os_.paintChassis(completeOverlayRoot);
+
+    lv_obj_t *kicker = lv_label_create(completeOverlayRoot);
+    lv_label_set_text(kicker, "///  PRODUCTION");
+    lv_obj_set_style_text_color(kicker, lv_color_hex(ShowduinoPalette::Accent), 0);
+    lv_obj_set_style_text_font(kicker, &lv_font_montserrat_16, 0);
+    lv_obj_set_pos(kicker, 34, OS_BODY_Y);
 
     lv_obj_t *title = lv_label_create(completeOverlayRoot);
     lv_label_set_text(title, "SHOW COMPLETE");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_add_style(title, &styleTitle, 0);
-    lv_obj_set_pos(title, 0, 80);
-    lv_obj_set_width(title, SCREEN_WIDTH);
-    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_pos(title, 34, OS_BODY_Y + 36);
 
     completeDetailLabel = lv_label_create(completeOverlayRoot);
     lv_label_set_text(completeDetailLabel, "Show: -");
-    lv_obj_set_style_text_color(completeDetailLabel, lv_color_hex(0xBBF7D0), 0);
-    lv_obj_set_pos(completeDetailLabel, 80, 140);
-    lv_obj_set_width(completeDetailLabel, SCREEN_WIDTH - 160);
+    lv_obj_set_style_text_color(completeDetailLabel, lv_color_hex(ShowduinoPalette::Muted), 0);
+    lv_obj_set_style_text_font(completeDetailLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(completeDetailLabel, 34, OS_BODY_Y + 90);
+    lv_obj_set_width(completeDetailLabel, 732);
+    lv_label_set_long_mode(completeDetailLabel, LV_LABEL_LONG_WRAP);
 
-    makeButton(completeOverlayRoot, "RUN AGAIN", 180, 360, 180, 56, "UI:COMPLETE:RUN");
-    makeButton(completeOverlayRoot, "RETURN TO MENU", 400, 360, 220, 56, "UI:COMPLETE:MENU");
+    makeButton(completeOverlayRoot, "RUN AGAIN", 34, SCREEN_HEIGHT - 28 - OS_BTN_H, 350, OS_BTN_H,
+               "UI:COMPLETE:RUN");
+    makeButton(completeOverlayRoot, "RETURN HOME", 400, SCREEN_HEIGHT - 28 - OS_BTN_H, 366, OS_BTN_H,
+               "UI:COMPLETE:MENU");
   }
 
   void showCompleteScreen(const ShowRuntime &rt) {
     if (emergencyOverlayVisible) return; /* emergency wins */
-    if (displayManager_.assetsReadyForPage(PAGE_COMPLETE) &&
-        displayManager_.showPage(PAGE_COMPLETE)) {
-      completeOverlayVisible = true;
-      pushDisplaySnapshot();
-      return;
-    }
-    if (!completeOverlayRoot) buildCompleteOverlay();
     char et[16], done[16];
     formatClock(rt.elapsedMs ? rt.elapsedMs : rt.totalDurationMs, et, sizeof(et));
     formatClock(millis() - bootMs, done, sizeof(done));
     char detail[320];
     snprintf(detail, sizeof(detail),
-             "Show: %s\nTotal runtime: %s\nCues executed: %lu / %lu\nWarnings: %u\nErrors: %u\nEmergency count: %u\nCompletion time: T+%s",
+             "Show: %s\nTotal runtime: %s\nCues executed: %lu / %lu\nWarnings: %u\nErrors: %u\nEmergency count: %u\nCompletion time: T+%s\nStage reports finished. The production remains loaded.",
              rt.showName[0] ? rt.showName : "-",
              et,
              (unsigned long)rt.currentCue,
@@ -2120,6 +2097,13 @@ private:
              (unsigned)sessionErrorCount,
              (unsigned)sessionEmergencyCount,
              done);
+    if (displayManager_.showPage(PAGE_COMPLETE)) {
+      displayManager_.setSystemDetail(detail);
+      completeOverlayVisible = true;
+      pushDisplaySnapshot();
+      return;
+    }
+    if (!completeOverlayRoot) buildCompleteOverlay();
     if (completeDetailLabel) lv_label_set_text(completeDetailLabel, detail);
     lv_obj_clear_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(completeOverlayRoot);
@@ -2146,6 +2130,23 @@ private:
     ShowduinoOsTheme::setTextIfChanged(liveCueLabel_, cueBuf);
     ShowduinoOsTheme::setTextIfChanged(liveElapsedLabel_, et);
     ShowduinoOsTheme::setTextIfChanged(liveRemainLabel_, rt);
+
+    if (livePendingLabel_) {
+      const char *pending = "";
+      uint32_t col = OsColor::TextMuted;
+      if (pendingResumeAwait) {
+        pending = "RESUME PENDING — awaiting Stage";
+        col = OsColor::Pending;
+      } else if (pendingAbortAwait) {
+        pending = "ABORT PENDING — awaiting Stage";
+        col = OsColor::Pending;
+      } else if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+        pending = "EMERGENCY — Stage latch active";
+        col = OsColor::Fault;
+      }
+      ShowduinoOsTheme::setTextIfChanged(livePendingLabel_, pending);
+      ShowduinoOsTheme::setTextColor(livePendingLabel_, col);
+    }
 
     if (liveStatusLabel) {
       char line[64];
@@ -2198,23 +2199,8 @@ private:
 
   void showAboutDialog() {
     if (!aboutRoot_) {
-      aboutRoot_ = lv_obj_create(lv_layer_top());
-      lv_obj_remove_style_all(aboutRoot_);
-      lv_obj_set_size(aboutRoot_, SCREEN_WIDTH, SCREEN_HEIGHT);
-      lv_obj_set_style_bg_color(aboutRoot_, lv_color_hex(0x000000), 0);
-      lv_obj_set_style_bg_opa(aboutRoot_, LV_OPA_70, 0);
-      lv_obj_add_flag(aboutRoot_, LV_OBJ_FLAG_CLICKABLE);
-
-      lv_obj_t *box = lv_obj_create(aboutRoot_);
-      lv_obj_remove_style_all(box);
-      lv_obj_set_size(box, 520, 280);
-      lv_obj_center(box);
-      lv_obj_set_style_bg_color(box, lv_color_hex(ShowduinoPalette::Panel), 0);
-      lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
-      lv_obj_set_style_border_width(box, 2, 0);
-      lv_obj_set_style_border_color(box, lv_color_hex(ShowduinoPalette::AccentDark), 0);
-      lv_obj_set_style_radius(box, 10, 0);
-      lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+      aboutRoot_ = os_.makeDialogScrim(lv_layer_top());
+      lv_obj_t *box = os_.makeDialogBox(aboutRoot_, 520, 280, false);
 
       lv_obj_t *title = lv_label_create(box);
       lv_label_set_text(title, "ABOUT");
@@ -2242,7 +2228,7 @@ private:
       lv_obj_set_width(body, 470);
       lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
 
-      makeButton(box, "CLOSE", 180, 210, 160, 44, "UI:ABOUT:CLOSE");
+      makeButton(box, "CLOSE", 180, 210, 160, OS_BTN_H, "UI:ABOUT:CLOSE");
     }
     lv_obj_clear_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(aboutRoot_);
@@ -2384,7 +2370,7 @@ private:
       if (e->hasThumbnail) {
         lv_obj_t *badge = lv_label_create(row);
         lv_label_set_text(badge, "BMP");
-        lv_obj_set_style_text_color(badge, lv_color_hex(0x4ADE80), 0);
+        lv_obj_set_style_text_color(badge, lv_color_hex(OsColor::Accent), 0);
         lv_obj_set_pos(badge, 14, 48);
       }
 
@@ -2394,7 +2380,7 @@ private:
       snprintf(line1, sizeof(line1), "%s", e->name);
       lv_obj_t *n = lv_label_create(row);
       lv_label_set_text(n, line1);
-      lv_obj_set_style_text_color(n, lv_color_hex(0xFFFFFF), 0);
+      lv_obj_set_style_text_color(n, lv_color_hex(OsColor::Text), 0);
       lv_obj_set_pos(n, 72, 6);
 
       char line2[128];
@@ -2402,7 +2388,7 @@ private:
                dur, e->version[0] ? e->version : "-", e->author[0] ? e->author : "-");
       lv_obj_t *m = lv_label_create(row);
       lv_label_set_text(m, line2);
-      lv_obj_set_style_text_color(m, lv_color_hex(0xA1A1AA), 0);
+      lv_obj_set_style_text_color(m, lv_color_hex(OsColor::TextMuted), 0);
       lv_obj_set_pos(m, 72, 28);
 
       char line3[96];
@@ -2413,7 +2399,7 @@ private:
       }
       lv_obj_t *d = lv_label_create(row);
       lv_label_set_text(d, line3);
-      lv_obj_set_style_text_color(d, lv_color_hex(0xD4D4D8), 0);
+      lv_obj_set_style_text_color(d, lv_color_hex(OsColor::TextDim), 0);
       lv_obj_set_pos(d, 72, 48);
 
       lv_obj_t *hit = lv_button_create(row);
@@ -2501,9 +2487,8 @@ private:
       Serial.println("[UI] Page 01 Home (LVGL)");
       pushDisplaySnapshot();
     } else {
-      displayManager_.releasePage();
-      lv_screen_load(desktopScreen);
-      Serial.println("[UI] Desktop legacy LVGL (asset gate)");
+      Serial.println("[UI] Home page unavailable");
+      pushOperatorEvent("Home page unavailable");
     }
     statusDirty = true;
     trafficDirty = true;
@@ -2511,13 +2496,9 @@ private:
   }
   void showLive() {
     if (displayManager_.showPage(PAGE_LIVE)) {
-      applyThemedLiveLayout(false);
       pushDisplaySnapshot();
     } else {
-      displayManager_.releasePage();
-      applyThemedLiveLayout(false);
-      lv_screen_load(liveScreen);
-      Serial.println("[UI] Live legacy LVGL");
+      Serial.println("[UI] Live page unavailable");
     }
     statusDirty = true;
     trafficDirty = true;

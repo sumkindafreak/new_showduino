@@ -1,16 +1,17 @@
 #include "DirectorAmbientPixels.h"
+#include "ShowduinoOsPalette.h"
 
 #if SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
 
 #include <Adafruit_NeoPixel.h>
 
-/* Match Showduino OS theme (ShowduinoOsUi.h OsColor). */
-static const uint32_t kColAccent   = 0x39E7FF; /* cyan ready / running theme */
-static const uint32_t kColAccentLo = 0x1999B2;
-static const uint32_t kColWarn     = 0xFFD166; /* amber */
-static const uint32_t kColOk       = 0x3CFFB0; /* green */
-static const uint32_t kColFault    = 0xFF5A6A; /* red / emergency */
-static const uint32_t kColDimCyan  = 0x0A3040;
+/* Match Showduino OS theme (ShowduinoOsPalette). */
+static const uint32_t kColAccent   = ShowduinoPalette::Accent;
+static const uint32_t kColAccentLo = ShowduinoPalette::AccentDark;
+static const uint32_t kColWarn     = ShowduinoPalette::Warn;
+static const uint32_t kColOk       = ShowduinoPalette::Success;
+static const uint32_t kColFault    = ShowduinoPalette::Danger;
+static const uint32_t kColDimCyan  = ShowduinoPalette::AccentDim;
 
 static Adafruit_NeoPixel *sStrip = nullptr;
 static bool sReady = false;

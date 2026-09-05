@@ -5,41 +5,37 @@
 #include <string.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
+#include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
 
 /* ================================================================
- * Page 01 geometry — 800×480 screen (full-screen LVGL, no BMP chassis)
+ * Page 01 geometry — 800×480, below the persistent status bar
  * ================================================================ */
-static const int16_t kArtOffsetY = 0;
-
 static const int16_t kHeaderX = 0;
-static const int16_t kHeaderY = (int16_t)(0 + kArtOffsetY);
+static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
 static const int16_t kHeaderW = 800;
-static const int16_t kHeaderH = 48;
+static const int16_t kHeaderH = OS_TITLE_H;
 
-/* Approved hierarchy regions (may nudge slightly for LVGL). */
 static const int16_t kHeroX = 24;
-static const int16_t kHeroY = (int16_t)(64 + kArtOffsetY);
+static const int16_t kHeroY = (int16_t)(kHeaderY + kHeaderH + OS_GAP);
 static const int16_t kHeroW = 752;
 static const int16_t kHeroH = 88;
 
-static const int16_t kSecY = (int16_t)(168 + kArtOffsetY);
-static const int16_t kSecH = 72;
+static const int16_t kSecY = (int16_t)(kHeroY + kHeroH + OS_GAP);
+static const int16_t kSecH = 64;
 static const int16_t kSecLeftX = 24;
 static const int16_t kSecRightX = 408;
 static const int16_t kSecW = 368;
 
-static const int16_t kToolY = (int16_t)(256 + kArtOffsetY);
-static const int16_t kToolH = 64;
-static const int16_t kToolW = 180;
+static const int16_t kToolY = (int16_t)(kSecY + kSecH + OS_GAP);
+static const int16_t kToolH = 56;
 static const int16_t kToolXs[4] = { 24, 216, 408, 600 };
-/* Diagnostics is slightly narrower (176) — last slot. */
 static const int16_t kToolWs[4] = { 180, 180, 180, 176 };
 
 static const int16_t kFooterX = 24;
-static const int16_t kFooterY = (int16_t)(400 + kArtOffsetY);
+static const int16_t kFooterH = 44;
+static const int16_t kFooterY = (int16_t)(OS_DOCK_Y - kFooterH - OS_GAP);
 static const int16_t kFooterW = 752;
-static const int16_t kFooterH = 56;
 static const int16_t kFooterSlotW = 90;
 
 enum Page01ControlId : uint8_t {
@@ -134,14 +130,14 @@ static void style_control(lv_obj_t *obj, Page01VisualRole role) {
   lv_opa_t bg_pr = LV_OPA_40;
   lv_opa_t border_opa = LV_OPA_80;
   uint8_t border_w = 2;
-  uint8_t radius = 10;
+  uint8_t radius = OS_PANEL_RADIUS;
 
   if (role == PAGE01_ROLE_HERO) {
     bg_def = LV_OPA_30;
     bg_pr = LV_OPA_50;
     border_opa = LV_OPA_COVER;
-    border_w = 3;
-    radius = 12;
+    border_w = 2;
+    radius = OS_PANEL_RADIUS;
   } else if (role == PAGE01_ROLE_QUIET) {
     bg_def = LV_OPA_10;
     bg_pr = LV_OPA_20;
@@ -346,7 +342,7 @@ static void build_header(lv_obj_t *parent) {
 
   s_header_accent = lv_obj_create(s_header);
   lv_obj_remove_style_all(s_header_accent);
-  lv_obj_set_pos(s_header_accent, 16, 42);
+  lv_obj_set_pos(s_header_accent, 16, 34);
   lv_obj_set_size(s_header_accent, 72, 3);
   lv_obj_set_style_bg_opa(s_header_accent, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(s_header_accent, 1, 0);
@@ -354,42 +350,37 @@ static void build_header(lv_obj_t *parent) {
 
   s_title = lv_label_create(s_header);
   lv_label_set_text(s_title, "HOME");
-  lv_obj_set_pos(s_title, 16, 10);
+  lv_obj_set_pos(s_title, 16, 8);
   lv_obj_set_style_text_font(s_title, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(s_title, lv_color_hex(ShowduinoPalette::Text), 0);
   showduino_theme_register(s_title, SHOWDUINO_THEME_ROLE_TEXT);
 
   s_production = lv_label_create(s_header);
   lv_label_set_text(s_production, "NO PRODUCTION");
-  lv_obj_set_pos(s_production, 100, 12);
-  lv_obj_set_width(s_production, 220);
+  lv_obj_set_pos(s_production, 100, 10);
+  lv_obj_set_width(s_production, 280);
   lv_label_set_long_mode(s_production, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_production, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_production, lv_color_hex(ShowduinoPalette::Muted), 0);
 
   s_link = lv_label_create(s_header);
   lv_label_set_text(s_link, "OFFLINE");
-  lv_obj_set_pos(s_link, 330, 12);
-  lv_obj_set_width(s_link, 140);
+  lv_obj_set_pos(s_link, 400, 10);
+  lv_obj_set_width(s_link, 180);
   lv_label_set_long_mode(s_link, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_link, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_link, lv_color_hex(ShowduinoPalette::Muted), 0);
 
   s_readiness = lv_label_create(s_header);
   lv_label_set_text(s_readiness, "NO PRODUCTION");
-  lv_obj_set_pos(s_readiness, 480, 12);
-  lv_obj_set_width(s_readiness, 150);
+  lv_obj_set_pos(s_readiness, 590, 10);
+  lv_obj_set_width(s_readiness, 190);
   lv_label_set_long_mode(s_readiness, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_readiness, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s_readiness, lv_color_hex(ShowduinoPalette::Muted), 0);
 
-  s_clock = lv_label_create(s_header);
-  lv_label_set_text(s_clock, "--:--");
-  lv_obj_set_pos(s_clock, 640, 10);
-  lv_obj_set_width(s_clock, 140);
-  lv_obj_set_style_text_align(s_clock, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_set_style_text_font(s_clock, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_color(s_clock, lv_color_hex(ShowduinoPalette::Text), 0);
+  /* Wall clock lives on the persistent status bar. */
+  s_clock = nullptr;
 }
 
 static void build_control(uint8_t index) {
@@ -598,8 +589,7 @@ void page_01_home_create(lv_obj_t *parent, page01_command_fn command_cb) {
   strncpy(s_link_text, "OFFLINE", sizeof(s_link_text) - 1);
   strncpy(s_readiness_text, "NO PRODUCTION", sizeof(s_readiness_text) - 1);
 
-  Serial.println("[Page01] creating Home page (hierarchy layout)…");
-  Serial.printf("[Page01] kArtOffsetY=%d (full-screen 800x480 coords)\n", (int)kArtOffsetY);
+  Serial.println("[Page01] creating Home page (status-bar layout)…");
 #if SHOWDUINO_PAGE01_ALIGNMENT_DEBUG
   Serial.println("[Page01] ALIGNMENT DEBUG ENABLED");
   Serial.printf("[Page01][Align] header=(%d,%d %dx%d) hero=(%d,%d %dx%d) footer=(%d,%d %dx%d)\n",

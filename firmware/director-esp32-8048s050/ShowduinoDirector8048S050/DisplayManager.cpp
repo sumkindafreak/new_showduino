@@ -1,9 +1,16 @@
 #include "DisplayManager.h"
 #include "DisplayPages.h"
+#include "DisplaySystemPages.h"
 #include "ShowduinoOsPalette.h"
+#include "ShowduinoOsUi.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <string.h>
+
+namespace {
+ShowduinoOsTheme gDisplayOs;
+} // namespace
+
 
 void DisplayManager::probeCapabilities() {
   caps_.psram = (psramFound() && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0);
@@ -54,12 +61,13 @@ void DisplayManager::dockEventThunk(lv_event_t *event) {
 
 void DisplayManager::buildDock() {
   if (dock_ || !layers_[DISPLAY_LAYER_CONTROLS]) return;
+  gDisplayOs.begin();
   dock_ = lv_obj_create(layers_[DISPLAY_LAYER_CONTROLS]);
   lv_obj_remove_style_all(dock_);
-  lv_obj_set_pos(dock_, 0, 402);
-  lv_obj_set_size(dock_, DISPLAY_WIDTH, 78);
+  lv_obj_set_pos(dock_, 0, OS_DOCK_Y);
+  lv_obj_set_size(dock_, DISPLAY_WIDTH, OS_DOCK_H + 10);
   lv_obj_set_style_bg_color(dock_, lv_color_hex(ShowduinoPalette::Background), 0);
-  lv_obj_set_style_bg_opa(dock_, LV_OPA_90, 0);
+  lv_obj_set_style_bg_opa(dock_, LV_OPA_COVER, 0);
   lv_obj_clear_flag(dock_, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(dock_, LV_OBJ_FLAG_CLICKABLE);
 
@@ -67,38 +75,47 @@ void DisplayManager::buildDock() {
   static const char *commands[] = {
     "SCREEN:DESKTOP", "SCREEN:LIVE", "SCREEN:SHOWS", "SCREEN:SETTINGS", "EMERGENCY:STOP"
   };
-  static const int16_t widths[] = { 150, 150, 150, 150, 130 };
-  int32_t x = 12;
+  const int gap = OS_GAP;
+  const int estopW = 130;
+  const int navW = (SCREEN_WIDTH - 2 * OS_MARGIN - estopW - 4 * gap) / 4;
+  int x = OS_MARGIN;
   for (uint8_t i = 0; i < 5; i++) {
-    lv_obj_t *button = lv_button_create(dock_);
-    lv_obj_set_pos(button, x, 0);
-    lv_obj_set_size(button, widths[i], 56);
-    lv_obj_set_style_radius(button, 8, 0);
-    lv_obj_set_style_bg_color(
-      button, lv_color_hex(i == 4 ? ShowduinoPalette::DangerPanel : ShowduinoPalette::PanelRaised), 0);
+    const int w = (i == 4) ? estopW : navW;
+    const bool danger = (i == 4);
+    lv_obj_t *button = gDisplayOs.makeButton(dock_, labels[i], x, 0, w, OS_DOCK_H,
+                                             dockEventThunk, this, commands[i], danger, false);
+    dockButtons_[i] = button;
+    x += w + gap;
+  }
+}
+
+void DisplayManager::highlightDock(DisplayPageId page) {
+  static const char *commands[] = {
+    "SCREEN:DESKTOP", "SCREEN:LIVE", "SCREEN:SHOWS", "SCREEN:SETTINGS", "EMERGENCY:STOP"
+  };
+  const char *active = nullptr;
+  switch (page) {
+    case PAGE_DESKTOP: active = "SCREEN:DESKTOP"; break;
+    case PAGE_LIVE: active = "SCREEN:LIVE"; break;
+    case PAGE_SHOWS:
+    case PAGE_SHOW_DETAILS: active = "SCREEN:SHOWS"; break;
+    case PAGE_SETTINGS:
+    case PAGE_AUDIO:
+    case PAGE_LOGS: active = "SCREEN:SETTINGS"; break;
+    default: active = nullptr; break;
+  }
+  for (uint8_t i = 0; i < 5; i++) {
+    lv_obj_t *button = dockButtons_[i];
+    if (!button) continue;
+    const bool on = active && commands[i] && !strcmp(active, commands[i]);
+    const bool danger = (i == 4);
     lv_obj_set_style_border_color(
-      button, lv_color_hex(i == 4 ? ShowduinoPalette::Danger : ShowduinoPalette::AccentDark), 0);
-    lv_obj_set_style_border_width(button, i == 4 ? 2 : 1, 0);
-    lv_obj_set_style_bg_color(
-      button, lv_color_hex(i == 4 ? ShowduinoPalette::DangerDark : ShowduinoPalette::AccentDim),
-      LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(
-      button, lv_color_hex(i == 4 ? ShowduinoPalette::Danger : ShowduinoPalette::Accent),
-      LV_STATE_PRESSED);
-    lv_obj_set_style_shadow_color(
-      button, lv_color_hex(i == 4 ? ShowduinoPalette::Danger : ShowduinoPalette::Accent), 0);
-    lv_obj_set_style_shadow_width(button, 6, 0);
-    lv_obj_set_style_shadow_opa(button, LV_OPA_20, 0);
-    lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLL_CHAIN);
-    lv_obj_set_user_data(button, const_cast<char *>(commands[i]));
-    lv_obj_add_event_cb(button, dockEventThunk, LV_EVENT_CLICKED, this);
-    lv_obj_t *label = lv_label_create(button);
-    lv_label_set_text(label, labels[i]);
-    lv_obj_set_style_text_color(label, lv_color_hex(ShowduinoPalette::Text), 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_letter_space(label, 1, 0);
-    lv_obj_center(label);
-    x += widths[i] + 8;
+        button,
+        lv_color_hex(danger ? ShowduinoPalette::Danger
+                            : (on ? ShowduinoPalette::Accent : ShowduinoPalette::AccentDark)),
+        0);
+    lv_obj_set_style_border_width(button, on || danger ? 2 : 1, 0);
+    lv_obj_set_style_shadow_opa(button, on ? LV_OPA_40 : LV_OPA_20, 0);
   }
 }
 
@@ -171,6 +188,7 @@ void DisplayManager::begin() {
 #endif
   );
   ensureShell();
+  gDisplayOs.begin();
   state_ = DISPLAY_READY;
   Serial.printf("[Display] begin caps psram=%d bmp=%d\n", (int)caps_.psram, (int)caps_.bmp);
 }
@@ -221,12 +239,41 @@ void DisplayManager::releasePage() {
 }
 
 void DisplayManager::clearSystemChrome() {
+  chromeBody_ = nullptr;
+  chromeStatus_ = nullptr;
   if (!chromeRoot_) return;
   lv_obj_add_flag(chromeRoot_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_clean(chromeRoot_);
 }
 
+void DisplayManager::setSystemDetail(const char *text) {
+  if (!chromeBody_ || !text) return;
+  lv_label_set_text(chromeBody_, text);
+}
+
+void DisplayManager::refreshSystemStatus(const DisplaySnapshot &snapshot) {
+  if (!chromeStatus_) return;
+  char line[160];
+  snprintf(line, sizeof(line), "%s    %s    %s",
+           snapshot.linkState[0] ? snapshot.linkState : "LINK —",
+           snapshot.safetyState[0] ? snapshot.safetyState : "SAFETY —",
+           snapshot.runtimeState[0] ? snapshot.runtimeState : "—");
+  ShowduinoOsTheme::setTextIfChanged(chromeStatus_, line);
+  uint32_t colour = ShowduinoPalette::Muted;
+  if (strstr(snapshot.safetyState, "E-STOP") || strstr(snapshot.safetyState, "FAULT") ||
+      strstr(snapshot.linkState, "LOST")) {
+    colour = ShowduinoPalette::Danger;
+  } else if (strstr(snapshot.linkState, "SEARCH") || strstr(snapshot.linkState, "NO STAGE")) {
+    colour = ShowduinoPalette::Warn;
+  } else if (strstr(snapshot.linkState, "OK")) {
+    colour = ShowduinoPalette::Accent;
+  }
+  lv_obj_set_style_text_color(chromeStatus_, lv_color_hex(colour), 0);
+}
+
 void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *desc) {
+  (void)desc;
+  gDisplayOs.begin();
   if (!layers_[DISPLAY_LAYER_CONTROLS]) return;
   if (!chromeRoot_) {
     chromeRoot_ = lv_obj_create(layers_[DISPLAY_LAYER_CONTROLS]);
@@ -236,69 +283,84 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
     lv_obj_clear_flag(chromeRoot_, LV_OBJ_FLAG_SCROLLABLE);
   }
   lv_obj_clean(chromeRoot_);
-  lv_obj_set_style_bg_opa(chromeRoot_, LV_OPA_TRANSP, 0);
-  lv_obj_clear_flag(chromeRoot_, LV_OBJ_FLAG_CLICKABLE);
+  chromeBody_ = nullptr;
+  chromeStatus_ = nullptr;
+  lv_obj_set_style_bg_color(chromeRoot_, lv_color_hex(ShowduinoPalette::Background), 0);
+  lv_obj_set_style_bg_opa(chromeRoot_, LV_OPA_COVER, 0);
+  lv_obj_add_flag(chromeRoot_, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(chromeRoot_, LV_OBJ_FLAG_HIDDEN);
 
-  lv_obj_t *frame = lv_obj_create(chromeRoot_);
-  lv_obj_remove_style_all(frame);
-  lv_obj_set_pos(frame, 16, 16);
-  lv_obj_set_size(frame, DISPLAY_WIDTH - 32, DISPLAY_HEIGHT - 32);
-  lv_obj_set_style_bg_color(frame, lv_color_hex(ShowduinoPalette::Panel), 0);
-  lv_obj_set_style_bg_opa(frame, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_color(frame, lv_color_hex(ShowduinoPalette::AccentDark), 0);
-  lv_obj_set_style_border_width(frame, 2, 0);
-  lv_obj_set_style_radius(frame, 8, 0);
-  lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+  const SystemPageSpec *spec = displaySystemPageSpec(page);
+  const uint32_t accent = (spec && spec->dangerAccent)
+                              ? ShowduinoPalette::Danger
+                              : ShowduinoPalette::Accent;
+  const uint32_t accentDark = (spec && spec->dangerAccent)
+                                  ? ShowduinoPalette::DangerDark
+                                  : ShowduinoPalette::AccentDark;
 
-  lv_obj_t *accent = lv_obj_create(frame);
-  lv_obj_remove_style_all(accent);
-  lv_obj_set_pos(accent, 0, 0);
-  lv_obj_set_size(accent, DISPLAY_WIDTH - 32, 4);
-  lv_obj_set_style_bg_color(accent, lv_color_hex(ShowduinoPalette::Accent), 0);
-  lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-  lv_obj_clear_flag(accent, LV_OBJ_FLAG_CLICKABLE);
+  gDisplayOs.paintChassis(chromeRoot_, accent, accentDark);
 
-  lv_obj_t *brand = lv_label_create(frame);
+  lv_obj_t *brand = lv_label_create(chromeRoot_);
   lv_label_set_text(brand, "SHOWDUINO");
-  lv_obj_set_style_text_color(brand, lv_color_hex(ShowduinoPalette::Accent), 0);
-  lv_obj_set_style_text_font(brand, &lv_font_montserrat_14, 0);
-  lv_obj_set_pos(brand, 20, 16);
+  lv_obj_set_style_text_color(brand, lv_color_hex(ShowduinoPalette::Text), 0);
+  lv_obj_set_style_text_font(brand, &lv_font_montserrat_24, 0);
+  lv_obj_set_pos(brand, 34, OS_BODY_Y);
+  lv_obj_clear_flag(brand, LV_OBJ_FLAG_CLICKABLE);
 
-  lv_obj_t *title = lv_label_create(frame);
-  lv_label_set_text(title, displayPageTitle(page));
+  lv_obj_t *kicker = lv_label_create(chromeRoot_);
+  lv_label_set_text(kicker, spec && spec->kicker ? spec->kicker : "///  DIRECTOR SYSTEM");
+  lv_obj_set_style_text_color(kicker, lv_color_hex(accent), 0);
+  lv_obj_set_style_text_font(kicker, &lv_font_montserrat_16, 0);
+  lv_obj_align(kicker, LV_ALIGN_TOP_RIGHT, -34, OS_BODY_Y);
+  lv_obj_clear_flag(kicker, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *title = lv_label_create(chromeRoot_);
+  lv_label_set_text(title, spec && spec->title ? spec->title : displayPageTitle(page));
   lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
   lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_pos(title, 20, 48);
+  lv_obj_set_pos(title, 34, OS_BODY_Y + 40);
+  lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
 
-  if (!desc) return;
-  for (uint16_t i = 0; i < desc->regionCount; i++) {
-    const TouchRegion &region = desc->regions[i];
-    const int32_t x = region.bounds.x1;
-    const int32_t y = region.bounds.y1;
-    const int32_t w = region.bounds.x2 - region.bounds.x1;
-    const int32_t h = region.bounds.y2 - region.bounds.y1;
-    if (w < 8 || h < 8) continue;
+  lv_obj_t *subtitle = lv_label_create(chromeRoot_);
+  lv_label_set_text(subtitle, spec && spec->subtitle ? spec->subtitle : "");
+  lv_obj_set_style_text_color(subtitle, lv_color_hex(accent), 0);
+  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_16, 0);
+  lv_obj_set_pos(subtitle, 36, OS_BODY_Y + 78);
+  lv_obj_clear_flag(subtitle, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *button = lv_button_create(chromeRoot_);
-    lv_obj_set_pos(button, x, y);
-    lv_obj_set_size(button, w, h);
-    lv_obj_set_style_radius(button, 8, 0);
-    lv_obj_set_style_bg_color(button, lv_color_hex(ShowduinoPalette::PanelRaised), 0);
-    lv_obj_set_style_border_color(button, lv_color_hex(ShowduinoPalette::AccentDark), 0);
-    lv_obj_set_style_border_width(button, 2, 0);
-    lv_obj_set_style_bg_color(button, lv_color_hex(ShowduinoPalette::AccentDim), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(button, lv_color_hex(ShowduinoPalette::Accent), LV_STATE_PRESSED);
-    lv_obj_clear_flag(button, LV_OBJ_FLAG_SCROLL_CHAIN);
-    lv_obj_set_user_data(button, const_cast<char *>(region.command));
-    lv_obj_add_event_cb(button, dockEventThunk, LV_EVENT_CLICKED, this);
+  lv_obj_t *infoBox = gDisplayOs.makePanel(chromeRoot_, 34, OS_BODY_Y + 118, 732, 120, false);
+  lv_obj_set_style_border_color(infoBox, lv_color_hex(accentDark), 0);
 
-    lv_obj_t *label = lv_label_create(button);
-    lv_label_set_text(label, commandButtonLabel(region.command));
-    lv_obj_set_style_text_color(label, lv_color_hex(ShowduinoPalette::Text), 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-    lv_obj_center(label);
+  chromeBody_ = lv_label_create(infoBox);
+  lv_obj_set_width(chromeBody_, 700);
+  lv_label_set_long_mode(chromeBody_, LV_LABEL_LONG_WRAP);
+  lv_label_set_text(chromeBody_, spec && spec->body ? spec->body : "");
+  lv_obj_set_style_text_color(chromeBody_, lv_color_hex(ShowduinoPalette::Text), 0);
+  lv_obj_set_style_text_font(chromeBody_, &lv_font_montserrat_14, 0);
+  lv_obj_set_pos(chromeBody_, 12, 10);
+
+  chromeStatus_ = lv_label_create(infoBox);
+  lv_obj_set_width(chromeStatus_, 700);
+  lv_label_set_long_mode(chromeStatus_, LV_LABEL_LONG_CLIP);
+  lv_label_set_text(chromeStatus_, "Awaiting Stage status");
+  lv_obj_set_style_text_color(chromeStatus_, lv_color_hex(ShowduinoPalette::Muted), 0);
+  lv_obj_set_style_text_font(chromeStatus_, &lv_font_montserrat_12, 0);
+  lv_obj_set_pos(chromeStatus_, 12, 86);
+
+  const uint8_t n = spec ? spec->actionCount : 0;
+  if (n > 0 && spec->actions) {
+    const int btnH = OS_BTN_H;
+    const int gap = 16;
+    const int totalGap = gap * (n - 1);
+    const int btnW = (732 - totalGap) / n;
+    int x = 34;
+    const int y = SCREEN_HEIGHT - 28 - btnH;
+    for (uint8_t i = 0; i < n; i++) {
+      gDisplayOs.makeButton(chromeRoot_, spec->actions[i].label, x, y, btnW, btnH,
+                            dockEventThunk, this, spec->actions[i].command,
+                            spec->actions[i].danger, false);
+      x += btnW + gap;
+    }
   }
 }
 
@@ -373,6 +435,7 @@ bool DisplayManager::showPage(DisplayPageId page) {
   currentPage_ = page;
   phase2Active_ = true;
   state_ = DISPLAY_READY;
+  highlightDock(page);
   raiseLayers();
   if (dock_) lv_obj_move_foreground(dock_);
   if (lv_screen_active() != screen_) lv_screen_load(screen_);
@@ -392,6 +455,7 @@ void DisplayManager::invalidateRegion(const lv_area_t &area) {
 void DisplayManager::updateWidgets(const DisplaySnapshot &snapshot) {
   if (!phase2Active_ || state_ != DISPLAY_READY) return;
   overlay_.applySnapshot(snapshot);
+  refreshSystemStatus(snapshot);
 }
 
 bool DisplayManager::onTouch(int32_t x, int32_t y, bool pressed) {

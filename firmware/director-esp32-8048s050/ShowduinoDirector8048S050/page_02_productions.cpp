@@ -5,26 +5,24 @@
 #include <string.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
+#include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
 
 /* ================================================================
- * Page 02 geometry — 800×480
+ * Page 02 geometry — 800×480, below status bar, above dock
  * ================================================================ */
-static const int16_t kHeaderY = 8;
-static const int16_t kHeaderH = 48;
+static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
+static const int16_t kHeaderH = OS_TITLE_H;
 static const int16_t kListX = 20;
-static const int16_t kListY = 64;
+static const int16_t kListY = (int16_t)(kHeaderY + kHeaderH + OS_GAP);
 static const int16_t kListW = 760;
-static const int16_t kListH = 292;
+static const int16_t kBtnH = OS_BTN_H;
+static const int16_t kActionY = (int16_t)(OS_DOCK_Y - kBtnH - OS_GAP);
+static const int16_t kListH = (int16_t)(kActionY - kListY - OS_GAP);
 static const int16_t kRowH = 72;
-static const int16_t kRowGap = 8;
-static const int16_t kActionY = 368;
-static const int16_t kActionH = 48;
-static const int16_t kFooterY = 428;
-static const int16_t kFooterH = 44;
+static const int16_t kRowGap = OS_GAP;
 
 static const int16_t kBtnW = 170;
-static const int16_t kBtnH = 44;
 static const int16_t kBtnGap = 12;
 
 /* ---- Local view-model (fixed capacity, no heap churn) ---- */
@@ -47,7 +45,6 @@ static lv_obj_t *s_row_dates[PAGE02_MAX_PRODUCTIONS];
 static lv_obj_t *s_btn_open = nullptr;
 static lv_obj_t *s_btn_load = nullptr;
 static lv_obj_t *s_btn_run = nullptr;
-static lv_obj_t *s_footer = nullptr;
 static lv_obj_t *s_count_label = nullptr;
 static lv_obj_t *s_storage_label = nullptr;
 static lv_obj_t *s_notify_label = nullptr;
@@ -79,24 +76,31 @@ static void style_action_button(lv_obj_t *btn, bool danger) {
 }
 
 static void style_row(lv_obj_t *row, bool selected) {
-  lv_obj_set_style_bg_opa(row, LV_OPA_20, 0);
-  lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_border_width(row, selected ? 3 : 2, 0);
+  lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(row, lv_color_hex(ShowduinoPalette::PanelRaised), 0);
+  lv_obj_set_style_border_width(row, selected ? 2 : 1, 0);
   lv_obj_set_style_border_opa(row, LV_OPA_COVER, 0);
-  lv_obj_set_style_radius(row, 10, 0);
+  lv_obj_set_style_radius(row, OS_PANEL_RADIUS, 0);
   const lv_color_t accent = showduino_theme_get_accent();
   const lv_color_t idle = lv_color_hex(ShowduinoPalette::AccentDark);
   lv_obj_set_style_border_color(row, selected ? accent : idle, 0);
 }
 
 static void update_summary_and_actions(void) {
+  if (s_count_label) {
+    char buf[40];
+    snprintf(buf, sizeof(buf), "Productions: %d", s_count);
+    lv_label_set_text(s_count_label, buf);
+  }
   if (s_selected_label) {
     if (s_selected >= 0 && s_selected < s_count && s_entries[s_selected].used) {
       char buf[96];
-      snprintf(buf, sizeof(buf), "Selected: %s", s_entries[s_selected].name);
+      snprintf(buf, sizeof(buf), "%s  ·  %d on SD", s_entries[s_selected].name, s_count);
       lv_label_set_text(s_selected_label, buf);
     } else {
-      lv_label_set_text(s_selected_label, "Selected: —");
+      char buf[48];
+      snprintf(buf, sizeof(buf), "No selection  ·  %d on SD", s_count);
+      lv_label_set_text(s_selected_label, buf);
     }
   }
 
@@ -113,11 +117,6 @@ static void update_summary_and_actions(void) {
     }
   }
 
-  if (s_count_label) {
-    char buf[40];
-    snprintf(buf, sizeof(buf), "Productions: %d", s_count);
-    lv_label_set_text(s_count_label, buf);
-  }
   if (s_empty) {
     if (s_count <= 0) lv_obj_clear_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
@@ -230,7 +229,7 @@ static void build_header(lv_obj_t *parent) {
 
   s_header_accent = lv_obj_create(s_header);
   lv_obj_remove_style_all(s_header_accent);
-  lv_obj_set_pos(s_header_accent, 110, 42);
+  lv_obj_set_pos(s_header_accent, 110, 34);
   lv_obj_set_size(s_header_accent, 120, 3);
   lv_obj_set_style_bg_opa(s_header_accent, LV_OPA_COVER, 0);
   showduino_theme_register(s_header_accent, SHOWDUINO_THEME_ROLE_HEADER_ACCENT);
@@ -254,7 +253,7 @@ static void build_header(lv_obj_t *parent) {
 
   s_selected_label = lv_label_create(s_header);
   lv_label_set_text(s_selected_label, "Selected: —");
-  lv_obj_set_pos(s_selected_label, 360, 14);
+  lv_obj_set_pos(s_selected_label, 360, 8);
   lv_obj_set_width(s_selected_label, 420);
   lv_label_set_long_mode(s_selected_label, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_selected_label, &lv_font_montserrat_14, 0);
@@ -321,32 +320,10 @@ static void build_actions(lv_obj_t *parent) {
 }
 
 static void build_footer(lv_obj_t *parent) {
-  s_footer = lv_obj_create(parent);
-  lv_obj_remove_style_all(s_footer);
-  lv_obj_set_pos(s_footer, 16, kFooterY);
-  lv_obj_set_size(s_footer, 768, kFooterH);
-  lv_obj_set_style_bg_opa(s_footer, LV_OPA_TRANSP, 0);
-  lv_obj_clear_flag(s_footer, LV_OBJ_FLAG_SCROLLABLE);
-
-  s_count_label = lv_label_create(s_footer);
-  lv_label_set_text(s_count_label, "Productions: 0");
-  lv_obj_set_pos(s_count_label, 8, 12);
-  lv_obj_set_style_text_font(s_count_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_count_label, lv_color_hex(ShowduinoPalette::Muted), 0);
-
-  s_storage_label = lv_label_create(s_footer);
-  lv_label_set_text(s_storage_label, "Storage: SD LIBRARY");
-  lv_obj_set_pos(s_storage_label, 200, 12);
-  lv_obj_set_style_text_font(s_storage_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_storage_label, lv_color_hex(ShowduinoPalette::Muted), 0);
-
-  s_notify_label = lv_label_create(s_footer);
-  lv_label_set_text(s_notify_label, "Notify: —");
-  lv_obj_set_pos(s_notify_label, 480, 12);
-  lv_obj_set_width(s_notify_label, 270);
-  lv_label_set_long_mode(s_notify_label, LV_LABEL_LONG_CLIP);
-  lv_obj_set_style_text_font(s_notify_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_notify_label, lv_color_hex(ShowduinoPalette::Muted), 0);
+  (void)parent;
+  s_count_label = nullptr;
+  s_storage_label = nullptr;
+  s_notify_label = s_selected_label;
 }
 
 void page_02_productions_create(lv_obj_t *parent, page02_command_fn command_cb) {
@@ -395,7 +372,7 @@ void page_02_productions_destroy(void) {
   s_header = s_btn_back = s_title = s_selected_label = s_header_accent = nullptr;
   s_list = s_empty = nullptr;
   s_btn_open = s_btn_load = s_btn_run = nullptr;
-  s_footer = s_count_label = s_storage_label = s_notify_label = nullptr;
+  s_count_label = s_storage_label = s_notify_label = nullptr;
   memset(s_rows, 0, sizeof(s_rows));
   memset(s_row_names, 0, sizeof(s_row_names));
   memset(s_row_descs, 0, sizeof(s_row_descs));
@@ -447,8 +424,5 @@ void page_02_productions_set_entries(const Page02ProductionEntry *entries, int c
     s_selected = 0;
   }
   if (s_storage_label) lv_label_set_text(s_storage_label, "Storage: SD LIBRARY");
-  if (s_notify_label) {
-    lv_label_set_text(s_notify_label, s_count > 0 ? "SD library" : "No packages on SD");
-  }
   refresh_row_styles();
 }

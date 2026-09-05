@@ -14,13 +14,12 @@ ESP32-S3 + 5in Touch
         |
      ESP-NOW
         |
-Built-in ESP32-C6
-Wireless bridge on P4 board
+Dedicated ESP32-S3
+Communications Engine
         |
-  UART (current; two crossed jumpers)
-  Factory SDIO unused — see docs/future-p4-c6-sdio-transport.md
+  UART (P4 GPIO4/5)
         |
-ESP32-P4 Stage Engine
+ESP32-P4 Stage Controller / Show Engine
         |
   +-----+------------------+
   |                        |
@@ -45,24 +44,24 @@ Responsibilities:
 - Status monitoring
 - Operator feedback
 
-The Director is not authoritative. If it disconnects, the Stage Engine continues running safely.
+The Director is not authoritative. If it disconnects, the Show Engine continues running safely.
 
-## ESP32-C6 bridge
+## Dedicated ESP32-S3 Communications Engine
 
-The built-in C6 provides the wireless gateway to the P4 Stage Engine.
+The dedicated S3 transports wireless traffic to and from the P4 Show Engine.
 
-Current implementation: ESP-NOW in, UART out (`firmware/p4-c6-espnow-bridge/`). Factory SDIO and ESP-Hosted are not used.
+Current implementation: ESP-NOW in, UART out (`firmware/s3-comms-controller/`). The onboard C6 is unused/reserved; factory SDIO and ESP-Hosted are not used.
 
 Responsibilities:
 
 - ESP-NOW receive/transmit
 - Forwarding messages to the P4 over UART
 - Returning P4 UART lines to the Director over ESP-NOW
-- Future Wi-Fi services where appropriate (not on this C6 sketch)
+- Future Wi-Fi services where appropriate (not implemented in the current S3 firmware)
 
-The C6 is a transport processor, not the show engine.
+The Communications Engine is a transport processor, not the Show Engine.
 
-## ESP32-P4 Stage Engine
+## ESP32-P4 Stage Controller / Show Engine
 
 The P4 is the wired heart of Showduino.
 

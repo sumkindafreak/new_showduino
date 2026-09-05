@@ -25,6 +25,10 @@
 #define OS_SUMMARY_H         72
 #define OS_DOCK_Y            402
 #define OS_DOCK_H            56
+#define OS_BTN_H             48
+#define OS_CHIP_H            24
+#define OS_BORDER_W          1
+#define OS_HEADER_H          DirectorStatusBar::HEIGHT
 #define OS_CONTENT_LEFT_W    470
 #define OS_CONTENT_RIGHT_X   506
 #define OS_CONTENT_RIGHT_W   282
@@ -56,14 +60,17 @@ namespace OsColor {
   static const uint32_t Text           = ShowduinoPalette::Text;
   static const uint32_t TextMuted      = ShowduinoPalette::Muted;
   static const uint32_t TextDim        = ShowduinoPalette::Muted;
+  static const uint32_t TextDisabled   = ShowduinoPalette::Disabled;
   static const uint32_t Title          = ShowduinoPalette::Text;
-  static const uint32_t Ok             = ShowduinoPalette::Accent;
+  static const uint32_t Ok             = ShowduinoPalette::Success;
   static const uint32_t Warn           = ShowduinoPalette::Warn;
   static const uint32_t Fault          = ShowduinoPalette::Danger;
+  static const uint32_t Pending        = ShowduinoPalette::Pending;
   static const uint32_t Unknown        = ShowduinoPalette::AccentDark;
   static const uint32_t Accent         = ShowduinoPalette::Accent;
   static const uint32_t AccentSoft     = ShowduinoPalette::AccentBright;
   static const uint32_t ScanLine       = ShowduinoPalette::AccentDim;
+  static const uint32_t DangerText     = ShowduinoPalette::DangerText;
 }
 
 struct ShowduinoOsTheme {
@@ -74,6 +81,7 @@ struct ShowduinoOsTheme {
   lv_style_t buttonPressed;
   lv_style_t buttonDanger;
   lv_style_t buttonDangerPressed;
+  lv_style_t buttonDisabled;
   lv_style_t title;
   lv_style_t heading;
   lv_style_t body;
@@ -148,13 +156,21 @@ struct ShowduinoOsTheme {
     lv_style_set_shadow_opa(&buttonDanger, LV_OPA_30);
 
     lv_style_init(&buttonDangerPressed);
-    lv_style_set_bg_color(&buttonDangerPressed, lv_color_hex(0x681313));
-    lv_style_set_border_color(&buttonDangerPressed, lv_color_hex(0xFF7777));
+    lv_style_set_bg_color(&buttonDangerPressed, lv_color_hex(ShowduinoPalette::DangerDark));
+    lv_style_set_border_color(&buttonDangerPressed, lv_color_hex(OsColor::Warn));
     lv_style_set_shadow_color(&buttonDangerPressed, lv_color_hex(OsColor::DangerBorder));
     lv_style_set_shadow_width(&buttonDangerPressed, 12);
     lv_style_set_shadow_opa(&buttonDangerPressed, LV_OPA_50);
     lv_style_set_transform_width(&buttonDangerPressed, -2);
     lv_style_set_transform_height(&buttonDangerPressed, -2);
+
+    lv_style_init(&buttonDisabled);
+    lv_style_set_bg_color(&buttonDisabled, lv_color_hex(OsColor::Panel));
+    lv_style_set_bg_opa(&buttonDisabled, LV_OPA_60);
+    lv_style_set_border_color(&buttonDisabled, lv_color_hex(OsColor::Unknown));
+    lv_style_set_border_width(&buttonDisabled, 1);
+    lv_style_set_text_color(&buttonDisabled, lv_color_hex(OsColor::TextDisabled));
+    lv_style_set_shadow_opa(&buttonDisabled, LV_OPA_TRANSP);
 
     lv_style_init(&title);
     lv_style_set_text_color(&title, lv_color_hex(OsColor::Accent));
@@ -185,7 +201,7 @@ struct ShowduinoOsTheme {
     lv_style_set_text_color(&chip, lv_color_hex(OsColor::Accent));
 
     lv_style_init(&progressBg);
-    lv_style_set_bg_color(&progressBg, lv_color_hex(0x06100C));
+    lv_style_set_bg_color(&progressBg, lv_color_hex(OsColor::ScanLine));
     lv_style_set_bg_opa(&progressBg, LV_OPA_COVER);
     lv_style_set_border_color(&progressBg, lv_color_hex(OsColor::PanelBorder));
     lv_style_set_border_width(&progressBg, 1);
@@ -307,6 +323,7 @@ struct ShowduinoOsTheme {
     lv_obj_remove_style_all(btn);
     lv_obj_add_style(btn, danger ? &buttonDanger : &button, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_add_style(btn, danger ? &buttonDangerPressed : &buttonPressed, LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_add_style(btn, &buttonDisabled, LV_PART_MAIN | LV_STATE_DISABLED);
     lv_obj_set_pos(btn, x, y);
     lv_obj_set_size(btn, w, h);
     /* scrollChain=true: drag can scroll a parent. false: keep tap as click (E-CLEAR / E-STOP). */
@@ -353,6 +370,99 @@ struct ShowduinoOsTheme {
 
   static void setTextColor(lv_obj_t *lab, uint32_t hex) {
     if (lab) lv_obj_set_style_text_color(lab, lv_color_hex(hex), 0);
+  }
+
+  static void setEnabled(lv_obj_t *obj, bool enabled) {
+    if (!obj) return;
+    if (enabled) {
+      lv_obj_clear_state(obj, LV_STATE_DISABLED);
+      lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_style_opa(obj, LV_OPA_COVER, 0);
+    } else {
+      lv_obj_add_state(obj, LV_STATE_DISABLED);
+      lv_obj_clear_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_set_style_opa(obj, LV_OPA_50, 0);
+    }
+  }
+
+  static lv_obj_t *makeHairline(lv_obj_t *parent, int32_t x, int32_t y,
+                               int32_t w, int32_t h, uint32_t colour,
+                               lv_opa_t opacity = LV_OPA_COVER) {
+    lv_obj_t *line = lv_obj_create(parent);
+    lv_obj_remove_style_all(line);
+    lv_obj_set_pos(line, x, y);
+    lv_obj_set_size(line, w, h);
+    lv_obj_set_style_bg_color(line, lv_color_hex(colour), 0);
+    lv_obj_set_style_bg_opa(line, opacity, 0);
+    lv_obj_clear_flag(line, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+    return line;
+  }
+
+  /** Unlock-family corner frame. Used by system/modal pages. */
+  void paintChassis(lv_obj_t *parent, uint32_t accent = OsColor::Accent,
+                    uint32_t accentDark = OsColor::PanelBorder) {
+    if (!parent) return;
+    lv_obj_t *frame = lv_obj_create(parent);
+    lv_obj_remove_style_all(frame);
+    lv_obj_set_pos(frame, 8, 8);
+    lv_obj_set_size(frame, SCREEN_WIDTH - 16, SCREEN_HEIGHT - 16);
+    lv_obj_set_style_bg_opa(frame, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(frame, lv_color_hex(accentDark), 0);
+    lv_obj_set_style_border_width(frame, 1, 0);
+    lv_obj_set_style_radius(frame, 4, 0);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
+
+    makeHairline(parent, 18, 18, 150, 2, accent, LV_OPA_70);
+    makeHairline(parent, SCREEN_WIDTH - 168, 18, 150, 2, accent, LV_OPA_70);
+    makeHairline(parent, 18, SCREEN_HEIGHT - 20, 150, 2, accent, LV_OPA_50);
+    makeHairline(parent, SCREEN_WIDTH - 168, SCREEN_HEIGHT - 20, 150, 2, accent, LV_OPA_50);
+    makeHairline(parent, 18, 18, 2, 64, accent, LV_OPA_70);
+    makeHairline(parent, SCREEN_WIDTH - 20, 18, 2, 64, accent, LV_OPA_70);
+    makeHairline(parent, 18, SCREEN_HEIGHT - 82, 2, 64, accent, LV_OPA_50);
+    makeHairline(parent, SCREEN_WIDTH - 20, SCREEN_HEIGHT - 82, 2, 64, accent, LV_OPA_50);
+  }
+
+  lv_obj_t *makeDialogScrim(lv_obj_t *parent) {
+    lv_obj_t *root = lv_obj_create(parent);
+    lv_obj_remove_style_all(root);
+    lv_obj_set_size(root, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_pos(root, 0, 0);
+    lv_obj_set_style_bg_color(root, lv_color_hex(OsColor::Bg), 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_70, 0);
+    lv_obj_add_flag(root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    return root;
+  }
+
+  lv_obj_t *makeDialogBox(lv_obj_t *parent, int w, int h, bool danger = false) {
+    lv_obj_t *box = lv_obj_create(parent);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_size(box, w, h);
+    lv_obj_center(box);
+    lv_obj_add_style(box, danger ? &panelRaised : &panel, 0);
+    lv_obj_set_style_border_color(box, lv_color_hex(danger ? OsColor::DangerBorder : OsColor::Accent), 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_bg_color(box, lv_color_hex(danger ? OsColor::Danger : OsColor::Panel), 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    return box;
+  }
+
+  lv_obj_t *makeEmptyState(lv_obj_t *parent, const char *titleText, const char *bodyText) {
+    lv_obj_t *box = makePanel(parent, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, 120);
+    makeHeading(box, titleText ? titleText : "NOTHING TO SHOW", 10, 8);
+    lv_obj_t *bodyLab = makeCaption(box, bodyText ? bodyText : "", 10, 40);
+    lv_obj_set_width(bodyLab, OS_CONTENT_FULL_W - 28);
+    lv_label_set_long_mode(bodyLab, LV_LABEL_LONG_WRAP);
+    return box;
+  }
+
+  static void colourChip(lv_obj_t *chipObj, uint32_t colour) {
+    if (!chipObj) return;
+    lv_obj_set_style_border_color(chipObj, lv_color_hex(colour), 0);
+    lv_obj_t *lab = lv_obj_get_child(chipObj, 0);
+    if (lab) lv_obj_set_style_text_color(lab, lv_color_hex(colour), 0);
   }
 };
 

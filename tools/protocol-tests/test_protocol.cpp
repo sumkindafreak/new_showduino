@@ -161,6 +161,10 @@ int main() {
                 SHOWDUINO_MSG_SHOW_START_REQUEST, "map SHOW:START");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_SHOW_STOP),
                 SHOWDUINO_MSG_SHOW_STOP_REQUEST, "map SHOW:STOP");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_SHOW_PAUSE),
+                SHOWDUINO_MSG_SHOW_PAUSE_REQUEST, "map SHOW:PAUSE");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_SHOW_RESUME),
+                SHOWDUINO_MSG_SHOW_RESUME_REQUEST, "map SHOW:RESUME");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_STOP),
                 SHOWDUINO_MSG_EMERGENCY_ACTIVATE_REQUEST, "map EMERGENCY:STOP");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR),
@@ -173,6 +177,14 @@ int main() {
                 SHOWDUINO_MSG_RELAY_TOGGLE_DEPRECATED, "map deprecated TOGGLE");
   expect_eq_int(showduino_legacy_map_command("NOT_A_REAL_CMD"), SHOWDUINO_MSG_UNKNOWN,
                 "map unknown command");
+  expect_eq_int(showduino_legacy_map_command("PRODUCTION:LIST"),
+                SHOWDUINO_MSG_PRODUCTION_LIST_REQUEST, "map PRODUCTION:LIST");
+  expect_eq_int(showduino_legacy_map_command("PRODUCTION:LOAD:system_test"),
+                SHOWDUINO_MSG_PRODUCTION_LOAD_REQUEST, "map PRODUCTION:LOAD");
+  expect_eq_int(showduino_legacy_map_command("PRODUCTION:UNLOAD"),
+                SHOWDUINO_MSG_PRODUCTION_UNLOAD_REQUEST, "map PRODUCTION:UNLOAD");
+  expect_eq_int(showduino_legacy_map_command("PRODUCTION:STATUS"),
+                SHOWDUINO_MSG_PRODUCTION_STATUS_REQUEST, "map PRODUCTION:STATUS");
   expect(showduino_legacy_is_toggle("RELAY:2:TOGGLE") != 0, "is_toggle true");
   expect(showduino_legacy_is_toggle("RELAY:2:ON") == 0, "is_toggle false for ON");
 

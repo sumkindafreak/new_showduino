@@ -109,6 +109,7 @@ struct ShowRuntimeOwner {
     uint32_t now = millis();
     syncFromTimeline();
     if (transitionLogged(SHOW_STATE_FINISHED, now)) {
+      Serial.println("[SHOW] COMPLETE");
       if (sendFn) sendFn(SHOW_FINISHED_WIRE);
       broadcastAll();
     }
@@ -162,10 +163,10 @@ struct ShowRuntimeOwner {
     return true;
   }
 
-  bool handleTlBegin() {
+  bool handleTlBegin(bool emitAck = true) {
     if (!timeline.BeginMemoryLoad()) return false;
     tlLoadOpen = true;
-    if (sendFn) sendFn("ACK:SHOW:TL:BEGIN");
+    if (emitAck && sendFn) sendFn("ACK:SHOW:TL:BEGIN");
     return true;
   }
 
@@ -174,22 +175,34 @@ struct ShowRuntimeOwner {
     return timeline.AddMemoryCue(timeMs, cmd);
   }
 
-  bool handleTlEnd(uint32_t nowMs, ShowEngineState *legacy) {
+  void abortTimelineLoad() {
+    timeline.AbortMemoryLoad();
+    tlLoadOpen = false;
+  }
+
+  bool handleTlEnd(uint32_t nowMs, ShowEngineState *legacy,
+                   const char *loadedName = nullptr, bool emitAck = true) {
     if (!tlLoadOpen) {
-      setError("timeline_not_open", nowMs);
-      syncLegacyShow(legacy);
+      if (sendFn) sendFn("REJECTED:SHOW:TIMELINE_NOT_OPEN");
       return false;
     }
     tlLoadOpen = false;
     if (!timeline.EndMemoryLoad()) {
-      setError("timeline_load_failed", nowMs);
-      syncLegacyShow(legacy);
+      timeline.AbortMemoryLoad();
+      if (sendFn) sendFn("REJECTED:SHOW:TIMELINE_LOAD_FAILED");
       return false;
     }
     if (timeline.cueTotal() == 0) {
       setError("timeline_empty", nowMs);
       syncLegacyShow(legacy);
       return false;
+    }
+    if (loadedName && loadedName[0]) {
+      timeline.setShowName(loadedName);
+      strncpy(rt.showName, loadedName, sizeof(rt.showName) - 1);
+      rt.showName[sizeof(rt.showName) - 1] = '\0';
+      rt.lastError[0] = '\0';
+      rt.aborted = 0;
     }
     syncFromTimeline();
     if (!transitionLogged(SHOW_STATE_SHOW_LOADED, nowMs) &&
@@ -200,11 +213,40 @@ struct ShowRuntimeOwner {
       }
     }
     syncLegacyShow(legacy);
-    if (sendFn) {
+    if (emitAck && sendFn) {
       char ack[32];
       snprintf(ack, sizeof(ack), "ACK:SHOW:TL:END:%u", (unsigned)timeline.cueTotal());
       sendFn(ack);
     }
+    broadcastAll();
+    return true;
+  }
+
+  bool handleUnload(uint32_t nowMs, ShowEngineState *legacy) {
+    if (rt.state == SHOW_STATE_RUNNING || rt.state == SHOW_STATE_PAUSED ||
+        rt.state == SHOW_STATE_EMERGENCY_STOP) {
+      if (sendFn) sendFn("PRODUCTION:UNLOAD:ERROR:BUSY");
+      return false;
+    }
+    timeline.ClearTimeline();
+    timeline.setShowName("");
+    rt.showName[0] = '\0';
+    rt.elapsedMs = 0;
+    rt.remainingMs = 0;
+    rt.totalDurationMs = 0;
+    rt.currentCue = 0;
+    rt.totalCues = 0;
+    rt.lastError[0] = '\0';
+    rt.aborted = 0;
+    if (rt.state != SHOW_STATE_IDLE) {
+      if (!transitionLogged(SHOW_STATE_IDLE, nowMs)) {
+        rt.state = SHOW_STATE_IDLE;
+        rt.stateEnteredMs = nowMs;
+        rt.revision++;
+      }
+    }
+    showRuntimeSyncFlags(&rt);
+    syncLegacyShow(legacy);
     broadcastAll();
     return true;
   }

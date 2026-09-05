@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "productionId": "system_test",
+  "name": "Showduino System Test",
+  "description": "Internal timeline qualification with no node hardware.",
+  "author": "Showduino",
+  "timeline": "timeline.json",
+  "created": "2026-09-04",
+  "modified": "2026-09-04",
+  "revision": 1
+}

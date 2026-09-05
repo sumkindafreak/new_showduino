@@ -110,7 +110,7 @@ Conceptual target path: `plugin:crypt-door-servos/channel/2`
 
 ## Discovery
 
-At boot, after emergency, SD, audio, and C6 UART:
+At boot, after emergency, SD, audio, and the Communications Engine UART:
 
 1. Sample SDA/SCL. If stuck LOW, warn and continue. Bounded SCL clocking is attempted only if SDA is stuck and SCL is free.
 2. `Wire.begin` at 100 kHz with a 50 ms timeout.
@@ -153,7 +153,7 @@ Malformed JSON is skipped; other files still load. Schema field `showduino_plugi
 
 Example files to copy: `firmware/stage-engine-p4/sd-overlay/showduino/plugins/`
 
-SD holds data only. It cannot execute native code, change GPIO25, C6 UART, SDMMC, or reserved C6/SDIO pins.
+SD holds data only. It cannot execute native code, change GPIO25, the Communications Engine UART, SDMMC, or reserved C6/SDIO pins.
 
 ---
 

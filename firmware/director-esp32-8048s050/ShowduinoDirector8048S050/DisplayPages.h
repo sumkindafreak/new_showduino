@@ -3,27 +3,23 @@
 
 #include "DisplayTypes.h"
 
-static const OverlayId kModalOverlays[] = {
-  OVERLAY_CLOCK,
-  OVERLAY_DATE,
-  OVERLAY_FOOTER,
-  OVERLAY_LINK,
-  OVERLAY_SAFETY,
-  OVERLAY_STAGE,
-};
-
-/* Page 01 Home: LVGL tiles only. Header / footer owned by page_01_home. */
+/* Hybrid LVGL operator pages — panel owned by ShowduinoUi / page_0x modules. */
 static const DisplayPage kDesktopPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
-  false, false, 0, true, true, /* hideDock, hybridPanel */
+  false, false, 0, false, true, /* hideDock, hybridPanel */
 };
 
-/* Page 02 Productions: LVGL library shell. */
 static const DisplayPage kShowsPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
-  false, false, 0, true, true, /* hideDock, hybridPanel */
+  false, false, 0, false, true,
+};
+
+static const DisplayPage kShowDetailsPage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
+  false, false, 0, false, true,
 };
 
 static const DisplayPage kLivePage = {
@@ -44,138 +40,28 @@ static const DisplayPage kNodesPage = {
   false, false, 0, false, true,
 };
 
-static const TouchRegion kDiscoveryTouchRegions[] = {
-  {{120, 300, 680, 380}, "SCREEN:NODES", 0},
-  {{280, 450, 520, 478}, "SCREEN:DESKTOP", 0},
-};
-
-static const DisplayPage kDiscoveryPage = {
-  nullptr, kDiscoveryTouchRegions,
-  (uint16_t)(sizeof(kDiscoveryTouchRegions) / sizeof(kDiscoveryTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kLockedTouchRegions[] = {
-  {{80, 280, 720, 400}, "UI:LOCK:UNLOCK", 0},
-};
-
-static const DisplayPage kLockedPage = {
-  nullptr, kLockedTouchRegions,
-  (uint16_t)(sizeof(kLockedTouchRegions) / sizeof(kLockedTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kUnlockTouchRegions[] = {
-  {{80, 280, 720, 400}, "UI:LOCK:CONFIRM", 0},
-  {{80, 410, 360, 470}, "UI:LOCK:CANCEL", 0},
-};
-
-static const DisplayPage kUnlockPage = {
-  nullptr, kUnlockTouchRegions,
-  (uint16_t)(sizeof(kUnlockTouchRegions) / sizeof(kUnlockTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const DisplayPage kEmergencyPage = {
+static const DisplayPage kSettingsPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
-  false, false, 0, true, false,
+  false, false, 0, false, true,
 };
 
-static const TouchRegion kConnectionLostTouchRegions[] = {
-  {{40, 360, 360, 430}, "UI:NET:RETRY", 0},
-  {{440, 360, 760, 430}, "SCREEN:DESKTOP", 0},
+static const DisplayPage kAudioPage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
+  false, false, 0, false, true,
 };
 
-static const DisplayPage kConnectionLostPage = {
-  nullptr, kConnectionLostTouchRegions,
-  (uint16_t)(sizeof(kConnectionLostTouchRegions) / sizeof(kConnectionLostTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
+static const DisplayPage kLogsPage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
+  false, false, 0, false, true,
 };
 
-static const TouchRegion kNoNetworkTouchRegions[] = {
-  {{40, 360, 360, 430}, "UI:NET:RETRY", 0},
-  {{440, 360, 760, 430}, "SCREEN:DESKTOP", 0},
-};
-
-static const DisplayPage kNoNetworkPage = {
-  nullptr, kNoNetworkTouchRegions,
-  (uint16_t)(sizeof(kNoNetworkTouchRegions) / sizeof(kNoNetworkTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kNoSdTouchRegions[] = {
-  {{200, 360, 600, 430}, "STORAGE:REPAIR", 0},
-  {{280, 440, 520, 478}, "UI:SYSTEM:REBOOT", 0},
-};
-
-static const DisplayPage kNoSdPage = {
-  nullptr, kNoSdTouchRegions,
-  (uint16_t)(sizeof(kNoSdTouchRegions) / sizeof(kNoSdTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kRebootTouchRegions[] = {
-  {{280, 440, 520, 478}, "SCREEN:DESKTOP", 0},
-};
-
-static const DisplayPage kRebootPage = {
-  nullptr, kRebootTouchRegions,
-  (uint16_t)(sizeof(kRebootTouchRegions) / sizeof(kRebootTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kFirmwareUpdateTouchRegions[] = {
-  {{280, 440, 520, 478}, "SCREEN:DESKTOP", 0},
-};
-
-static const DisplayPage kFirmwareUpdatePage = {
-  nullptr, kFirmwareUpdateTouchRegions,
-  (uint16_t)(sizeof(kFirmwareUpdateTouchRegions) / sizeof(kFirmwareUpdateTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kBackupTouchRegions[] = {
-  {{120, 360, 380, 430}, "STORAGE:BACKUP", 0},
-  {{420, 360, 680, 430}, "SCREEN:DESKTOP", 0},
-};
-
-static const DisplayPage kBackupPage = {
-  nullptr, kBackupTouchRegions,
-  (uint16_t)(sizeof(kBackupTouchRegions) / sizeof(kBackupTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kRecoveryTouchRegions[] = {
-  {{120, 360, 380, 430}, "STORAGE:REPAIR", 0},
-  {{420, 360, 680, 430}, "UI:SYSTEM:REBOOT", 0},
-};
-
-static const DisplayPage kRecoveryPage = {
-  nullptr, kRecoveryTouchRegions,
-  (uint16_t)(sizeof(kRecoveryTouchRegions) / sizeof(kRecoveryTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
-  false, false, 0, true, false,
-};
-
-static const TouchRegion kCompleteTouchRegions[] = {
-  {{200, 360, 600, 430}, "UI:COMPLETE:MENU", 0},
-  {{120, 300, 380, 360}, "UI:COMPLETE:RUN", 0},
-};
-
-static const DisplayPage kCompletePage = {
-  nullptr, kCompleteTouchRegions,
-  (uint16_t)(sizeof(kCompleteTouchRegions) / sizeof(kCompleteTouchRegions[0])),
-  kModalOverlays, (uint16_t)(sizeof(kModalOverlays) / sizeof(kModalOverlays[0])),
+/* Full-screen system pages — LVGL chrome, no dock, no HUD overlays. */
+static const DisplayPage kSystemModalPage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
   false, false, 0, true, false,
 };
 
@@ -183,29 +69,61 @@ inline const DisplayPage *displayPageById(DisplayPageId id) {
   switch (id) {
     case PAGE_DESKTOP: return &kDesktopPage;
     case PAGE_SHOWS: return &kShowsPage;
+    case PAGE_SHOW_DETAILS: return &kShowDetailsPage;
     case PAGE_LIVE: return &kLivePage;
     case PAGE_DIAGNOSTICS: return &kDiagnosticsPage;
     case PAGE_NODES: return &kNodesPage;
-    case PAGE_LOCKED: return &kLockedPage;
-    case PAGE_UNLOCK: return &kUnlockPage;
-    case PAGE_EMERGENCY: return &kEmergencyPage;
-    case PAGE_CONNECTION_LOST: return &kConnectionLostPage;
-    case PAGE_NO_NETWORK: return &kNoNetworkPage;
-    case PAGE_NO_SD: return &kNoSdPage;
-    case PAGE_REBOOT: return &kRebootPage;
-    case PAGE_FIRMWARE_UPDATE: return &kFirmwareUpdatePage;
-    case PAGE_BACKUP: return &kBackupPage;
-    case PAGE_RECOVERY: return &kRecoveryPage;
-    case PAGE_DISCOVERY: return &kDiscoveryPage;
-    case PAGE_COMPLETE: return &kCompletePage;
+    case PAGE_SETTINGS: return &kSettingsPage;
+    case PAGE_AUDIO: return &kAudioPage;
+    case PAGE_LOGS: return &kLogsPage;
+    case PAGE_LOCKED:
+    case PAGE_UNLOCK:
+    case PAGE_EMERGENCY:
+    case PAGE_CONNECTION_LOST:
+    case PAGE_NO_NETWORK:
+    case PAGE_NO_SD:
+    case PAGE_REBOOT:
+    case PAGE_FIRMWARE_UPDATE:
+    case PAGE_BACKUP:
+    case PAGE_RECOVERY:
+    case PAGE_DISCOVERY:
+    case PAGE_COMPLETE:
+      return &kSystemModalPage;
     default: return nullptr;
   }
 }
 
 inline const DisplayPage *displayPageDesktop() { return &kDesktopPage; }
 
+inline bool displayPageIsSystemModal(DisplayPageId id) {
+  switch (id) {
+    case PAGE_LOCKED:
+    case PAGE_UNLOCK:
+    case PAGE_EMERGENCY:
+    case PAGE_CONNECTION_LOST:
+    case PAGE_NO_NETWORK:
+    case PAGE_NO_SD:
+    case PAGE_REBOOT:
+    case PAGE_FIRMWARE_UPDATE:
+    case PAGE_BACKUP:
+    case PAGE_RECOVERY:
+    case PAGE_DISCOVERY:
+    case PAGE_COMPLETE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline const char *displayPageTitle(DisplayPageId id) {
   switch (id) {
+    case PAGE_DESKTOP: return "HOME";
+    case PAGE_SHOWS: return "PRODUCTIONS";
+    case PAGE_SHOW_DETAILS: return "SHOW DETAILS";
+    case PAGE_LIVE: return "LIVE";
+    case PAGE_SETTINGS: return "SETTINGS";
+    case PAGE_AUDIO: return "AUDIO";
+    case PAGE_LOGS: return "SYSTEM LOGS";
     case PAGE_LOCKED: return "DIRECTOR LOCKED";
     case PAGE_UNLOCK: return "UNLOCK DIRECTOR";
     case PAGE_CONNECTION_LOST: return "CONNECTION LOST";
@@ -219,6 +137,7 @@ inline const char *displayPageTitle(DisplayPageId id) {
     case PAGE_COMPLETE: return "SHOW COMPLETE";
     case PAGE_DIAGNOSTICS: return "DIAGNOSTICS";
     case PAGE_NODES: return "NODES";
+    case PAGE_EMERGENCY: return "EMERGENCY";
     default: return "SHOWDUINO";
   }
 }

@@ -9,8 +9,9 @@ Transport topology (**current, this hardware generation**):
 
 ```text
 Director ESP32-S3  → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
-Showduino Node     → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
 ```
+
+The supported current stack ends at the P4. Node and relay messages documented below are compatibility/prototype surfaces for future node design, not evidence of a supported production node.
 
 ESP-NOW and UART are **transports**. Application messages describe **intent**. MAC addresses must not appear in application-level message meaning.
 

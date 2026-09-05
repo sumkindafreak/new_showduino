@@ -34,8 +34,7 @@ typedef void (*TimelineDispatchFn)(const char *command);
 class TimelineEngine {
 public:
   bool BeginMemoryLoad() {
-    Stop();
-    freeCues();
+    discardLoading();
     memLoadActive = true;
     memLoadCount = 0;
     return true;
@@ -44,34 +43,48 @@ public:
   bool AddMemoryCue(uint32_t timeMs, const char *command) {
     if (!memLoadActive || !command || !command[0]) return false;
     if (memLoadCount >= TIMELINE_MAX_CUES) return false;
-    if (!ensureCueCapacity(memLoadCount + 1)) return false;
-    cues[memLoadCount].timeMs = timeMs;
-    strncpy(cues[memLoadCount].command, command, TIMELINE_CMD_LEN - 1);
-    cues[memLoadCount].command[TIMELINE_CMD_LEN - 1] = '\0';
+    if (!ensureLoadingCapacity(memLoadCount + 1)) return false;
+    loadingCues[memLoadCount].timeMs = timeMs;
+    strncpy(loadingCues[memLoadCount].command, command, TIMELINE_CMD_LEN - 1);
+    loadingCues[memLoadCount].command[TIMELINE_CMD_LEN - 1] = '\0';
     memLoadCount++;
     return true;
   }
 
   bool EndMemoryLoad() {
-    if (!memLoadActive) return false;
-    memLoadActive = false;
-    cueCount = memLoadCount;
-    memLoadCount = 0;
-    if (cueCount > 1) stableSortByTime();
-    durationMs = 0;
-    for (uint16_t i = 0; i < cueCount; i++) {
-      if (cues[i].timeMs > durationMs) durationMs = cues[i].timeMs;
+    if (!memLoadActive || !loadingCues || memLoadCount == 0) return false;
+    if (memLoadCount > 1) stableSortByTime(loadingCues, memLoadCount);
+    uint32_t newDurationMs = 0;
+    for (uint16_t i = 0; i < memLoadCount; i++) {
+      if (loadingCues[i].timeMs > newDurationMs) newDurationMs = loadingCues[i].timeMs;
     }
+
+    /* Atomically replace the active timeline after the complete load succeeds. */
+    Stop();
+    freeCues();
+    cues = loadingCues;
+    cueCount = memLoadCount;
+    cueCapacity = loadingCapacity;
+    durationMs = newDurationMs;
+    loadingCues = nullptr;
+    loadingCapacity = 0;
+    memLoadActive = false;
+    memLoadCount = 0;
     Serial.println("Timeline loaded");
     Serial.printf("Cue count: %u\n", (unsigned)cueCount);
     return true;
   }
 
+  void AbortMemoryLoad() {
+    discardLoading();
+    memLoadActive = false;
+    memLoadCount = 0;
+  }
+
   void ClearTimeline() {
     Stop();
     freeCues();
-    memLoadActive = false;
-    memLoadCount = 0;
+    AbortMemoryLoad();
   }
 
   void Start() {
@@ -168,8 +181,10 @@ public:
 
 private:
   TimelineCue *cues = nullptr;
+  TimelineCue *loadingCues = nullptr;
   uint16_t cueCount = 0;
   uint16_t cueCapacity = 0;
+  uint16_t loadingCapacity = 0;
   uint16_t nextCue = 0;
   uint16_t memLoadCount = 0;
   bool memLoadActive = false;
@@ -192,9 +207,17 @@ private:
     durationMs = 0;
   }
 
-  bool ensureCueCapacity(uint16_t need) {
-    if (need <= cueCapacity && cues) return true;
-    uint16_t cap = cueCapacity ? cueCapacity : 16;
+  void discardLoading() {
+    if (loadingCues) {
+      heap_caps_free(loadingCues);
+      loadingCues = nullptr;
+    }
+    loadingCapacity = 0;
+  }
+
+  bool ensureLoadingCapacity(uint16_t need) {
+    if (need <= loadingCapacity && loadingCues) return true;
+    uint16_t cap = loadingCapacity ? loadingCapacity : 16;
     while (cap < need) {
       uint32_t next = (uint32_t)cap * 2u;
       if (next > TIMELINE_MAX_CUES) next = TIMELINE_MAX_CUES;
@@ -209,27 +232,24 @@ private:
     }
     if (!nbuf) return false;
     memset(nbuf, 0, sizeof(TimelineCue) * cap);
-    if (cues && cueCount) {
-      memcpy(nbuf, cues, sizeof(TimelineCue) * cueCount);
-      heap_caps_free(cues);
-    } else if (cues && memLoadCount) {
-      memcpy(nbuf, cues, sizeof(TimelineCue) * memLoadCount);
-      heap_caps_free(cues);
+    if (loadingCues && memLoadCount) {
+      memcpy(nbuf, loadingCues, sizeof(TimelineCue) * memLoadCount);
+      heap_caps_free(loadingCues);
     }
-    cues = nbuf;
-    cueCapacity = cap;
+    loadingCues = nbuf;
+    loadingCapacity = cap;
     return true;
   }
 
-  void stableSortByTime() {
-    for (uint16_t i = 1; i < cueCount; i++) {
-      TimelineCue key = cues[i];
+  static void stableSortByTime(TimelineCue *items, uint16_t count) {
+    for (uint16_t i = 1; i < count; i++) {
+      TimelineCue key = items[i];
       int j = (int)i - 1;
-      while (j >= 0 && cues[j].timeMs > key.timeMs) {
-        cues[j + 1] = cues[j];
+      while (j >= 0 && items[j].timeMs > key.timeMs) {
+        items[j + 1] = items[j];
         j--;
       }
-      cues[j + 1] = key;
+      items[j + 1] = key;
       if ((i & 31) == 0) yield();
     }
   }

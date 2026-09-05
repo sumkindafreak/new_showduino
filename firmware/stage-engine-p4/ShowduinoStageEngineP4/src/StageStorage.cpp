@@ -42,6 +42,7 @@ static const char *const kRequiredDirs[] = {
   "/showduino/audio",
   "/showduino/www",
   "/showduino/system",
+  "/showduino/productions",
   "/showduino/shows",
   "/showduino/shows/packages",
   "/showduino/shows/trash",

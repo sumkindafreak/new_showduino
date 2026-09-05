@@ -29,8 +29,9 @@ Firmware:
 firmware/director-esp32-8048s050/          Director
 firmware/s3-comms-controller/              Dedicated S3 communications controller
 firmware/stage-engine-p4/                  Show Engine (P4)
-firmware/relay-node-esp32/                 Relay Node (ESP-NOW via S3)
 ```
+
+The supported current stack ends at the P4. `firmware/relay-node-esp32/` is retained as **EXPERIMENTAL / FUTURE** source and is not part of this locked product path.
 
 The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**.  
 Do not require C6 firmware, ESP-NOW, SDIO, ESP-Hosted, or WebUI on the C6.  
@@ -161,17 +162,17 @@ Previous generation used the Waveshare onboard C6 as the Communications Engine. 
 
 Owns production loading, show/timeline/cue runtime, SD (`/showduino/` including `/showduino/webui/`), show and emergency audio, emergency latch, GPIO25, GPIO24 pixels, WebUI origin, safety.
 
-**Local USB maintenance console:** the P4 USB Serial/debug port (115200 8N1, newline-terminated) is an extra input into the same command dispatcher as C6 UART. It does not replace Director → ESP-NOW → C6 → UART. `EMERGENCY:CLEAR` over USB still cannot bypass GPIO25. See [`firmware/stage-engine-p4/README.md`](../firmware/stage-engine-p4/README.md).
+**Local USB maintenance console:** the P4 USB Serial/debug port (115200 8N1, newline-terminated) is an extra input into the same command dispatcher as the dedicated S3 Communications Engine UART. It does not replace Director → ESP-NOW → dedicated S3 → UART. `EMERGENCY:CLEAR` over USB still cannot bypass GPIO25. See [`firmware/stage-engine-p4/README.md`](../firmware/stage-engine-p4/README.md).
 
 **Plug-in Bus:** 3.3V I²C on GPIO7 (SDA) and GPIO8 (SCL). See [`docs/plugin-bus.md`](plugin-bus.md).
 
 ---
 
-## Relay nodes
+## Relay-node prototype (experimental / future)
 
 **Firmware:** `firmware/relay-node-esp32/`
 
-ESP-NOW to the S3 Comms Controller, then UART to the P4. Boot relays OFF. Absolute ON/OFF/pulse only.
+The retained prototype is intended to use ESP-NOW to the S3 Comms Controller and UART onward to the P4. It should boot relays OFF and accept absolute ON/OFF/pulse only. Logical-ID routing and completion-driven state/fault handling are not finished, so this is not a supported current product path.
 
 Future node families (audio, pixel, sensor, motor, R3 terminals) still speak ESP-NOW to the Communications Engine.
 
@@ -211,7 +212,6 @@ Shared GND for signal companions. No 5V into ESP32 GPIO. Nodes boot outputs OFF.
 1x Waveshare P4-Module-DEV-KIT    P4: firmware/stage-engine-p4/
 1x ESP32-S3 Dev Module            firmware/s3-comms-controller/
 1x UART pair                      S3 GPIO17→P4 GPIO4, S3 GPIO18←P4 GPIO5
-1x ESP32 Relay Node               firmware/relay-node-esp32/
 Emergency GPIO25 exercised with S3 unplugged
 ```
 
@@ -223,7 +223,7 @@ Emergency GPIO25 exercised with S3 unplugged
 Showduino Director
 Showduino Stage Controller   (runs Show Engine)
 Showduino Communications Engine  (dedicated ESP32-S3 in this generation)
-Showduino Relay Node 4 / 8
+Showduino Relay Node 4 / 8         (future)
 Showduino Audio Node
 Showduino Pixel Node
 Showduino Prop Node

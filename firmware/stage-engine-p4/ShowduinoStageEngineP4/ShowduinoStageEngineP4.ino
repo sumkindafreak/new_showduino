@@ -25,6 +25,7 @@
 #include "ShowEngineState.h"
 #include "ShowRuntimeOwner.h"
 #include "src/StageStorage.h"
+#include "src/ProductionStore.h"
 #include "src/StageAudio.h"
 #include "src/EmergencyPixels.h"
 #include "src/WebApiHandler.h"
@@ -57,6 +58,9 @@ enum class CommandSource : uint8_t {
 // -----------------------------
 ShowEngineState gEngine;
 ShowRuntimeOwner gRuntime;
+ProductionStore gProductionStore;
+static bool sProductionStoreReady = false;
+static uint32_t sProductionStoreRetryMs = 0;
 
 bool emergencyLocked = false;
 uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 local USB */
@@ -132,6 +136,7 @@ static bool isKnownCommsCommand(const String &c) {
   if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("EMERGENCY:")) return true;
   if (c.startsWith("STATUS:") || c.startsWith("DMX:") || c.startsWith("PIXEL:")) return true;
   if (c.startsWith("PLUGIN:")) return true;
+  if (c.startsWith("PRODUCTION:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
   return false;
@@ -400,6 +405,124 @@ void sendStatus() {
   }
 }
 
+static void sendProductionError(const char *operation, ProductionStoreResult result) {
+  String response = "PRODUCTION:";
+  response += operation;
+  response += ":ERROR:";
+  response += productionStoreResultName(result);
+  sendCommandReply(response);
+}
+
+static void handleProductionCommand(const String &command) {
+  const uint32_t now = millis();
+
+  if (command == "PRODUCTION:LIST") {
+    if (!sProductionStoreReady) {
+      sendProductionError("LIST", ProductionStoreResult::StorageUnavailable);
+      return;
+    }
+    if (!gProductionStore.scan()) {
+      sendProductionError("LIST", ProductionStoreResult::IoError);
+      return;
+    }
+    sendCommandReply(String("PRODUCTION:LIST:BEGIN:") + gProductionStore.count());
+    for (uint8_t i = 0; i < gProductionStore.count(); ++i) {
+      const ProductionManifest *manifest = gProductionStore.at(i);
+      if (!manifest) continue;
+      sendCommandReply(String("PRODUCTION:ITEM:") + manifest->productionId);
+    }
+    sendCommandReply("PRODUCTION:LIST:END");
+    return;
+  }
+
+  if (command == "PRODUCTION:STATUS") {
+    if (!sProductionStoreReady) {
+      sendCommandReply("PRODUCTION:STATUS:STORAGE_UNAVAILABLE");
+    } else if (!gProductionStore.hasLoaded()) {
+      sendCommandReply("PRODUCTION:STATUS:NONE");
+    } else {
+      sendCommandReply(String("PRODUCTION:STATUS:LOADED:") +
+                       gProductionStore.loaded().productionId);
+    }
+    return;
+  }
+
+  if (command == "PRODUCTION:UNLOAD") {
+    if (emergencyLocked) {
+      sendCommandReply("PRODUCTION:UNLOAD:ERROR:EMERGENCY_ACTIVE");
+      return;
+    }
+    if (gRuntime.handleUnload(now, &gEngine)) {
+      gProductionStore.unload();
+      Serial.println("[PRODUCTION] Unloaded");
+      sendCommandReply("PRODUCTION:UNLOAD:OK");
+    }
+    return;
+  }
+
+  if (command.startsWith("PRODUCTION:LOAD:")) {
+    if (emergencyLocked) {
+      sendCommandReply("PRODUCTION:LOAD:ERROR:EMERGENCY_ACTIVE");
+      return;
+    }
+    if (!sProductionStoreReady) {
+      sendProductionError("LOAD", ProductionStoreResult::StorageUnavailable);
+      return;
+    }
+    if (gRuntime.rt.state == SHOW_STATE_RUNNING ||
+        gRuntime.rt.state == SHOW_STATE_PAUSED ||
+        gRuntime.rt.state == SHOW_STATE_EMERGENCY_STOP) {
+      sendCommandReply("PRODUCTION:LOAD:ERROR:BUSY");
+      return;
+    }
+
+    String id = command.substring(strlen("PRODUCTION:LOAD:"));
+    id.trim();
+    ProductionPackage package{};
+    ProductionStoreResult result = gProductionStore.load(id.c_str(), &package);
+    if (result != ProductionStoreResult::Ok) {
+      Serial.printf("[PRODUCTION] ERROR: %s (%s)\n",
+                    productionStoreResultName(result), gProductionStore.lastError());
+      sendProductionError("LOAD", result);
+      gProductionStore.release(&package);
+      return;
+    }
+
+    /* The TimelineEngine stages a replacement buffer. The active production is
+       left untouched unless every validated cue reaches the new buffer. */
+    if (!gRuntime.handleTlBegin(false)) {
+      gProductionStore.release(&package);
+      sendProductionError("LOAD", ProductionStoreResult::NoMemory);
+      return;
+    }
+    bool staged = true;
+    for (uint16_t i = 0; i < package.timeline.cueCount; ++i) {
+      if (!gRuntime.handleTlCue(package.cues[i].timeMs, package.cues[i].command)) {
+        staged = false;
+        break;
+      }
+    }
+    if (!staged || !gRuntime.handleTlEnd(now, &gEngine, package.manifest.name, false)) {
+      gRuntime.abortTimelineLoad();
+      gProductionStore.release(&package);
+      Serial.println("[PRODUCTION] ERROR: timeline commit failed");
+      sendProductionError("LOAD", ProductionStoreResult::NoMemory);
+      return;
+    }
+
+    gProductionStore.markLoaded(package.manifest);
+    String loadedId = package.manifest.productionId;
+    uint16_t cueCount = package.timeline.cueCount;
+    gProductionStore.release(&package);
+    Serial.printf("[TIMELINE] %u cues loaded\n", (unsigned)cueCount);
+    Serial.println("[PRODUCTION] Load complete");
+    sendCommandReply(String("PRODUCTION:LOAD:OK:") + loadedId);
+    return;
+  }
+
+  sendCommandReply("PRODUCTION:ERROR:UNKNOWN_COMMAND");
+}
+
 void handleShowCommand(const String &command) {
   const uint32_t now = millis();
 
@@ -411,10 +534,17 @@ void handleShowCommand(const String &command) {
   if (command == "SHOW:START" || command == "SHOW:RUN") {
     if (emergencyLocked) {
       Serial.println("[SHOW] Start rejected: EMERGENCY ACTIVE");
-      sendCommandReply("REJECTED:SHOW:EMERGENCY_ACTIVE");
+      sendCommandReply("SHOW:START:REJECTED:EMERGENCY");
       return;
     }
-    gRuntime.handleRun(now, &gEngine);
+    if (gRuntime.timeline.cueTotal() == 0) {
+      sendCommandReply("SHOW:START:REJECTED:NO_PRODUCTION");
+      return;
+    }
+    if (gRuntime.handleRun(now, &gEngine)) {
+      Serial.println("[SHOW] START");
+      sendCommandReply("SHOW:START:OK");
+    }
     return;
   }
 
@@ -423,24 +553,34 @@ void handleShowCommand(const String &command) {
     String name = (colon >= 0) ? command.substring(colon + 1) : "";
     name.trim();
     if (!gRuntime.handleLoadName(name.c_str(), now, &gEngine)) return;
+    gProductionStore.unload();
     return;
   }
 
   if (command == "SHOW:PAUSE") {
-    gRuntime.handlePause(now, &gEngine);
+    if (emergencyLocked) {
+      sendCommandReply("SHOW:PAUSE:REJECTED:EMERGENCY");
+      return;
+    }
+    if (gRuntime.handlePause(now, &gEngine)) sendCommandReply("SHOW:PAUSE:OK");
     return;
   }
 
   if (command == "SHOW:RESUME") {
-    gRuntime.handleResume(now, &gEngine);
+    if (emergencyLocked) {
+      sendCommandReply("SHOW:RESUME:REJECTED:EMERGENCY");
+      return;
+    }
+    if (gRuntime.handleResume(now, &gEngine)) sendCommandReply("SHOW:RESUME:OK");
     return;
   }
 
   if (command == "SHOW:STOP" || command == "STOP:ALL") {
-    gRuntime.handleStop(now, &gEngine);
+    bool stopped = gRuntime.handleStop(now, &gEngine);
     if (!emergencyLocked) {
       stageAudioStopShow();
     }
+    if (stopped) sendCommandReply("SHOW:STOP:OK");
     return;
   }
 
@@ -473,7 +613,7 @@ void handleShowCommand(const String &command) {
       sendCommandReply("REJECTED:SHOW:EMERGENCY_ACTIVE");
       return;
     }
-    gRuntime.handleTlEnd(now, &gEngine);
+    if (gRuntime.handleTlEnd(now, &gEngine)) gProductionStore.unload();
     return;
   }
 
@@ -527,6 +667,10 @@ static void printUsbHelp() {
   Serial.println("  SHOW:PAUSE");
   Serial.println("  SHOW:RESUME");
   Serial.println("  SHOW:LOAD:<name>");
+  Serial.println("  PRODUCTION:LIST");
+  Serial.println("  PRODUCTION:LOAD:<id>");
+  Serial.println("  PRODUCTION:UNLOAD");
+  Serial.println("  PRODUCTION:STATUS");
   Serial.println("  EMERGENCY:STOP");
   Serial.println("  EMERGENCY:CLEAR");
   Serial.println("  PLUGIN:SCAN");
@@ -601,6 +745,11 @@ static void dispatchCommand(const String &command) {
     Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR\n",
                   sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
     clearEmergencyStop();
+    return;
+  }
+
+  if (command.startsWith("PRODUCTION:")) {
+    handleProductionCommand(command);
     return;
   }
 
@@ -742,6 +891,35 @@ void handleCommand(String command) {
 
 static void timelineDispatchCommand(const char *command) {
   if (!command || !command[0]) return;
+  static const char *const kInternalPrefix = "INTERNAL:";
+  if (strncmp(command, kInternalPrefix, strlen(kInternalPrefix)) == 0) {
+    const char *type = command + strlen(kInternalPrefix);
+    const char *typeSeparator = strchr(type, ':');
+    if (!typeSeparator) return;
+    char cueType[8];
+    size_t typeLen = (size_t)(typeSeparator - type);
+    if (typeLen >= sizeof(cueType)) typeLen = sizeof(cueType) - 1;
+    memcpy(cueType, type, typeLen);
+    cueType[typeLen] = '\0';
+    const char *id = typeSeparator + 1;
+    const char *separator = strchr(id, ':');
+    Serial.printf("[SHOW] Internal %s cue\n", cueType);
+    if (separator) {
+      char cueId[SHOWDUINO_CUE_ID_MAX];
+      size_t idLen = (size_t)(separator - id);
+      if (idLen >= sizeof(cueId)) idLen = sizeof(cueId) - 1;
+      memcpy(cueId, id, idLen);
+      cueId[idLen] = '\0';
+      Serial.printf("[SHOW] Cue fired: %s\n", cueId);
+      Serial.printf("[SHOW] Type: %s\n", cueType);
+      Serial.printf("[SHOW] Time: %lu ms\n",
+                    (unsigned long)gRuntime.timeline.CurrentTime());
+      Serial.printf("[SHOW] Message: %s\n", separator + 1);
+    } else {
+      Serial.printf("[SHOW] Message: %s\n", id);
+    }
+    return;
+  }
   handleCommand(String(command));
 }
 
@@ -892,6 +1070,8 @@ void setup() {
   if (sdOk) {
     Serial.println("[SD] SD mounted");
     Serial.println("[SD] SD initialization success");
+    sProductionStoreReady = gProductionStore.begin(stageStorageFs());
+    sProductionStoreRetryMs = millis();
   } else {
     Serial.println("[SD] ERROR: SD card unavailable");
     Serial.println("[WEB] WebUI unavailable - SD not mounted");
@@ -943,6 +1123,11 @@ void loop() {
   servicePhysicalEstop();
   pluginBusService();
   stageStorageLoop();
+  if (!sProductionStoreReady && stageStorageIsReady() &&
+      (millis() - sProductionStoreRetryMs) >= 15000UL) {
+    sProductionStoreRetryMs = millis();
+    sProductionStoreReady = gProductionStore.begin(stageStorageFs());
+  }
   stageAudioLoop();
   gRuntime.service(millis(), &gEngine);
 

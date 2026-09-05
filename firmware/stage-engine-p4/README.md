@@ -21,14 +21,18 @@ Owns (target): authoritative show state, timeline/cues, project storage, configu
 
 ## Maturity — do not overstate
 
-Current sketch is an **early command hub**:
+Current sketch is an authoritative command/runtime hub:
 
 - Parses colon-text requests over UART
 - Tracks simple flags (e.g. show running, emergency lock)
 - Routes relay (and stub) work through the Communications Engine
 - Returns basic ACK / status lines
+- Discovers versioned productions under `/showduino/productions/`
+- Validates and transactionally loads persistent TEST/LOG timelines into RAM
+- Runs loaded timelines independently of Director, browser, Wi-Fi, or internet
 
-It does **not** yet implement the full timeline engine, primary project store, DMX, or real pixel/audio engines.
+It does **not** yet implement broader production assets, physical cue engines,
+logical target routing, DMX, or a complete authoring/project-management system.
 
 **Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. Static files come from SD `/showduino/webui/`. The current S3 Comms Controller does **not** host SoftAP. Previous-generation C3 Wi-Fi front door is documented as legacy. See `web/showduino-studio/README.md`.
 
@@ -68,6 +72,7 @@ Replace `COMx` with the P4 USB serial port.
 
 ```text
 /showduino/webui/         Studio WebUI (served from SD via P4 HTTP origin)
+/showduino/productions/   Authoritative runtime production folders
 /showduino/shows/packages/
 /showduino/logs/
 /showduino/system/
@@ -122,6 +127,10 @@ SHOW:STOP
 SHOW:PAUSE
 SHOW:RESUME
 SHOW:LOAD:<name>
+PRODUCTION:LIST
+PRODUCTION:LOAD:<id>
+PRODUCTION:UNLOAD
+PRODUCTION:STATUS
 EMERGENCY:STOP
 EMERGENCY:CLEAR
 ```

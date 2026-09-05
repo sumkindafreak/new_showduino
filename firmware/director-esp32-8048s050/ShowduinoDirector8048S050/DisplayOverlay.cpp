@@ -1,11 +1,12 @@
 #include "DisplayOverlay.h"
+#include "ShowduinoOsPalette.h"
 #include <string.h>
 
-static constexpr uint32_t kHudCyan = 0x39E7FF;
-static constexpr uint32_t kHudText = 0xD8FFF5;
-static constexpr uint32_t kHudWarn = 0xFFB020;
-static constexpr uint32_t kHudDanger = 0xFF4D4D;
-static constexpr uint32_t kHudPanel = 0x060A0E;
+static constexpr uint32_t kHudCyan = ShowduinoPalette::Accent;
+static constexpr uint32_t kHudText = ShowduinoPalette::Text;
+static constexpr uint32_t kHudWarn = ShowduinoPalette::Warn;
+static constexpr uint32_t kHudDanger = ShowduinoPalette::Danger;
+static constexpr uint32_t kHudPanel = ShowduinoPalette::Panel;
 
 static bool pageUsesDashboardCards(DisplayPageId page) {
   switch (page) {
@@ -159,7 +160,7 @@ void DisplayOverlay::ensureWidgets() {
     progressBar_ = lv_bar_create(parent_);
     lv_bar_set_range(progressBar_, 0, 100);
     lv_bar_set_value(progressBar_, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(progressBar_, lv_color_hex(0x102820), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(progressBar_, lv_color_hex(ShowduinoPalette::AccentDim), LV_PART_MAIN);
     lv_obj_set_style_bg_color(progressBar_, lv_color_hex(kHudCyan), LV_PART_INDICATOR);
     lv_obj_set_style_radius(progressBar_, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(progressBar_, 2, LV_PART_INDICATOR);

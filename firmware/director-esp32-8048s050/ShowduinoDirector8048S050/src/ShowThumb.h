@@ -7,6 +7,7 @@
 #include <esp_heap_caps.h>
 #include "StorageConfig.h"
 #include "FileUtil.h"
+#include "../ShowduinoOsPalette.h"
 
 /**
  * Lightweight show thumbnail helper.
@@ -21,15 +22,15 @@ inline lv_obj_t *makeDefaultIcon(lv_obj_t *parent, int x, int y, int w, int h) {
   lv_obj_remove_style_all(box);
   lv_obj_set_pos(box, x, y);
   lv_obj_set_size(box, w, h);
-  lv_obj_set_style_bg_color(box, lv_color_hex(0x7F1D1D), 0);
+  lv_obj_set_style_bg_color(box, lv_color_hex(ShowduinoPalette::PanelRaised), 0);
   lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_color(box, lv_color_hex(0xEF4444), 0);
-  lv_obj_set_style_border_width(box, 2, 0);
+  lv_obj_set_style_border_color(box, lv_color_hex(ShowduinoPalette::AccentDark), 0);
+  lv_obj_set_style_border_width(box, 1, 0);
   lv_obj_set_style_radius(box, 6, 0);
 
   lv_obj_t *mark = lv_label_create(box);
   lv_label_set_text(mark, "SD");
-  lv_obj_set_style_text_color(mark, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_text_color(mark, lv_color_hex(ShowduinoPalette::Accent), 0);
   lv_obj_center(mark);
   return box;
 }

@@ -88,6 +88,7 @@ See `showduino_message_types.h`. Intent IDs such as `SHOW_START_REQUEST`, `RELAY
 |----------------------|------|
 | `SHOW:START` | → `SHOW_START_REQUEST` |
 | `SHOW:STOP` | → `SHOW_STOP_REQUEST` |
+| `PRODUCTION:LIST` / `LOAD:<id>` / `UNLOAD` / `STATUS` | Persistent P4 production requests |
 | `EMERGENCY:STOP` | → `EMERGENCY_ACTIVATE_REQUEST` |
 | `EMERGENCY:CLEAR` | → `EMERGENCY_CLEAR_REQUEST` |
 | `RELAY:n:ON/OFF` | → `RELAY_SET_REQUEST` |
