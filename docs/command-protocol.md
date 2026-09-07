@@ -2,81 +2,21 @@
 
 Canonical documentation for the shared protocol package under `protocol/`.
 
-**Ownership:** architecture / shared protocol (not a single board firmware).  
 **Constitution:** Show Engine decides · Communications Engine transports · Director commands and displays · Nodes act.
 
-Transport topology (**current, this hardware generation**):
+Current transport topology:
 
 ```text
-Director ESP32-S3  → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
+Director ESP32-S3
+    → ESP-NOW
+Dedicated ESP32-S3 Communications Engine
+    → UART
+ESP32-P4 Show Engine
 ```
 
-The Audio Node is the first production specialist Node (hardware test required). Relay / MOSFET / LED remain future. Application messages still must not use MAC addresses as logical identity.
+Browser commands use the S3-hosted Studio/WebUI and are proxied to the P4. ESP-NOW, UART, Wi-Fi and HTTP are transports; application messages describe intent/state.
 
-ESP-NOW and UART are **transports**. Application messages describe **intent**. MAC addresses must not appear in application-level message meaning.
-
----
-
-## Status legend
-
-| Label | Meaning |
-|-------|---------|
-| **Implemented now** | On the live wire / in shared headers used by active firmware |
-| **Compatibility layer** | Legacy colon-text retained so the stack keeps working |
-| **Planned later** | Catalog / model only — not claimed as live behaviour |
-
----
-
-## Stage 3 authoritative state (implemented now)
-
-See also [`docs/state-synchronisation.md`](state-synchronisation.md).
-
-### Preferred relay requests
-
-```text
-RELAY:<channel>:ON
-RELAY:<channel>:OFF
-```
-
-`RELAY:<channel>:TOGGLE` is **deprecated**. Show Engine rejects it when channel state is `UNKNOWN`.
-
-### Lifecycle (relay)
-
-```text
-ACCEPTED:RELAY:<seq>:<channel>:ON|OFF   → request accepted / forwarded (not completed)
-REJECTED:RELAY:<channel>:<REASON>       → not forwarded
-FAILED:RELAY:<channel>:<REASON>         → pending cleared; last confirmed retained
-STATE:RELAY:<channel>:ON|OFF|UNKNOWN|FAULT  → authoritative display
-```
-
-### Show / emergency / node
-
-```text
-STATE:SHOW:IDLE|PLAYING|EMERGENCY
-STATE:EMERGENCY:ACTIVE|CLEAR
-STATE:NODE:RELAY:ONLINE|OFFLINE|UNKNOWN|FAULT
-```
-
-### Snapshot
-
-```text
-STATUS:REQUEST
-→ SNAPSHOT:BEGIN
-→ STATE:SHOW:…
-→ STATE:EMERGENCY:…
-→ STATE:NODE:RELAY:…
-→ STATE:RELAY:1:… … STATE:RELAY:8:…
-→ SNAPSHOT:END
-```
-
-### Placeholders
-
-```text
-UNSUPPORTED:PIXEL:…
-UNSUPPORTED:AUDIO:…
-NOT_IMPLEMENTED:SHOW:PAUSE…
-NODE_UNAVAILABLE:PIXEL|AUDIO
-```
+The first specialist Node is the Audio Node. Current Node roadmap after Audio is C3 Lantern → C3 Pixel → MOSFET. The old Relay Node direction is superseded. DMX is parked/out of scope.
 
 ---
 
@@ -88,210 +28,384 @@ Defined in `protocol/showduino_protocol_version.h`.
 |--------|------|
 | `SHOWDUINO_PROTOCOL_VERSION_MAJOR` | Breaking wire changes |
 | `SHOWDUINO_PROTOCOL_VERSION_MINOR` | Backward-compatible package additions |
-| `SHOWDUINO_DESK_WIRE_VERSION` | Value in desk packet `version` field (currently `1`) |
+| `SHOWDUINO_DESK_WIRE_VERSION` | Value in desk packet `version` field |
 
 Rules:
 
-* Major mismatch → **reject** the packet.
-* Minor is package metadata for protocol v1; desk wire still carries a single `uint16_t` equal to major (`1`).
-* Unknown major versions must be rejected.
-* Newer minor versions may be accepted only when required fields remain compatible (future).
-* Reserved / unused fields must be zero-initialized.
-* Validate magic, version, and size before using payload data.
-
-Live packet format is protocol **version 1**.
+- major mismatch is rejected;
+- reserved fields are zero-initialised;
+- packet magic/version/size are validated before payload use;
+- the current transport still carries legacy colon-delimited application strings in several places.
 
 ---
 
-## Packets (implemented now — wire compatible)
+## ESP-NOW packets
 
-### Desk packet — Director ↔ Communications Engine (ESP-NOW)
+### Desk packet
 
-Canonical type: `ShowduinoDeskPacket` (alias `ShowduinoEspNowPacket`).
+Director ↔ Communications Engine uses `ShowduinoDeskPacket` / historical alias `ShowduinoEspNowPacket`.
 
-| Offset (typical) | Field | Type | Notes |
-|------------------|-------|------|-------|
-| 0 | `magic` | `uint32_t` | `0x5348444F` (`SHDO`) |
-| 4 | `version` | `uint16_t` | Wire value `1` |
-| 6 | `sequence` | `uint16_t` | Sender sequence |
-| 8 | `sentMillis` | `uint32_t` | `millis()` snapshot |
-| 12 | `command` | `char[96]` | NUL-terminated legacy colon text |
+Typical v1 fields:
 
-* Expected `sizeof` = **108** bytes.
-* Struct is **not packed**; natural alignment (matches ESP32 / typical hosts).
-* Historical name in Director code: `ShowduinoEspNowPacket` (typedef to desk packet).
+```text
+magic       uint32_t
+version     uint16_t
+sequence    uint16_t
+sentMillis  uint32_t
+command     char[96]
+```
 
-### Node packet — Communications Engine ↔ Node (ESP-NOW)
+Expected size is 108 bytes on the current ESP32 toolchain layout.
 
-Canonical type: `ShowduinoNodePacket`.
+### Node packet
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `nodeType` | `char[16]` | Legacy category string, e.g. `RELAY` |
-| `command` | `char[96]` | NUL-terminated legacy colon text |
-| `sequence` | `uint32_t` | Sequence / echo id |
+Communications Engine ↔ specialist Nodes uses `ShowduinoNodePacket`.
 
-* Expected `sizeof` = **116** bytes.
-* **No magic on the wire today** (v1). Node packet magic is **planned** for a future major version.
-* C3 discriminates desk vs node by received length.
+```text
+nodeType    char[16]
+command     char[96]
+sequence    uint32_t
+```
+
+Expected current size is 116 bytes. Stronger framing/node magic remains future protocol work.
 
 ---
 
-## Application message catalog
+## Show control
 
-Defined in `protocol/showduino_message_types.h` as `ShowduinoMessageType`.
+Live compatibility commands include:
 
-Transport-independent intent IDs include (non-exhaustive):
+```text
+SHOW:START
+SHOW:RUN
+SHOW:STOP
+SHOW:PAUSE
+SHOW:RESUME
+SHOW:STATE?
+STATUS:REQUEST
+HEARTBEAT
+HELLO
+```
 
-### System and link
-
-`HELLO`, `HELLO_ACK`, `HEARTBEAT`, `HEARTBEAT_ACK`, `STATUS_REQUEST`, `STATE_SNAPSHOT`, `SYSTEM_WARNING`, `SYSTEM_FAULT`
-
-### Show control
-
-`SHOW_START_REQUEST`, `SHOW_STOP_REQUEST`, `SHOW_PAUSE_REQUEST`, `SHOW_RESUME_REQUEST`, `SHOW_STATE_CHANGED`, `SHOW_POSITION_CHANGED`
-
-### Cue control
-
-`CUE_TRIGGER_REQUEST`, `CUE_TRIGGER_ACCEPTED`, `CUE_TRIGGER_REJECTED`, `CUE_STARTED`, `CUE_COMPLETED`, `CUE_FAILED`
-
-### Node control
-
-`NODE_COMMAND`, `NODE_COMMAND_ACCEPTED` / `REJECTED` / `STARTED` / `COMPLETED` / `FAILED`, `NODE_HEARTBEAT`, `NODE_STATE_CHANGED`, `NODE_UNAVAILABLE`
-
-### Relay control
-
-`RELAY_SET_REQUEST`, `RELAY_STATE_CHANGED`  
-`RELAY_TOGGLE_DEPRECATED` — recognized for compatibility only; **not** the preferred operation.
-
-### Emergency
-
-`EMERGENCY_ACTIVATE_REQUEST`, `EMERGENCY_CLEAR_REQUEST`, `EMERGENCY_STATE_CHANGED`
-
-### Capability / support
-
-`CAPABILITY_QUERY`, `CAPABILITY_REPORT`, `COMMAND_UNSUPPORTED`, `NOT_IMPLEMENTED`
-
-Message identifiers must **not** be named after transports (no `UART_PACKET`, `ESPNOW_COMMAND`, etc.).
-
-**On the wire today:** colon-delimited text (**compatibility layer**). Full structured binary framing of these enums is **planned later**.
+The P4 is authoritative. A Director/Studio request does not become authoritative state until the P4 accepts/applies it.
 
 ---
 
-## Legacy string compatibility (on wire today)
+## Emergency control
 
-Constants: `protocol/showduino_legacy_strings.h`. Mapper: `showduino_legacy_map_command()`.
+Live commands include:
 
-| Legacy string | Catalog meaning |
-|---------------|-----------------|
-| `SHOW:START` | `SHOW_START_REQUEST` |
-| `SHOW:STOP` / `STOP:ALL` | `SHOW_STOP_REQUEST` |
-| `EMERGENCY:STOP` | `EMERGENCY_ACTIVATE_REQUEST` |
-| `EMERGENCY:CLEAR` | `EMERGENCY_CLEAR_REQUEST` |
-| `RELAY:n:ON` / `OFF` | `RELAY_SET_REQUEST` |
-| `RELAY:n:TOGGLE` | `RELAY_TOGGLE_DEPRECATED` (still executed by relay node firmware) |
-| `HELLO` / `HEARTBEAT` | `HELLO` / `HEARTBEAT` |
-| `STATUS:REQUEST` | `STATUS_REQUEST` |
+```text
+EMERGENCY:STOP
+EMERGENCY:CLEAR
+EMERGENCY:CLEAR_CONFIRM
+EMERGENCY:CLEAR_CANCEL
+```
 
-### Legacy transport envelopes (not permanent application vocabulary)
+Emergency state is published as authoritative state, including:
 
-| Token | Role |
-|-------|------|
-| `ROUTE:AUDIO:<seq>:<cmd>` | Show Engine → Comms → Audio Node |
-| `NODE:AUDIO:` | Comms → Show Engine: Audio Node report |
-| `AUDIO:NODE:*` | Programme audio (Audio Node only). PLAY/LOOP/STOP/PAUSE/RESUME/VOLUME/STATUS/TEST plus `STOP:FADE=`, `:FADE=`, `:PRI=`, DUCK, UNDUCK, INVENTORY. Reports: ACCEPTED/STARTED/COMPLETED/FAILED, CAPS, META, INVENTORY. |
-| `AUDIO:NODE:SOUND:*` | Sound-input commissioning. STATUS/ENABLE/DISABLE/CALIBRATE/THRESHOLD/TRIGGER:TEST/COOLDOWN/INHIBIT/MODE. Reports: SOUND:STATUS, SOUND:TRIGGER, SOUND:CALIBRATE. Logical input only — never starts a show. |
-| `AUDIO:LOCAL:*` / `AUDIO:STATUS` / `AUDIO:TEST:*` / `AUDIO:STOP` | P4 system/safety audio (ES8311). `AUDIO:PLAY` attraction paths are rejected. `AUDIO:TEST:SHUTDOWN` is reserved. |
-| `STATE:NODE:AUDIO:` | P4 → Director Audio Node presence |
-| `ACK:` / `ERR:` / `STATUS:` | Legacy reply / status lines |
+```text
+STATE:EMERGENCY:ACTIVE
+STATE:EMERGENCY:CLEAR
+```
+
+Emergency clear does not automatically restart/resume the show.
+
+### Global pixel emergency law
+
+Every pixel-capable output must implement:
+
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+On the P4 this applies to both GPIO23 Show Pixels and GPIO24 emergency/signage pixels. Future C3 Lantern/C3 Pixel and any later pixel-capable Node must follow the same rule.
+
+Normal FX/segment commands are subordinate to this safety state.
 
 ---
 
-## Request lifecycle (model)
+## P4 local pixel commands — implemented commissioning/runtime surface
+
+The local P4 GPIO23 Show Pixel Engine is no longer an `UNSUPPORTED:PIXEL` placeholder.
+
+Current direct commands:
+
+```text
+PIXEL:STATUS
+PIXEL:TEST
+PIXEL:TEST:STOP
+PIXEL:OFF
+PIXEL:BLACKOUT
+PIXEL:SOLID:<r>:<g>:<b>
+PIXEL:BRIGHTNESS:<0-255>
+```
+
+### Segment commands
+
+```text
+PIXEL:SEGMENT:<id>:RANGE:<start>:<count>
+PIXEL:SEGMENT:<id>:FX:<name>
+PIXEL:SEGMENT:<id>:COLOR:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:COLOR2:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:BRIGHTNESS:<0-255>
+PIXEL:SEGMENT:<id>:SPEED:<1-100>
+PIXEL:SEGMENT:<id>:INTENSITY:<0-100>
+PIXEL:SEGMENT:<id>:RANDOMNESS:<0-100>
+PIXEL:SEGMENT:<id>:DURATION:<milliseconds>
+PIXEL:SEGMENT:<id>:REVERSE:<0|1>
+PIXEL:SEGMENT:<id>:START
+PIXEL:SEGMENT:<id>:STOP
+PIXEL:SEGMENT:<id>:STATUS
+```
+
+The current P4 configuration provides up to 16 simultaneous segment slots on the one GPIO23 line.
+
+### Shared 25-FX vocabulary
+
+Canonical enum/names are defined in `protocol/showduino_pixel_fx.h` so the future C3 Pixel Node can use the same language.
+
+```text
+OFF / BLACKOUT
+SOLID
+FADE_IN
+FADE_OUT
+PULSE
+BREATHE
+FLICKER
+CANDLE
+FIRE
+LIGHTNING
+STROBE
+RANDOM_STROBE
+CHASE
+BOUNCE
+COMET
+WIPE
+REVERSE_WIPE
+BUILD
+SPARKLE
+TWINKLE
+GLITCH
+WARNING / WARNING_RED
+PORTAL / PORTAL_GLOW
+RAINBOW
+CUSTOM_SEQUENCE
+```
+
+These commands are **commissioning/runtime control**, not proof that production-format-v1 supports PIXEL timeline cues. Persistent production v1 still accepts TEST/LOG cue types; production PIXEL cue parsing, named segment persistence and logical target resolution remain future integration work.
+
+While emergency is active, normal pixel commands must be rejected/overridden and all pixels remain white.
+
+---
+
+## GPIO24 emergency/signage behavior
+
+GPIO24 is safety-owned; it is not a general show-control lane.
+
+It is organised as 10-pixel emergency-sign groups, up to 100 pixels/10 signs by the current configuration.
+
+Normal frame per sign:
+
+```text
+pixel 0 of group = GREEN
+pixels 1-9       = OFF
+```
+
+Emergency frame per sign:
+
+```text
+all 10 pixels = WHITE
+```
+
+All sign groups are composed before one frame transmission so they visually change together.
+
+---
+
+## Audio commands
+
+### P4 system/safety audio
+
+P4 onboard ES8311 is system/safety audio only.
+
+```text
+AUDIO:STATUS
+AUDIO:TEST:BOOT
+AUDIO:TEST:EMERGENCY
+AUDIO:TEST:BEEP
+AUDIO:TEST:TONE
+AUDIO:TEST:ERROR
+AUDIO:TEST:ACCEPTED
+AUDIO:TEST:COMPLETE
+AUDIO:STOP
+```
+
+Attraction/programme playback is not routed to the P4 speaker.
+
+### Specialist Audio Node
+
+Programme audio uses `AUDIO:NODE:*`, including the currently implemented playback/control family such as:
+
+```text
+AUDIO:NODE:PLAY:<path>
+AUDIO:NODE:LOOP:<path>
+AUDIO:NODE:STOP
+AUDIO:NODE:PAUSE
+AUDIO:NODE:RESUME
+AUDIO:NODE:VOLUME:<0-100>
+AUDIO:NODE:DUCK
+AUDIO:NODE:UNDUCK
+AUDIO:NODE:INVENTORY:...
+AUDIO:NODE:SOUND:...
+```
+
+Transport envelope:
+
+```text
+P4 → ROUTE:AUDIO:<seq>:<cmd> → S3 → Audio Node
+Audio Node → S3 → NODE:AUDIO:<report> → P4
+```
+
+Audio Node acceptance/started/completed/failed reports are distinct lifecycle events. Transmit/route is not completion.
+
+---
+
+## Browser / Studio command path
+
+Canonical static frontend source:
+
+```text
+web/showduino-studio/
+```
+
+Runtime host:
+
+```text
+S3 Communications Engine PROGMEM
+```
+
+Authoritative API/state:
+
+```text
+P4 Show Engine
+```
+
+So a browser pixel request follows:
+
+```text
+Studio control
+→ S3 HTTP/API proxy
+→ UART/Web tunnel
+→ P4 command whitelist/validation
+→ P4 Show Pixel Engine
+```
+
+The S3 must not execute the pixel effect itself.
+
+After frontend source changes the generated S3 asset bundle must be regenerated before flashing the S3:
+
+```text
+python tools/embed-webui/embed_webui.py
+```
+
+Generated target:
+
+```text
+firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h
+```
+
+---
+
+## Request lifecycle model
 
 ```text
 REQUEST_RECEIVED
   → REQUEST_ACCEPTED | REQUEST_REJECTED
   → ACTION_STARTED
   → ACTION_COMPLETED | ACTION_FAILED
-  → STATE_CHANGED   (authoritative; Show Engine)
+  → STATE_CHANGED
 ```
 
 **Acceptance does not imply completion.**
 
-`ShowduinoRequestContext` (`requestId`, `sourceDeviceId`, `targetDeviceId`, `messageType`, `sequence`) exists in the application model for a **future major version**. It is **not** serialized on v1 desk/node ESP-NOW layouts. Logical device-ID routing is **not** implemented yet — do not claim it.
+For P4-local pixels, the P4 owns the physical engine directly. For remote Nodes, completion must come from the Node/result lifecycle rather than an optimistic transport ACK.
 
-Authoritative state comes from the Show Engine (**planned** structured snapshots; today mostly ACK/STATUS text lines).
+---
+
+## Logical IDs
+
+Application-level addressing is intended to use logical Showduino device IDs. Transport may resolve peers through MAC addresses internally, but MAC addresses must not become the meaning of a show cue.
+
+`ShowduinoRequestContext` and message catalog structures exist as foundations for future structured protocol work. Full logical-ID routing is not yet complete end to end.
+
+---
+
+## Legacy Relay compatibility
+
+Relay protocol strings remain in the repository for compatibility/history:
+
+```text
+RELAY:<channel>:ON
+RELAY:<channel>:OFF
+RELAY:<channel>:TOGGLE    deprecated
+```
+
+The Relay Node is **not** the current product roadmap. The future MOSFET Node supersedes it. Do not build new application behavior around Relay-specific assumptions.
+
+---
+
+## Unsupported / parked behavior
+
+`UNSUPPORTED:*` / `NODE_UNAVAILABLE:*` remain valid responses when a requested capability genuinely does not exist.
+
+Do **not** document all `PIXEL:*` as unsupported: P4-local GPIO23 segment commands are implemented.
+
+Distributed C3 Pixel Node routing is not implemented yet.
+
+DMX production work is explicitly parked/out of scope. E1.31 remains an isolated P4 test/observation foundation and must not silently become a production pixel/lighting input.
 
 ---
 
 ## Validation
 
-`protocol/showduino_validation.h` — pure C, no hardware deps.
+`protocol/showduino_validation.h` contains shared validation helpers. New command surfaces must validate ranges and reject malformed/unsupported requests rather than returning false success.
 
-Results include: `VALID`, `INVALID_MAGIC`, `UNSUPPORTED_VERSION`, `INVALID_SIZE`, `PAYLOAD_TOO_LONG`, `PAYLOAD_NOT_TERMINATED`, `EMPTY_PAYLOAD`, `INVALID_MESSAGE`, `INVALID_RELAY_CHANNEL`, `INVALID_RELAY_STATE`, `INVALID_NODE_TYPE`.
-
-Active firmware Stage 2 keeps historical accept/reject behaviour on the live path (force NUL on last byte; silent truncate via `substring` on TX). Shared validators are available for new code and host tests.
+P4 pixel commands are further validated by the P4 pixel engine, including segment bounds/parameter ranges and emergency gating.
 
 ---
 
-## Unsupported / placeholder behaviour
+## Planned later
 
-Catalog meanings exist for `COMMAND_UNSUPPORTED`, `NOT_IMPLEMENTED`, `NODE_UNAVAILABLE`.
+- persistent production `AUDIO` and `PIXEL` cue schemas;
+- named pixel-segment persistence and logical binding;
+- Studio reusable FX preset persistence;
+- end-to-end logical device-ID routing;
+- generic completion-driven state/fault handling for every specialist Node;
+- stronger node framing / future structured binary protocol;
+- C3 Lantern, C3 Pixel, then MOSFET Node protocols as those milestones begin.
 
-**Current runtime (unchanged in Stage 2):** PIXEL/AUDIO `ROUTE:` paths may still receive optimistic `ACK:` replies from the Communications Engine. Converting those to honest failure / unsupported replies is a **later stage** task — changing it now would alter live behaviour.
-
----
-
-## Deprecated commands
-
-| Command | Status |
-|---------|--------|
-| `RELAY:n:TOGGLE` | Deprecated; prefer absolute `ON`/`OFF`. Still parsed/executed by relay node. |
+DMX is deliberately excluded from this roadmap until explicitly unparked.
 
 ---
 
-## Planned later (not implemented)
+## Shared headers / inclusion
 
-* Device-ID routing on the wire  
-* Desk major **and** minor both encoded on wire  
-* Node packet magic / stronger framing  
-* UART CRC framing  
-* Structured `STATE_SNAPSHOT` publication  
-* ACK-driven Director UI (Stage 3+)  
-* Removing live `TOGGLE` behaviour  
-* Binary application framing of the message catalog  
+Single source of truth is repo `protocol/`. Do not fork protocol headers into each firmware tree.
 
----
-
-## Arduino inclusion
-
-Single source of truth: repo `protocol/`.
-
-Active sketches (`firmware/<project>/<Sketch>/`) use:
+Important pixel header:
 
 ```cpp
-#include "../../../protocol/showduino_desk_packet.h"
+#include "../../../protocol/showduino_pixel_fx.h"
 ```
 
-Optional: junction/copy `protocol/` into Arduino `libraries/` using `library.properties` (`ShowduinoProtocol`), then `#include <showduino_desk_packet.h>`.
-
-**Do not** copy headers into each firmware tree.
-
----
-
-## Host tests
-
-```text
-tools/protocol-tests/
-```
-
-See that folder’s README. No ESP32 hardware required.
+Paths vary with sketch depth; keep the repository `protocol/` copy canonical.
 
 ---
 
 ## Related files
 
-* `protocol/README.md` — package overview  
-* `docs/constitution.md` — roles and authority  
-* `docs/architecture.md` — system topology  
+- `protocol/README.md`
+- `protocol/showduino_pixel_fx.h`
+- `docs/state-synchronisation.md`
+- `docs/architecture.md`
+- `docs/audio-node.md`
+- `docs/audio-pixel-engine.md`
+- `docs/studio-pixel-authoring.md`
