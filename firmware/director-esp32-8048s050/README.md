@@ -8,31 +8,64 @@ Role: Showduino Director
 Commands and displays only. Canonical active Director firmware.
 
 ```text
-This touchscreen Director ESP32-S3   (firmware/director-esp32-8048s050/)
-    → ESP-NOW (wireless only; no P4 UART)
-Standalone ESP32-S3 Comms Controller (firmware/s3-comms-controller/)
-    → UART 115200
-Show Engine ESP32-P4                 (firmware/stage-engine-p4/)
+Director ESP32-S3 touchscreen
+    → ESP-NOW
+Dedicated ESP32-S3 Communications Engine
+    → UART 115200 8N1
+P4 Show Engine / Stage Controller
 ```
 
-This board is the operator desk. It is **not** the Comms Controller. The Comms Controller is a separate ESP32-S3 Dev Module with no touchscreen.
+The Director is the operator desk. It is **not** the Communications Engine and it does not host the canonical browser Studio.
 
-This sketch does **not** host or proxy the primary Web UI. USB Serial is for flash/diagnostics only, not the normal show path.
+## Current browser/WebUI split
 
-## Architectural notes
+```text
+Browser / phone / tablet
+    → Wi-Fi SoftAP on dedicated S3 Communications Engine
+    → Showduino Studio static frontend from S3 PROGMEM
+    → S3 API proxy over UART
+    → P4 authoritative Web API/state
+```
 
-- The Show Engine is the single source of truth. Director actions are **requests**.
-- Existing SD show/config helpers under `ShowduinoDirector8048S050/src/` are **temporary implementation details**, not the final authoritative project store.
-- Application policy: absolute relay states (ON/OFF), not distributed `TOGGLE` (firmware may still contain legacy TOGGLE — to be removed in a later stage).
-- Display of successful output state should follow Show Engine confirmation (ACK / state publish); that behaviour is a known follow-up, not claimed complete here.
+The Director does not host/proxy this WebUI. USB Serial is for flash/diagnostics only, not the normal show path.
+
+## Architectural rules
+
+- The P4 Show Engine is the single source of truth.
+- Director actions are **requests**.
+- A running show must not depend on the Director being powered/connected.
+- Existing Director SD helpers are local/temporary implementation details, not the authoritative production store.
+- Successful remote-output display should follow authoritative P4/Node state rather than optimistic transport success.
+- Application addressing is moving toward logical Showduino device IDs; MAC addresses are transport details.
+- Emergency policy is owned by the P4.
+
+## Current pixel/emergency policy relevant to the Director
+
+The Director may display/request pixel state but does not execute FX.
+
+P4 local pixel roles:
+
+```text
+GPIO23  Main Show Pixel Line — segmented FX engine
+GPIO24  emergency/signage line — 10-pixel sign groups
+```
+
+Hard Showduino rule:
+
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+That applies to P4 local lines and all future pixel-capable Nodes. The Director must not expose a control that disables/recolours this safety override. Clearing emergency does not automatically resume the show or old pixel effects.
 
 ## What this firmware includes today
 
-- 800×480 ST7262 RGB + GT911 touch + LVGL 9 UI
-- ESP‑NOW transport to the Communications Engine (`EspNowTransport.h`)
-- Optional UART fallback flags in `BoardConfig.h` (keep off for normal use)
-- Emergency / live control / diagnostics screens
-- SD storage subsystem for UI assets and temporary data
+- 800×480 ST7262 RGB + GT911 touch + LVGL 9 UI;
+- ESP-NOW transport to the dedicated Communications Engine;
+- optional UART fallback/service flags kept off for normal use;
+- emergency/live/diagnostic UI;
+- Nodes and Audio Node pages/controls;
+- SD storage subsystem for Director-local UI assets/temporary data.
+
+The Director is not the current Studio pixel-authoring surface; segment commissioning/authoring belongs in the S3-hosted browser Studio, with P4 as execution authority.
 
 ## Sketch location
 
@@ -40,41 +73,46 @@ This sketch does **not** host or proxy the primary Web UI. USB Serial is for fla
 firmware/director-esp32-8048s050/ShowduinoDirector8048S050/
 ```
 
-Diagnostic sibling (not product firmware):
+Diagnostic sibling:
 
 ```text
 firmware/director-esp32-8048s050/ShowduinoSdTouchTest/
 ```
 
-## Pairing (current implementation)
+## Pairing
 
-1. Flash and run `firmware/s3-comms-controller/` on a **separate** ESP32-S3 Dev Module (not this touchscreen).
-2. Note that board's Wi-Fi MAC from USB Serial at boot (`[COMMS] Wi-Fi MAC: …`).
-3. Set peer MAC in `ShowduinoDirector8048S050/BoardConfig.h` (`SHOWDUINO_COMMS_MAC_*` — ESP-NOW destination of that standalone Comms Controller).
-4. Flash this Director.
-5. Confirm link READY via HELLO / HEARTBEAT.
+1. Flash/run `firmware/s3-comms-controller/` on a separate ESP32-S3 Dev Module.
+2. Note that S3 board's Wi-Fi/ESP-NOW MAC from USB Serial at boot.
+3. Set the Director peer in `ShowduinoDirector8048S050/BoardConfig.h` using `SHOWDUINO_COMMS_MAC_*`.
+4. Flash the Director.
+5. Confirm HELLO/HEARTBEAT/link state.
 
-Logical device IDs (not raw MACs) are the long-term application addressing model; MAC fields remain a transport-layer concern until the ID map lands on the Show Engine / Communications Engine.
+Logical device IDs are the application-level target. MAC values remain transport-layer configuration until end-to-end ID resolution is complete.
 
-## Arduino IDE (Director)
+## Arduino IDE
 
-- Board: ESP32S3 Dev Module  
-- **USB CDC On Boot: Disabled** (required)  
-- USB Mode: USB-OTG (TinyUSB)  
-- Flash: 16MB, QIO 80MHz  
-- **PSRAM: OPI PSRAM** (required)  
-- Serial Monitor: **115200** on the CH340 COM port (the one that prints `ESP-ROM:esp32s3-…`)
+- Board: ESP32S3 Dev Module
+- **USB CDC On Boot: Disabled**
+- USB Mode: USB-OTG (TinyUSB)
+- Flash: 16MB, QIO 80MHz
+- **PSRAM: OPI PSRAM**
+- Serial Monitor: **115200** on the CH340 UART port
 
-This panel’s USB-C serial chip is CH340 on UART0 (GPIO43/44). Native USB CDC uses GPIO19/20, which are the GT911 I2C pins. If CDC is left Enabled, the bootloader still prints on the CH340 port and then the sketch goes silent.
+This panel’s USB-C serial chip is CH340 on UART0 (GPIO43/44). Native USB CDC uses GPIO19/20, which overlap the GT911 I²C pins, so CDC-on-boot must remain disabled for this panel baseline.
 
-Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` (ambient LEDs on GPIO17).
+Libraries include LVGL 9.x, Arduino_GFX_Library, TAMC_GT911 and Adafruit NeoPixel for Director-local ambient LEDs.
 
-## Related active stack
+## Active stack / roadmap
 
-| Role | Path |
-|------|------|
-| Communications Engine | `firmware/s3-comms-controller/` |
-| Show Engine (Stage Controller) | `firmware/stage-engine-p4/` |
-| Relay Node prototype | `firmware/relay-node-esp32/` (experimental / future; not required) |
+| Role | Path / status |
+|------|---------------|
+| Communications Engine | `firmware/s3-comms-controller/` — ACTIVE, including S3-hosted Studio |
+| Show Engine | `firmware/stage-engine-p4/` — ACTIVE |
+| Audio Node | `firmware/audio-node-esp32-a1s/` — implemented firmware / hardware test required |
+| C3 Lantern Node | next specialist Node, work only when explicitly started |
+| C3 Pixel Node | follows Lantern |
+| MOSFET Node | follows C3 Pixel; replaces old Relay Node direction |
+| Relay Node | legacy/superseded reference only |
+| DMX | parked/out of scope |
 
-See `docs/architecture.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).
+See `docs/architecture.md`, `docs/studio-pixel-authoring.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).
