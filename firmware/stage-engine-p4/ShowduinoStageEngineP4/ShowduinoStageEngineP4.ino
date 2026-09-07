@@ -12,6 +12,8 @@
   - Latched EMERGENCY:STOP / EMERGENCY:CLEAR
   - Physical E-stop GPIO (when assigned in BoardConfig.h)
   - Emergency audio loop from SD
+  - Dedicated emergency/signage NeoPixels on GPIO24
+  - Segmented theatrical Show Pixel engine on GPIO23
   - SHOW: timeline runtime (ShowRuntimeOwner)
   - HEARTBEAT response
   - Local USB Serial maintenance console (same command dispatcher as Comms UART)
@@ -25,6 +27,7 @@
 #include "src/ProductionStore.h"
 #include "src/StageAudio.h"
 #include "src/EmergencyPixels.h"
+#include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
@@ -315,16 +318,19 @@ void triggerEmergency(EmergencySource source) {
   showEngineBump(gEngine);
 
   Serial.println("[ESTOP] EMERGENCY ACTIVE");
-  Serial.printf("[ESTOP] source_id=%u pixels=%s audio_wav=%s\n",
+  Serial.printf("[ESTOP] source_id=%u emergency_pixels=%s show_pixels=%s audio_wav=%s\n",
                 (unsigned)gEmergencySourceId,
                 emergencyPixelsReady() ? "ready" : "not-ready",
+                showPixelsReady() ? "ready" : "not-ready",
                 stageAudioStatus().wavPresent ? "present" : "missing");
 
   stageAudioStopShow();
   audioNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
+  /* Hard Showduino rule: every pixel-capable local output goes bright white. */
   emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
   statusLedWrite(HIGH);
   pluginBusOnEmergency();
 
@@ -360,7 +366,10 @@ static void applyEmergencyClear() {
   gEmergencySourceId = 0;
   gEngine.emergency = EmergencyState::Clear;
   showEngineBump(gEngine);
-  emergencyPixelsBlackout();
+
+  /* Signage returns to locator green. Show FX never auto-resume after emergency. */
+  emergencyPixelsSetNormal();
+  showPixelsOnEmergency(false);
   statusLedWrite(LOW);
   /* Latch wire first so Director unlocks before the runtime mirror arrives. */
   sendCommandReply(SHOWDUINO_LEGACY_STATUS_ECLEARED);
@@ -439,9 +448,9 @@ static void handleEmergencyClearCancel() {
 
 void sendCapabilities() {
   sendCommandReply("SHOWDUINO_STAGE_ENGINE");
-  sendCommandReply("FW:0.4.0");
+  sendCommandReply("FW:0.5.0");
   sendCommandReply("DMX:PLANNED");
-  sendCommandReply("PIXELS:PLANNED");
+  sendCommandReply(showPixelsReady() ? "PIXELS:READY" : "PIXELS:FAULT");
   sendCommandReply(showNetworkLive().hasIp ? "ETHERNET:ONLINE" : "ETHERNET:OFFLINE");
   sendCommandReply(String("E131:") + e131RxStateName(e131ReceiverStatus().state));
   sendCommandReply(stageAudioStatus().codecReady ? "AUDIO:READY" : "AUDIO:FAULT");
@@ -479,6 +488,11 @@ static void printLocalConsoleStatus() {
                 audio.currentName,
                 audio.wavPresent ? "present" : "missing",
                 (unsigned)pluginBusInstanceCount());
+  Serial.printf("[CONSOLE] emergencyPixels=%s showPixels=%s showPixelCount=%u showBrightness=%u\n",
+                emergencyPixelsReady() ? "READY" : "FAULT",
+                showPixelsReady() ? "READY" : "FAULT",
+                (unsigned)showPixelsCount(),
+                (unsigned)showPixelsGlobalBrightness());
 }
 
 void sendStatus() {
@@ -550,6 +564,7 @@ static void handleProductionCommand(const String &command) {
     }
     if (gRuntime.handleUnload(now, &gEngine)) {
       gProductionStore.unload();
+      showPixelsBlackout();
       Serial.println("[PRODUCTION] Unloaded");
       sendCommandReply("PRODUCTION:UNLOAD:OK");
     }
@@ -655,6 +670,7 @@ void handleShowCommand(const String &command) {
     name.trim();
     if (!gRuntime.handleLoadName(name.c_str(), now, &gEngine)) return;
     gProductionStore.unload();
+    showPixelsBlackout();
     return;
   }
 
@@ -680,6 +696,7 @@ void handleShowCommand(const String &command) {
     bool stopped = gRuntime.handleStop(now, &gEngine);
     if (!emergencyLocked) {
       stageAudioStopShow();
+      showPixelsBlackout();
     }
     if (stopped) sendCommandReply("SHOW:STOP:OK");
     return;
@@ -756,6 +773,19 @@ static void printUsbHelp() {
   Serial.println("  EMERGENCY:CLEAR            (USB maintenance; loop must be healthy)");
   Serial.println("  EMERGENCY:CLEAR_CONFIRM    (dual-action; requires pending request)");
   Serial.println("  EMERGENCY:CLEAR_CANCEL");
+  Serial.println("  PIXEL:STATUS");
+  Serial.println("  PIXEL:TEST | PIXEL:TEST:STOP");
+  Serial.println("  PIXEL:OFF | PIXEL:BLACKOUT");
+  Serial.println("  PIXEL:SOLID:<r>:<g>:<b>");
+  Serial.println("  PIXEL:BRIGHTNESS:<0-255>");
+  Serial.println("  PIXEL:SEGMENT:<id>:RANGE:<start>:<count>");
+  Serial.println("  PIXEL:SEGMENT:<id>:FX:<name>");
+  Serial.println("  PIXEL:SEGMENT:<id>:COLOR:<r>:<g>:<b>");
+  Serial.println("  PIXEL:SEGMENT:<id>:COLOR2:<r>:<g>:<b>");
+  Serial.println("  PIXEL:SEGMENT:<id>:BRIGHTNESS|SPEED|INTENSITY|RANDOMNESS:<value>");
+  Serial.println("  PIXEL:SEGMENT:<id>:DURATION:<ms>");
+  Serial.println("  PIXEL:SEGMENT:<id>:REVERSE:<0|1>");
+  Serial.println("  PIXEL:SEGMENT:<id>:START | STOP | STATUS");
   Serial.println("  PLUGIN:SCAN");
   Serial.println("  PLUGIN:LIST");
   Serial.println("  PLUGIN:STATUS");
@@ -954,7 +984,12 @@ static void dispatchCommand(const String &command) {
   }
 
   if (command.startsWith("PIXEL:")) {
-    sendCommandReply("UNSUPPORTED:PIXEL");
+    char reply[180];
+    if (showPixelsHandleCommand(command.c_str(), reply, sizeof(reply))) {
+      if (reply[0]) sendCommandReply(reply);
+    } else {
+      sendCommandReply("PIXEL:ERROR:NOT_HANDLED");
+    }
     return;
   }
 
@@ -1033,6 +1068,7 @@ void handleCommand(String command, CommandSource source) {
     const bool localOnly = (command == "HELP" || command == "STATUS:REQUEST" ||
                             command == "HELLO" || command == "HEARTBEAT" ||
                             command.startsWith("TIME:") ||
+                            command.startsWith("PIXEL:") ||
                             command.startsWith("PLUGIN:") ||
                             command.startsWith("NET:") ||
                             command.startsWith("E131:") ||
@@ -1040,9 +1076,9 @@ void handleCommand(String command, CommandSource source) {
                             command.startsWith("CONFIRM:"));
     gRuntime.sendFn = localOnly ? emitConsoleLine : emitRuntimeToUsbAndDirector;
     if (command != "HEARTBEAT") {
-  Serial.printf("[CMD] source=%s command=%s\n",
-                source == CommandSource::LocalUsb ? "USB" : "COMMS",
-                command.c_str());
+      Serial.printf("[CMD] source=%s command=%s\n",
+                    source == CommandSource::LocalUsb ? "USB" : "COMMS",
+                    command.c_str());
     }
   } else {
     if (isCoprocessorBootBanner(command) || commandLooksMalformed(command)) {
@@ -1257,8 +1293,7 @@ void setup() {
   Serial.println("[BOOT] No status LED GPIO — GPIO10 is ES8311 LRCK, left unused");
 #endif
 
-  /* Button before pixels. Adafruit NeoPixel show() could wait forever on P4 RMT
-   * and previously blocked this pin from ever being configured. */
+  /* Button before pixels. A failed pixel driver must never prevent GPIO25 setup. */
 #if SHOWDUINO_ESTOP_GPIO >= 0
   emergencyInputBegin();
 #else
@@ -1266,6 +1301,7 @@ void setup() {
 #endif
 
   emergencyPixelsBegin();
+  showPixelsBegin();
 
   stageStorageSetLinkPump(pumpLocalServices);
   Serial.println("[SD] Mounting SD card...");
@@ -1342,6 +1378,7 @@ void loop() {
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);
+  showPixelsService();
 
   if (emergencyLocked) {
     statusLedWrite((millis() / 250) % 2 == 0 ? HIGH : LOW);
