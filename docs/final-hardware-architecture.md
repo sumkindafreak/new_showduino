@@ -1,6 +1,6 @@
-# Showduino Hardware Architecture (current generation)
+# Showduino Hardware Architecture — current generation
 
-Authoritative hardware topology and Stage Controller pin map for the **Waveshare ESP32-P4-Module-DEV-KIT** generation.
+Authoritative hardware topology and Stage Controller pin/resource baseline for the **Waveshare ESP32-P4-Module-DEV-KIT** generation.
 
 > The Show Engine decides.  
 > The Communications Engine transports.  
@@ -9,37 +9,47 @@ Authoritative hardware topology and Stage Controller pin map for the **Waveshare
 
 ---
 
-## Current architecture (locked)
+## Current architecture
 
 ```text
 Director ESP32-S3
-        |
-        | ESP-NOW
-        v
-Dedicated ESP32-S3 Comms Controller
-        |
-        | UART 115200 8N1, newline-framed ASCII
-        v
-ESP32-P4 Stage Engine
+        │ ESP-NOW
+        ▼
+Dedicated ESP32-S3 Communications Engine
+        │ UART 115200 8N1
+        ▼
+ESP32-P4 Show Engine / Stage Controller
+
+Browser / tablet / laptop
+        │ Wi-Fi
+        ▼
+Same S3 Communications Engine
+        │ serves Showduino Studio from PROGMEM
+        │ proxies API requests over UART
+        ▼
+P4 authoritative API/state
+
+Specialist Node
+        │ ESP-NOW
+        ▼
+S3 Communications Engine
+        │ UART
+        ▼
+P4 Show Engine
 ```
 
-Firmware:
+Current active firmware:
 
 ```text
-firmware/director-esp32-8048s050/          Director
-firmware/s3-comms-controller/              Dedicated S3 communications controller
-firmware/stage-engine-p4/                  Show Engine (P4)
+firmware/director-esp32-8048s050/      Director
+firmware/s3-comms-controller/          Communications Engine + Studio host
+firmware/stage-engine-p4/              Show Engine / Stage Controller
+firmware/audio-node-esp32-a1s/         first specialist Audio Node
 ```
 
-The supported current stack ends at the P4. `firmware/relay-node-esp32/` is retained as **EXPERIMENTAL / FUTURE** source and is not part of this locked product path.
+The P4 runs locally if the S3, Director, browser or Wi-Fi client disappears. GPIO25 emergency handling and P4-local safety outputs remain local to the P4.
 
-The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**.  
-Do not require C6 firmware, ESP-NOW, SDIO, ESP-Hosted, or WebUI on the C6.  
-Do not erase or flash the onboard C6. Its reserved nets stay reserved.
-
-The factory internal P4↔C6 **SDIO** bus is **not** used for Showduino command transport.
-
-The P4 boots and runs locally if the S3 Comms Controller is missing. GPIO25 emergency handling is entirely local to the P4.
+The onboard ESP32-C6 is **unused/reserved hardware**. Do not require, erase or flash it for the current Showduino application path.
 
 ---
 
@@ -47,205 +57,331 @@ The P4 boots and runs locally if the S3 Comms Controller is missing. GPIO25 emer
 
 | Term | Meaning |
 |------|---------|
-| **Show Engine** | Software / processor role: single source of truth |
-| **Stage Controller** | Physical **ESP32-P4** product that runs the Show Engine |
-| **Communications Engine** | Dedicated **ESP32-S3 Dev Module** (ESP-NOW + UART) |
-| **Director** | Physical **ESP32-S3** touchscreen operator desk |
-| ~~Stage Engine~~ | **Retired** term |
-| Onboard ESP32-C6 (Waveshare P4 module) | **UNUSED BY SHOWDUINO / RESERVED HARDWARE** |
-| External SUE / ESP32-C3 SuperMini | **LEGACY / SUPERSEDED** |
+| **Show Engine** | Authoritative software/runtime role |
+| **Stage Controller** | Physical ESP32-P4 product running the Show Engine |
+| **Communications Engine** | Dedicated ESP32-S3 Dev Module |
+| **Director** | ESP32-S3 touchscreen operator desk |
+| **Audio Node** | ESP32-A1S/ES8388 programme-audio specialist |
+| **C3 Lantern Node** | Next planned specialist Node after Audio commissioning |
+| **C3 Pixel Node** | Planned after Lantern |
+| **MOSFET Node** | Planned after C3 Pixel; supersedes Relay Node direction |
+| ~~Stage Engine~~ | Retired role term; may remain in legacy path names |
+| ~~Relay Node as next product~~ | Superseded by MOSFET Node direction |
+
+DMX remains parked/out of scope until explicitly revisited.
 
 ---
 
 ## Current P4 pin map
 
-Confirmed assignments. Do not change these during architecture-lock work.
-
 | P4 GPIO | Function |
 |---------|----------|
-| 4 | Comms UART RX (from S3 TX) |
-| 5 | Comms UART TX (to S3 RX) |
-| 6 | **RESERVED** — onboard C6 control (C6 GPIO2) |
-| 7 | Plug-in Bus SDA + ES8311 I²C (Waveshare I²C header / 40-pin pin 3) |
-| 8 | Plug-in Bus SCL + ES8311 I²C (Waveshare I²C header / 40-pin pin 5) |
-| 9 | ES8311 DSDIN (P4 I2S DOUT) |
-| 10 | ES8311 LRCK / WS — not a status LED |
-| 11 | ES8311 ASDOUT (unused for playback) |
-| 12 | ES8311 SCLK / BCLK |
+| 0-1 | RTC 32.768 kHz crystal path / reserved board function |
+| 4 | Comms UART RX from S3 GPIO17 TX |
+| 5 | Comms UART TX to S3 GPIO18 RX |
+| 6 | **RESERVED** onboard C6 control |
+| 7 | Plug-in Bus SDA + ES8311 I²C SDA |
+| 8 | Plug-in Bus SCL + ES8311 I²C SCL |
+| 9 | ES8311 DSDIN, P4 I2S DOUT |
+| 10 | ES8311 LRCK/WS — **not a status LED** |
+| 11 | ES8311 ASDOUT, unused for playback |
+| 12 | ES8311 BCLK/SCLK |
 | 13 | ES8311 MCLK |
-| 14–19 | **RESERVED** — onboard C6 SDIO |
-| 20–22 | unused (legacy PCM5102A retired) |
-| 53 | NS4150B PA enable (active HIGH) |
-| 23 | TARGET — only planned local Show NeoPixel line (not implemented) |
-| 24 | Emergency NeoPixels |
-| 25 | Physical emergency button (momentary active-LOW, ~30 ms debounce, software latch) |
-| 28–31, 34–35, 49–52 | BOARD Ethernet IP101GRI RMII / SMI (optional show network) |
-| 39–45 | SDMMC Slot 0 (microSD). D0–D3=39–42, CLK=43, CMD=44, POWER=45 |
-| 54 | **RESERVED** — onboard C6 reset / CHIP_PU |
+| 14-19 | **RESERVED** onboard C6 SDIO |
+| 20-22 | unused; legacy PCM5102A path retired |
+| 23 | **CURRENT** P4 Main Show Pixel Line |
+| 24 | **CURRENT** emergency/signage Pixel Line |
+| 25 | physical emergency button, active LOW, software latch |
+| 28-31, 34-35, 49-52 | onboard Ethernet RMII/SMI |
+| 39-45 | onboard SDMMC microSD + power |
+| 53 | NS4150B onboard speaker amplifier enable |
+| 54 | **RESERVED** onboard C6 reset/CHIP_PU |
 
-Source of truth in firmware: `firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h`.
+Firmware source of truth: `firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h`.
 
-### UART wiring (required)
-
-P4 pins stay GPIO4 RX / GPIO5 TX. The S3 uses different GPIOs.
+### Communications UART
 
 ```text
 S3 GPIO17 TX  →  P4 GPIO4 RX
 S3 GPIO18 RX  ←  P4 GPIO5 TX
 GND shared
-115200 8N1, newline-terminated ASCII
+115200 8N1
+newline-framed ASCII
 ```
 
-USB on the S3 is for programming/debug. Do not steal native USB or UART0 for this link.
-
-### Onboard C6 (unused / reserved)
-
-The DEV-KIT onboard C6 and its SDIO/control nets remain reserved hardware. Do not allocate P4 GPIO6, GPIO14–19, or GPIO54. Do not flash the onboard C6 for Showduino.
+S3 USB remains programming/debug. The Director is not normally connected to this UART.
 
 ---
 
-## Internal SDIO (exists, unused)
+## P4 pixel hardware
 
-Internally routed on the Waveshare ESP32-P4-Module. No external SDIO wiring.
+### GPIO23 — Main Show Pixel Line
 
-| Signal | P4 | C6 |
-|--------|----|----|
-| CLK | GPIO18 | GPIO19 |
-| CMD | GPIO19 | GPIO18 |
-| DAT0 | GPIO14 | GPIO20 |
-| DAT1 | GPIO15 | GPIO21 |
-| DAT2 | GPIO16 | GPIO22 |
-| DAT3 | GPIO17 | GPIO23 |
-| Reset | GPIO54 | CHIP_PU |
-| Extra | GPIO6 | C6 GPIO2 |
+GPIO23 is the only local general/theatrical NeoPixel line in this P4 generation.
 
-**Showduino does not currently use this bus.**  
-P4 SDMMC Slot 0 (card on GPIO39–45) and Slot 1 (this C6 bus) can coexist later. Do not move the SD card.
+Current firmware provides:
 
-See [`docs/future-p4-c6-sdio-transport.md`](future-p4-c6-sdio-transport.md).
+- non-blocking segmented rendering;
+- up to 16 live segment slots;
+- simultaneous different FX on different regions;
+- shared 25-FX Showduino vocabulary;
+- direct commissioning/status commands;
+- global emergency-white override.
 
-### ESP-Hosted (not current Director transport)
+Hardware commissioning is still required before claiming the line physically proven on the current enclosure.
 
-[ESP-Hosted-MCU](https://github.com/espressif/esp-hosted-mcu) uses this SDIO link so the P4 can host C6 Wi-Fi/BLE. Official features are STA/SoftAP/BLE — **not ESP-NOW** ([features.md](https://github.com/espressif/esp-hosted-mcu/blob/main/docs/features.md), [EHM-19](https://github.com/espressif/esp-hosted-mcu/issues/19)). Installing Hosted slave firmware would replace the Showduino C6 ESP-NOW bridge. Do not install it on this generation.
+### GPIO24 — Emergency/signage line
 
----
+GPIO24 is safety-owned. Current configuration supports up to 100 pixels in fixed 10-pixel emergency-sign bundles.
 
-## Director (ESP32-S3)
-
-**Firmware:** `firmware/director-esp32-8048s050/`
-
-ESP-NOW only to the dedicated S3 Comms Controller (normal product). Direct Director↔P4 UART is bench/service only and must stay off.
-
-Peer MAC: copy the S3 Comms Controller STA MAC printed at S3 boot into Director `SHOWDUINO_COMMS_MAC_*`.
-
----
-
-## Dedicated S3 communications controller
-
-**Firmware:** `firmware/s3-comms-controller/`
-
-- Receive Director ESP-NOW desk packets
-- Validate Showduino desk packets
-- Forward commands to the P4 over UART
-- Receive newline-framed P4 responses
-- Remember Director MAC; send P4 status back over ESP-NOW
-
-Must not: run the timeline, own show state, host SoftAP/WebUI, initialise BLE, or run ESP-Hosted/custom SDIO.
-
-**FUTURE / RESERVED / NOT IMPLEMENTED:** BLE, Wi-Fi SoftAP/STA, WebUI proxy, OTA.
-
-## Onboard C6 (historical)
-
-**Firmware (not current):** `firmware/p4-c6-espnow-bridge/`
-
-Previous generation used the Waveshare onboard C6 as the Communications Engine. That application path is retired. The physical C6 remains on the module as unused reserved hardware.
-
----
-
-## Stage Controller / Show Engine (ESP32-P4)
-
-**Firmware:** `firmware/stage-engine-p4/`
-
-Owns production loading, show/timeline/cue runtime, SD (`/showduino/` persistent filesystem; WebUI remains Comms S3 PROGMEM), P4 system/safety audio (onboard ES8311), emergency latch, GPIO25, GPIO24 emergency pixels, optional Ethernet / E1.31 test RX, Web API origin, safety. Attraction/programme audio is Audio-Node-only. One local show-pixel line is planned (GPIO23) and is not implemented yet. Extra pixels belong to future Pixel / LED Nodes. SD is the persistent backbone, not the safety backbone.
-
-**Local USB maintenance console:** the P4 USB Serial/debug port (115200 8N1, newline-terminated) is an extra input into the same command dispatcher as the dedicated S3 Communications Engine UART. It does not replace Director → ESP-NOW → dedicated S3 → UART. `EMERGENCY:CLEAR` over USB still cannot bypass GPIO25. See [`firmware/stage-engine-p4/README.md`](../firmware/stage-engine-p4/README.md).
-
-**Plug-in Bus:** 3.3V I²C on GPIO7 (SDA) and GPIO8 (SCL). See [`docs/plugin-bus.md`](plugin-bus.md).
-
----
-
-## Relay-node prototype (experimental / future)
-
-**Firmware:** `firmware/relay-node-esp32/`
-
-The retained prototype is intended to use ESP-NOW to the S3 Comms Controller and UART onward to the P4. It should boot relays OFF and accept absolute ON/OFF/pulse only. Logical-ID routing and completion-driven state/fault handling are not finished, so this is not a supported current product path.
-
-Future node families (audio, pixel, sensor, motor, R3 terminals) still speak ESP-NOW to the Communications Engine.
-
----
-
-## Legacy / previous generation
-
-Not the current P4-module stack:
-
-| Hardware | Classification |
-|----------|----------------|
-| External ESP32-C3 SuperMini (`firmware/c3-supermini-espnow-bridge/`) | LEGACY / SUPERSEDED — previous Communications Engine |
-| Onboard ESP32-C6 (`firmware/p4-c6-espnow-bridge/`) | UNUSED / RESERVED HARDWARE |
-| CYD 2.8″ (`firmware/controller-cyd/`) | Legacy — archive candidate |
-| Arduino Mega executor (`firmware/executor-mega/`) | Legacy — archive candidate |
-| SUE ESP32-S3 node stub (`firmware/sue-esp32s3-node/`) | Incomplete historical node family |
-| Historical CYD/Mega/SUE pin draft (`docs/hardware-pinout.md`) | Pre–P4-module; not this pin map |
-
----
-
-## Power
+Normal per group:
 
 ```text
-5V  — logic boards, many relay modules, pixels, DFPlayers
-12V — props, solenoids, lamps, motors as required
-3.3V — ESP32 logic only
+first pixel  GREEN
+remaining 9  OFF
 ```
 
-Shared GND for signal companions. No 5V into ESP32 GPIO. Nodes boot outputs OFF. Emergency policy is P4-local and must work without the S3 Comms Controller or Director.
-
----
-
-## Minimum demo (this generation)
+Emergency per group:
 
 ```text
-1x ESP32-S3 5" Director           firmware/director-esp32-8048s050/
-1x Waveshare P4-Module-DEV-KIT    P4: firmware/stage-engine-p4/
-1x ESP32-S3 Dev Module            firmware/s3-comms-controller/
-1x UART pair                      S3 GPIO17→P4 GPIO4, S3 GPIO18←P4 GPIO5
-Emergency GPIO25 exercised with S3 unplugged
+all 10 pixels WHITE
 ```
+
+All configured groups are composed into one frame and transmitted together so the designated signs change in sync.
+
+### Global emergency pixel rule
+
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+The rule applies to:
+
+- P4 GPIO23 Main Show Pixels;
+- P4 GPIO24 emergency/signage pixels;
+- future C3 Lantern pixels where fitted;
+- future C3 Pixel Node outputs;
+- every later Showduino pixel-capable output.
+
+No segment, effect, production cue or UI control can defeat this override.
+
+On clear, GPIO24 returns to the green-locator pattern. GPIO23 and future theatrical pixel outputs do not automatically resume interrupted FX.
+
+### Pixel wiring standard
+
+Each P4 pixel DATA line uses its own **470 Ω series resistor**.
+
+Production wiring target:
+
+```text
+P4 GPIO23 → 5 V-capable logic buffer → 470 Ω → Main Pixel DIN
+P4 GPIO24 → 5 V-capable logic buffer → 470 Ω → Emergency Pixel DIN
+```
+
+Use an external 5 V pixel supply sized for the installed load, common P4/pixel ground, and approximately 1000 µF bulk capacitance across 5 V/GND near the beginning of a substantial line.
+
+A direct 3.3 V GPIO → 470 Ω → DIN connection is acceptable as a short bench experiment where it works, but the resistor is **not** a level shifter. Final installations should use a 5 V-capable buffer such as a 74AHCT125/74HCT125-class device.
+
+Power/current design must allow for worst-case **all-white emergency load**.
 
 ---
 
-## Product family naming
+## P4 onboard system/safety audio
+
+The onboard ES8311 + NS4150B path is live for Showduino system/safety audio only.
+
+```text
+I2C address   0x18
+SDA           GPIO7
+SCL           GPIO8
+I2S DOUT      GPIO9
+LRCK/WS       GPIO10
+I2S DIN       GPIO11 (unused for playback)
+BCLK          GPIO12
+MCLK          GPIO13
+PA enable     GPIO53
+```
+
+Attraction/programme audio belongs exclusively to the specialist Audio Node. The old external PCM5102A GPIO20/21/22 path is retired.
+
+---
+
+## P4 SD storage
+
+Onboard microSD uses SDMMC Slot 0:
+
+```text
+D0     GPIO39
+D1     GPIO40
+D2     GPIO41
+D3     GPIO42
+CLK    GPIO43
+CMD    GPIO44
+POWER  GPIO45 active LOW
+```
+
+The P4 SD is persistent production/configuration storage. It is not the safety backbone; boot/emergency/transport must degrade safely if the card is unavailable.
+
+---
+
+## Dedicated S3 Communications Engine
+
+Firmware: `firmware/s3-comms-controller/`
+
+Current responsibilities:
+
+- ESP-NOW transport for Director and Nodes;
+- UART transport to P4;
+- remember/discover transport peers;
+- Wi-Fi SoftAP for browser access;
+- serve the canonical Showduino Studio static frontend from generated PROGMEM;
+- proxy browser API requests to the P4.
+
+It must not:
+
+- run timelines;
+- own production state;
+- execute P4 pixel FX;
+- claim remote action completion without a report;
+- replace P4 authority.
+
+BLE/OTA may remain future. Onboard P4 C6/ESP-Hosted is not part of this path.
+
+### S3 WebUI source vs generated bundle
+
+Canonical frontend source:
+
+```text
+web/showduino-studio/
+```
+
+Generated S3 asset bundle:
+
+```text
+firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h
+```
+
+After frontend source changes, regenerate the bundle with `tools/embed-webui/embed_webui.py` before expecting those changes in the flashed S3 UI.
+
+---
+
+## P4 Show Engine responsibilities
+
+Firmware: `firmware/stage-engine-p4/`
+
+Owns:
+
+- authoritative runtime/show/emergency state;
+- production discovery/loading from P4 SD;
+- RAM timeline execution;
+- P4 Web API/state origin;
+- local ES8311 system/safety audio;
+- GPIO23 segmented Show Pixel Engine;
+- GPIO24 emergency/signage Pixel Engine;
+- GPIO25 emergency input/latch policy;
+- node routing/lifecycle authority;
+- Plug-in Bus;
+- optional Ethernet and isolated E1.31 test receiver.
+
+Persistent production-format v1 currently accepts TEST/LOG timeline cues only. Direct pixel commands exist for commissioning/runtime control, but production `PIXEL` cue parsing/named segment persistence is not yet complete.
+
+---
+
+## Specialist Nodes
+
+### Audio Node — current
+
+Firmware: `firmware/audio-node-esp32-a1s/`
+
+ESP32-A1S/ES8388 with local SD WAV playback. Implemented firmware; hardware commissioning required.
+
+### C3 Lantern Node — next
+
+Next specialist-node milestone after current Audio/P4 pixel commissioning. Do not alter its assembly/code until explicitly requested.
+
+### C3 Pixel Node — after Lantern
+
+Will reuse `protocol/showduino_pixel_fx.h` so P4 and C3 share the same Showduino FX names/parameters and emergency-white rule.
+
+### MOSFET Node — after C3 Pixel
+
+Supersedes the old Relay Node product direction.
+
+### Legacy Relay prototype
+
+`firmware/relay-node-esp32/` remains historical/experimental source only. It is not the next production Node.
+
+---
+
+## Onboard ESP32-C6 — unused/reserved
+
+The Waveshare module contains an ESP32-C6 and internal P4↔C6 SDIO/control nets:
+
+```text
+P4 GPIO14-19  SDIO
+P4 GPIO54     C6 reset/CHIP_PU
+P4 GPIO6      C6 control
+```
+
+These remain reserved. Current Showduino application firmware does not depend on the C6, ESP-Hosted or custom C6 firmware.
+
+---
+
+## Ethernet
+
+Onboard IP101GRI RMII resources remain board-reserved:
+
+```text
+TX_EN   49
+TXD0    34
+TXD1    35
+RXD0    29
+RXD1    30
+CRS_DV  28
+REF_CLK 50
+MDC     31
+MDIO    52
+RESET   51
+```
+
+Ethernet is optional. E1.31 is currently an isolated test/observation receiver only. DMX/E1.31 production output/mapping remains parked.
+
+---
+
+## Minimum current bench system
+
+```text
+1 × P4 Stage Controller
+1 × dedicated S3 Communications Engine
+1 × Director ESP32-S3 touchscreen
+1 × Audio Node for programme-audio commissioning
+1 × GPIO23 NeoPixel bench strip
+1 × GPIO24 emergency/signage test chain as needed
+```
+
+Critical safety tests include emergency operation with Director/browser absent and all pixel outputs forced white.
+
+---
+
+## Product-family direction
 
 ```text
 Showduino Director
-Showduino Stage Controller   (runs Show Engine)
-Showduino Communications Engine  (dedicated ESP32-S3 in this generation)
-Showduino Audio Node               (IMPLEMENTED / HARDWARE TEST REQUIRED)
-Showduino Relay Node 4 / 8         (future)
-Showduino Pixel Node               (future)
-Showduino Prop Node                (future)
+Showduino Stage Controller / Show Engine
+Showduino Communications Engine
+Showduino Audio Node
+Showduino C3 Lantern Node
+Showduino C3 Pixel Node
+Showduino MOSFET Node
 ```
 
-Avoid shipping new materials that say “Stage Engine.”
+DMX is intentionally omitted until explicitly brought back into scope.
 
 ---
 
-## Primary references
+## Related documents
 
-Hardware and Hosted conclusions in this document follow vendor sources, not forum posts:
-
-- Waveshare [ESP32-P4-Module-DEV-KIT](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT) and [Resources](https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT/Resources-And-Documents) (schematic / design files)
-- Waveshare [ESP32-P4-Module](https://www.waveshare.com/wiki/ESP32-P4-Module) (module with onboard C6; factory C6 path is SDIO)
-- [ESP-Hosted-MCU](https://github.com/espressif/esp-hosted-mcu), [SDIO](https://github.com/espressif/esp-hosted-mcu/blob/main/docs/sdio.md), [features](https://github.com/espressif/esp-hosted-mcu/blob/main/docs/features.md), [P4 function EV setup](https://github.com/espressif/esp-hosted-mcu/blob/main/docs/esp32_p4_function_ev_board.md)
-- ESP-NOW over Hosted: [espressif/esp-hosted-mcu#19](https://github.com/espressif/esp-hosted-mcu/issues/19)
-
-Future custom SDIO transport (not implemented): [`docs/future-p4-c6-sdio-transport.md`](future-p4-c6-sdio-transport.md).
+- [`architecture.md`](architecture.md)
+- [`hardware-pinout.md`](hardware-pinout.md)
+- [`audio-pixel-engine.md`](audio-pixel-engine.md)
+- [`studio-pixel-authoring.md`](studio-pixel-authoring.md)
+- [`production-storage.md`](production-storage.md)
+- [`p4-ethernet-e131-test-foundation.md`](p4-ethernet-e131-test-foundation.md)
