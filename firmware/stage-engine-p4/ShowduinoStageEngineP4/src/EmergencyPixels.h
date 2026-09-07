@@ -7,6 +7,7 @@
 #if SHOWDUINO_EMERGENCY_PIXEL_ENABLED
 
 bool emergencyPixelsBegin();
+void emergencyPixelsSetNormal();
 void emergencyPixelsSetWhite();
 void emergencyPixelsBlackout();
 void emergencyPixelsService();
@@ -18,6 +19,7 @@ bool emergencyPixelsWriteRgb(uint8_t r, uint8_t g, uint8_t b);
 #else
 
 inline bool emergencyPixelsBegin() { return false; }
+inline void emergencyPixelsSetNormal() {}
 inline void emergencyPixelsSetWhite() {}
 inline void emergencyPixelsBlackout() {}
 inline void emergencyPixelsService() {}
