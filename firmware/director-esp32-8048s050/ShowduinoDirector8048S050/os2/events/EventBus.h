@@ -7,7 +7,7 @@
 namespace Os2 {
 
 /**
- * Event Bus — Compatibility contract v1 (Api::EventBus).
+ * Event Bus - Compatibility contract v1 (Api::EventBus).
  * Services publish. Apps subscribe. No polling.
  */
 

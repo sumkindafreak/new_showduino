@@ -142,7 +142,7 @@ void DirectorEmergencyScreen::noteClearRejected(uint32_t nowMs) {
   refreshCopy();
   refreshStatus();
   applyPhaseStyles();
-  Serial.println("[E-Stop] CLEAR REJECTED shown — physical E-stop still asserted");
+  Serial.println("[E-Stop] CLEAR REJECTED shown - physical E-stop still asserted");
 }
 
 void DirectorEmergencyScreen::enterClearedHold(uint32_t nowMs) {
@@ -154,7 +154,7 @@ void DirectorEmergencyScreen::enterClearedHold(uint32_t nowMs) {
   refreshCopy();
   refreshStatus();
   applyPhaseStyles();
-  Serial.println("[E-Stop] Stage confirmed CLEAR — holding then leaving screen");
+  Serial.println("[E-Stop] Stage confirmed CLEAR - holding then leaving screen");
 }
 
 void DirectorEmergencyScreen::tick(uint32_t nowMs, uint8_t linkState) {
@@ -480,7 +480,7 @@ void DirectorEmergencyScreen::handleClearClicked() {
   if (lastClearMs_ != 0 && (now - lastClearMs_) < CLEAR_COOLDOWN_MS) return;
 
   noteClearRequested(now);
-  Serial.println("[E-Stop] CLEAR EMERGENCY pressed — requesting Stage");
+  Serial.println("[E-Stop] CLEAR EMERGENCY pressed - requesting Stage");
   if (clearRequestFn_) clearRequestFn_();
 }
 

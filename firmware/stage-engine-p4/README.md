@@ -17,7 +17,7 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 
 > The Show Engine decides.
 
-Owns (target): authoritative show state, timeline/cues, project storage, configuration, safety policy, Web UI / Web API / WebSocket, and node command lifecycle (accept vs complete).
+Owns (target): authoritative show state, timeline/cues, project storage, configuration, safety policy, Web API, and node command lifecycle (accept vs complete). The Communications S3 hosts the static browser WebUI from PROGMEM and proxies API GETs here.
 
 ## Maturity — do not overstate
 
@@ -30,11 +30,17 @@ Current sketch is an authoritative command/runtime hub:
 - Discovers versioned productions under `/showduino/productions/`
 - Validates and transactionally loads persistent TEST/LOG timelines into RAM
 - Runs loaded timelines independently of Director, browser, Wi-Fi, or internet
+- Optional onboard Ethernet (IP101GRI / RMII) with DHCP or static IP
+- Isolated E1.31 / sACN test receiver (Universe 1 default, observation only)
+- Authoritative Audio Node tracker (`AUDIO:NODE:*` → `ROUTE:AUDIO:`, confirmed lifecycle)
+- P4 onboard ES8311 system/safety audio (`AUDIO:STATUS`, `AUDIO:TEST:*`, `AUDIO:STOP`)
 
 It does **not** yet implement broader production assets, physical cue engines,
-logical target routing, DMX, or a complete authoring/project-management system.
+logical target routing, production DMX/E1.31 mapping, or a complete authoring/project-management system.
 
-**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. Static files come from SD `/showduino/webui/`. The current S3 Comms Controller does **not** host SoftAP. Previous-generation C3 Wi-Fi front door is documented as legacy. See `web/showduino-studio/README.md`.
+Ethernet is optional. Missing cable / DHCP / E1.31 must not fail boot or stop a local show.
+
+**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. The Communications S3 is the canonical static host (PROGMEM). P4 static SD serving is compiled out (`SHOWDUINO_P4_STATIC_WEBUI 0`) but the SD serve path is retained behind that flag. See `web/showduino-studio/README.md`.
 
 **Stage Controller SD:** Onboard microSD on **SDMMC Slot 0**, GPIO39–45 (`SHOWDUINO_SD_ENABLED`). Creates `/showduino/...` folders, reports mount status in `/api/system`. Boot continues if the card is missing. Do not move the card onto the internal C6 SDIO pins.
 
@@ -71,13 +77,18 @@ Replace `COMx` with the P4 USB serial port.
 ### SD card layout (FAT32)
 
 ```text
-/showduino/webui/         Studio WebUI (served from SD via P4 HTTP origin)
 /showduino/productions/   Authoritative runtime production folders
-/showduino/shows/packages/
-/showduino/logs/
-/showduino/system/
-...
+/showduino/config/        Versioned persistent settings
+/showduino/audio/system/  P4 system/safety WAV (boot, emergency, beep, tone, error, accepted, complete; shutdown reserved)
+/showduino/logs/          Bounded event logs
+/showduino/diagnostics/   RUN:TEST exports
+/showduino/backups/       Config snapshots
+/showduino/system/        storage-version / last-boot
+/showduino/webui/         Legacy optional copy (canonical UI is S3 PROGMEM)
+/showduino/shows/         Legacy packages
 ```
+
+See [`docs/p4-sd-storage.md`](../../docs/p4-sd-storage.md). SD is the persistent backbone, not the safety backbone. USB: `STORAGE:STATUS`, `STORAGE:LIST`, `STORAGE:CHECK`, `STORAGE:BACKUP`.
 
 SDMMC pins (defaults in `BoardConfig.h`):
 
@@ -94,6 +105,8 @@ P4 GPIO5 TX  ->  S3 GPIO18 RX
 ```
 
 Reserved onboard C6 infrastructure (do not allocate): GPIO6, GPIO14–19, GPIO54. The onboard C6 is unused reserved hardware.
+
+Onboard Ethernet (Waveshare IP101GRI, PHY addr 1): MDC=31 MDIO=52 RST=51 TX_EN=49 TXD=34/35 RXD=29/30 CRS_DV=28 REF_CLK=50. Config: `/showduino/config/network.json`. USB: `NET:STATUS`, `E131:STATUS`, `E131:CHANNELS`.
 
 Authoritative pin map: [`docs/final-hardware-architecture.md`](../../docs/final-hardware-architecture.md).
 
@@ -115,7 +128,7 @@ USB and Comms UART both call the same Stage Engine command dispatcher. Authorita
 
 `HELP` and local `STATUS:REQUEST` replies stay on USB Serial. They are not forwarded to the Director.
 
-`EMERGENCY:CLEAR` from USB uses the **same** GPIO25 assertion check as a Director/comms clear. There is no force-clear. Holding GPIO25 LOW rejects CLEAR. Releasing the button does not clear the latch; a second CLEAR is required. Clearing emergency does not restart the show.
+Physical emergency is a momentary pushbutton from GPIO25 to GND. Released/HIGH is healthy. Pressed/LOW latches emergency. Release does not clear. USB `EMERGENCY:CLEAR` is a bench maintenance path and still refuses a held button. Director clearance is dual-action: a 3 s physical hold sends `EMERGENCY:CLEAR_REQUEST`, then `EMERGENCY:CLEAR_CONFIRM` succeeds only while that request is pending, not timed out, and the button is released again. Clearing emergency does not restart the show.
 
 Implemented console commands:
 
@@ -133,6 +146,14 @@ PRODUCTION:UNLOAD
 PRODUCTION:STATUS
 EMERGENCY:STOP
 EMERGENCY:CLEAR
+STORAGE:STATUS
+STORAGE:LIST
+STORAGE:CHECK
+STORAGE:BACKUP
+AUDIO:STATUS
+AUDIO:TEST:BOOT | EMERGENCY | BEEP | TONE | ERROR | ACCEPTED | COMPLETE
+AUDIO:STOP
+AUDIO:NODE:PLAY:<path>
 ```
 
 Existing debug lines (`[SD]`, `[AUDIO]`, `[COMMS]`, `[WEB]`, `[Runtime]`, `[ESTOP]`) continue on the same Serial port.
@@ -149,7 +170,7 @@ SCL = GPIO8
 
 USB commands: `PLUGIN:SCAN`, `PLUGIN:LIST`, `PLUGIN:STATUS`, `PLUGIN:INFO:<instance|address>`.
 
-Unknown devices are listed, not treated as faults. See [`docs/plugin-bus.md`](../../docs/plugin-bus.md).
+Discovery reports chip identity first. Operational roles come from `/showduino/config/plugin-bus.json` (or the fixed onboard ES8311 role). An SX1509 is `SX1509 - Unconfigured` until that file assigns `DIGITAL_INPUTS`, `DIGITAL_OUTPUTS`, or `DIGITAL_IO`. Unknown devices are listed, not treated as faults. See [`docs/plugin-bus.md`](../../docs/plugin-bus.md).
 
 ## Policy reminders for later firmware work
 

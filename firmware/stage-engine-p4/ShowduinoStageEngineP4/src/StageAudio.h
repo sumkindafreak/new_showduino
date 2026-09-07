@@ -4,20 +4,67 @@
 #include <Arduino.h>
 #include "../BoardConfig.h"
 
-enum class StageAudioMode : uint8_t {
+/*
+ * Showduino P4 Local System Audio.
+ *
+ * P4 onboard ES8311 + NS4150B speaker = system / safety audio ONLY.
+ * Attraction / programme audio is exclusively the specialist Audio Node.
+ * There is no Audio Node → P4 speaker fallback.
+ *
+ * SystemSound::Shutdown is reserved. Do not trigger it in this generation.
+ */
+
+enum class SystemSound : uint8_t {
+  None = 0,
+  Boot,
+  Emergency,
+  Beep,
+  Tone,
+  Error,
+  Accepted,
+  Complete,
+  Shutdown
+};
+
+enum class SystemAudioPlayState : uint8_t {
   Idle = 0,
-  Show,
+  Playing,
+  Emergency,
+  Failed
+};
+
+enum class SystemAudioHealth : uint8_t {
+  Ready = 0,
+  NoSd,
+  CodecFault,
+  I2sFault,
+  FileError,
+  Playing,
   Emergency
 };
 
 struct StageAudioStatus {
+  bool codecDetected = false;
+  bool codecReady = false;
   bool i2sReady = false;
+  bool amplifierEnabled = false;
+  bool storageReady = false;
   bool wavPresent = false;
   bool mp3Present = false;
   bool emergencyPlaying = false;
-  char wavPath[40] = "";
-  char mp3Path[40] = "";
-  char selectedPath[40] = "";
+  bool playbackStarted = false;
+  bool playbackActive = false;
+  bool playbackFailed = false;
+  uint8_t activeAssets = 0;
+  bool shutdownAssetPresent = false;
+  SystemSound current = SystemSound::None;
+  SystemAudioPlayState playState = SystemAudioPlayState::Idle;
+  SystemAudioHealth health = SystemAudioHealth::CodecFault;
+  char currentName[16] = "NONE";
+  char healthName[16] = "CODEC_FAULT";
+  char wavPath[48] = "";
+  char mp3Path[48] = "";
+  char selectedPath[48] = "";
   char lastError[48] = "audio not started";
 };
 
@@ -34,37 +81,41 @@ struct StageWavInfo {
 };
 
 bool stageAudioBegin();
+bool stageAudioInitHardware();
 void stageAudioLoop();
+void stageAudioRequestBoot();
+/* Queue BOOT after a Director desk power-on HELLO. Not for USB HELLO. */
+void stageAudioOnDirectorHello();
 const StageAudioStatus &stageAudioStatus();
 
-/* Stop any non-emergency (show) playback. Safe if nothing is playing. */
-void stageAudioStopShow();
+bool stageAudioPlay(SystemSound sound);
+bool stageAudioPlayTest(SystemSound sound);
+void stageAudioStopNotifications();
+void stageAudioStop();
 
-/*
- * Start looping emergency audio from SD. Stops show audio first.
- * Returns false if the file cannot be opened or I2S is unavailable;
- * the caller must still keep emergency latched.
- */
 bool stageAudioStartEmergency();
-
-/* Stop emergency looping. Does not clear emergency state. */
 void stageAudioStopEmergency();
-
 bool stageAudioIsEmergencyPlaying();
-bool stageAudioIsShowPlaying();
+bool stageAudioIsPlaying();
 
-/*
- * Optional show playback (WAV from SD). Rejected by the caller while
- * emergency is active. Returns false on failure without affecting emergency.
- */
-bool stageAudioStartShow(const char *path);
+const char *systemSoundName(SystemSound sound);
+const char *systemSoundPath(SystemSound sound);
+const char *stageAudioResolvedPath(SystemSound sound);
+void stageAudioRefreshAssets();
+SystemSound systemSoundFromName(const char *name);
+bool systemSoundIsReserved(SystemSound sound);
+bool systemSoundIsActive(SystemSound sound);
 
-/* Inspect a WAV without starting playback or changing emergency state. */
 bool stageAudioInspectWav(const char *path, StageWavInfo *out);
-
 bool stageAudioI2sStarted();
 uint32_t stageAudioI2sBytesWritten();
 uint32_t stageAudioEmergencyLoopCount();
 void stageAudioResetDiagCounters();
+void stageAudioPrintStatus();
+bool stageAudioHandleCommand(const char *command, char *reply, size_t replyLen);
+
+/* Compatibility aliases — these are NOT attraction/show playback. */
+inline void stageAudioStopShow() { stageAudioStopNotifications(); }
+inline bool stageAudioIsShowPlaying() { return stageAudioIsPlaying() && !stageAudioIsEmergencyPlaying(); }
 
 #endif

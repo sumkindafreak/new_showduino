@@ -4,7 +4,8 @@
   Role: communications processor only.
     Director --ESP-NOW--> this S3 --UART 115200 8N1--> ESP32-P4 Stage Engine
 
-  Phase 1: ESP-NOW <-> UART bridge. No BLE, Wi-Fi networking, WebUI, or OTA.
+  ESP-NOW <-> UART bridge, PROGMEM WebUI host, and P4 API proxy.
+  No BLE, OTA, Ethernet, or show authority.
 */
 
 #include <Arduino.h>
@@ -19,6 +20,8 @@
 #include "src/EspNowTransport.h"
 #include "src/ProtocolBridge.h"
 #include "src/CommsConsole.h"
+#include "src/web/CommsWebServer.h"
+#include "src/status/CommsStatusRgb.h"
 
 static void commsLogFlush(const char *line) {
   Serial.println(line);
@@ -31,8 +34,14 @@ void setup() {
    * Still use a decent 5 V supply; unplug P4 UART wires for the first boot. */
   CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG, RTC_CNTL_BROWN_OUT_ENA);
 
+  commsStatusRgbBegin();
+
   Serial.begin(USB_DEBUG_BAUD);
-  delay(800);
+  const uint32_t serialReadyAt = millis() + 800;
+  while ((int32_t)(millis() - serialReadyAt) < 0) {
+    commsStatusRgbLoop();
+    delay(2);
+  }
   Serial.flush();
 
   Serial.println();
@@ -88,6 +97,12 @@ void setup() {
     Serial.println("[COMMS] Copy this MAC into Director BoardConfig.h SHOWDUINO_COMMS_MAC_*");
   }
 
+#if SHOWDUINO_WEBUI_ENABLED
+  commsStatusRgbNoteWebStarting();
+  commsStatusRgbLoop();
+  commsWebBegin();
+#endif
+
   Serial.println("[COMMS] Waiting for Director");
   Serial.println("[COMMS] Waiting for P4");
   Serial.println("[COMMS] Ready");
@@ -98,5 +113,9 @@ void setup() {
 void loop() {
   commsConsoleLoop();
   protocolBridgeLoop();
-  delay(5);
+#if SHOWDUINO_WEBUI_ENABLED
+  commsWebLoop();
+#endif
+  commsStatusRgbLoop();
+  delay(2);
 }

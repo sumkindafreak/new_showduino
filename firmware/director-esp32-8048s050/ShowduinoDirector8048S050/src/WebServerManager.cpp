@@ -71,7 +71,7 @@ static void handleApiSystem() {
   json += "  \"mdnsHost\": \"" SHOWDUINO_WEBUI_MDNS "\",\n";
   json += "  \"apSsid\": \"" SHOWDUINO_WEBUI_AP_SSID "\",\n";
   json += "  \"espnowChannel\": " + String(SHOWDUINO_ESPNOW_CHANNEL) + ",\n";
-  json += "  \"i2sStatus\": \"Deferred — GPIO17/18 reserved for Stage UART\",\n";
+  json += "  \"i2sStatus\": \"Deferred - GPIO17/18 reserved for Stage UART\",\n";
   json += "  \"wifi\": {\n";
   json += "    \"mode\": \"" + String(wifiModeString(wmode)) + "\",\n";
   json += "    \"ssid\": \"" + ShowduinoFileUtil::jsonEscape(ssid) + "\",\n";

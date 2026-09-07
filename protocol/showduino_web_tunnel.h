@@ -11,6 +11,7 @@
  *   WEB/GET/api/system
  *   WEB/GET/api/devices
  *   WEB/GET/api/logs
+ *   WEB/POST/api/command/SHOW:START
  *
  * (Legacy double-slash WEB/GET//api/... is also accepted on P4.)
  *
@@ -18,9 +19,11 @@
  *   WEBR:<status>:<bodyLen>\n
  *   <bodyLen bytes of JSON body — no newlines required>
  *
- * Historical C3 firmware used this tunnel as a Wi-Fi HTTP radio.
- * The dedicated S3 Comms Controller does not host SoftAP in this phase;
- * P4 remains the origin (static files from SD /showduino/webui/ and JSON APIs).
+ * Canonical host: Communications S3 serves PROGMEM static WebUI and proxies
+ * GET /api/system, /api/logs, /api/devices over this UART tunnel.
+ * P4 remains the API origin and must not invent show state on the S3.
+ * One in-flight GET at a time (WebServer.handleClient is serial).
+ * Bodies are length-prefixed (not newline-framed) up to BODY_MAX.
  * Onboard C6 is unused reserved hardware.
  * Response header:
  *   WEBR:<status>:<bodyLen>[:<mime>]

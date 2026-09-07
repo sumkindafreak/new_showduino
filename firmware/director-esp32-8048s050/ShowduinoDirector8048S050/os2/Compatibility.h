@@ -5,7 +5,7 @@
 /**
  * Showduino OS Compatibility Contract
  *
- * Every public interface is an API — even when only used in-tree today.
+ * Every public interface is an API - even when only used in-tree today.
  * Breaking changes require a new major contract version (v2), never a
  * silent reinterpretation of existing methods or fields.
  *
@@ -15,7 +15,7 @@
 namespace Os2 {
 namespace Api {
 
-/* Contract majors — bump only when meaning or required shape changes. */
+/* Contract majors - bump only when meaning or required shape changes. */
 static constexpr uint16_t CommandService       = 1;
 static constexpr uint16_t ShowService          = 1;
 static constexpr uint16_t AssetService         = 1;
@@ -28,7 +28,7 @@ static constexpr uint16_t ThemeEngine          = 1;
 static constexpr uint16_t Shell                = 1;
 static constexpr uint16_t AppContract          = 1;
 
-/** Platform aggregate — clients may refuse mismatched majors. */
+/** Platform aggregate - clients may refuse mismatched majors. */
 struct Compatibility {
   uint16_t commandService;
   uint16_t showService;

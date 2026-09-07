@@ -3,17 +3,12 @@ import { navigate } from '../router.js';
 
 const NAV_ITEMS = [
   { route: '/', label: 'Home', icon: '◉' },
+  { route: '/productions', label: 'Productions', icon: '▦' },
+  { route: '/live', label: 'Live', icon: '▶' },
+  { route: '/outputs', label: 'Outputs', icon: '▣' },
   { route: '/devices', label: 'Devices', icon: '⬡' },
-  { route: '/commands', label: 'Commands', icon: '⇢' },
-  { route: '/capabilities', label: 'Capabilities', icon: '◈' },
-  { route: '/routing', label: 'Routing', icon: '⤳' },
-  { route: '/time', label: 'Time', icon: '◷' },
-  { route: '/shows', label: 'Shows', icon: '▶' },
-  { route: '/scenes', label: 'Scenes', icon: '◫' },
-  { route: '/audio', label: 'Audio', icon: '♪' },
-  { route: '/lighting', label: 'Lighting', icon: '☀' },
   { route: '/network', label: 'Network', icon: '⌁' },
-  { route: '/logs', label: 'Logs', icon: '≡' },
+  { route: '/system', label: 'System', icon: '≡' },
   { route: '/settings', label: 'Settings', icon: '⚙' }
 ];
 

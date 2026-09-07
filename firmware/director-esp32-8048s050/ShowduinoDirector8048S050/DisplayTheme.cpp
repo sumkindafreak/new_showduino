@@ -39,7 +39,7 @@ void DisplayTheme::setTheme(const char *name) {
   strncpy(s_themeName, name, sizeof(s_themeName) - 1);
   s_themeName[sizeof(s_themeName) - 1] = '\0';
   s_themeMetaOk = validateCurrentTheme();
-  Serial.printf("[Theme] set → %s meta_ok=%u\n", s_themeName, (unsigned)s_themeMetaOk);
+  Serial.printf("[Theme] set -> %s meta_ok=%u\n", s_themeName, (unsigned)s_themeMetaOk);
 }
 
 int DisplayTheme::themeMajor() { return s_themeMajor; }
@@ -84,7 +84,7 @@ bool DisplayTheme::parseThemeJson(const char *path) {
   snprintf(wantRes, sizeof(wantRes), "%ux%u", (unsigned)DISPLAY_WIDTH, (unsigned)DISPLAY_HEIGHT);
   char gotRes[24];
   if (!jsonStringValue(body, "resolution", gotRes, sizeof(gotRes))) {
-    Serial.println("[Theme] reject — resolution field missing");
+    Serial.println("[Theme] reject - resolution field missing");
     return false;
   }
   if (strcmp(gotRes, wantRes) != 0) {

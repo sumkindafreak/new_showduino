@@ -33,9 +33,11 @@ It must **not**:
 - Run the show timeline
 - Own authoritative show state
 - Make show-level decisions
-- Host SoftAP / WebUI
+- Invent show / production / emergency / node / output / E1.31 state
 - Own SD, audio, pixels, or the Plug-in Bus
 - Initialise Bluetooth
+
+It **may** host the static browser WebUI from PROGMEM and proxy P4 API GETs.
 
 ## Sketch
 
@@ -76,13 +78,18 @@ S3 GND        --  P4 GND
 ## Phase 1 behaviour
 
 - Receive Director ESP-NOW desk packets (magic `0x5348444F`, version 1, 96-byte command)
+- Receive Audio Node ESP-NOW packets (116-byte node packet, type `AUDIO`) and forward `NODE:AUDIO:` to the P4
+- Forward `ROUTE:AUDIO:<seq>:<cmd>` from the P4 to the Audio Node (transport only)
 - Validate and reject malformed packets
-- Remember Director MAC
+- Remember Director MAC and Audio Node MAC
 - Newline-frame commands to the P4 UART
 - Forward P4 UART lines back to the Director as desk packets
 - Reply `DIAG:PONG` to P4 `DIAG:PING` (local; not forwarded to Director)
-- USB maintenance: `HELP`, `STATUS`, `MAC`, `PING:P4`
+- USB maintenance: `HELP`, `STATUS`, `MAC`, `PING:P4`, `RGB:STATUS`, `RGB:TEST`
+- Onboard WS2812 status RGB on **GPIO48** (DevKitC-1 v1.0). v1.1 boards use GPIO38 — change only `SHOWDUINO_COMMS_RGB_PIN`.
 - `PING:P4` sends `DIAG:PING` and waits for `DIAG:PONG`
+- SoftAP `Showduino` on channel 1 (AP+STA, WPA2) serving PROGMEM WebUI
+- Local `GET /api/comms` plus UART proxy of `GET /api/system|/logs|/devices`
 
 USB does **not** inject arbitrary Stage Engine commands.
 
@@ -108,16 +115,42 @@ GND
 
 Prefer a powered USB hub or the board 5 V pin, not a weak laptop port.
 
+## WebUI (PROGMEM)
+
+Canonical frontend source: `web/showduino-studio/`.
+
+Regenerate flash-resident assets (do not hand-edit `WebAssets.generated.h`):
+
+```text
+python tools/embed-webui/embed_webui.py
+```
+
+or:
+
+```text
+powershell -File tools/embed-webui/embed-webui.ps1
+```
+
+Join Wi-Fi `Showduino` / `showduino` (documented bench WPA2 secret — change before a public venue). Open `http://192.168.4.1/`. SoftAP stays on ESP-NOW channel 1.
+
+If the P4 UART is down the UI still loads and shows **P4 OFFLINE**. S3 does not invent show state.
+
+Navigation: Home, Productions, Live, Outputs, Devices, Network, System, Settings. Page map: `web/showduino-studio/README.md`.
+
 ## FUTURE / RESERVED / NOT IMPLEMENTED
 
-This S3 is the intended future owner of:
+- Bluetooth LE
+- OTA
+- Ethernet / E1.31 (next P4 work; not this firmware)
 
-- Bluetooth LE (mobile commissioning, pairing, local maintenance)
-- Wi-Fi SoftAP / STA
-- WebUI tunnel / proxy
-- OTA / update mechanisms
+Intended later topology:
 
-**None of those are implemented in this firmware.** Do not initialise BLE or Wi-Fi networking here. ESP-NOW uses Wi-Fi STA mode as a radio only.
+```text
+Browser
+  ├─ Wi-Fi → Comms S3 WebUI (this board)
+  └─ future Ethernet path as appropriate
+Comms S3 --UART--> P4 Show Engine --Ethernet--> E1.31 / show network
+```
 
 ## Related
 

@@ -3,11 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Showduino Studio</title>
+  <title>Showduino</title>
   <link rel="stylesheet" href="/css/studio.css">
-  <link rel="stylesheet" href="/css/show-editor.css">
+  <style>
+    #boot {
+      min-height: 100vh;
+      padding: 2rem 1.25rem;
+      background: #0a0a0a;
+      color: #e8e8e8;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    #boot h1 { color: #c41e1e; letter-spacing: 0.08em; margin: 0 0 0.5rem; }
+    #boot p { color: #888; max-width: 36rem; line-height: 1.5; }
+    #boot.hidden { display: none; }
+  </style>
 </head>
 <body>
+  <div id="boot">
+    <h1>SHOWDUINO</h1>
+    <p id="boot-msg">Loading Communications WebUI…</p>
+    <p>Join Wi-Fi <strong>Showduino</strong> from the Comms S3, then open <strong>http://192.168.4.1/</strong>. Do not use Showduino-Studio or a second leftover Showduino AP.</p>
+  </div>
+  <script>
+    window.addEventListener('error', function (ev) {
+      var msg = document.getElementById('boot-msg');
+      if (!msg || document.getElementById('app')) return;
+      var detail = '';
+      if (ev) {
+        if (ev.message) detail = ev.message;
+        var src = ev.filename || (ev.target && (ev.target.src || ev.target.href)) || '';
+        if (src) detail = (detail ? detail + ' — ' : '') + src;
+      }
+      msg.textContent = 'WebUI script failed to load. Hard-refresh this page, or you are on the wrong Showduino Wi-Fi.';
+      if (detail) msg.textContent += ' (' + detail + ')';
+    });
+  </script>
   <script type="module" src="/js/app.js"></script>
 </body>
 </html>

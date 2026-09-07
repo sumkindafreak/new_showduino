@@ -36,7 +36,7 @@ public:
   bool load(DirectorConfig &cfg) {
     setDefaults(cfg);
     if (!ShowduinoFileUtil::recoverAtomicFile(PATH_DIRECTOR_JSON)) {
-      Serial.println("[Config] no director.json — writing defaults");
+      Serial.println("[Config] no director.json - writing defaults");
       return save(cfg);
     }
 
@@ -60,7 +60,7 @@ public:
     cfg.commsLogMode = (CommsLogMode)ShowduinoFileUtil::jsonGetLong(json, "commsLogMode", (long)CommsLogMode::CommandsAndAcks);
     cfg.maxLogAgeDays = (uint16_t)ShowduinoFileUtil::jsonGetLong(json, "maxLogAgeDays", STORAGE_LOG_MAX_AGE_DAYS);
     cfg.maxLogStorageMb = (uint32_t)ShowduinoFileUtil::jsonGetLong(json, "maxLogStorageMb", 100);
-    /* Show-operation preferences — safe defaults if absent (backward-compatible) */
+    /* Show-operation preferences - safe defaults if absent (backward-compatible) */
     cfg.confirmBeforeStart    = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStart",    false);
     cfg.confirmBeforeStop     = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStop",     false);
     cfg.autoOpenLiveAfterLoad = ShowduinoFileUtil::jsonGetBool(json, "autoOpenLiveAfterLoad", false);

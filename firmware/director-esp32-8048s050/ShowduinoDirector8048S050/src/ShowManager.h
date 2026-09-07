@@ -18,7 +18,7 @@ struct ShowIndexEntry {
   char author[48];
   char version[16];
   char modified[32];
-  char path[STORAGE_MAX_PATH_LEN];   /* …/show.json */
+  char path[STORAGE_MAX_PATH_LEN];   /* .../show.json */
   char folder[STORAGE_MAX_PATH_LEN]; /* package folder */
   uint32_t durationSeconds;
   uint16_t cueCount;
@@ -51,7 +51,7 @@ struct ShowValidationResult {
  *   /showduino/shows/packages/<id>/
  *     show.json          (required)
  *     thumbnail.bmp      (optional)
- *     audio/ lighting/ scripts/ timeline/ assets/ …
+ *     audio/ lighting/ scripts/ timeline/ assets/ ...
  */
 class ShowManager {
 public:
@@ -94,7 +94,7 @@ public:
     return true;
   }
 
-  /** Rescan SD packages — source of truth for the library UI. */
+  /** Rescan SD packages - source of truth for the library UI. */
   bool rebuildIndex() {
     count = 0;
     ShowduinoFileUtil::ensureDir(SHOW_PKG_ROOT);
@@ -450,7 +450,7 @@ public:
   const ShowIndexEntry *get(uint8_t i) const { return i < count ? &entries[i] : nullptr; }
   bool hasActiveShow() const { return hasActive; }
   const ShowDefinition &activeShow() const { return active; }
-  /** Alias for Stage 4 “currentShow” wording. */
+  /** Alias for Stage 4 "currentShow" wording. */
   const ShowDefinition &currentShow() const { return active; }
   bool hasCurrentShow() const { return hasActive; }
 

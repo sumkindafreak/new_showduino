@@ -5,7 +5,7 @@
 #include "../BoardConfig.h"
 
 // =========================================================
-// Showduino Director — SD storage paths & limits
+// Showduino Director - SD storage paths & limits
 // Panel is 800x480 (ST7262); asset docs may say 800x400.
 // =========================================================
 

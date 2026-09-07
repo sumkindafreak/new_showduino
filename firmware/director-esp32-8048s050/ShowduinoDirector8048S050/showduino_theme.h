@@ -4,7 +4,7 @@
 #include <lvgl.h>
 
 /**
- * Central Showduino accent colour (LVGL only — never baked into BMPs).
+ * Central Showduino accent colour (LVGL only - never baked into BMPs).
  *
  * Call showduino_theme_set_accent() to match NeoPixel ambience later.
  * Registered objects (tile borders, header accents, footer indicators, icons)
@@ -50,7 +50,7 @@ void showduino_theme_clear_registry(void);
 void showduino_theme_apply(void);
 
 /**
- * Hardware-test helpers — call explicitly only (Serial / debug menu).
+ * Hardware-test helpers - call explicitly only (Serial / debug menu).
  * Named colours: lime, purple, blue, red, amber, green.
  * Returns true if the name was recognised.
  */

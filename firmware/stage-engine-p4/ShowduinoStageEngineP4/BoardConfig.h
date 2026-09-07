@@ -50,6 +50,9 @@
 #ifndef SHOWDUINO_COMMS_LINK_TIMEOUT_MS
 #define SHOWDUINO_COMMS_LINK_TIMEOUT_MS 8000UL
 #endif
+#ifndef SHOWDUINO_DIRECTOR_ABSENCE_MS
+#define SHOWDUINO_DIRECTOR_ABSENCE_MS  12000UL
+#endif
 #ifndef SHOWDUINO_COMMS_CMD_MAX
 #define SHOWDUINO_COMMS_CMD_MAX        240
 #endif
@@ -101,21 +104,39 @@
 
 #define PATH_WEBUI                     "/showduino/webui"
 #define PATH_WEBUI_WWW                 PATH_WEBUI
-#define PATH_EMERGENCY_AUDIO_DIR       "/showduino/audio"
+#define PATH_EMERGENCY_AUDIO_DIR       "/showduino/audio/system"
+#define PATH_AUDIO_SYSTEM              "/showduino/audio/system"
+#ifndef PATH_AUDIO_SYSTEM_LIBRARY
+#define PATH_AUDIO_SYSTEM_LIBRARY      "/showduino/audio/show_machine"
+#endif
 
-// Emergency audio: prefer organised Showduino path, then SD-root copies.
-#define PATH_EMERGENCY_WAV             "/showduino/audio/emergency.wav"
+/*
+ * Canonical P4 system / safety WAV set.
+ * Playback also accepts the same filenames from PATH_AUDIO_SYSTEM_LIBRARY
+ * when the canonical copy is missing or not a valid engine WAV.
+ * shutdown.wav may exist on SD but must not be played in this generation.
+ */
+#define PATH_SYSTEM_BOOT_WAV           PATH_AUDIO_SYSTEM "/boot.wav"
+#define PATH_SYSTEM_EMERGENCY_WAV      PATH_AUDIO_SYSTEM "/emergency.wav"
+#define PATH_SYSTEM_BEEP_WAV           PATH_AUDIO_SYSTEM "/beep.wav"
+#define PATH_SYSTEM_TONE_WAV           PATH_AUDIO_SYSTEM "/tone.wav"
+#define PATH_SYSTEM_ERROR_WAV          PATH_AUDIO_SYSTEM "/error.wav"
+#define PATH_SYSTEM_ACCEPTED_WAV       PATH_AUDIO_SYSTEM "/accepted.wav"
+#define PATH_SYSTEM_COMPLETE_WAV       PATH_AUDIO_SYSTEM "/complete.wav"
+#define PATH_SYSTEM_SHUTDOWN_WAV       PATH_AUDIO_SYSTEM "/shutdown.wav"
+
+/* Compatibility alias — emergency.wav now lives in the system set. */
+#define PATH_EMERGENCY_WAV             PATH_SYSTEM_EMERGENCY_WAV
 #define PATH_EMERGENCY_WAV_ROOT        "/emergency.wav"
 #define PATH_EMERGENCY_MP3             "/showduino/audio/emergency.mp3"
 #define PATH_EMERGENCY_MP3_ROOT        "/emergency.mp3"
 
 /*
- * Physical E-stop: momentary push button, GPIO25 to GND.
- * INPUT_PULLUP: released = HIGH, pressed = LOW. 30 ms debounce.
+ * Physical emergency input: momentary pushbutton, GPIO25 to GND.
+ * INPUT_PULLUP: released = HIGH (healthy), pressed = LOW (emergency).
  * GPIO25 is a trigger input only. The P4 latches emergency in software.
- * Release / second press does not clear. Director EMERGENCY:CLEAR does,
- * including after a physical press, once the button is released (debounced).
- * CLEAR is rejected only while the button is still held LOW.
+ * Release does not clear. Director confirmation clears only after a valid
+ * physical long-hold request, and only once the button is released again.
  */
 #ifndef SHOWDUINO_ESTOP_GPIO
 #define SHOWDUINO_ESTOP_GPIO           25
@@ -128,6 +149,18 @@
 #endif
 #ifndef SHOWDUINO_ESTOP_DEBOUNCE_MS
 #define SHOWDUINO_ESTOP_DEBOUNCE_MS    30UL
+#endif
+#ifndef SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT
+#define SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT 8
+#endif
+#ifndef SHOWDUINO_ESTOP_LOCATE_WINDOW_MS
+#define SHOWDUINO_ESTOP_LOCATE_WINDOW_MS   6000UL
+#endif
+#ifndef SHOWDUINO_ESTOP_CLEAR_HOLD_MS
+#define SHOWDUINO_ESTOP_CLEAR_HOLD_MS      3000UL
+#endif
+#ifndef SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS
+#define SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS 12000UL
 #endif
 
 /*
@@ -143,34 +176,50 @@
 #define SHOWDUINO_EMERGENCY_PIXEL_COUNT      100
 #define SHOWDUINO_EMERGENCY_PIXEL_BRIGHTNESS 255
 
-// -----------------------------------------------------------------------------
-// External PCM5102A — SHOW / PROGRAMME AUDIO
-// -----------------------------------------------------------------------------
-#ifndef P4_AUDIO_I2S_BCLK
+/*
+ * Local pixel baseline:
+ *   GPIO24  CURRENT  dedicated emergency/status NeoPixel line
+ *   GPIO23  TARGET   the only planned general-purpose Show NeoPixel line
+ * Additional strips belong to future Pixel / LED Nodes. Do not add more
+ * local P4 show-pixel outputs in this firmware generation.
+ */
+#ifndef SHOWDUINO_SHOW_PIXEL_PIN
+#define SHOWDUINO_SHOW_PIXEL_PIN             23
+#endif
+#ifndef SHOWDUINO_SHOW_PIXEL_ENABLED
+#define SHOWDUINO_SHOW_PIXEL_ENABLED         0
+#endif
+
+/*
+ * LEGACY PCM5102A (retired live path).
+ * Historical external I2S DAC on GPIO20/21/22. That driver wrote "playing"
+ * while the onboard speaker stayed silent. Do not compile it in.
+ * Attraction / programme audio is the Audio Node, not this P4.
+ */
+#ifndef SHOWDUINO_LEGACY_PCM5102A_AUDIO
+#define SHOWDUINO_LEGACY_PCM5102A_AUDIO  0
+#endif
+#if SHOWDUINO_LEGACY_PCM5102A_AUDIO
 #define P4_AUDIO_I2S_BCLK   21
-#endif
-#ifndef P4_AUDIO_I2S_WS
 #define P4_AUDIO_I2S_WS     20
-#endif
-#ifndef P4_AUDIO_I2S_DOUT
 #define P4_AUDIO_I2S_DOUT   22
 #endif
 
-// Semantic aliases for new code. Keep the older P4_AUDIO_* names above.
-#ifndef P4_SHOW_AUDIO_I2S_BCLK
-#define P4_SHOW_AUDIO_I2S_BCLK P4_AUDIO_I2S_BCLK
-#endif
-#ifndef P4_SHOW_AUDIO_I2S_WS
-#define P4_SHOW_AUDIO_I2S_WS   P4_AUDIO_I2S_WS
-#endif
-#ifndef P4_SHOW_AUDIO_I2S_DOUT
-#define P4_SHOW_AUDIO_I2S_DOUT P4_AUDIO_I2S_DOUT
-#endif
-
 // -----------------------------------------------------------------------------
-// Onboard ES8311 + NS4150B — SHOWDUINO / SYSTEM AUDIO
-// Pin reservations only. Defining them does not enable the codec driver.
-// GPIO7/8 are shared with the Plug-in Bus (onboard ES8311 is typically 0x18).
+// Onboard ES8311 + NS4150B — SHOWDUINO SYSTEM / SAFETY AUDIO (LIVE)
+//
+// Verified against:
+//   Waveshare ESP32-P4-Module-DEV-KIT wiki I2S table
+//   ESP-IDF P4 ES8311 examples (I2S_DO=GPIO9, I2S_DI=GPIO11)
+//   Arduino-ESP32 3.3.11 waveshare_p4_poe_eth pins_arduino.h
+//
+// NOTE: Arduino 3.3.11 waveshare_p4_poe_eth names I2S_DOUT=11 / I2S_DIN=9.
+// Those labels are swapped versus the Waveshare wiki and working ESP-IDF
+// P4 examples. Showduino follows the wiki / ESP-IDF mapping:
+//   MCU I2S DOUT = GPIO9  = ES8311 DSDIN
+//   MCU I2S DIN  = GPIO11 = ES8311 ASDOUT (unused for playback)
+//
+// GPIO7/8 are shared with the Plug-in Bus. ES8311 address is 0x18.
 // -----------------------------------------------------------------------------
 #ifndef P4_SYSTEM_AUDIO_I2C_SDA
 #define P4_SYSTEM_AUDIO_I2C_SDA       7
@@ -199,10 +248,24 @@
 #ifndef P4_SYSTEM_AUDIO_PA_ON_LEVEL
 #define P4_SYSTEM_AUDIO_PA_ON_LEVEL   HIGH
 #endif
+#ifndef P4_ES8311_I2C_ADDR
+#define P4_ES8311_I2C_ADDR            0x18U
+#endif
+
+/* Live P4 audio aliases — onboard ES8311, not the retired PCM5102A. */
+#ifndef P4_AUDIO_I2S_BCLK
+#define P4_AUDIO_I2S_BCLK   P4_SYSTEM_AUDIO_I2S_BCLK
+#endif
+#ifndef P4_AUDIO_I2S_WS
+#define P4_AUDIO_I2S_WS     P4_SYSTEM_AUDIO_I2S_WS
+#endif
+#ifndef P4_AUDIO_I2S_DOUT
+#define P4_AUDIO_I2S_DOUT   P4_SYSTEM_AUDIO_I2S_DOUT
+#endif
 
 /*
- * ESP32-P4 exposes one I2S peripheral. Onboard ES8311 system audio and
- * external PCM5102A show audio must be treated as an arbitrated resource.
+ * ESP32-P4 exposes one I2S peripheral. It is owned by onboard system audio.
+ * The retired PCM5102A path must not run at the same time.
  */
 
 /*
@@ -214,8 +277,8 @@
  * Exposed on the dedicated SH1.0 I²C header and on the 40-pin header
  * (Raspberry Pi-style pin 3 / pin 5). Shared with onboard ES8311 (0x18)
  * and MIPI CSI/DSI touch/control. Board already has 3.3V I²C pull-ups;
- * do not add 5V pull-ups. Showduino show audio remains PCM5102A I2S,
- * not the ES8311.
+ * do not add 5V pull-ups. The onboard ES8311 is Showduino system/safety
+ * audio. Attraction/programme audio is the Audio Node.
  *
  * Default 100 kHz. 3.3V logic only on SDA/SCL.
  */
@@ -241,9 +304,87 @@
 #define PATH_PLUGINS                   "/showduino/plugins"
 #define PATH_PLUGIN_DEVICES            "/showduino/plugins/devices"
 #define PATH_PLUGIN_REGISTRY           "/showduino/plugins/registry.json"
+#define PATH_CONFIG                    "/showduino/config"
+#define PATH_PLUGIN_BUS_CONFIG         "/showduino/config/plugin-bus.json"
+#define PATH_NETWORK_CONFIG            "/showduino/config/network.json"
+#define PATH_SYSTEM_CONFIG             "/showduino/config/system.json"
+#define PATH_E131_CONFIG               "/showduino/config/e131.json"
+#define PATH_PIXELS_CONFIG             "/showduino/config/pixels.json"
+#define PATH_NODES_CONFIG              "/showduino/config/nodes.json"
+#define PATH_DIRECTOR_CONFIG           "/showduino/config/director.json"
+#define PATH_PRODUCTIONS               "/showduino/productions"
+#define PATH_ASSETS                    "/showduino/assets"
+#define PATH_LOGS                      "/showduino/logs"
+#define PATH_BACKUPS                   "/showduino/backups"
+#define PATH_IMPORT                    "/showduino/import"
+#define PATH_EXPORT                    "/showduino/export"
+#define PATH_RECOVERY                  "/showduino/recovery"
+#define PATH_SYSTEM_META               "/showduino/system"
+#define PATH_STORAGE_VERSION           "/showduino/system/storage-version.json"
+#define PATH_LAST_BOOT                 "/showduino/system/last-boot.json"
 
 #define PATH_DIAGNOSTICS               "/showduino/diagnostics"
 #define PATH_DIAG_LAST_TEST            PATH_DIAGNOSTICS "/last-test.txt"
 #define PATH_DIAG_PROBE                "/showduino/.diagnostic_test.tmp"
+
+/*
+ * Internal ESP32-P4 RTC. No DS3231 on this generation.
+ * GPIO0/1 are the board 32.768 kHz crystal path — do not reassign.
+ */
+#ifndef SHOWDUINO_RTC_ENABLED
+#define SHOWDUINO_RTC_ENABLED          1
+#endif
+#ifndef SHOWDUINO_RTC_SYNC_FLOOR
+#define SHOWDUINO_RTC_SYNC_FLOOR       1600000000UL
+#endif
+#ifndef SHOWDUINO_RTC_PUBLISH_MS
+#define SHOWDUINO_RTC_PUBLISH_MS       1000UL
+#endif
+
+/*
+ * Onboard Ethernet — Waveshare ESP32-P4-Module-DEV-KIT
+ * PHY: IP101GRI over RMII. Arduino-ESP32 3.3.11 alias ETH_PHY_TLK110 / ETH_PHY_IP101.
+ * Confirmed from Waveshare wiki + Arduino variant pins_arduino.h
+ * (esp32p4 and waveshare_p4_poe_eth). Generic FQBN esp32p4 already defines these.
+ *
+ *   TX_EN    GPIO49
+ *   TXD0     GPIO34
+ *   TXD1     GPIO35
+ *   RXD0     GPIO29
+ *   RXD1     GPIO30
+ *   CRS_DV   GPIO28
+ *   REF_CLK  GPIO50   50 MHz from PHY, EMAC_CLK_EXT_IN
+ *   MDC      GPIO31
+ *   MDIO     GPIO52
+ *   RESET    GPIO51
+ *   PHY addr 1
+ *
+ * These nets do not collide with current Showduino UART/I2C/I2S/SD/E-stop pins.
+ * Do not reassign them. Internet is not required.
+ */
+/*
+ * No discrete user LED is assigned on this Waveshare board.
+ * GPIO10 is onboard ES8311 I2S LRCK/WS (Waveshare wiki + schematic I2S_LRCK).
+ * The old sketch STATUS_LED_PIN=10 was a stale placeholder and must not drive
+ * that codec net. Do not invent a replacement LED GPIO here.
+ */
+#ifndef SHOWDUINO_STATUS_LED_PIN
+#define SHOWDUINO_STATUS_LED_PIN       -1
+#endif
+
+#ifndef SHOWDUINO_ETH_ENABLED
+#define SHOWDUINO_ETH_ENABLED          1
+#endif
+#define SHOWDUINO_ETH_PHY_ADDR         1
+#define SHOWDUINO_ETH_MDC_PIN          31
+#define SHOWDUINO_ETH_MDIO_PIN         52
+#define SHOWDUINO_ETH_POWER_PIN        51
+#define SHOWDUINO_ETH_TX_EN_PIN        49
+#define SHOWDUINO_ETH_TXD0_PIN         34
+#define SHOWDUINO_ETH_TXD1_PIN         35
+#define SHOWDUINO_ETH_RXD0_PIN         29
+#define SHOWDUINO_ETH_RXD1_PIN         30
+#define SHOWDUINO_ETH_CRS_DV_PIN       28
+#define SHOWDUINO_ETH_REFCLK_PIN       50
 
 #endif /* SHOWDUINO_STAGE_BOARD_CONFIG_H */

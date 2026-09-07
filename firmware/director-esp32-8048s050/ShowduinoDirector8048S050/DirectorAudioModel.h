@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <string.h>
 
-/* Director presentation model — IAN/P4 owns local audio; remote nodes own SD/I2S. */
+/* Director presentation model - IAN/P4 owns local audio; remote nodes own SD/I2S. */
 #ifndef SHOWDUINO_AUDIO_NODE_MAX
 #define SHOWDUINO_AUDIO_NODE_MAX 8
 #endif

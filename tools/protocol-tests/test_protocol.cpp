@@ -169,6 +169,14 @@ int main() {
                 SHOWDUINO_MSG_EMERGENCY_ACTIVATE_REQUEST, "map EMERGENCY:STOP");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR),
                 SHOWDUINO_MSG_EMERGENCY_CLEAR_REQUEST, "map EMERGENCY:CLEAR");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM),
+                SHOWDUINO_MSG_EMERGENCY_CLEAR_REQUEST, "map EMERGENCY:CLEAR_CONFIRM");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST),
+                SHOWDUINO_MSG_EMERGENCY_CLEAR_PENDING, "map EMERGENCY:CLEAR_REQUEST");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL),
+                SHOWDUINO_MSG_EMERGENCY_CLEAR_CANCEL, "map EMERGENCY:CLEAR_CANCEL");
+  expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_DIRECTOR_LOCATE),
+                SHOWDUINO_MSG_DIRECTOR_LOCATE, "map DIRECTOR:LOCATE");
   expect_eq_int(showduino_legacy_map_command("RELAY:1:ON"), SHOWDUINO_MSG_RELAY_SET_REQUEST,
                 "map RELAY:1:ON");
   expect_eq_int(showduino_legacy_map_command("RELAY:1:OFF"), SHOWDUINO_MSG_RELAY_SET_REQUEST,

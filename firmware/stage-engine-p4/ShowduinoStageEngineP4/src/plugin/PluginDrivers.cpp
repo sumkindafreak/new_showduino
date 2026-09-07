@@ -11,7 +11,7 @@ static bool identifyEs8311(const PluginLocation &loc, const PluginDef *) {
 static void emergencyNoOp(PluginInstance &) {}
 
 static void diagEs8311(const PluginInstance &inst) {
-  Serial.printf("[PLUGIN] diagnostic %s — onboard ES8311 (not Showduino show audio)\n",
+  Serial.printf("[PLUGIN] diagnostic %s — onboard ES8311 system/safety audio\n",
                 inst.friendly[0] ? inst.friendly : "es8311");
 }
 

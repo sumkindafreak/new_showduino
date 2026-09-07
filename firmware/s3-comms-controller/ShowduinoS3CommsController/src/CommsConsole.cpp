@@ -2,6 +2,8 @@
 #include "CommsUart.h"
 #include "EspNowTransport.h"
 #include "ProtocolBridge.h"
+#include "web/CommsWebServer.h"
+#include "status/CommsStatusRgb.h"
 #include "../BoardConfig.h"
 
 #ifdef ESP_ARDUINO_VERSION_STR
@@ -11,8 +13,9 @@
 static String sUsb;
 
 static void printHelp() {
-  Serial.println("Commands: HELP  STATUS  MAC  PING:P4");
+  Serial.println("Commands: HELP  STATUS  MAC  PING:P4  RGB:STATUS  RGB:TEST");
   Serial.println("USB does not inject Stage Engine commands.");
+  Serial.println("WebUI SoftAP SSID " SHOWDUINO_WEBUI_AP_SSID "  http://192.168.4.1/");
 }
 
 static void printMacLine() {
@@ -64,6 +67,17 @@ static void printStatus() {
   Serial.printf("Rejected/dropped: ESP-NOW=%lu UART=%lu\n",
                 (unsigned long)espNowTransportRejectedCount(),
                 (unsigned long)commsUartDroppedCount());
+#if SHOWDUINO_WEBUI_ENABLED
+  Serial.printf("WebUI: %s  SSID=%s  IP=%s  radio ch=%u\n",
+                commsWebReady() ? "ready" : "down",
+                commsWebSsid(),
+                commsWebIp(),
+                (unsigned)commsWebRadioChannel());
+#endif
+  Serial.printf("Status RGB: %s %s pin=%u\n",
+                commsStatusRgbStateName(),
+                commsStatusRgbColourName(),
+                (unsigned)commsStatusRgbPin());
 }
 
 static void handleUsbLine(String line) {
@@ -84,6 +98,14 @@ static void handleUsbLine(String line) {
   }
   if (line == "PING:P4") {
     protocolBridgePingP4();
+    return;
+  }
+  if (line == "RGB:STATUS") {
+    commsStatusRgbPrintStatus();
+    return;
+  }
+  if (line == "RGB:TEST") {
+    commsStatusRgbStartTest();
     return;
   }
 

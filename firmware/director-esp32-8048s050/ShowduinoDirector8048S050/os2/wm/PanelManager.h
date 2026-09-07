@@ -7,9 +7,9 @@
 namespace Os2 {
 
 /**
- * Layer 5 — Window Manager (panels, not windows).
+ * Layer 5 - Window Manager (panels, not windows).
  *
- * Dashboard → Lighting slides in → Fixture inspector from right → Back slides away.
+ * Dashboard -> Lighting slides in -> Fixture inspector from right -> Back slides away.
  * Nothing reloads. Nothing flickers. Everything feels alive.
  */
 class PanelManager {

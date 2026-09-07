@@ -17,7 +17,11 @@
 #include "StageAudio.h"
 #include "EmergencyPixels.h"
 #include "WebApiHandler.h"
+#include "StageTime.h"
+#include "network/ShowNetwork.h"
+#include "e131/E131Receiver.h"
 #include "plugin/PluginBus.h"
+#include "storage/StageStore.h"
 
 extern bool emergencyLocked;
 extern uint8_t gEmergencySourceId;
@@ -52,6 +56,8 @@ enum class Step : uint8_t {
   ClockStart,
   ClockWait,
   WebUi,
+  Ethernet,
+  E131,
   Memory,
   ConfirmPrompt,
   ConfirmWait,
@@ -80,6 +86,8 @@ enum class Row : uint8_t {
   CommandParser,
   Runtime,
   SystemClock,
+  Ethernet,
+  E131,
   Count
 };
 
@@ -92,7 +100,7 @@ static const char *const kRowName[] = {
   "FILESYSTEM",
   "WEBUI",
   "EMERGENCY WAV",
-  "I2S AUDIO",
+  "P4 SYSTEM AUDIO",
   "AUDIO PHYSICAL",
   "EMERGENCY PIXELS",
   "PIXELS PHYSICAL",
@@ -104,7 +112,9 @@ static const char *const kRowName[] = {
   "DIRECTOR LINK",
   "COMMAND PARSER",
   "RUNTIME",
-  "SYSTEM CLOCK"
+  "SYSTEM CLOCK",
+  "ETHERNET",
+  "E1.31 TEST"
 };
 
 static const uint32_t kPixelStepMs = 280;
@@ -366,6 +376,13 @@ static void writeLastReport(const char *body) {
   f.print(body);
   f.close();
   Serial.println("[TEST] Wrote /showduino/diagnostics/last-test.txt");
+  char stamp[24];
+  stageStoreSessionStamp(stamp, sizeof(stamp));
+  char name[48];
+  snprintf(name, sizeof(name), "run-test-%s.txt", stamp);
+  if (stageStoreWriteDiagnostics(name, body)) {
+    Serial.printf("[TEST] Wrote /showduino/diagnostics/%s\n", name);
+  }
 }
 
 static char sReport[2048];
@@ -506,8 +523,12 @@ static void runPins() {
   Serial.printf("[02] Comms UART  RX=%d TX=%d baud=%u\n",
                 SHOWDUINO_COMMS_UART_RX_PIN, SHOWDUINO_COMMS_UART_TX_PIN,
                 (unsigned)SHOWDUINO_COMMS_UART_BAUD);
-  Serial.printf("[02] Audio    WS=%d BCLK=%d DATA=%d\n",
-                P4_AUDIO_I2S_WS, P4_AUDIO_I2S_BCLK, P4_AUDIO_I2S_DOUT);
+  Serial.printf("[02] ES8311   MCLK=%d BCLK=%d WS=%d DOUT=%d PA=%d I2C=0x%02X\n",
+                P4_SYSTEM_AUDIO_I2S_MCLK, P4_SYSTEM_AUDIO_I2S_BCLK,
+                P4_SYSTEM_AUDIO_I2S_WS, P4_SYSTEM_AUDIO_I2S_DOUT,
+                P4_SYSTEM_AUDIO_PA_ENABLE, P4_ES8311_I2C_ADDR);
+  Serial.println("[02] GPIO10 is ES8311 LRCK — not a status LED");
+  Serial.println("[02] LEGACY PCM5102A GPIO20/21/22 is not a live path");
   Serial.printf("[02] Emergency pixels=%d button=%d\n",
                 SHOWDUINO_EMERGENCY_PIXEL_PIN, SHOWDUINO_ESTOP_GPIO);
   Serial.printf("[02] SDMMC    D0=%d D1=%d D2=%d D3=%d CLK=%d CMD=%d PWR=%d\n",
@@ -515,13 +536,21 @@ static void runPins() {
                 SHOWDUINO_SD_D3_PIN, SHOWDUINO_SD_CLK_PIN, SHOWDUINO_SD_CMD_PIN,
                 SHOWDUINO_SD_POWER_PIN);
   Serial.println("[02] Reserved C6/SDIO GPIO6, GPIO14-19, GPIO54 (not wiggled)");
+  Serial.printf("[02] Ethernet IP101GRI MDC=%d MDIO=%d RST=%d TXEN=%d CLK=%d\n",
+                SHOWDUINO_ETH_MDC_PIN, SHOWDUINO_ETH_MDIO_PIN, SHOWDUINO_ETH_POWER_PIN,
+                SHOWDUINO_ETH_TX_EN_PIN, SHOWDUINO_ETH_REFCLK_PIN);
+  Serial.printf("[02] Show pixel planned GPIO%d (not enabled). Emergency pixels GPIO%d\n",
+                SHOWDUINO_SHOW_PIXEL_PIN, SHOWDUINO_EMERGENCY_PIXEL_PIN);
 
   const int used[] = {
     SHOWDUINO_COMMS_UART_RX_PIN,
     SHOWDUINO_COMMS_UART_TX_PIN,
-    P4_AUDIO_I2S_WS,
-    P4_AUDIO_I2S_BCLK,
-    P4_AUDIO_I2S_DOUT,
+    P4_SYSTEM_AUDIO_I2S_MCLK,
+    P4_SYSTEM_AUDIO_I2S_BCLK,
+    P4_SYSTEM_AUDIO_I2S_WS,
+    P4_SYSTEM_AUDIO_I2S_DOUT,
+    P4_SYSTEM_AUDIO_I2S_DIN,
+    P4_SYSTEM_AUDIO_PA_ENABLE,
     SHOWDUINO_EMERGENCY_PIXEL_PIN,
     SHOWDUINO_ESTOP_GPIO,
     SHOWDUINO_SD_D0_PIN,
@@ -533,12 +562,23 @@ static void runPins() {
     SHOWDUINO_SD_POWER_PIN,
     SHOWDUINO_PLUGIN_BUS_SDA_PIN,
     SHOWDUINO_PLUGIN_BUS_SCL_PIN,
-    10 /* STATUS_LED_PIN in sketch */
+    SHOWDUINO_ETH_MDC_PIN,
+    SHOWDUINO_ETH_MDIO_PIN,
+    SHOWDUINO_ETH_POWER_PIN,
+    SHOWDUINO_ETH_TX_EN_PIN,
+    SHOWDUINO_ETH_TXD0_PIN,
+    SHOWDUINO_ETH_TXD1_PIN,
+    SHOWDUINO_ETH_RXD0_PIN,
+    SHOWDUINO_ETH_RXD1_PIN,
+    SHOWDUINO_ETH_CRS_DV_PIN,
+    SHOWDUINO_ETH_REFCLK_PIN
   };
   const char *names[] = {
-    "COMMS_RX", "COMMS_TX", "I2S_WS", "I2S_BCLK", "I2S_DOUT",
+    "COMMS_RX", "COMMS_TX", "I2S_MCLK", "I2S_BCLK", "I2S_WS", "I2S_DOUT", "I2S_DIN", "PA_EN",
     "PIX", "ESTOP", "SD_D0", "SD_D1", "SD_D2", "SD_D3",
-    "SD_CLK", "SD_CMD", "SD_PWR", "I2C_SDA", "I2C_SCL", "LED"
+    "SD_CLK", "SD_CMD", "SD_PWR", "I2C_SDA", "I2C_SCL",
+    "ETH_MDC", "ETH_MDIO", "ETH_RST", "ETH_TXEN", "ETH_TX0",
+    "ETH_TX1", "ETH_RX0", "ETH_RX1", "ETH_CRS", "ETH_CLK"
   };
   const int n = (int)(sizeof(used) / sizeof(used[0]));
   bool dup = false;
@@ -569,6 +609,13 @@ static void runPins() {
   } else {
     printItem("02.2", "Reserved C6/SDIO pins unused", Result::Pass, nullptr, Row::PinConfig);
   }
+  if (SHOWDUINO_STATUS_LED_PIN == 10) {
+    printItem("02.2b", "GPIO10 not status LED", Result::Fail,
+              "GPIO10 is ES8311 LRCK", Row::PinConfig);
+  } else {
+    printItem("02.2b", "GPIO10 not status LED", Result::Pass,
+              "ES8311 LRCK left for codec", Row::PinConfig);
+  }
 
   PluginBusSelfTest pst;
   pluginBusCaptureSelfTest(&pst);
@@ -580,6 +627,16 @@ static void runPins() {
              SHOWDUINO_PLUGIN_BUS_SDA_PIN, SHOWDUINO_PLUGIN_BUS_SCL_PIN,
              (unsigned)pst.devicesFound);
     printItem("02.3", "Plugin bus I2C", Result::Pass, pnote, Row::PinConfig);
+  }
+  for (uint8_t i = 0; i < pluginBusInstanceCount(); i++) {
+    const PluginInstance *inst = pluginBusInstanceAt(i);
+    if (!inst) continue;
+    char note[72];
+    snprintf(note, sizeof(note), "%s %s %s",
+             inst->friendly[0] ? inst->friendly : "Unknown I2C Device",
+             pluginClassificationName(inst->classification),
+             pluginStatusName(inst->status));
+    printItem("02.4", "Plug-in device", Result::Pass, note, Row::PinConfig);
   }
 }
 
@@ -675,12 +732,20 @@ static void runFs() {
   const Check checks[] = {
     { "04.1", "/showduino/", "/showduino", true, false },
     { "04.2", "/showduino/audio/", "/showduino/audio", true, false },
-    { "04.3", "/showduino/webui/", PATH_WEBUI, true, false },
-    { "04.4", "WebUI index", PATH_WEBUI "/index.html", true, true },
-    { "04.5", "Emergency WAV", PATH_EMERGENCY_WAV, true, true },
-    { "04.6", "/showduino/shows/", "/showduino/shows", false, false },
+    { "04.3", "/showduino/webui/", PATH_WEBUI, false, false },
+    { "04.4", "WebUI index (legacy)", PATH_WEBUI "/index.html", false, true },
+    { "04.5", "/showduino/audio/system/", PATH_AUDIO_SYSTEM, false, false },
+    { "04.5b", "/showduino/audio/show_machine/", PATH_AUDIO_SYSTEM_LIBRARY, false, false },
+    { "04.6", "/showduino/shows/ (legacy)", "/showduino/shows", false, false },
     { "04.7", "/showduino/plugins/", PATH_PLUGINS, false, false },
-    { "04.8", "/showduino/diagnostics/", PATH_DIAGNOSTICS, false, false }
+    { "04.8", "/showduino/diagnostics/", PATH_DIAGNOSTICS, false, false },
+    { "04.9", "/showduino/config/", PATH_CONFIG, false, false },
+    { "04.10", "/showduino/productions/", PATH_PRODUCTIONS, false, false },
+    { "04.11", "/showduino/logs/", PATH_LOGS, false, false },
+    { "04.12", "/showduino/backups/", PATH_BACKUPS, false, false },
+    { "04.13", "/showduino/system/", PATH_SYSTEM_META, false, false },
+    { "04.14", "/showduino/export/", PATH_EXPORT, false, false },
+    { "04.15", "/showduino/recovery/", PATH_RECOVERY, false, false }
   };
 
   if (!stageStorageIsReady()) {
@@ -704,12 +769,26 @@ static void runFs() {
   }
 }
 
-static void runWav() {
-  strncpy(sCurrent, "EMERGENCY WAV", sizeof(sCurrent) - 1);
-  Serial.println("[05] EMERGENCY WAV VALIDATION");
+static void checkSystemWav(const char *id, const char *label, SystemSound sound,
+                           bool reserved) {
+  if (!stageStorageIsReady()) {
+    printItem(id, label, Result::Skip, "SD not mounted", reserved ? Row::Filesystem : Row::EmergencyWav);
+    return;
+  }
+  const char *path = stageAudioResolvedPath(sound);
+  if (!path || !path[0]) {
+    printItem(id, label, reserved ? Result::Skip : Result::Warn,
+              reserved ? "absent (reserved unused)" : "missing (optional asset)",
+              reserved ? Row::Filesystem : Row::EmergencyWav);
+    return;
+  }
+  if (reserved) {
+    printItem(id, label, Result::Skip, "present (reserved unused)", Row::Filesystem);
+    return;
+  }
   StageWavInfo info;
-  if (!stageAudioInspectWav(PATH_EMERGENCY_WAV, &info)) {
-    printItem("05.1", "RIFF/WAVE parse", Result::Fail, info.error, Row::EmergencyWav);
+  if (!stageAudioInspectWav(path, &info)) {
+    printItem(id, label, Result::Fail, info.error, Row::EmergencyWav);
     return;
   }
   char note[56];
@@ -717,46 +796,79 @@ static void runWav() {
            (unsigned)info.bits,
            info.channels == 1 ? "mono" : "stereo",
            (unsigned long)info.sampleRate);
-  printItem("05.1", "RIFF/WAVE PCM", Result::Pass, note, Row::EmergencyWav);
+  printItem(id, label, info.engineSupported ? Result::Pass : Result::Fail, note,
+            Row::EmergencyWav);
+}
 
-  if (!info.engineSupported) {
-    printItem("05.2", "Engine format", Result::Fail,
-              "I2S requires 16-bit PCM mono/stereo", Row::EmergencyWav);
-  } else {
-    printItem("05.2", "Engine format", Result::Pass, "16-bit PCM supported", Row::EmergencyWav);
-  }
-
-  snprintf(note, sizeof(note), "%lu bytes", (unsigned long)info.dataBytes);
-  if (info.dataBytes == 0) {
-    printItem("05.3", "Data chunk", Result::Fail, "empty", Row::EmergencyWav);
-  } else if (!info.dataNonZero) {
-    printItem("05.3", "Data chunk", Result::Warn, "present but silent sample", Row::EmergencyWav);
-  } else {
-    printItem("05.3", "Data chunk", Result::Pass, note, Row::EmergencyWav);
-  }
+static void runWav() {
+  strncpy(sCurrent, "SYSTEM WAV", sizeof(sCurrent) - 1);
+  Serial.println("[05] P4 SYSTEM AUDIO ASSETS");
+  Serial.println("[05] PCM 16-bit mono/stereo 32 / 44.1 / 48 kHz");
+  Serial.println("[05] Search /showduino/audio/system then /showduino/audio/show_machine");
+  stageAudioRefreshAssets();
+  checkSystemWav("05.1", "boot.wav", SystemSound::Boot, false);
+  checkSystemWav("05.2", "emergency.wav", SystemSound::Emergency, false);
+  checkSystemWav("05.3", "beep.wav", SystemSound::Beep, false);
+  checkSystemWav("05.4", "tone.wav", SystemSound::Tone, false);
+  checkSystemWav("05.5", "error.wav", SystemSound::Error, false);
+  checkSystemWav("05.6", "accepted.wav", SystemSound::Accepted, false);
+  checkSystemWav("05.7", "complete.wav", SystemSound::Complete, false);
+  checkSystemWav("05.8", "shutdown.wav", SystemSound::Shutdown, true);
 }
 
 static void runAudioStart() {
-  strncpy(sCurrent, "I2S AUDIO", sizeof(sCurrent) - 1);
-  Serial.println("[06] PCM5102A / I2S");
-  Serial.printf("[06] Pins WS=%d BCLK=%d DATA=%d\n",
-                P4_AUDIO_I2S_WS, P4_AUDIO_I2S_BCLK, P4_AUDIO_I2S_DOUT);
+  strncpy(sCurrent, "P4 SYSTEM AUDIO", sizeof(sCurrent) - 1);
+  Serial.println("[06] P4 SYSTEM AUDIO / ES8311");
+  Serial.printf("[06] MCLK=%d BCLK=%d WS=%d DOUT=%d PA=%d ADDR=0x%02X\n",
+                P4_SYSTEM_AUDIO_I2S_MCLK, P4_SYSTEM_AUDIO_I2S_BCLK,
+                P4_SYSTEM_AUDIO_I2S_WS, P4_SYSTEM_AUDIO_I2S_DOUT,
+                P4_SYSTEM_AUDIO_PA_ENABLE, P4_ES8311_I2C_ADDR);
+
+  const StageAudioStatus &au = stageAudioStatus();
+  printItem("06.1", "ES8311 detected",
+            au.codecDetected ? Result::Pass : Result::Fail,
+            au.codecDetected ? "I2C 0x18 ACK" : "no ACK on 0x18",
+            Row::I2sAudio);
+  printItem("06.2", "Codec initialization",
+            au.codecReady ? Result::Pass : Result::Fail,
+            au.codecReady ? "ES8311 READY" : au.lastError,
+            Row::I2sAudio);
+  printItem("06.3", "I2S initialization",
+            (au.i2sReady || stageAudioI2sStarted() || au.codecReady) ? Result::Pass : Result::Fail,
+            au.codecReady ? "P4 I2S master + MCLK" : "I2S not armed",
+            Row::I2sAudio);
+  printItem("06.4", "NS4150B PA GPIO53",
+            P4_SYSTEM_AUDIO_PA_ENABLE == 53 ? Result::Pass : Result::Fail,
+            au.amplifierEnabled ? "ENABLED" : "configured, idle-off",
+            Row::I2sAudio);
 
   if (sReadOnly || emergencyLocked) {
-    printItem("06.1", "I2S playback", Result::Skip, "not safe in this state", Row::I2sAudio);
+    printItem("06.5", "System WAV exercise", Result::Skip, "not safe in this state", Row::I2sAudio);
     sStep = Step::PixelStart;
     return;
   }
-  if (!pathIsFile(PATH_EMERGENCY_WAV)) {
-    printItem("06.1", "I2S playback", Result::Skip, "no WAV to exercise I2S", Row::I2sAudio);
+  if (!au.codecReady) {
+    printItem("06.5", "System WAV exercise", Result::Skip, "codec not ready", Row::I2sAudio);
+    sStep = Step::PixelStart;
+    return;
+  }
+
+  SystemSound probe = SystemSound::None;
+  stageAudioRefreshAssets();
+  if (stageAudioResolvedPath(SystemSound::Beep)[0]) probe = SystemSound::Beep;
+  else if (stageAudioResolvedPath(SystemSound::Boot)[0]) probe = SystemSound::Boot;
+  else if (stageAudioResolvedPath(SystemSound::Tone)[0]) probe = SystemSound::Tone;
+  if (probe == SystemSound::None) {
+    printItem("06.5", "System WAV exercise", Result::Warn, "no optional WAV to play", Row::I2sAudio);
     sStep = Step::PixelStart;
     return;
   }
 
   stageAudioResetDiagCounters();
-  Serial.println("[AUDIO TEST] Playing test audio...");
-  if (!stageAudioStartShow(PATH_EMERGENCY_WAV)) {
-    printItem("06.1", "I2S start", Result::Fail, stageAudioStatus().lastError, Row::I2sAudio);
+  Serial.printf("[AUDIO TEST] Playing %s (system audio, not attraction)\n",
+                systemSoundName(probe));
+  if (!stageAudioPlayTest(probe)) {
+    printItem("06.5", "System WAV exercise", Result::Fail, stageAudioStatus().lastError, Row::I2sAudio);
     sStep = Step::PixelStart;
     return;
   }
@@ -863,7 +975,7 @@ static void runEstopPrompt() {
   return;
 #else
   Serial.println("[ESTOP TEST]");
-  Serial.println("Press and release the physical emergency button.");
+  Serial.println("Press and release the physical emergency pushbutton.");
   Serial.println("Waiting...");
   sWaitingInput = true;
   strncpy(sWaitWhy, "GPIO25 press", sizeof(sWaitWhy) - 1);
@@ -1153,11 +1265,12 @@ static void runClockWait() {
   } else {
     printItem("15.2", "Clock advancing", Result::Fail, "value did not increase", Row::SystemClock);
   }
-  if ((uint32_t)tv.tv_sec < kTimeSyncedFloor) {
+  if (!stageTimeSynced()) {
     printItem("15.3", "Absolute time", Result::Warn,
-              "clock running but absolute time not synchronised", Row::SystemClock);
+              stageTimeSource()[0] ? stageTimeSource() : "clock running but not synchronised",
+              Row::SystemClock);
   } else {
-    printItem("15.3", "Absolute time", Result::Pass, "looks synchronised", Row::SystemClock);
+    printItem("15.3", "Absolute time", Result::Pass, "internal RTC synchronised", Row::SystemClock);
   }
   sStep = Step::WebUi;
 }
@@ -1184,7 +1297,68 @@ static void runWebUi() {
     printItem("16.2", "Origin index", Result::Fail, err[0] ? err : "unreadable", Row::WebUi);
   }
   printItem("16.3", "Remote browser transport", Result::Skip,
-            "S3 has no SoftAP/WebUI proxy", Row::WebUi);
+            "Static UI on Comms S3 PROGMEM; P4 is API origin", Row::WebUi);
+  sStep = Step::Ethernet;
+}
+
+static void runEthernet() {
+  strncpy(sCurrent, "ETHERNET", sizeof(sCurrent) - 1);
+  Serial.println("[18] ETHERNET SHOW NETWORK (optional)");
+  const ShowNetLive &live = showNetworkLive();
+  const ShowNetConfig &saved = showNetworkSavedConfig();
+  printItem("18.1", "Hardware initialized",
+            live.hardwareInit ? Result::Pass : (saved.enabled ? Result::Warn : Result::Skip),
+            live.hardwareInit ? "IP101GRI RMII" : (saved.enabled ? "ETH.begin not ready" : "disabled"),
+            Row::Ethernet);
+  if (!live.linkUp) {
+    printItem("18.2", "Link state", Result::Skip, "no cable — show continues", Row::Ethernet);
+    printItem("18.3", "Address", Result::Skip, "no link", Row::Ethernet);
+    printItem("18.4", "WebUI over Ethernet", Result::Skip, "needs link + IP", Row::Ethernet);
+  } else {
+    printItem("18.2", "Link state", Result::Pass,
+              live.speedMbps ? "UP" : "UP", Row::Ethernet);
+    printItem("18.3", "Address",
+              live.hasIp ? Result::Pass : Result::Warn,
+              live.hasIp ? live.ip : (saved.mode == ShowNetMode::Dhcp ? "DHCP pending" : "static pending"),
+              Row::Ethernet);
+    printItem("18.4", "WebUI over Ethernet",
+              live.httpListening && live.webUrl[0] ? Result::Pass : Result::Warn,
+              live.webUrl[0] ? live.webUrl : "not listening",
+              Row::Ethernet);
+  }
+  char modeNote[40];
+  snprintf(modeNote, sizeof(modeNote), "saved=%s live=%s",
+           showNetModeName(saved.mode), showNetModeName(live.liveMode));
+  printItem("18.5", "DHCP/static", Result::Pass, modeNote, Row::Ethernet);
+  sStep = Step::E131;
+}
+
+static void runE131() {
+  strncpy(sCurrent, "E1.31 TEST", sizeof(sCurrent) - 1);
+  Serial.println("[19] E1.31 TEST RECEIVER (observation only)");
+  const E131RxStatus &rx = e131ReceiverStatus();
+  const ShowNetLive &live = showNetworkLive();
+  printItem("19.1", "Receiver enabled",
+            rx.enabled ? Result::Pass : Result::Skip,
+            rx.enabled ? "YES" : "disabled", Row::E131);
+  char uni[24];
+  snprintf(uni, sizeof(uni), "universe %u", (unsigned)rx.universe);
+  printItem("19.2", "Configured universe", Result::Pass, uni, Row::E131);
+  if (!live.hasIp) {
+    printItem("19.3", "Multicast join", Result::Skip, "Ethernet address required", Row::E131);
+    printItem("19.4", "Source / packets", Result::Skip, "no show network", Row::E131);
+  } else {
+    printItem("19.3", "Multicast join",
+              rx.multicastJoined ? Result::Pass : Result::Warn,
+              rx.multicastJoined ? rx.multicast : "UDP bound, multicast join failed",
+              Row::E131);
+    char src[56];
+    snprintf(src, sizeof(src), "%s pkts=%lu age=%lu",
+             rx.sourceName[0] ? rx.sourceName : "(none)",
+             (unsigned long)rx.packetsOk, (unsigned long)rx.lastAgeMs);
+    printItem("19.4", "Source / packets",
+              rx.packetsOk > 0 ? Result::Pass : Result::Skip, src, Row::E131);
+  }
   sStep = Step::Memory;
 }
 
@@ -1445,6 +1619,12 @@ void stageDiagService() {
       break;
     case Step::WebUi:
       runWebUi();
+      break;
+    case Step::Ethernet:
+      runEthernet();
+      break;
+    case Step::E131:
+      runE131();
       break;
     case Step::Memory:
       runMemory();

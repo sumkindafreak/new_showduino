@@ -6,7 +6,7 @@
 namespace Os2 {
 
 /**
- * Large overlays — progress, search, emergency.
+ * Large overlays - progress, search, emergency.
  * Sit above the shell. Never replace the shell (except emergency takeover).
  */
 class OverlayManager {

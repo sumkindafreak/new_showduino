@@ -121,7 +121,7 @@ public:
     if (idx < 0) idx = findByMac(idOrMac);
     if (idx < 0) return;
     strncpy(devices[idx].lastSeen, stamp, sizeof(devices[idx].lastSeen) - 1);
-    // RAM only — periodic snapshot saves to SD.
+    // RAM only - periodic snapshot saves to SD.
     seenDirty = true;
   }
 

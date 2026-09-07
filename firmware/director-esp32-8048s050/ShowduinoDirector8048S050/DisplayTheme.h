@@ -15,7 +15,7 @@ class DisplayTheme {
   static const char *currentTheme();
   static void setTheme(const char *name);
 
-  /** Load/validate theme.json for current theme. Major mismatch or bad resolution → false. */
+  /** Load/validate theme.json for current theme. Major mismatch or bad resolution -> false. */
   static bool validateCurrentTheme();
 
   /** True after a successful theme.json validate for the current theme. */

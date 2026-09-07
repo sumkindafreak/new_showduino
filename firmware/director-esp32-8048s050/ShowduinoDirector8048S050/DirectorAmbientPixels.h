@@ -9,6 +9,15 @@
  * Director ambient NeoPixel mood lighting.
  * Driven from link + mirrored ShowRuntime + emergency lock.
  * Non-blocking: call directorAmbientBegin() once, directorAmbientLoop() each loop.
+ *
+ * Pages must not set pixel colours. This service owns GPIO17.
+ *
+ * Visual priority:
+ *   Real emergency remains authoritative in UI/state (overlay, latch, status).
+ *   Locator mode may temporarily flash red/blue only to find the desk.
+ *   Locator never changes the emergency latch or show state.
+ *   After the locator window, pixels return to the current semantic colour
+ *   (both red if emergency is still active).
  */
 
 enum DirectorAmbientMode : uint8_t {
@@ -20,7 +29,10 @@ enum DirectorAmbientMode : uint8_t {
   DIRECTOR_AMBIENT_WARNING,
   DIRECTOR_AMBIENT_EMERGENCY,
   DIRECTOR_AMBIENT_FAULT,
-  DIRECTOR_AMBIENT_SUCCESS
+  DIRECTOR_AMBIENT_SUCCESS,
+  DIRECTOR_AMBIENT_DISCOVERY,
+  DIRECTOR_AMBIENT_DEGRADED,
+  DIRECTOR_AMBIENT_OFFLINE
 };
 
 void directorAmbientBegin();
@@ -30,7 +42,13 @@ void directorAmbientLoop(uint32_t nowMs);
 void directorAmbientSync(uint8_t linkState,
                          ShowState showState,
                          bool emergencyLocked,
-                         bool stageConnected);
+                         bool stageConnected,
+                         bool synchronising = false,
+                         bool degraded = false);
+
+/** Presentation-only locate flash. Does not change emergency state. */
+void directorAmbientStartLocator(uint32_t nowMs);
+bool directorAmbientLocatorActive();
 
 void directorAmbientSetBrightness(uint8_t brightness);
 uint8_t directorAmbientBrightness();

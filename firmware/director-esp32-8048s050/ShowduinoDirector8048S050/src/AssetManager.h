@@ -42,7 +42,7 @@ public:
     return SD.exists(path);
   }
 
-  // Path cache only — decoding stays in the UI/GFX layer.
+  // Path cache only - decoding stays in the UI/GFX layer.
   const char *cachePath(const char *key, const char *path) {
     if (!key || !path) return path;
     int slot = findSlot(key);

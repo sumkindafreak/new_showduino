@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "enabled": false,
+  "gpio": 23,
+  "pixelCount": 0,
+  "colourOrder": "GRB",
+  "brightnessLimit": 128,
+  "defaultState": "off"
+}

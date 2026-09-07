@@ -8,9 +8,9 @@
 #include "ShowduinoOsPalette.h"
 
 /**
- * Persistent Director OS status bar — live ecosystem health (display-only).
+ * Persistent Director OS status bar - live ecosystem health (display-only).
  * Wall clock from SUE TIME:; runtime/network/nodes from existing desk state.
- * Selective LVGL label updates only — no full redraw.
+ * Selective LVGL label updates only - no full redraw.
  */
 class DirectorStatusBar {
  public:
@@ -44,13 +44,23 @@ class DirectorStatusBar {
     title_ = makeLabel(root_, "SHOWDUINO", 8, 10, ShowduinoPalette::Text);
     lv_obj_set_style_text_letter_space(title_, 1, 0);
 
-    date_ = makeLabel(root_, "--- -- --- ----", 108, 2, ShowduinoPalette::Muted);
-    time_ = makeLabel(root_, "--:--:--", 108, 20, ShowduinoPalette::Text);
+    /* Date/time sit after the brand with a readable gap. Width is explicit so
+     * "Wed 22 Jul 2026" / "14:32:01" are not clipped by the next column. */
+    static const int kClockX = 132;
+    static const int kClockW = 152;
+    date_ = makeLabel(root_, "--- -- --- ----", kClockX, 2, ShowduinoPalette::Muted);
+    lv_obj_set_width(date_, kClockW);
+    lv_label_set_long_mode(date_, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_letter_space(date_, 1, 0);
+    time_ = makeLabel(root_, "--:--:--", kClockX, 20, ShowduinoPalette::Text);
+    lv_obj_set_width(time_, kClockW);
+    lv_label_set_long_mode(time_, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_font(time_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_letter_space(time_, 1, 0);
 
-    /* Global health only — RTC detail removed (date/time imply clock feed). */
-    sysLabel_ = makeLabel(root_, "SYS —", 280, 4, ShowduinoPalette::Muted);
-    netLabel_ = makeLabel(root_, "NET —", 280, 20, ShowduinoPalette::Muted);
+    /* Global health only - RTC detail removed (date/time imply clock feed). */
+    sysLabel_ = makeLabel(root_, "SYS -", 304, 4, ShowduinoPalette::Muted);
+    netLabel_ = makeLabel(root_, "NET -", 304, 20, ShowduinoPalette::Muted);
     nodesLabel_ = makeLabel(root_, "NODES -/-", 520, 4, ShowduinoPalette::Muted);
     emergLabel_ = makeLabel(root_, "CLEAR", 520, 20, ShowduinoPalette::Accent);
 
@@ -153,7 +163,7 @@ class DirectorStatusBar {
     if (nodesConnected_ == connected && nodesExpected_ == expected) return;
     uint8_t prev = nodesConnected_;
     nodesConnected_ = connected;
-    nodesExpected_ = expected ? expected : 1;
+    nodesExpected_ = expected;
     dirtyNodes_ = true;
     if (connected > prev) logEvent("Node Joined");
     else if (connected < prev) logEvent("Node Lost");
@@ -210,14 +220,16 @@ class DirectorStatusBar {
       dirtyNodes_ = false;
       char buf[28];
       snprintf(buf, sizeof(buf), "Nodes %u/%u", (unsigned)nodesConnected_, (unsigned)nodesExpected_);
-      Level lv = (nodesConnected_ >= nodesExpected_) ? Level::Ok
-               : (nodesConnected_ == 0 ? Level::Fault : Level::Warn);
+      Level lv = Level::Ok;
+      if (nodesExpected_ > 0 && nodesConnected_ < nodesExpected_) {
+        lv = (nodesConnected_ == 0) ? Level::Fault : Level::Warn;
+      }
       setLabelColor(nodesLabel_, buf, levelColor(lv));
     }
 
     if (dirtyEmerg_) {
       dirtyEmerg_ = false;
-      /* Word "NORMAL" reserved for Desktop Safety — keep emergency distinct. */
+      /* Word "NORMAL" reserved for Desktop Safety - keep emergency distinct. */
       const char *t = "CLEAR";
       uint32_t c = ShowduinoPalette::Accent;
       if (emergencyState_ == EmergencyState::EmergencyStop) {
@@ -255,7 +267,7 @@ class DirectorStatusBar {
   NetworkState networkState_ = NetworkState::Offline;
   EmergencyState emergencyState_ = EmergencyState::Normal;
   uint8_t nodesConnected_ = 0;
-  uint8_t nodesExpected_ = 1;
+  uint8_t nodesExpected_ = 0;
 
   bool dirtyTime_ = true;
   bool dirtySys_ = true;
@@ -332,7 +344,7 @@ class DirectorStatusBar {
       case SystemState::Emergency: return "EMERGENCY";
       case SystemState::Ota: return "OTA";
       case SystemState::Error: return "FAULT";
-      default: return "—";
+      default: return "-";
     }
   }
 
@@ -357,7 +369,7 @@ class DirectorStatusBar {
       case NetworkState::Degraded: return "DEGRADED";
       case NetworkState::Offline: return "OFFLINE";
       case NetworkState::Lost: return "LOST";
-      default: return "—";
+      default: return "-";
     }
   }
 

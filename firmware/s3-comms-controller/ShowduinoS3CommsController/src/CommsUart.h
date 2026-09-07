@@ -7,6 +7,8 @@ void commsUartBegin();
 bool commsUartReady();
 void commsUartWriteLine(const char *line);
 bool commsUartReadLine(char *out, size_t outSize);
+int commsUartAvailable();
+int commsUartRead();
 uint32_t commsUartLastRxMs();
 uint32_t commsUartRxCount();
 uint32_t commsUartTxCount();

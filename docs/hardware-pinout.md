@@ -69,59 +69,43 @@ The current Stage Controller firmware owns this as the emergency pixel line.
 
 **Reserved:** GPIO24.
 
-## 4. External PCM5102A show-audio DAC — CURRENT
+## 4. External PCM5102A — LEGACY / RETIRED
 
-Dedicated to show/programme audio.
-
-```text
-PCM5102A        P4 GPIO
-WS / LRCK       20
-BCLK            21
-DIN (P4 DOUT)   22
-```
-
-This path is for music, dialogue, ambience and timed show SFX.
-
-**Reserved:** GPIO20-22.
-
-## 5. Onboard ES8311 system audio — BOARD / TARGET
-
-The Waveshare board integrates an ES8311 codec and NS4150B power amplifier.
-
-### Control I2C
+The old external I2S DAC on GPIO20/21/22 is **not** a live Showduino path.
 
 ```text
-SDA  GPIO7
-SCL  GPIO8
+LEGACY PCM5102A   P4 GPIO
+WS / LRCK         20
+BCLK              21
+DIN (P4 DOUT)     22
 ```
 
-### I2S
+That driver reported WAV "playing" while the onboard speaker stayed silent. Firmware compiles it out (`SHOWDUINO_LEGACY_PCM5102A_AUDIO 0`). Attraction/programme audio is exclusively the specialist Audio Node. GPIO20-22 are unused; do not reassign them without a pin audit.
+
+## 5. Onboard ES8311 system audio — CURRENT
+
+The P4 onboard ES8311 speaker provides Showduino system and safety audio only. Attraction/programme audio is exclusively produced by specialist Audio Nodes.
+
+Verified from the Waveshare ESP32-P4-Module-DEV-KIT wiki, schematic names, ESP-IDF P4 ES8311 examples, and Arduino-ESP32 3.3.11 `waveshare_p4_poe_eth` notes.
 
 ```text
-ES8311 function  P4 GPIO
-DSDIN            9
-LRCK / WS        10
-ASDOUT           11
-SCLK / BCLK      12
-MCLK             13
-PA enable        53   active HIGH
+I²C address      0x18
+SDA              GPIO7     shared Plug-in Bus
+SCL              GPIO8     shared Plug-in Bus
+DSDIN            GPIO9     ES8311 DAC in  = P4 I2S DOUT
+LRCK / WS        GPIO10    not a status LED
+ASDOUT           GPIO11    ES8311 ADC out = P4 I2S DIN (unused for playback)
+SCLK / BCLK      GPIO12
+MCLK             GPIO13    required (sample_rate × 256)
+PA_Ctrl          GPIO53    NS4150B enable, active HIGH
+Speaker          MX1.25 2P  8Ω / 2W Waveshare speaker connector
 ```
 
-GPIO7/8 are also the Showduino Plug-in Bus (I²C header). The onboard ES8311 (typical address 0x18) is a shared I²C device on that bus.
+Arduino-ESP32 3.3.11 `waveshare_p4_poe_eth/pins_arduino.h` labels `I2S_DOUT=11` / `I2S_DIN=9`. Those names are swapped versus the Waveshare wiki and working ESP-IDF P4 examples. Showduino uses the wiki mapping (MCU DOUT=GPIO9).
 
-Showduino reserves the ES8311 I2S path for local system sounds: boot, ready, loaded, armed, warning/error, emergency acknowledgement and restart/shutdown cues. Show/programme audio remains the external PCM5102A.
+`SHOWDUINO_STATUS_LED_PIN` is `-1`. GPIO10 must not be driven as a generic LED.
 
 **Reserved:** GPIO7-13 and GPIO53.
-
-### Current firmware conflict to remove
-
-The existing Arduino Stage Controller sketch currently defines `STATUS_LED_PIN` as **GPIO10**. GPIO10 is the onboard ES8311 LRCK/WS line, so it is **not a valid general-purpose status LED pin** under the final hardware baseline.
-
-That legacy status-LED assignment must be disabled/removed before the onboard audio path is enabled.
-
-### Important I2S resource note
-
-The ESP32-P4 provides one I2S peripheral. The onboard ES8311 and external PCM5102A are separate physical output paths but must be treated as a shared/arbitrated I2S resource until simultaneous operation is deliberately proven.
 
 ## 6. Onboard ESP32-C6 — BOARD / UNUSED / RESERVED
 
@@ -195,11 +179,39 @@ RTC battery header: rechargeable cells only per Waveshare documentation
 
 No ordinary Showduino GPIO assignment is required for the RTC timekeeper.
 
-## 8. Ethernet and USB — BOARD / RESERVED
+## 8. Ethernet — BOARD / CURRENT
 
-Ethernet and USB are board-integrated Stage Controller resources.
+Waveshare ESP32-P4-Module-DEV-KIT onboard PHY is **IP101GRI** on RMII. Arduino-ESP32 3.3.11 uses `ETH_PHY_TLK110` / `ETH_PHY_IP101`.
 
-Do not repurpose their board-level signals based only on a generic ESP32-P4 pin table. Check the Waveshare schematic before allocating any pin that may be consumed by the Ethernet PHY, USB routing, boot circuitry or other onboard functions.
+```text
+Function   P4 GPIO
+TX_EN      49
+TXD0       34
+TXD1       35
+RXD0       29
+RXD1       30
+CRS_DV     28
+REF_CLK    50   50 MHz from PHY, EMAC_CLK_EXT_IN
+MDC        31
+MDIO       52
+RESET      51
+PHY addr   1
+```
+
+These nets do not collide with Comms UART, Plug-in Bus, onboard ES8311, emergency pixels, GPIO25, SDMMC, or reserved C6 pins.
+
+Ethernet is optional. The Show Engine boots and runs with no cable, no DHCP, and no internet. Do not treat internet reachability as system health.
+
+USB remains a board-integrated programming/debug resource. Do not steal it for show control.
+
+## 8a. Local NeoPixel baseline
+
+```text
+GPIO24  CURRENT  dedicated emergency NeoPixel line
+GPIO23  TARGET   the only planned general-purpose Show NeoPixel line
+```
+
+Do not implement additional local P4 show-pixel outputs. Extra strips belong to future Pixel / LED Nodes.
 
 ## 9. Resource reservation summary
 
@@ -211,9 +223,11 @@ GPIO4-5    dedicated S3 Comms UART
 GPIO6      onboard C6 control (reserved unused)
 GPIO7-13   onboard I2C/I2S audio codec + Plug-in Bus SDA/SCL
 GPIO14-19  onboard C6 SDIO transport (reserved unused)
-GPIO20-22  external PCM5102A show audio
+GPIO20-22  unused (legacy PCM5102A — retired)
+GPIO23     planned local Show NeoPixel line
 GPIO24     emergency NeoPixel
 GPIO25     emergency button
+GPIO28-31, 34-35, 49-52  onboard Ethernet RMII / SMI
 GPIO39-45  microSD / SDMMC + power
 GPIO53     onboard speaker amplifier enable
 GPIO54     onboard C6 CHIP_PU/reset
@@ -244,11 +258,23 @@ GPIO17   - onboard C6 SDIO D3
 GPIO18   - onboard C6 SDIO CLK
 GPIO19   - onboard C6 SDIO CMD
 
-GPIO20   - PCM5102A WS/LRCK
-GPIO21   - PCM5102A BCLK
-GPIO22   - PCM5102A DOUT
+GPIO20   - unused (legacy PCM5102A WS)
+GPIO21   - unused (legacy PCM5102A BCLK)
+GPIO22   - unused (legacy PCM5102A DOUT)
+GPIO23   - planned general Show NeoPixel line (not implemented)
 GPIO24   - emergency NeoPixel
 GPIO25   - emergency push button
+
+GPIO28   - ETH CRS_DV
+GPIO29   - ETH RXD0
+GPIO30   - ETH RXD1
+GPIO31   - ETH MDC
+GPIO34   - ETH TXD0
+GPIO35   - ETH TXD1
+GPIO49   - ETH TX_EN
+GPIO50   - ETH REF_CLK
+GPIO51   - ETH PHY reset
+GPIO52   - ETH MDIO
 
 GPIO39   - SD D0
 GPIO40   - SD D1
@@ -262,7 +288,32 @@ GPIO53   - onboard audio PA enable
 GPIO54   - onboard C6 CHIP_PU/reset
 ```
 
-## 11. Primary references
+## 11. Audio Node — Ai-Thinker ESP32-Audio-Kit V2.2 A161 — CURRENT
+
+This is **not** a P4 pin. Attraction/programme audio is the specialist Audio Node (ESP32-A1S + ES8388). Canonical detail: [`audio-node.md`](audio-node.md).
+
+```text
+I2C SDA/SCL     GPIO33 / GPIO32     ES8388 0x10 (fallback 0x11)
+I2S MCLK        GPIO0               boot strap
+I2S BCLK/LRCK   GPIO27 / GPIO25
+I2S DOUT/DIN    GPIO26 / GPIO35
+PA enable       GPIO21              HIGH = on
+SD SPI          14 / 2 / 15 / 13    SCK / MISO / MOSI / CS
+SD detect       GPIO34              LOW = present + probe
+HP detect       GPIO39              LOW = jack; AUTO only
+KEY1            GPIO36              local PLAY/STOP (input-only)
+KEY2            disabled            shares SD CS
+KEY3            GPIO19              VOL- (LED5 shares pin)
+KEY4            GPIO23              VOL+
+KEY5            GPIO18              previous test asset
+KEY6            GPIO5               next test asset
+KEY7            none
+Status LED      GPIO22              LED4
+```
+
+P4 onboard ES8311 / GPIO53 PA remains system/safety audio only.
+
+## 12. Primary references
 
 - Waveshare board documentation: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT
 - Waveshare C6 flashing FAQ: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT/FAQ

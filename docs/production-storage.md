@@ -19,6 +19,13 @@ Communications Engine only transports those requests and responses.
 The repository copy used to populate an SD card is under
 `sd_card/showduino/productions/`.
 
+The wider P4 filesystem, config schemas, atomic writes, and SD-missing
+behaviour are documented in [`docs/p4-sd-storage.md`](p4-sd-storage.md).
+SD is the persistent backbone, not the safety backbone. A loaded RAM
+timeline continues if the card is removed; streamed audio may fault
+separately. `system.json` may record the last loaded production ID but
+never auto-resumes a running show.
+
 ## Manifest format 1
 
 Required fields:

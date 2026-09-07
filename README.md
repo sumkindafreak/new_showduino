@@ -38,7 +38,8 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 | [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Current hardware topology, P4 pin map, UART wiring |
 | [`docs/hardware-pinout.md`](docs/hardware-pinout.md) | Current P4 resource and pin map |
 | [`docs/hardware-baseline-2026-08-25.md`](docs/hardware-baseline-2026-08-25.md) | Board-capability baseline (C6 now unused/reserved) |
-| [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | Show audio, system audio and pixel architecture |
+| [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | System vs programme audio and pixel architecture |
+| [`docs/audio-node.md`](docs/audio-node.md) | First specialist Audio Node (ESP32-A1S / ES8388) |
 | [`docs/future-p4-c6-sdio-transport.md`](docs/future-p4-c6-sdio-transport.md) | Future SDIO / ESP-Hosted notes (not implemented) |
 | [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus (I²C) |
 | [`docs/creating-showduino-i2c-plugin.md`](docs/creating-showduino-i2c-plugin.md) | Adding an I²C plugin definition or driver |

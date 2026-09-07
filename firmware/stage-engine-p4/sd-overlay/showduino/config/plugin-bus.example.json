@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "devices": [
+    {
+      "bus": 0,
+      "address": "0x3E",
+      "chip": "SX1509",
+      "role": "DIGITAL_INPUTS"
+    },
+    {
+      "bus": 0,
+      "address": "0x3F",
+      "chip": "SX1509",
+      "role": "DIGITAL_OUTPUTS"
+    }
+  ]
+}

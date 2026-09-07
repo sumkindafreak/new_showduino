@@ -5,13 +5,13 @@
 #include "showduino_capabilities.h"
 
 /**
- * Page 01 — Showduino Home
+ * Page 01 - Showduino Home
  *
  * LVGL draws every live label, icon, button, node state, production name,
  * clock, warning, and theme accent. No BMP chrome.
  *
  * Hierarchy (approved production UI):
- *   RUN SHOW hero → Productions → Nodes / Settings / Diagnostics
+ *   RUN SHOW hero -> Productions -> Nodes / Settings / Diagnostics
  *   Cue Library and Outputs remain in the layout but are not tappable.
  */
 
@@ -37,7 +37,7 @@ typedef void (*page01_command_fn)(const char *command);
 
 /**
  * Build Page 01 into an existing transparent parent panel.
- * Parent is owned by DisplayManager — do not delete the parent here.
+ * Parent is owned by DisplayManager - do not delete the parent here.
  */
 void page_01_home_create(lv_obj_t *parent, page01_command_fn command_cb);
 
@@ -57,15 +57,15 @@ void page_01_home_set_capabilities(const ShowduinoCapabilities *caps);
 ShowduinoCapabilities page_01_home_get_capabilities(void);
 
 /**
- * Header / hero update helpers — static defaults until real data is wired.
- * Pass nullptr to leave a field unchanged (except production empty → NO PRODUCTION).
+ * Header / hero update helpers - static defaults until real data is wired.
+ * Pass nullptr to leave a field unchanged (except production empty -> NO PRODUCTION).
  */
 void page_01_home_set_production(const char *name);
 void page_01_home_set_link_text(const char *text);
 void page_01_home_set_clock_text(const char *text);
 
 /**
- * Footer placeholder updates — keep separate from create so live data
+ * Footer placeholder updates - keep separate from create so live data
  * can replace these later without rebuilding the page.
  */
 void page_01_home_set_footer_sue(const char *text);

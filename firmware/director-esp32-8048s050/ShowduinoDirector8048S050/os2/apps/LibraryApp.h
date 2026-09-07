@@ -14,9 +14,9 @@
 namespace Os2 {
 
 /**
- * Library.app — production media browser.
+ * Library.app - production media browser.
  *
- * Browse · Search · Filter · Preview · Load
+ * Browse | Search | Filter | Preview | Load
  * Never opens files. Never talks to Stage.
  * Catalogue from AssetService; load via ShowService.load(id).
  * Runtime monitoring stays on Dashboard.
@@ -96,7 +96,7 @@ class LibraryApp : public IApp {
   void onBuildContext(lv_obj_t *strip) override {
     Theme::Engine &th = Theme::engine();
     lv_obj_t *lab = lv_label_create(strip);
-    lv_label_set_text(lab, "Browse  ·  Load  ·  Dashboard for runtime");
+    lv_label_set_text(lab, "Browse  |  Load  |  Dashboard for runtime");
     lv_obj_add_style(lab, &th.styleCaption, 0);
     lv_obj_align(lab, LV_ALIGN_LEFT_MID, 8, 0);
   }
@@ -150,7 +150,7 @@ class LibraryApp : public IApp {
     if (!self || !id) return;
     AssetService *assets = services().get<AssetService>("asset");
     if (assets) {
-      /* Selection is intent — goes through CommandService for history/macros later. */
+      /* Selection is intent - goes through CommandService for history/macros later. */
       commandService().selectProduction(id);
     }
   }
@@ -164,7 +164,7 @@ class LibraryApp : public IApp {
     const ProductionManifest *p = assets->selected();
     if (!p) return;
     const char *entry = p->entryShow[0] ? p->entryShow : p->id;
-    /* Intent via CommandService — never touch ShowService for actions. */
+    /* Intent via CommandService - never touch ShowService for actions. */
     if (commandService().loadProduction(entry)) {
       if (session) session->setLastProduction(p->id);
     }
@@ -220,7 +220,7 @@ class LibraryApp : public IApp {
       char sub[48];
       char dur[24];
       productionFormatDuration(*p, dur, sizeof(dur));
-      snprintf(sub, sizeof(sub), "%s · %s",
+      snprintf(sub, sizeof(sub), "%s | %s",
                productionReadinessLabel(p->readiness), dur);
       lv_obj_t *meta = lv_label_create(row);
       lv_label_set_text(meta, sub);
@@ -260,8 +260,8 @@ class LibraryApp : public IApp {
              p->capabilities.audio ? "Yes" : "No",
              p->capabilities.lighting ? "Yes" : "No",
              p->capabilities.effects ? "Yes" : "No",
-             p->version[0] ? p->version : "—",
-             p->lastEdited[0] ? p->lastEdited : "—");
+             p->version[0] ? p->version : "-",
+             p->lastEdited[0] ? p->lastEdited : "-");
     lv_label_set_text(detailMeta_, meta);
     lv_obj_set_style_text_color(detailMeta_, lv_color_hex(c.textMuted), 0);
     lv_obj_clear_state(loadBtn_, LV_STATE_DISABLED);

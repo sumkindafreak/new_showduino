@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-/* BankOfDad-style auto backlight: full → dim → off; touch wakes.
+/* BankOfDad-style auto backlight: full -> dim -> off; touch wakes.
  * Timeout minutes come from DirectorConfig.screenTimeoutMinutes (0 = never). */
 
 #define BL_PWM_MAX       1023
@@ -11,7 +11,7 @@
 
 void backlightInit(uint8_t pin);
 
-/** Apply saved config. timeoutMinutes=0 disables auto dim/off. brightness 0–255. */
+/** Apply saved config. timeoutMinutes=0 disables auto dim/off. brightness 0-255. */
 void backlightConfigure(uint8_t timeoutMinutes, uint8_t brightness255);
 
 void backlightNotifyActivity();

@@ -11,7 +11,7 @@ Transport topology (**current, this hardware generation**):
 Director ESP32-S3  → ESP-NOW →  ESP32-S3 Comms Controller  → UART →  Show Engine ESP32-P4
 ```
 
-The supported current stack ends at the P4. Node and relay messages documented below are compatibility/prototype surfaces for future node design, not evidence of a supported production node.
+The Audio Node is the first production specialist Node (hardware test required). Relay / MOSFET / LED remain future. Application messages still must not use MAC addresses as logical identity.
 
 ESP-NOW and UART are **transports**. Application messages describe **intent**. MAC addresses must not appear in application-level message meaning.
 
@@ -197,8 +197,12 @@ Constants: `protocol/showduino_legacy_strings.h`. Mapper: `showduino_legacy_map_
 
 | Token | Role |
 |-------|------|
-| `ROUTE:<type>:` | Show Engine → Comms: deliver payload to a node category |
-| `NODE:` | Comms → Show Engine: node reply envelope |
+| `ROUTE:AUDIO:<seq>:<cmd>` | Show Engine → Comms → Audio Node |
+| `NODE:AUDIO:` | Comms → Show Engine: Audio Node report |
+| `AUDIO:NODE:*` | Programme audio (Audio Node only). PLAY/LOOP/STOP/PAUSE/RESUME/VOLUME/STATUS/TEST plus `STOP:FADE=`, `:FADE=`, `:PRI=`, DUCK, UNDUCK, INVENTORY. Reports: ACCEPTED/STARTED/COMPLETED/FAILED, CAPS, META, INVENTORY. |
+| `AUDIO:NODE:SOUND:*` | Sound-input commissioning. STATUS/ENABLE/DISABLE/CALIBRATE/THRESHOLD/TRIGGER:TEST/COOLDOWN/INHIBIT/MODE. Reports: SOUND:STATUS, SOUND:TRIGGER, SOUND:CALIBRATE. Logical input only — never starts a show. |
+| `AUDIO:LOCAL:*` / `AUDIO:STATUS` / `AUDIO:TEST:*` / `AUDIO:STOP` | P4 system/safety audio (ES8311). `AUDIO:PLAY` attraction paths are rejected. `AUDIO:TEST:SHUTDOWN` is reserved. |
+| `STATE:NODE:AUDIO:` | P4 → Director Audio Node presence |
 | `ACK:` / `ERR:` / `STATUS:` | Legacy reply / status lines |
 
 ---

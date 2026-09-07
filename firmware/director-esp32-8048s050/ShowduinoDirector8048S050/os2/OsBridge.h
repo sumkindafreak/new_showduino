@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * OsBridge — communication layer → services.
+ * OsBridge - communication layer -> services.
  *
  * The only place Director firmware may push Stage/link/catalogue truth into OS 2.0.
  * Apps never call this. Shell never calls this.
@@ -92,7 +92,7 @@ inline void publishSafety(bool emergencyLocked) {
   (void)emergencyLocked;
 }
 
-/** Push production catalogue — no paths exposed to apps. */
+/** Push production catalogue - no paths exposed to apps. */
 inline void publishCatalogue(const ProductionManifest *items, int count) {
   assetService().setCatalogue(items, count);
 }

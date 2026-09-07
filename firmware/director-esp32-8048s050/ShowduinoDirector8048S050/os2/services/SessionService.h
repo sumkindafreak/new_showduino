@@ -9,10 +9,10 @@
 namespace Os2 {
 
 /**
- * SessionService — operator continuity (quiet subsystem).
+ * SessionService - operator continuity (quiet subsystem).
  *
  * Remembers: last production, last app, recent productions.
- * Boot: Shell → SessionService.restore() → Dashboard + context.
+ * Boot: Shell -> SessionService.restore() -> Dashboard + context.
  *
  * Not a user-facing app. No file paths. Preferences only.
  */

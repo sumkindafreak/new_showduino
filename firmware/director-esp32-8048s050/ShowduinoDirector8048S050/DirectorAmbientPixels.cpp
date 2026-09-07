@@ -22,6 +22,9 @@ static uint32_t sLastFrameMs = 0;
 static uint16_t sPhase = 0;
 static uint32_t sSuccessUntilMs = 0;
 static ShowState sLastShowState = SHOW_STATE_BOOTING;
+static bool sLocatorActive = false;
+static uint32_t sLocatorUntilMs = 0;
+static uint32_t sLocatorStartMs = 0;
 
 static uint8_t scale8(uint8_t v, uint8_t scale) {
   return (uint8_t)((uint16_t)v * scale / 255);
@@ -54,6 +57,9 @@ static const char *modeName(DirectorAmbientMode m) {
     case DIRECTOR_AMBIENT_EMERGENCY:  return "EMERGENCY";
     case DIRECTOR_AMBIENT_FAULT:      return "FAULT";
     case DIRECTOR_AMBIENT_SUCCESS:    return "SUCCESS";
+    case DIRECTOR_AMBIENT_DISCOVERY:  return "DISCOVERY";
+    case DIRECTOR_AMBIENT_DEGRADED:   return "DEGRADED";
+    case DIRECTOR_AMBIENT_OFFLINE:    return "OFFLINE";
     default:                          return "?";
   }
 }
@@ -63,7 +69,7 @@ static void setMode(DirectorAmbientMode m) {
   sMode = m;
   sPhase = 0;
   if (sPrevLogged != m) {
-    Serial.printf("[Ambient] mode → %s\n", modeName(m));
+    Serial.printf("[Ambient] mode -> %s\n", modeName(m));
     sPrevLogged = m;
   }
 }
@@ -106,6 +112,20 @@ static void renderFrame(uint32_t nowMs) {
       fillSolid(kColAccent, 140);
       break;
 
+    case DIRECTOR_AMBIENT_DISCOVERY: {
+      const uint8_t pulse = (uint8_t)(50 + ((sPhase / 3) % 120));
+      fillSolid(kColAccent, pulse);
+      break;
+    }
+
+    case DIRECTOR_AMBIENT_DEGRADED:
+      fillSolid(kColWarn, 160);
+      break;
+
+    case DIRECTOR_AMBIENT_OFFLINE:
+      fillSolid(kColFault, 50);
+      break;
+
     case DIRECTOR_AMBIENT_RUNNING: {
       /* Gentle breathing + slow chase on accent */
       const uint8_t breath = (uint8_t)(90 + ((sPhase / 2) % 80));
@@ -144,6 +164,37 @@ static void renderFrame(uint32_t nowMs) {
   sPhase++;
 }
 
+static void renderLocator(uint32_t nowMs) {
+  if (!sStrip) return;
+  static const uint16_t kPhaseMs[] = {80, 80, 80, 200, 80, 80, 80, 200};
+  uint32_t elapsed = nowMs - sLocatorStartMs;
+  uint32_t cycle = 0;
+  for (uint8_t i = 0; i < 8; i++) cycle += kPhaseMs[i];
+  if (cycle == 0) cycle = 1;
+  elapsed %= cycle;
+
+  uint8_t phase = 0;
+  uint32_t acc = 0;
+  for (uint8_t i = 0; i < 8; i++) {
+    acc += kPhaseMs[i];
+    if (elapsed < acc) {
+      phase = i;
+      break;
+    }
+  }
+
+  sStrip->clear();
+  const bool redOn = (phase == 0 || phase == 2);
+  const bool blueOn = (phase == 4 || phase == 6);
+  if (sStrip->numPixels() > 0 && redOn) {
+    sStrip->setPixelColor(0, packRgb(255, 0, 0));
+  }
+  if (sStrip->numPixels() > 1 && blueOn) {
+    sStrip->setPixelColor(1, packRgb(0, 0, 255));
+  }
+  sStrip->show();
+}
+
 void directorAmbientBegin() {
   if (sReady && sStrip) return;
 
@@ -156,7 +207,7 @@ void directorAmbientBegin() {
                                  SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   if (!sStrip) {
-    Serial.println("[Ambient] alloc failed — ambient disabled");
+    Serial.println("[Ambient] alloc failed - ambient disabled");
     return;
   }
 
@@ -173,10 +224,12 @@ void directorAmbientBegin() {
 void directorAmbientSync(uint8_t linkState,
                          ShowState showState,
                          bool emergencyLocked,
-                         bool stageConnected) {
+                         bool stageConnected,
+                         bool synchronising,
+                         bool degraded) {
   if (!sReady) return;
 
-  /* Edge: show finished → brief success */
+  /* Edge: show finished -> brief success */
   if (sLastShowState != SHOW_STATE_FINISHED && showState == SHOW_STATE_FINISHED) {
     sSuccessUntilMs = millis() + 2500UL;
     setMode(DIRECTOR_AMBIENT_SUCCESS);
@@ -197,16 +250,17 @@ void directorAmbientSync(uint8_t linkState,
     setMode(DIRECTOR_AMBIENT_FAULT);
     return;
   }
-  if (showState == SHOW_STATE_BOOTING) {
-    setMode(DIRECTOR_AMBIENT_BOOT);
+  if (linkState == LINK_DISCONNECTED ||
+      (!stageConnected && linkState != LINK_READY && linkState != LINK_SEARCHING)) {
+    setMode(DIRECTOR_AMBIENT_OFFLINE);
     return;
   }
-  if (linkState == LINK_DISCONNECTED || (!stageConnected && linkState != LINK_READY)) {
-    setMode(DIRECTOR_AMBIENT_WARNING);
+  if (linkState == LINK_SEARCHING || synchronising || showState == SHOW_STATE_BOOTING) {
+    setMode(DIRECTOR_AMBIENT_DISCOVERY);
     return;
   }
-  if (linkState == LINK_SEARCHING) {
-    setMode(DIRECTOR_AMBIENT_BOOT);
+  if (degraded) {
+    setMode(DIRECTOR_AMBIENT_DEGRADED);
     return;
   }
   if (showState == SHOW_STATE_RUNNING) {
@@ -225,10 +279,31 @@ void directorAmbientSync(uint8_t linkState,
   setMode(DIRECTOR_AMBIENT_IDLE);
 }
 
+void directorAmbientStartLocator(uint32_t nowMs) {
+  sLocatorActive = true;
+  sLocatorStartMs = nowMs;
+  sLocatorUntilMs = nowMs + SHOWDUINO_DIRECTOR_LOCATOR_DURATION_MS;
+  Serial.println("[LOCATOR] NeoPixel locator active");
+}
+
+bool directorAmbientLocatorActive() {
+  return sLocatorActive;
+}
+
 void directorAmbientLoop(uint32_t nowMs) {
   if (!sReady || !sStrip) return;
   if ((nowMs - sLastFrameMs) < SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS) return;
   sLastFrameMs = nowMs;
+  if (sLocatorActive) {
+    if ((int32_t)(nowMs - sLocatorUntilMs) >= 0) {
+      sLocatorActive = false;
+      Serial.println("[LOCATOR] NeoPixel locator finished");
+      renderFrame(nowMs);
+    } else {
+      renderLocator(nowMs);
+    }
+    return;
+  }
   renderFrame(nowMs);
 }
 
@@ -248,7 +323,9 @@ bool directorAmbientReady() { return sReady; }
 
 void directorAmbientBegin() {}
 void directorAmbientLoop(uint32_t) {}
-void directorAmbientSync(uint8_t, ShowState, bool, bool) {}
+void directorAmbientSync(uint8_t, ShowState, bool, bool, bool, bool) {}
+void directorAmbientStartLocator(uint32_t) {}
+bool directorAmbientLocatorActive() { return false; }
 void directorAmbientSetBrightness(uint8_t) {}
 uint8_t directorAmbientBrightness() { return 0; }
 DirectorAmbientMode directorAmbientMode() { return DIRECTOR_AMBIENT_OFF; }

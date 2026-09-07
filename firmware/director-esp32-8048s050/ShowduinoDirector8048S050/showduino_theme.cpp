@@ -119,7 +119,7 @@ void showduino_theme_register(lv_obj_t *obj, showduino_theme_role_t role) {
   }
 
   if (s_count >= SHOWDUINO_THEME_MAX_OBJECTS) {
-    Serial.println("[Theme] registry full — object not registered");
+    Serial.println("[Theme] registry full - object not registered");
     return;
   }
 

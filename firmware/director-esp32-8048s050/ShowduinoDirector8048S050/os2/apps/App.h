@@ -6,10 +6,10 @@
 
 namespace Os2 {
 
-class Shell;  /* forward — apps never own shell state */
+class Shell;  /* forward - apps never own shell state */
 
 /**
- * Layer 2 — Application contract.
+ * Layer 2 - Application contract.
  *
  * Each app owns: widgets, navigation, data refresh, commands, layout.
  * Nothing leaks into the shell. Shell only hosts the workspace root.
@@ -37,7 +37,7 @@ class IApp {
    */
   virtual void onBuildContext(lv_obj_t * /*contextStrip*/) {}
 
-  /** Search contributions — return true if query matched and handled. */
+  /** Search contributions - return true if query matched and handled. */
   virtual bool onSearch(const char * /*query*/) { return false; }
 };
 

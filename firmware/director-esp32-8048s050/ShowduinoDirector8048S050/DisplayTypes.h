@@ -22,6 +22,7 @@ enum DisplayPageId : uint8_t {
   PAGE_AUDIO,
   PAGE_SETTINGS,
   PAGE_NODES,
+  PAGE_AUDIO_NODE,
   PAGE_DIAGNOSTICS,
   PAGE_LOGS,
   PAGE_ABOUT,
@@ -107,7 +108,7 @@ struct DisplayPage {
   bool useBackgroundImage;
   bool animated;
   uint16_t frameRate;
-  /** Full-screen HUD — hide the LVGL bottom dock. */
+  /** Full-screen HUD - hide the LVGL bottom dock. */
   bool hideDock;
   /** Transparent LVGL page panel over the background (e.g. Live relays). */
   bool hybridPanel;

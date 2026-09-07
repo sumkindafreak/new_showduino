@@ -7,7 +7,7 @@
 namespace Os2 {
 
 /**
- * Notifications — not dialogs.
+ * Notifications - not dialogs.
  * Slide in. Three seconds. Gone.
  */
 class NotificationManager {

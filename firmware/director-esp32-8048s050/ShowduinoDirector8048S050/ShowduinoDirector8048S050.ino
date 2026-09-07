@@ -3,12 +3,12 @@
 
   Display / touch bring-up follows BankOfDadLVGL landscape pattern:
   - RGB bounce buffer
-  - TAMC_GT911 â†’ LVGL
+  - TAMC_GT911 -> LVGL
   - DISPLAY_ROTATION 0 (landscape 800x480)
 
   Primary use:
   - Portable control surface
-  - ESP-NOW â†’ Communications Engine (C3) â†’ Show Engine (P4)
+  - ESP-NOW -> Communications Engine (C3) -> Show Engine (P4)
 
   Required Arduino libraries:
   - lvgl 9.x
@@ -18,7 +18,7 @@
 
   Arduino IDE:
   - Board: ESP32S3 Dev Module
-  - USB CDC On Boot: Disabled   (required — USB-C serial is CH340 on UART0)
+  - USB CDC On Boot: Disabled   (required - USB-C serial is CH340 on UART0)
   - USB Mode: USB-OTG (TinyUSB)
   - Flash Size: 16MB | QIO 80MHz
   - PSRAM: OPI PSRAM
@@ -41,6 +41,7 @@
 #include "touch_lvgl.h"
 #include "backlight.h"
 #include "DirectorAmbientPixels.h"
+#include "DirectorEmergencyClearDialog.h"
 #include "ShowduinoUi.h"
 #if SHOWDUINO_OS2_SHELL
 #include "os2/ShowduinoOs.h"
@@ -54,7 +55,7 @@
 #include "../../../protocol/showduino_show_runtime.h"
 
 // =========================================================
-// RGB panel â€” BankOfDad bounce buffer, landscape rotation 0
+// RGB panel - BankOfDad bounce buffer, landscape rotation 0
 // =========================================================
 Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
   RGB_DE_PIN, RGB_VSYNC_PIN, RGB_HSYNC_PIN, RGB_PCLK_PIN,
@@ -76,7 +77,7 @@ TAMC_GT911 touchDev(TOUCH_SDA_PIN, TOUCH_SCL_PIN, TOUCH_INT_PIN, TOUCH_RST_PIN,
 
 ShowduinoUi ui;
 ShowduinoEspNowTransport espNowTransport;
-TimelineEngine timeline;           /* SD parse + cue upload helper only â€” not authority */
+TimelineEngine timeline;           /* SD parse + cue upload helper only - not authority */
 ShowRuntime gShowMirror;           /* read-only mirror of Stage ShowRuntime */
 
 String usbInputBuffer;
@@ -112,6 +113,19 @@ void applyMirroredRuntime(const ShowRuntime &rt);
 void onEmergencyActivatedDirectorUx();
 void pushEmergencyTimelineSnapshot();
 bool uploadShowTimelineToStage(const char *idOrName);
+
+static void directorWakeDisplay(const char *tag) {
+  Serial.printf("[%s] Display wake\n", tag);
+  backlightNotifyActivity();
+}
+
+static void onEmergencyClearConfirm() {
+  sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
+}
+
+static void onEmergencyClearCancel() {
+  sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+}
 
 #if SHOWDUINO_OS2_SHELL
 void publishOs2Services() {
@@ -159,7 +173,7 @@ void syncOs2Catalogue() {
     p.durationSeconds = e->durationSeconds;
     p.hasThumbnail = e->hasThumbnail;
     p.capabilities.sceneCount = e->cueCount;
-    p.capabilities.audio = true;     /* package may include audio/ â€” refined later */
+    p.capabilities.audio = true;     /* package may include audio/ - refined later */
     p.capabilities.lighting = true;
     p.capabilities.effects = false;
     p.capabilities.audioTrackCount = 0;
@@ -212,7 +226,7 @@ void drainOs2Commands() {
           ui.appendLog("CMD StartShow");
         } else {
           Os2::commandService().markFailed(cmd.seq, "nothing loaded");
-          ui.appendLog("CMD StartShow failed â€” nothing loaded");
+          ui.appendLog("CMD StartShow failed - nothing loaded");
         }
         break;
       }
@@ -321,7 +335,7 @@ void handleStageLine(String line) {
   // Any valid Stage reply proves the link is alive (reconnects from DISCONNECTED).
   applyLinkState(LINK_READY);
 
-  /* SUE TimeService â€” display only; do not invent a local clock. */
+  /* SUE TimeService - display only; do not invent a local clock. */
   if (line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
     ui.applySueTimeWire(line.c_str());
     return;
@@ -340,7 +354,7 @@ void handleStageLine(String line) {
 
   ShowduinoShowRuntimeWire showW = showduino_parse_state_show(line.c_str());
   if (showW != SHOWDUINO_SHOW_WIRE_INVALID) {
-    /* Legacy STATE:SHOW â€” prefer mirrored SHOW:RUNTIME when present. */
+    /* Legacy STATE:SHOW - prefer mirrored SHOW:RUNTIME when present. */
     if (gShowMirror.revision == 0) {
       if (showW == SHOWDUINO_SHOW_WIRE_PLAYING) ui.setShowView(DeskShowView::Playing);
       else if (showW == SHOWDUINO_SHOW_WIRE_EMERGENCY) ui.setShowView(DeskShowView::Emergency);
@@ -369,6 +383,30 @@ void handleStageLine(String line) {
     gStorage.endShowLog("complete");
   }
 
+  if (line == SHOWDUINO_LEGACY_DIRECTOR_LOCATE) {
+    Serial.println("[LOCATOR] Director locate request received");
+    directorWakeDisplay("LOCATOR");
+    directorAmbientStartLocator(millis());
+    ui.appendLog("Director locate");
+    ui.pushOperatorEvent("Director locate");
+  }
+
+  if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST) {
+    directorWakeDisplay("ESTOP");
+    gDirectorEmergencyClearDialog.show(millis());
+    ui.pushOperatorEvent("Emergency clear requested");
+  }
+
+  if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED) {
+    gDirectorEmergencyClearDialog.hide();
+    ui.appendLog("Emergency clear request expired");
+    ui.pushOperatorEvent("Clear request expired");
+  }
+
+  if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK) {
+    gDirectorEmergencyClearDialog.hide();
+  }
+
   ShowduinoEmergencyWire emW = showduino_parse_state_emergency(line.c_str());
   if (emW != SHOWDUINO_EMERGENCY_WIRE_INVALID) {
     bool nowLocked = (emW == SHOWDUINO_EMERGENCY_WIRE_ACTIVE);
@@ -380,15 +418,82 @@ void handleStageLine(String line) {
     }
     emergencyLocked = nowLocked;
     ui.setEmergencyLocked(emergencyLocked);
+    if (!nowLocked) {
+      gDirectorEmergencyClearDialog.hide();
+    }
   }
 
   ShowduinoNodeAvailWire nodeW = showduino_parse_state_node_relay(line.c_str());
   if (nodeW != SHOWDUINO_NODE_WIRE_INVALID) {
-    gNodesOnline = (nodeW == SHOWDUINO_NODE_WIRE_ONLINE) ? 1 : 0;
-    ui.setNodeCount(gNodesOnline);
+    ui.setRelayNodeAvail(nodeW);
+    gNodesOnline = ui.getNodeCount();
 #if SHOWDUINO_OS2_SHELL
     publishOs2Services();
 #endif
+  }
+
+  ShowduinoAudioNodeWire audioW = showduino_parse_state_node_audio(line.c_str());
+  if (audioW != SHOWDUINO_AUDIO_NODE_WIRE_INVALID) {
+    Serial.printf("[Nodes] %s\n", line.c_str());
+    ui.setAudioNodeWire(audioW);
+    gNodesOnline = ui.getNodeCount();
+#if SHOWDUINO_OS2_SHELL
+    publishOs2Services();
+#endif
+  }
+  {
+    ShowduinoAudioDetailWire det;
+    if (showduino_parse_state_node_audio_detail(line.c_str(), &det)) {
+      ui.applyAudioNodeDetail(det);
+    }
+    ShowduinoAudioSoundWire snd;
+    if (showduino_parse_state_node_audio_sound(line.c_str(), &snd)) {
+      ui.applyAudioNodeSound(snd);
+    }
+    if (line.startsWith(SHOWDUINO_WIRE_STATE_NODE_AUDIO_CAPS_PREFIX)) {
+      ui.applyAudioNodeCaps(line.c_str() + (sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_CAPS_PREFIX) - 1));
+    }
+    if (line.startsWith(SHOWDUINO_WIRE_STATE_NODE_AUDIO_META_PREFIX)) {
+      const char *p = line.c_str() + (sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_META_PREFIX) - 1);
+      char fw[12] = "";
+      char mac[18] = "";
+      const char *comma = strchr(p, ',');
+      if (comma) {
+        size_t n = (size_t)(comma - p);
+        if (n >= sizeof(fw)) n = sizeof(fw) - 1;
+        memcpy(fw, p, n);
+        strncpy(mac, comma + 1, sizeof(mac) - 1);
+      } else {
+        strncpy(fw, p, sizeof(fw) - 1);
+      }
+      ui.applyAudioNodeMeta(fw, mac);
+    }
+    if (line.startsWith(SHOWDUINO_WIRE_STATE_NODE_AUDIO_INV_PREFIX)) {
+      const char *p = line.c_str() + (sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_INV_PREFIX) - 1);
+      uint16_t page = (uint16_t)atoi(p);
+      const char *c1 = strchr(p, ':');
+      uint16_t total = 0;
+      char names[SHOWDUINO_AUDIO_INV_WIRE_MAX][21] = {};
+      uint8_t count = 0;
+      if (c1) {
+        total = (uint16_t)atoi(c1 + 1);
+        const char *list = strchr(c1 + 1, ':');
+        if (list && list[1]) {
+          list++;
+          char buf[80];
+          strncpy(buf, list, sizeof(buf) - 1);
+          char *item = buf;
+          while (item && *item && count < SHOWDUINO_AUDIO_INV_WIRE_MAX) {
+            char *comma2 = strchr(item, ',');
+            if (comma2) *comma2 = '\0';
+            strncpy(names[count], item, 20);
+            count++;
+            item = comma2 ? comma2 + 1 : nullptr;
+          }
+        }
+      }
+      ui.applyAudioNodeInv(page, total, names, count);
+    }
   }
 
   /* Legacy emergency companions */
@@ -400,24 +505,39 @@ void handleStageLine(String line) {
   if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
+    gDirectorEmergencyClearDialog.hide();
     ui.pushOperatorEvent("Stage cleared emergency");
   }
 
-  /* Fingerprint: early Stage Engine (pre-ShowRuntime) â€” operator must reflash P4. */
+  /* Fingerprint: early Stage Engine (pre-ShowRuntime) - operator must reflash P4. */
   if (line == "STATUS:READY") {
-    ui.appendLog("WARN: legacy Stage (STATUS:READY) â€” flash ShowduinoStageEngineP4");
-    ui.pushOperatorEvent("Stage firmware outdated â€” reflash P4");
+    ui.appendLog("WARN: legacy Stage (STATUS:READY) - flash ShowduinoStageEngineP4");
+    ui.pushOperatorEvent("Stage firmware outdated - reflash P4");
   }
 
   if (line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD ||
-      line.startsWith("ERR:EMERGENCY_CLEAR:")) {
+      line.startsWith("ERR:EMERGENCY_CLEAR:") ||
+      line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)) {
     ui.noteEmergencyClearRejected();
-    ui.appendLog("CLEAR rejected — release the physical E-stop button first");
-    ui.pushOperatorEvent("Release physical E-stop, then CLEAR");
+    if (line.endsWith("BUTTON_ACTIVE") || line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD) {
+      ui.appendLog("CLEAR rejected - release the physical emergency loop first");
+      ui.pushOperatorEvent("Release physical E-stop, then CONFIRM CLEAR");
+    } else if (line.endsWith("NO_REQUEST")) {
+      ui.appendLog("CLEAR rejected - hold the physical stop to request clearance");
+      ui.pushOperatorEvent("Hold physical E-stop to request clear");
+      gDirectorEmergencyClearDialog.hide();
+    } else if (line.endsWith("TIMEOUT")) {
+      ui.appendLog("CLEAR rejected - request timed out");
+      ui.pushOperatorEvent("Clear request timed out");
+      gDirectorEmergencyClearDialog.hide();
+    } else {
+      ui.appendLog("CLEAR rejected - " + line);
+      ui.pushOperatorEvent("Emergency clear rejected");
+    }
   }
 
   if (line == "ERR:UNKNOWN_COMMAND" || line.startsWith("ERR:UNKNOWN_COMMAND:")) {
-    ui.appendLog("Stage rejected command (unknown) â€” check P4 firmware build");
+    ui.appendLog("Stage rejected command (unknown) - check P4 firmware build");
   }
 
   if (line.startsWith("ACK:SHOW:TL:END:")) {
@@ -446,7 +566,7 @@ void handleStageLine(String line) {
     ui.appendLog(String("Failed R") + relayCh + ": " + reason);
   }
 
-  /* ACCEPTED:RELAY â€” request accepted, not completed; leave pending visuals */
+  /* ACCEPTED:RELAY - request accepted, not completed; leave pending visuals */
   if (line.startsWith(SHOWDUINO_WIRE_ACCEPTED_RELAY_PREFIX)) {
     /* no confirmed mutation */
   }
@@ -457,7 +577,7 @@ void handleStageLine(String line) {
   if (line.startsWith(SHOWDUINO_WIRE_UNSUPPORTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NOT_IMPLEMENTED_PREFIX) ||
       line.startsWith(SHOWDUINO_WIRE_NODE_UNAVAILABLE_PREFIX)) {
-    /* Log only â€” honest failure paths */
+    /* Log only - honest failure paths */
   }
 
   if (!isQuietLinkTraffic(line)) {
@@ -493,8 +613,11 @@ void sendToStage(const String &command) {
     if (!emergencyLocked) onEmergencyActivatedDirectorUx();
     emergencyLocked = true;
     ui.setEmergencyLocked(true);
-  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR) {
-    Serial.println("[E-Stop] TX EMERGENCY:CLEAR to Stage (await STATE:EMERGENCY:CLEAR)");
+  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR ||
+             command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
+    Serial.println("[E-Stop] TX emergency clear confirm to Stage (await STATE:EMERGENCY:CLEAR)");
+  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL) {
+    Serial.println("[E-Stop] TX EMERGENCY:CLEAR_CANCEL to Stage");
   }
 
   ui.setTraffic(txCount, rxCount);
@@ -537,7 +660,7 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
       ui.setEmergencyLocked(true);
     }
   } else if (prev == SHOW_STATE_EMERGENCY_STOP || emergencyLocked) {
-    /* Runtime left EMERGENCY_STOP â€” unlock even if STATE:EMERGENCY:CLEAR was dropped. */
+    /* Runtime left EMERGENCY_STOP - unlock even if STATE:EMERGENCY:CLEAR was dropped. */
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
   }
@@ -548,7 +671,7 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
 #endif
 }
 
-/** Timeline cue strings are executed by Stage â€” Director does not dispatch. */
+/** Timeline cue strings are executed by Stage - Director does not dispatch. */
 void timelineDispatch(const char *command) {
   (void)command;
 }
@@ -570,7 +693,7 @@ void refreshTimelineUi() {
 }
 
 void serviceTimeline() {
-  /* Stage owns playback â€” Director only mirrors SHOW:RUNTIME. */
+  /* Stage owns playback - Director only mirrors SHOW:RUNTIME. */
 }
 
 bool uploadShowTimelineToStage(const char *idOrName) {
@@ -592,7 +715,7 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   ShowDefinition def;
   if (!sm.hasCurrentShow() || strcmp(sm.currentShow().id, showId) != 0) {
     if (!sm.loadShow(showId, def)) {
-      ui.appendLog(String("LOAD failed â€” missing show ") + showId);
+      ui.appendLog(String("LOAD failed - missing show ") + showId);
       return false;
     }
   } else {
@@ -602,13 +725,13 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 
   char path[STORAGE_MAX_PATH_LEN];
   if (!sm.timelinePath(showId, path, sizeof(path)) || !SD.exists(path)) {
-    ui.appendLog(String("LOAD failed â€” missing timeline ") + path);
+    ui.appendLog(String("LOAD failed - missing timeline ") + path);
     return false;
   }
 
   timeline.setDispatch(timelineDispatch);
   if (!timeline.LoadTimeline(path)) {
-    ui.appendLog("LOAD failed â€” timeline parse error");
+    ui.appendLog("LOAD failed - timeline parse error");
     return false;
   }
   timeline.setShowName(showName);
@@ -656,12 +779,12 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 
   char line[140];
   if (!tlEndAckSeen) {
-    ui.appendLog("Timeline upload UNVERIFIED — no Stage confirmation");
+    ui.appendLog("Timeline upload UNVERIFIED - no Stage confirmation");
     return false;
   }
   if (tlEndAckCount != (int)sent) {
     snprintf(line, sizeof(line),
-             "Timeline upload FAILED — Director sent %u cues, Stage received %d",
+             "Timeline upload FAILED - Director sent %u cues, Stage received %d",
              (unsigned)sent, tlEndAckCount);
     ui.appendLog(line);
     return false;
@@ -734,14 +857,14 @@ void pushEmergencyTimelineSnapshot() {
 }
 
 void onEmergencyActivatedDirectorUx() {
-  /* Overlay only â€” Stage pauses timeline & owns ShowRuntime.emergency. */
+  /* Overlay only - Stage pauses timeline & owns ShowRuntime.emergency. */
   pushEmergencyTimelineSnapshot();
   refreshTimelineUi();
 }
 
 void handleUiCommand(const String &command) {
   gStorage.setLastCommand(command.c_str());
-  // Do not SD-log every tap â€” keeps the UI responsive. Critical actions log below.
+  // Do not SD-log every tap - keeps the UI responsive. Critical actions log below.
   if (command.startsWith("EMERGENCY:") || command.startsWith("STORAGE:") ||
       command.startsWith("SHOW:") || command == "STOPALL") {
     logEvent(LogLevel::Event, LogCategory::UserAction, "UI", command.c_str());
@@ -754,12 +877,12 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "UI:ESTOP:ABORT") {
-    /* Always CLEAR first â€” works even on older Stage builds that lack SHOW:STOP. */
+    /* Always CLEAR first - works even on older Stage builds that lack SHOW:STOP. */
     sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
     delay(20);
     sendToStage(SHOWDUINO_LEGACY_SHOW_STOP);
     sendToStage(SHOWDUINO_LEGACY_STOP_ALL);
-    ui.pushOperatorEvent("Abort: CLEAR + STOP sent â€” awaiting Stage");
+    ui.pushOperatorEvent("Abort: CLEAR + STOP sent - awaiting Stage");
     logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort CLEAR+STOP");
     gStorage.endShowLog("aborted");
     return;
@@ -816,7 +939,7 @@ void handleUiCommand(const String &command) {
 
   if (command == "UI:SHOW:REFRESH") {
     if (gStorage.isRecoveryMode()) {
-      ui.appendLog("Show refresh failed â€” SD recovery mode");
+      ui.appendLog("Show refresh failed - SD recovery mode");
       return;
     }
     bool ok = gStorage.showManager().refreshLibrary();
@@ -830,12 +953,12 @@ void handleUiCommand(const String &command) {
 
   if (command == "UI:SHOW:LOAD") {
     if (!ui.hasSelectedShow()) {
-      ui.appendLog("LOAD failed â€” no show selected");
+      ui.appendLog("LOAD failed - no show selected");
       return;
     }
     ShowDefinition def;
     if (!gStorage.showManager().loadShow(ui.selectedShowId(), def)) {
-      ui.appendLog(String("LOAD failed â€” missing show.json for ") + ui.selectedShowId());
+      ui.appendLog(String("LOAD failed - missing show.json for ") + ui.selectedShowId());
       return;
     }
     ui.setLoadedShowName(def.name);
@@ -859,7 +982,7 @@ void handleUiCommand(const String &command) {
       key = ui.selectedShowId();
     }
     if (!key || !key[0]) {
-      ui.appendLog("RUN failed â€” no show selected/loaded");
+      ui.appendLog("RUN failed - no show selected/loaded");
       return;
     }
     requestShowRun(key);
@@ -925,20 +1048,27 @@ void handleUiCommand(const String &command) {
 
   if (command == "EMERGENCY:STOP") {
     /* Stage safety path unchanged. Director overlay only. */
-    Serial.println("[E-Stop] UI EMERGENCY:STOP → Stage");
+    Serial.println("[E-Stop] UI EMERGENCY:STOP -> Stage");
     ui.noteEmergencyTriggeredByDirector();
     if (!emergencyLocked) onEmergencyActivatedDirectorUx();
     gStorage.logEmergency("UI", "EMERGENCY:STOP");
   }
 
-  if (command == "EMERGENCY:CLEAR") {
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
-    ui.appendLog("E-CLEAR sent to Stage");
+  if (command == "EMERGENCY:CLEAR" ||
+      command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
+    ui.appendLog("E-CLEAR confirm sent to Stage");
     if (linkState != LINK_READY) {
-      /* Offline is not proof of safety — stay latched until Stage confirms. */
-      ui.appendLog("CLEAR requested — Stage offline, awaiting confirmation");
-      ui.pushOperatorEvent("Cannot confirm emergency clear — Stage offline");
+      /* Offline is not proof of safety - stay latched until Stage confirms. */
+      ui.appendLog("CLEAR requested - Stage offline, awaiting confirmation");
+      ui.pushOperatorEvent("Cannot confirm emergency clear - Stage offline");
     }
+    return;
+  }
+
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL) {
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+    gDirectorEmergencyClearDialog.hide();
     return;
   }
 
@@ -948,6 +1078,7 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command.startsWith("AUDIO:") &&
+      !command.startsWith("AUDIO:NODE:") &&
       command != "AUDIO:LOCAL:STOP" && command != "AUDIO:STOP" &&
       !command.startsWith("AUDIO:LOCAL:PLAY:") &&
       !command.startsWith("AUDIO:PLAY:")) {
@@ -956,6 +1087,7 @@ void handleUiCommand(const String &command) {
   }
   if (command.startsWith("UI:") || command.startsWith("SCREEN:") ||
       command.startsWith("HOME:") || command.startsWith("PAGE02:") ||
+      command.startsWith("PAGE04:") || command.startsWith("PAGE05:") ||
       command.startsWith("SETTINGS:") || command == "SELFTEST:START") {
     return;
   }
@@ -974,7 +1106,7 @@ void markLinkDisconnected(const char *reason) {
   if (!alreadyDown || !linkLostLogged || (now - lastLogMs) > 30000UL) {
     linkLostLogged = true;
     lastLogMs = now;
-    ui.appendLog(String("Stage DISCONNECTED â€” ") + reason);
+    ui.appendLog(String("Stage DISCONNECTED - ") + reason);
   }
 }
 
@@ -1016,7 +1148,12 @@ void handleUsbLine(String command) {
   if (command.length() == 0) return;
 
   if (command == "HELP") {
-    ui.appendLog("USB: HELLO, STATUS:REQUEST, SHOW:RUN:<name>, SHOW:START, SHOW:PAUSE, SHOW:RESUME, SHOW:STOP, EMERGENCY:STOP/CLEAR");
+    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:RUN:<name>, SHOW:START, SHOW:PAUSE, SHOW:RESUME, SHOW:STOP, EMERGENCY:STOP/CLEAR");
+    return;
+  }
+
+  if (command == "HEALTH") {
+    ui.printHealthDiagnostic();
     return;
   }
 
@@ -1105,7 +1242,7 @@ void requestLinkRetry() {
   if (espNowReady) {
     ui.appendLog("Retrying Stage link (HELLO)...");
   } else {
-    ui.appendLog("Retry failed — ESP-NOW not ready");
+    ui.appendLog("Retry failed - ESP-NOW not ready");
   }
 }
 
@@ -1147,7 +1284,7 @@ void setup() {
   Serial0.println();
   Serial0.println("Showduino Director: USB CDC On Boot is Enabled.");
   Serial0.println("This panel's USB-C serial is CH340 UART0 (the port that printed ESP-ROM).");
-  Serial0.println("Arduino IDE → USB CDC On Boot = Disabled, then reflash. GPIO19/20 are GT911.");
+  Serial0.println("Arduino IDE -> USB CDC On Boot = Disabled, then reflash. GPIO19/20 are GT911.");
 #endif
 
   Serial.println();
@@ -1181,7 +1318,7 @@ void setup() {
 
   Serial.println("Display/LVGL: BankOfDad landscape bring-up...");
   if (!lvglPortInit(panel, rgbpanel)) {
-    Serial.println("LVGL port init failed â€” check PSRAM / bounce buffer");
+    Serial.println("LVGL port init failed - check PSRAM / bounce buffer");
     while (true) delay(1000);
   }
 
@@ -1190,10 +1327,10 @@ void setup() {
   Serial.printf("Display %ux%u rotation %d (landscape)\n",
                 gfx->width(), gfx->height(), DISPLAY_ROTATION);
 
-  /* SD ran before display â€” re-reset GT911 so I2C is clean. */
+  /* SD ran before display - re-reset GT911 so I2C is clean. */
   touchLvglRestoreAfterSd();
   if (!touchLvglReady()) {
-    Serial.println("Touch: init failed â€” check GT911 wiring.");
+    Serial.println("Touch: init failed - check GT911 wiring.");
   }
 
   if (!storageOk && gfx) {
@@ -1207,12 +1344,14 @@ void setup() {
 
   bootMs = millis();
   ui.setBootTime(bootMs);
-  Serial.println("UI: beginâ€¦");
+  Serial.println("UI: begin...");
   ui.begin(handleUiCommand);
+  gDirectorEmergencyClearDialog.setConfirmHandler(onEmergencyClearConfirm);
+  gDirectorEmergencyClearDialog.setCancelHandler(onEmergencyClearCancel);
   Serial.println("UI: begin done");
 #if SHOWDUINO_OS2_SHELL
   Serial.println("Showduino OS 2.0 Complete");
-  Serial.printf("Showduino OS: %s Â· %s (%s)\n",
+  Serial.printf("Showduino OS: %s | %s (%s)\n",
                 SHOWDUINO_OS2_MILESTONE, SHOWDUINO_OS2_PHASE, SHOWDUINO_OS2_VERSION);
   Os2::boot();
   syncOs2Catalogue();
@@ -1233,7 +1372,7 @@ void setup() {
   ui.appendLog("Showduino portable Director online.");
   ui.appendLog("Panel: landscape 800x480 (BankOfDad bring-up)");
   if (gStorage.isRecoveryMode()) {
-    ui.appendLog("SD CARD NOT AVAILABLE â€” recovery mode");
+    ui.appendLog("SD CARD NOT AVAILABLE - recovery mode");
     backlightConfigure(10, 255);
     ui.setScreenTimeoutMinutes(10);
   } else {
@@ -1270,7 +1409,9 @@ void setup() {
 
   directorAmbientBegin();
   directorAmbientSync(linkState, gShowMirror.state, emergencyLocked,
-                      gShowMirror.stageConnected != 0);
+                      gShowMirror.stageConnected != 0,
+                      ui.isSynchronising(),
+                      ui.nodesRequiredMissing());
 
   sendToStage("HELLO");
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
@@ -1290,6 +1431,7 @@ void loop() {
 
   ui.setEmergencyLocked(emergencyLocked);
   ui.tickEmergencyOverlay(now);
+  gDirectorEmergencyClearDialog.tick(now);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
     lastUiRefreshMs = now;
@@ -1320,7 +1462,9 @@ void loop() {
   storageLoop();
 
   directorAmbientSync(linkState, gShowMirror.state, emergencyLocked,
-                      (linkState == LINK_READY) || (gShowMirror.stageConnected != 0));
+                      (linkState == LINK_READY) || (gShowMirror.stageConnected != 0),
+                      ui.isSynchronising(),
+                      ui.nodesRequiredMissing());
   directorAmbientLoop(now);
 
   delay(2);

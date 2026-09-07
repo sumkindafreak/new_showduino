@@ -25,7 +25,7 @@ Waveshare ESP32-P4-Module-DEV-KIT
 ├── USB
 ├── GPIO24                   emergency NeoPixel line
 ├── GPIO25                   momentary emergency trigger
-└── external PCM5102A        dedicated show/programme audio
+└── Audio Node               dedicated attraction / programme audio
 ```
 
 ## Removed from the Stage Controller
@@ -36,7 +36,7 @@ The new baseline does **not** require:
 - A separate DS3231 RTC module.
 - A separate controller solely to provide system/boot audio.
 
-The **PCM5102A remains** because it has a different job: it is the dedicated show-audio output path.
+The **PCM5102A is retired**. Attraction/programme audio is the Audio Node.
 
 ## Role ownership
 

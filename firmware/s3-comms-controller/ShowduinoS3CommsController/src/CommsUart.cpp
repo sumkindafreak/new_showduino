@@ -81,6 +81,20 @@ bool commsUartReadLine(char *out, size_t outSize) {
   return false;
 }
 
+int commsUartAvailable() {
+  return sReady ? Serial1.available() : 0;
+}
+
+int commsUartRead() {
+  if (!sReady) return -1;
+  const int c = Serial1.read();
+  if (c >= 0) {
+    sLastRxMs = millis();
+    sEverRx = true;
+  }
+  return c;
+}
+
 uint32_t commsUartLastRxMs() { return sLastRxMs; }
 uint32_t commsUartRxCount() { return sRxCount; }
 uint32_t commsUartTxCount() { return sTxCount; }

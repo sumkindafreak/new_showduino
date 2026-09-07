@@ -13,7 +13,7 @@
 namespace Os2 {
 
 /**
- * CommandService — Compatibility contract v1 (Api::CommandService).
+ * CommandService - Compatibility contract v1 (Api::CommandService).
  * Intent only. Services answer questions; commands express actions.
  */
 enum class CommandType : uint8_t {

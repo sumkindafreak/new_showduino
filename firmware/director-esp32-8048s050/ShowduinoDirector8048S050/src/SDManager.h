@@ -14,7 +14,7 @@ public:
     statusCb = cb;
     setStage(StorageBootStage::InitSpi, "Initialising SD card");
 
-    /* Try progressively slower SPI clocks — cheap cards often fail writes at 10 MHz. */
+    /* Try progressively slower SPI clocks - cheap cards often fail writes at 10 MHz. */
     static const uint32_t kSpeeds[] = {
       STORAGE_SPI_HZ,
       4000000UL,
@@ -28,7 +28,7 @@ public:
         activeSpiHz = kSpeeds[si];
         break;
       }
-      Serial.printf("[Storage] Mount/write failed at %lu Hz — retrying slower...\n",
+      Serial.printf("[Storage] Mount/write failed at %lu Hz - retrying slower...\n",
                     (unsigned long)kSpeeds[si]);
       SD.end();
       delay(80);
@@ -53,7 +53,7 @@ public:
     if (!ensureFolderStructure()) {
       setError("Folder structure repair failed");
       status.folderStructureValid = false;
-      /* Still mounted — may be read-only or partially usable */
+      /* Still mounted - may be read-only or partially usable */
       if (!status.writable) {
         status.recoveryMode = true;
         setStage(StorageBootStage::RecoveryMode, "SD NOT WRITABLE");
@@ -62,7 +62,7 @@ public:
       }
     } else {
       status.folderStructureValid = true;
-      Serial.println("[Storage] Validating folders — OK");
+      Serial.println("[Storage] Validating folders - OK");
     }
 
     refreshSpace();
@@ -126,7 +126,7 @@ public:
         allOk = false;
         failCount++;
         if (failCount >= 3) {
-          Serial.println("[Storage] Multiple mkdir failures — stopping folder create.");
+          Serial.println("[Storage] Multiple mkdir failures - stopping folder create.");
           break;
         }
       }

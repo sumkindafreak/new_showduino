@@ -29,10 +29,10 @@ public:
     if (!sd.begin(cb)) {
       recoveryMode = true;
       logs.begin(nullptr, SaveLogMode::ErrorsOnly);
-      // Always clear the boot marker in recovery — otherwise a crash before UI
+      // Always clear the boot marker in recovery - otherwise a crash before UI
       // leaves NVS bootAttempts climbing and "interrupted startup" forever.
       recovery.markStartupComplete();
-      Serial.println("[Storage] RECOVERY MODE ACTIVE — emergency controls remain available");
+      Serial.println("[Storage] RECOVERY MODE ACTIVE - emergency controls remain available");
       return false;
     }
 
@@ -41,10 +41,10 @@ public:
     recovery.recoverPendingWrites();
     yield();
 
-    /* Crash reports are deferred — atomic SD writes under active RGB DMA
+    /* Crash reports are deferred - atomic SD writes under active RGB DMA
      * have caused Interrupt WDT panics on JC8048W550C. */
     if (recovery.interruptedStartup()) {
-      Serial.println("[Storage] Prior abnormal reset noted — crash report deferred");
+      Serial.println("[Storage] Prior abnormal reset noted - crash report deferred");
       pendingCrashReport = true;
     }
 
@@ -91,7 +91,7 @@ public:
       if (now - lastMountRetryMs >= STORAGE_MOUNT_RETRY_MS) {
         lastMountRetryMs = now;
         if (retryMountSD()) {
-          logs.logEvent(LogLevel::Info, LogCategory::Storage, "Storage", "SD restored — leaving recovery mode");
+          logs.logEvent(LogLevel::Info, LogCategory::Storage, "Storage", "SD restored - leaving recovery mode");
         }
       }
       return;
@@ -99,7 +99,7 @@ public:
 
     if (!sd.getStatus().mounted) return;
 
-    // Keep SD work short — long SPI stalls make LVGL/touch feel dead.
+    // Keep SD work short - long SPI stalls make LVGL/touch feel dead.
     if (now - lastSpaceRefreshMs >= 5000UL) {
       lastSpaceRefreshMs = now;
       sd.refreshSpace();

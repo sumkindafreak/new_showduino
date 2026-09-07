@@ -3,7 +3,7 @@
 
 #include "DisplayTypes.h"
 
-/* Hybrid LVGL operator pages — panel owned by ShowduinoUi / page_0x modules. */
+/* Hybrid LVGL operator pages - panel owned by ShowduinoUi / page_0x modules. */
 static const DisplayPage kDesktopPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
@@ -40,6 +40,12 @@ static const DisplayPage kNodesPage = {
   false, false, 0, false, true,
 };
 
+static const DisplayPage kAudioNodePage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
+  false, false, 0, false, true,
+};
+
 static const DisplayPage kSettingsPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
@@ -58,7 +64,7 @@ static const DisplayPage kLogsPage = {
   false, false, 0, false, true,
 };
 
-/* Full-screen system pages — LVGL chrome, no dock, no HUD overlays. */
+/* Full-screen system pages - LVGL chrome, no dock, no HUD overlays. */
 static const DisplayPage kSystemModalPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
@@ -73,6 +79,7 @@ inline const DisplayPage *displayPageById(DisplayPageId id) {
     case PAGE_LIVE: return &kLivePage;
     case PAGE_DIAGNOSTICS: return &kDiagnosticsPage;
     case PAGE_NODES: return &kNodesPage;
+    case PAGE_AUDIO_NODE: return &kAudioNodePage;
     case PAGE_SETTINGS: return &kSettingsPage;
     case PAGE_AUDIO: return &kAudioPage;
     case PAGE_LOGS: return &kLogsPage;
@@ -137,6 +144,7 @@ inline const char *displayPageTitle(DisplayPageId id) {
     case PAGE_COMPLETE: return "SHOW COMPLETE";
     case PAGE_DIAGNOSTICS: return "DIAGNOSTICS";
     case PAGE_NODES: return "NODES";
+    case PAGE_AUDIO_NODE: return "AUDIO NODE";
     case PAGE_EMERGENCY: return "EMERGENCY";
     default: return "SHOWDUINO";
   }

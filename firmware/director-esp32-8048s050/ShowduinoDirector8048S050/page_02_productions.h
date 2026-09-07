@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 /**
- * Page 02 — Productions (SD library)
+ * Page 02 - Productions (SD library)
  *
  * Lists packages from ShowManager on the Director SD card.
  * Load uploads the timeline to Stage. Run requests SHOW:RUN.

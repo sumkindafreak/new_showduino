@@ -9,7 +9,7 @@
 #endif
 
 /**
- * Showduino OS Director unlock / verification overlay.
+ * Showduino OS Director boot overlay.
  *
  * The overlay is deliberately drawn with native LVGL 9 objects so it does not
  * require an SD-card image or a large full-screen canvas. Decorative geometry

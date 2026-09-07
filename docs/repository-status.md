@@ -24,7 +24,7 @@ Communications Engine ESP32-S3 (dedicated Dev Module)
 Show Engine ESP32-P4
 ```
 
-The supported current stack ends at the P4. Node firmware and node routing remain experimental/future work.
+The supported current stack includes the first specialist **Audio Node**. Relay / MOSFET / LED / DMX Nodes remain future.
 
 Browser / phone access remains a conceptual target. The current S3 Comms Controller does not host SoftAP. The Director does not host the primary Web UI.
 
@@ -48,6 +48,7 @@ Status values: `ACTIVE` · `LEGACY` · `EXPERIMENTAL` · `DIAGNOSTIC` · `INCOMP
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Canonical Communications Engine | Dedicated ESP‑NOW + UART bridge | Centre of ESP‑NOW/UART fabric | Keep; do not move show logic here |
 | `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 (Waveshare P4 module) | Historical C6 ESP‑NOW UART bridge | Superseded by dedicated S3 Comms Controller | Physical C6 nets remain reserved; do not flash | Retain source; not current architecture |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Canonical Show Engine runtime + timeline hub | Authoritative state, safety, SD production loading, and cue scheduling | UART peer of Comms Engine | Keep; grow SoT features; rename folder later |
+| `firmware/audio-node-esp32-a1s/` | **ACTIVE** | Ai-Thinker ESP32-A1S Audio Kit / ES8388 | First production specialist Audio Node | Local SD WAV playback, ESP-NOW discovery, confirmed lifecycle | Node → Comms → P4 | Hardware test required; do not start another Node type yet |
 | `firmware/relay-node-esp32/` | **EXPERIMENTAL / FUTURE** | ESP32 + relay module | Relay-node prototype | Source exists, but completion semantics and logical-ID routing are incomplete | Outside the supported current stack | Retain for a future node milestone; do not present as shipping |
 | `firmware/c3-supermini-espnow-bridge/` | **LEGACY / SUPERSEDED** | ESP32-C3 SuperMini (SUE) | Previous external Communications Engine | External C3 + Wi‑Fi AP generation | Superseded first by onboard C6, now by dedicated S3 | Retain as reference; do not treat as current path |
 | `firmware/director-s3/` | **LEGACY** | ESP32-S3 + TFT_eSPI | Earlier UART-only Director scaffold | Older topology (Director↔UART↔engine) | Superseded by 8048 ESP‑NOW Director | Retain for reference; do not extend |
@@ -126,6 +127,16 @@ The onboard C6 firmware (`firmware/p4-c6-espnow-bridge/`) is **UNUSED / RESERVED
 * ESP‑NOW radio implementation
 * Director visual logic
 * Node-local hardware drivers
+
+### Audio Node (`firmware/audio-node-esp32-a1s/`)
+
+**Classification:** IMPLEMENTED / HARDWARE TEST REQUIRED. First production specialist Node.
+
+**Owns:** local ES8388 + microSD WAV playback, confirmed lifecycle reports, fades/duck/inventory, local commissioning keys/LED.
+
+**Must not own:** show state, timeline decisions, P4 system/emergency audio.
+
+See [`docs/audio-node.md`](audio-node.md).
 
 ### Relay Node prototype (`firmware/relay-node-esp32/`)
 

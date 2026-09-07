@@ -1,0 +1,7 @@
+{
+  "formatVersion": 1,
+  "enabled": true,
+  "universe": 1,
+  "multicast": true,
+  "sourceTimeoutMs": 2500
+}

@@ -66,14 +66,20 @@ Confirmed assignments. Do not change these during architecture-lock work.
 | 4 | Comms UART RX (from S3 TX) |
 | 5 | Comms UART TX (to S3 RX) |
 | 6 | **RESERVED** — onboard C6 control (C6 GPIO2) |
-| 7 | Plug-in Bus SDA (Waveshare I²C header / 40-pin pin 3) |
-| 8 | Plug-in Bus SCL (Waveshare I²C header / 40-pin pin 5) |
+| 7 | Plug-in Bus SDA + ES8311 I²C (Waveshare I²C header / 40-pin pin 3) |
+| 8 | Plug-in Bus SCL + ES8311 I²C (Waveshare I²C header / 40-pin pin 5) |
+| 9 | ES8311 DSDIN (P4 I2S DOUT) |
+| 10 | ES8311 LRCK / WS — not a status LED |
+| 11 | ES8311 ASDOUT (unused for playback) |
+| 12 | ES8311 SCLK / BCLK |
+| 13 | ES8311 MCLK |
 | 14–19 | **RESERVED** — onboard C6 SDIO |
-| 20 | PCM5102A WS / LRCK |
-| 21 | PCM5102A BCLK |
-| 22 | PCM5102A DATA / DOUT |
+| 20–22 | unused (legacy PCM5102A retired) |
+| 53 | NS4150B PA enable (active HIGH) |
+| 23 | TARGET — only planned local Show NeoPixel line (not implemented) |
 | 24 | Emergency NeoPixels |
 | 25 | Physical emergency button (momentary active-LOW, ~30 ms debounce, software latch) |
+| 28–31, 34–35, 49–52 | BOARD Ethernet IP101GRI RMII / SMI (optional show network) |
 | 39–45 | SDMMC Slot 0 (microSD). D0–D3=39–42, CLK=43, CMD=44, POWER=45 |
 | 54 | **RESERVED** — onboard C6 reset / CHIP_PU |
 
@@ -160,7 +166,7 @@ Previous generation used the Waveshare onboard C6 as the Communications Engine. 
 
 **Firmware:** `firmware/stage-engine-p4/`
 
-Owns production loading, show/timeline/cue runtime, SD (`/showduino/` including `/showduino/webui/`), show and emergency audio, emergency latch, GPIO25, GPIO24 pixels, WebUI origin, safety.
+Owns production loading, show/timeline/cue runtime, SD (`/showduino/` persistent filesystem; WebUI remains Comms S3 PROGMEM), P4 system/safety audio (onboard ES8311), emergency latch, GPIO25, GPIO24 emergency pixels, optional Ethernet / E1.31 test RX, Web API origin, safety. Attraction/programme audio is Audio-Node-only. One local show-pixel line is planned (GPIO23) and is not implemented yet. Extra pixels belong to future Pixel / LED Nodes. SD is the persistent backbone, not the safety backbone.
 
 **Local USB maintenance console:** the P4 USB Serial/debug port (115200 8N1, newline-terminated) is an extra input into the same command dispatcher as the dedicated S3 Communications Engine UART. It does not replace Director → ESP-NOW → dedicated S3 → UART. `EMERGENCY:CLEAR` over USB still cannot bypass GPIO25. See [`firmware/stage-engine-p4/README.md`](../firmware/stage-engine-p4/README.md).
 
@@ -223,10 +229,10 @@ Emergency GPIO25 exercised with S3 unplugged
 Showduino Director
 Showduino Stage Controller   (runs Show Engine)
 Showduino Communications Engine  (dedicated ESP32-S3 in this generation)
+Showduino Audio Node               (IMPLEMENTED / HARDWARE TEST REQUIRED)
 Showduino Relay Node 4 / 8         (future)
-Showduino Audio Node
-Showduino Pixel Node
-Showduino Prop Node
+Showduino Pixel Node               (future)
+Showduino Prop Node                (future)
 ```
 
 Avoid shipping new materials that say “Stage Engine.”

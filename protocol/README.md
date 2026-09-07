@@ -27,7 +27,8 @@ protocol/
 ├── showduino_node_packet.h     # Comms <-> Node ESP-NOW (v1 wire)
 ├── showduino_validation.h      # pure C/C++ validators
 ├── showduino_legacy_strings.h  # colon-text compatibility constants
-└── showduino_state_wire.h      # Stage 3 STATE/SNAPSHOT/ACCEPTED tokens
+├── showduino_state_wire.h      # Stage 3 STATE/SNAPSHOT/ACCEPTED tokens
+└── showduino_audio_node.h      # Audio Node path/command/state rules
 ```
 
 No pins, Wi-Fi, ESP-NOW init, UART drivers, LVGL, or GPIO live here.
@@ -91,10 +92,16 @@ See `showduino_message_types.h`. Intent IDs such as `SHOW_START_REQUEST`, `RELAY
 | `PRODUCTION:LIST` / `LOAD:<id>` / `UNLOAD` / `STATUS` | Persistent P4 production requests |
 | `EMERGENCY:STOP` | → `EMERGENCY_ACTIVATE_REQUEST` |
 | `EMERGENCY:CLEAR` | → `EMERGENCY_CLEAR_REQUEST` |
+| `DIRECTOR:LOCATE` | P4 → Director locate gesture (presentation only) |
+| `EMERGENCY:CLEAR_REQUEST` | P4 → Director pending-clear prompt |
+| `EMERGENCY:CLEAR_CONFIRM` / `CANCEL` | Director → P4 dual-action clear |
 | `RELAY:n:ON/OFF` | → `RELAY_SET_REQUEST` |
 | `RELAY:n:TOGGLE` | **Deprecated** — still parsed by some firmware |
-| `ROUTE:<type>:` | Legacy Comms envelope (Show Engine → Comms) |
-| `NODE:` | Legacy Comms envelope (node reply to Show Engine) |
+| `ROUTE:AUDIO:<seq>:<cmd>` | P4 → Comms envelope for the Audio Node |
+| `NODE:AUDIO:` | Comms → P4 Audio Node report |
+| `AUDIO:NODE:*` | Programme-audio commands (Node only) |
+| `AUDIO:LOCAL:*` | P4 system audio (Node must reject) |
+| `STATE:NODE:AUDIO:` | P4 → Director reserved Audio Node presence tokens |
 | `ACK:` / `ERR:` / `STATUS:` | Legacy reply lines |
 
 These envelopes are **not** the permanent application vocabulary.
@@ -125,6 +132,7 @@ Optional: copy or junction this folder into the Arduino `libraries/` path using 
 
 ```text
 tools/protocol-tests/
+tools/audio-node-tests/
 ```
 
 Compile without Arduino / ESP32 SDK (`run_tests.ps1` / `run_tests.sh`).

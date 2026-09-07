@@ -1,9 +1,9 @@
 #pragma once
 
 /**
- * Showduino OS â€” Operator Workspace
- * Milestone: Architecture Frozen Â· Phase: Application Development
- * Constitution: os2/Foundation.h Â· ADRs: docs/adr/
+ * Showduino OS - Operator Workspace
+ * Milestone: Architecture Frozen | Phase: Application Development
+ * Constitution: os2/Foundation.h | ADRs: docs/adr/
  */
 
 #include "Foundation.h"

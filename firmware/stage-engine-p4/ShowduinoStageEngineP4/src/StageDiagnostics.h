@@ -22,6 +22,8 @@ uint32_t stageCommsLastRxMs();
 bool stageCommsSawDirectorTraffic();
 void stageCommsSendLine(const char *line);
 void stageDiagDispatchLocal(const char *cmd);
+/* Dispatch a whitelist-checked show command and capture ACK lines for WebUI. */
+bool stageWebDispatchCommand(const char *cmd, String *repliesOut);
 bool stageEstopDebouncedAsserted();
 
 #endif

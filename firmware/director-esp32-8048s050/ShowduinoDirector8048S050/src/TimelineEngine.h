@@ -10,7 +10,7 @@
 /**
  * Data-driven Timeline Engine (Stage 5).
  * Loads timeline.json once, plays with millis(), dispatches raw command strings.
- * Does not interpret commands — dispatch callback sends them as-is to Stage.
+ * Does not interpret commands - dispatch callback sends them as-is to Stage.
  */
 
 #ifndef TIMELINE_MAX_CUES
@@ -44,17 +44,17 @@ public:
     freeCues();
 
     if (!timelineJsonPath || !ShowduinoFileUtil::pathLooksSafe(timelineJsonPath)) {
-      Serial.println("[Timeline] load failed — bad path");
+      Serial.println("[Timeline] load failed - bad path");
       return false;
     }
     if (!SD.exists(timelineJsonPath)) {
-      Serial.printf("[Timeline] load failed — missing %s\n", timelineJsonPath);
+      Serial.printf("[Timeline] load failed - missing %s\n", timelineJsonPath);
       return false;
     }
 
     String json;
     if (!ShowduinoFileUtil::readTextFile(timelineJsonPath, json, TIMELINE_MAX_JSON_BYTES)) {
-      Serial.println("[Timeline] load failed — read error");
+      Serial.println("[Timeline] load failed - read error");
       return false;
     }
     bool ok = loadFromJsonString(json);
@@ -110,7 +110,7 @@ public:
 
   void Start() {
     if (cueCount == 0 && durationMs == 0 && !loadedPath[0]) {
-      Serial.println("[Timeline] start ignored — nothing loaded");
+      Serial.println("[Timeline] start ignored - nothing loaded");
       return;
     }
     playState = TimelinePlayState::Running;
@@ -286,13 +286,13 @@ private:
     int arr = json.indexOf("\"timeline\"");
     if (arr < 0) arr = json.indexOf("\"events\"");
     if (arr < 0) {
-      Serial.println("[Timeline] load failed — no timeline/events array");
+      Serial.println("[Timeline] load failed - no timeline/events array");
       return false;
     }
     int bracket = json.indexOf('[', arr);
     int end = json.indexOf(']', bracket);
     if (bracket < 0 || end <= bracket) {
-      Serial.println("[Timeline] load failed — malformed array");
+      Serial.println("[Timeline] load failed - malformed array");
       return false;
     }
 
@@ -316,7 +316,7 @@ private:
     }
 
     if (!ensureCueCapacity(need)) {
-      Serial.println("[Timeline] load failed — OOM");
+      Serial.println("[Timeline] load failed - OOM");
       return false;
     }
 
@@ -357,7 +357,7 @@ private:
   }
 
   void stableSortByTime() {
-    /* Insertion sort — stable, fine for a few thousand cues once at load. */
+    /* Insertion sort - stable, fine for a few thousand cues once at load. */
     for (uint16_t i = 1; i < cueCount; i++) {
       TimelineCue key = cues[i];
       int j = (int)i - 1;

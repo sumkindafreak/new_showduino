@@ -16,7 +16,7 @@ class DisplayBackground {
 
   /**
    * Load path for page/theme. Cache hit if same page+theme+path already loaded.
-   * PSRAM only — no internal SRAM fallback.
+   * PSRAM only - no internal SRAM fallback.
    */
   bool load(DisplayPageId page, const char *themeName, const char *absPath);
 

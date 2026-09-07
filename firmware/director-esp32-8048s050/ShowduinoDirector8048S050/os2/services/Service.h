@@ -6,7 +6,7 @@
 namespace Os2 {
 
 /**
- * Layer 3 — Services.
+ * Layer 3 - Services.
  * Apps never talk to hardware, transport, or storage directly.
  * They ask a service. Exactly like Android / Windows / macOS.
  */

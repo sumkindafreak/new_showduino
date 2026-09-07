@@ -9,7 +9,7 @@
 namespace Os2 {
 
 /**
- * Production Manifest — Compatibility contract v1 (Api::ProductionManifest).
+ * Production Manifest - Compatibility contract v1 (Api::ProductionManifest).
  *
  * Primary object of Showduino OS. Not a file path.
  * Library sees Productions; backends map storage behind AssetService.
@@ -34,9 +34,9 @@ struct ProductionManifest {
   uint32_t durationSeconds;
   bool hasThumbnail;
   ProductionCapabilities capabilities;
-  char entryShow[64];   /* runtime entry — usually same as id */
+  char entryShow[64];   /* runtime entry - usually same as id */
   char lastEdited[32];  /* display string from package */
-  StatusLevel readiness; /* Ready / Warning / … for operator */
+  StatusLevel readiness; /* Ready / Warning / ... for operator */
 };
 
 enum class ProductionReadiness : uint8_t {
@@ -55,7 +55,7 @@ inline void productionFormatDuration(const ProductionManifest &p, char *buf, siz
   if (!buf || n == 0) return;
   uint32_t sec = p.durationSeconds;
   if (sec == 0) {
-    snprintf(buf, n, "—");
+    snprintf(buf, n, "-");
     return;
   }
   uint32_t mins = sec / 60;

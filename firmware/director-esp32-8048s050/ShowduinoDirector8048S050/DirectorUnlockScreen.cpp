@@ -25,11 +25,11 @@ const char *STEP_STATUS[DirectorUnlockScreen::STEP_COUNT] = {
   "LOADING SHOWDUINO OS",
   "CHECKING STORAGE",
   "STARTING COMMUNICATIONS",
-  "DISCOVERING SUE",
+  "DISCOVERING COMMS",
   "SYNCHRONISING SYSTEM CLOCK",
-  "CONNECTING TO IAN",
+  "CONNECTING TO STAGE",
   "CHECKING EMERGENCY STATE",
-  "VERIFYING CREDENTIALS"
+  "STARTING OPERATOR DESK"
 };
 
 const char *STEP_PRIMARY[DirectorUnlockScreen::STEP_COUNT] = {
@@ -37,11 +37,11 @@ const char *STEP_PRIMARY[DirectorUnlockScreen::STEP_COUNT] = {
   "Loading the Showduino OS operator shell.",
   "Checking shows, settings and local assets.",
   "Starting ESP-NOW and service communications.",
-  "Looking for the SUE communications controller.",
-  "Requesting authoritative time from SUE.",
-  "Waiting for the IAN Show Engine.",
+  "Looking for the Communications S3.",
+  "Requesting authoritative time from the P4.",
+  "Waiting for the P4 Show Engine.",
   "Confirming the stage is safe to operate.",
-  "Unlocking the Director system."
+  "Opening the Director operator desk."
 };
 
 const char *STEP_SECONDARY[DirectorUnlockScreen::STEP_COUNT] = {
@@ -51,7 +51,7 @@ const char *STEP_SECONDARY[DirectorUnlockScreen::STEP_COUNT] = {
   "The network fabric is coming online.",
   "ESP-NOW discovery is active.",
   "The Director does not invent its own show clock.",
-  "Runtime state will be mirrored from the stage.",
+  "Runtime state will be mirrored from Stage.",
   "Emergency control always remains available.",
   "This will only take a moment."
 };
@@ -88,7 +88,7 @@ void DirectorUnlockScreen::begin(uint32_t nowMs) {
   buildUi();
   visible_ = true;
   setStep(0, STEP_STATUS[0], STEP_PRIMARY[0], STEP_SECONDARY[0]);
-  Serial.println("[UnlockUI] Showduino OS verification overlay active");
+  Serial.println("[BootUI] Showduino OS boot overlay active");
 }
 
 void DirectorUnlockScreen::buildUi() {
@@ -245,7 +245,7 @@ void DirectorUnlockScreen::buildScanner() {
 
 void DirectorUnlockScreen::buildTextAndProgress() {
   title_ = lv_label_create(root_);
-  lv_label_set_text(title_, "UNLOCKING");
+  lv_label_set_text(title_, "BOOTING");
   lv_obj_set_style_text_color(title_, lv_color_hex(COL_TEXT), 0);
   lv_obj_set_style_text_font(title_, &lv_font_montserrat_36, 0);
   lv_obj_align(title_, LV_ALIGN_TOP_MID, 0, 286);
@@ -313,7 +313,7 @@ void DirectorUnlockScreen::setStep(uint8_t step, const char *status,
   if (step >= STEP_COUNT) step = STEP_COUNT - 1;
   currentStep_ = step;
 
-  lv_label_set_text(status_, status ? status : "VERIFYING");
+  lv_label_set_text(status_, status ? status : "BOOTING");
   lv_label_set_text(infoPrimary_, primary ? primary : "Please wait.");
   lv_label_set_text(infoSecondary_, secondary ? secondary : "");
 
@@ -345,16 +345,16 @@ void DirectorUnlockScreen::applyFinalState(bool stageLinked, bool emergencyLocke
   }
 
   if (stageLinked) {
-    lv_label_set_text(title_, "UNLOCKED");
-    lv_label_set_text(status_, "OPERATION COMPLETE");
+    lv_label_set_text(title_, "READY");
+    lv_label_set_text(status_, "BOOT COMPLETE");
     lv_label_set_text(infoPrimary_, "Showduino Director is ready.");
-    lv_label_set_text(infoSecondary_, "SUE and the Show Engine are responding.");
+    lv_label_set_text(infoSecondary_, "Comms and the P4 Show Engine are responding.");
   } else {
     lv_label_set_text(title_, "LOCAL MODE");
     lv_label_set_text(status_, "STAGE CONNECTION PENDING");
     lv_obj_set_style_text_color(status_, lv_color_hex(COL_WARN), 0);
     lv_label_set_text(infoPrimary_, "Director is ready while stage discovery continues.");
-    lv_label_set_text(infoSecondary_, "Controls will update automatically when SUE responds.");
+    lv_label_set_text(infoSecondary_, "Controls will update automatically when Comms responds.");
   }
 }
 
@@ -416,5 +416,5 @@ void DirectorUnlockScreen::destroy() {
   for (uint8_t i = 0; i < STEP_COUNT; ++i) dots_[i] = nullptr;
   visible_ = false;
   finished_ = true;
-  Serial.println("[UnlockUI] Verification overlay complete");
+  Serial.println("[BootUI] Boot overlay complete");
 }

@@ -15,11 +15,12 @@
  *   - Nothing in this model is confirmed until the P4 sends a matching response.
  *
  * PROTOCOL LIMITATIONS (current):
- *   - P4 does not send STATE:AUDIO:* wire messages.
- *   - P4 rejects all AUDIO:LOCAL:* commands (SHOWDUINO_P4_LOCAL_AUDIO_ENABLED=0).
- *   - P4 routes AUDIO:NODE:* commands to the C3 bridge which returns NODE_UNAVAILABLE.
- *   - No duration, elapsed, or detailed fault codes are reported by P4.
- *   - P4 online/offline is inferred from the shared Stage link state, not audio-specific.
+ *   - P4 local AUDIO:LOCAL:* remains P4 system/safety audio (ES8311).
+ *   - P4 now publishes STATE:NODE:AUDIO:{ONLINE|PLAYING|PAUSED|FAULT|EMERGENCY|OFFLINE}.
+ *   - Director does not yet have a dedicated Audio Node device list page.
+ *     Future work: show "Audio Node ONLINE / PLAYING / FAULT" from those tokens.
+ *   - Do not add a one-off Director page in this milestone.
+ *   - No duration, elapsed, or detailed fault codes are reported to the Director yet.
  *
  * The UI must present these limitations honestly.
  */
@@ -110,7 +111,7 @@ struct P4AudioPendingCmd {
 
     const char *stateText() const {
         switch (state) {
-            case P4AudioCmdState::Sent:         return "Sent \xe2\x80\x94 awaiting P4";
+            case P4AudioCmdState::Sent:         return "Sent - awaiting P4";
             case P4AudioCmdState::Acknowledged: return "Acknowledged by P4";
             case P4AudioCmdState::Rejected:     return "Rejected by P4";
             case P4AudioCmdState::Unsupported:  return "Not supported by P4";
@@ -142,16 +143,16 @@ struct DirectorP4AudioModel {
     bool               dataFresh       = false;  /* true if we have any state from P4 */
     unsigned long      lastUpdateMs    = 0;
 
-    /* Current track — P4-reported (NOT read from SD by Director) */
+    /* Current track - P4-reported (NOT read from SD by Director) */
     char  trackName[64]    = {};  /* filename or title as reported */
     char  trackSource[48]  = {};  /* show source if reported */
     bool  trackKnown       = false;
-    uint8_t volume         = 0;   /* 0–100 scale; NOT confirmed until P4 reports */
+    uint8_t volume         = 0;   /* 0-100 scale; NOT confirmed until P4 reports */
     bool  volumeKnown      = false;
     bool  muted            = false;
     bool  muteKnown        = false;
 
-    /* Elapsed / duration — future capability; P4 does not report yet */
+    /* Elapsed / duration - future capability; P4 does not report yet */
     uint32_t elapsedMs     = 0;
     uint32_t durationMs    = 0;
     bool     timingKnown   = false;
@@ -186,7 +187,7 @@ struct DirectorP4AudioModel {
             case P4AudioEngineState::Muted:          return "Muted";
             case P4AudioEngineState::Fault:          return "FAULT";
             case P4AudioEngineState::EmergencyAudio: return "EMERGENCY AUDIO ACTIVE";
-            default:                                 return "Unknown \xe2\x80\x94 awaiting P4";
+            default:                                 return "Unknown - awaiting P4";
         }
     }
 
@@ -259,7 +260,7 @@ struct DirectorP4AudioModel {
     void trackCommand(const char *cmd) {
         pending.send(cmd);
         if (cmd) {
-            strncpy(lastP4Response, "Sent \xe2\x80\x94 awaiting P4", sizeof(lastP4Response) - 1);
+            strncpy(lastP4Response, "Sent - awaiting P4", sizeof(lastP4Response) - 1);
             lastP4Response[sizeof(lastP4Response) - 1] = '\0';
         }
     }

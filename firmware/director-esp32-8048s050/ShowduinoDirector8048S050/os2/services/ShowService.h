@@ -11,9 +11,9 @@
 namespace Os2 {
 
 /**
- * ShowService — Compatibility contract v1 (Api::ShowService).
+ * ShowService - Compatibility contract v1 (Api::ShowService).
  * Truth only: current production, playback, cues, progress.
- * Intent (load/run/stop) → CommandService.
+ * Intent (load/run/stop) -> CommandService.
  */
 class ShowService : public IService {
  public:
@@ -91,7 +91,7 @@ class ShowService : public IService {
     if (!changed) return;
     bump();
 
-    /* Publish precise events — apps subscribe, never poll. */
+    /* Publish precise events - apps subscribe, never poll. */
     if (loaded_ && !prevLoaded) {
       events().publish(Event::ShowLoaded);
     }
@@ -180,7 +180,7 @@ class ShowService : public IService {
 
   void formatCue(char *buf, size_t n) const {
     if (!buf || n == 0) return;
-    if (totalCues_ == 0) { snprintf(buf, n, "—"); return; }
+    if (totalCues_ == 0) { snprintf(buf, n, "-"); return; }
     snprintf(buf, n, "%lu / %lu", (unsigned long)currentCue_, (unsigned long)totalCues_);
   }
 
@@ -189,7 +189,7 @@ class ShowService : public IService {
     snprintf(buf, n, "%u%%", (unsigned)progressPercent());
   }
 
-  /* Intent (load/run/stop) lives in CommandService — this service is truth only. */
+  /* Intent (load/run/stop) lives in CommandService - this service is truth only. */
 
   uint32_t revision() const { return revision_; }
 

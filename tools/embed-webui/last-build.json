@@ -1,0 +1,51 @@
+{
+  "buildHash": "efacb24e715d",
+  "buildUtc": "2026-09-06T21:34:24Z",
+  "source": "web/showduino-studio",
+  "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
+  "assetCount": 3,
+  "rawBytes": 96273,
+  "embeddedBytes": 22076,
+  "bundledModules": [
+    "/js/utils.js",
+    "/js/router.js",
+    "/js/components/Nav.js",
+    "/js/api.js",
+    "/js/status.js",
+    "/js/store.js",
+    "/js/components/Layout.js",
+    "/js/pages/Home.js",
+    "/js/pages/Productions.js",
+    "/js/pages/Live.js",
+    "/js/pages/Outputs.js",
+    "/js/pages/Devices.js",
+    "/js/pages/Network.js",
+    "/js/components/MemoryBar.js",
+    "/js/pages/System.js",
+    "/js/pages/Settings.js",
+    "/js/app.js"
+  ],
+  "assets": [
+    {
+      "path": "/index.html",
+      "mime": "text/html; charset=utf-8",
+      "raw": 1636,
+      "embedded": 877,
+      "gzip": true
+    },
+    {
+      "path": "/css/studio.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 12091,
+      "embedded": 2898,
+      "gzip": true
+    },
+    {
+      "path": "/js/app.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 82546,
+      "embedded": 18301,
+      "gzip": true
+    }
+  ]
+}

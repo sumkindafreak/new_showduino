@@ -2,6 +2,8 @@
 #define SHOWDUINO_STATE_WIRE_H
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "showduino_message_types.h"
@@ -17,7 +19,24 @@ extern "C" {
 #define SHOWDUINO_WIRE_STATE_SHOW_PREFIX  "STATE:SHOW:"
 #define SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX "STATE:EMERGENCY:"
 #define SHOWDUINO_WIRE_STATE_NODE_RELAY_PREFIX "STATE:NODE:RELAY:"
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX "STATE:NODE:AUDIO:"
 #define SHOWDUINO_WIRE_STATE_RELAY_PREFIX "STATE:RELAY:"
+/* Reserved for a future Director Ethernet / E1.31 status page. Not published yet. */
+#define SHOWDUINO_WIRE_STATE_ETHERNET_PREFIX "STATE:ETHERNET:"
+#define SHOWDUINO_WIRE_STATE_E131_PREFIX     "STATE:E131:"
+#define SHOWDUINO_WIRE_ETHERNET_ONLINE       "ONLINE"
+#define SHOWDUINO_WIRE_ETHERNET_OFFLINE      "OFFLINE"
+#define SHOWDUINO_WIRE_E131_ONLINE           "ONLINE"
+#define SHOWDUINO_WIRE_E131_STALE            "STALE"
+#define SHOWDUINO_WIRE_E131_OFFLINE          "OFFLINE"
+#define SHOWDUINO_WIRE_E131_UNAVAILABLE      "UNAVAILABLE"
+/* Reserved for a future Director storage status page. Not required for safety. */
+#define SHOWDUINO_WIRE_STATE_STORAGE_PREFIX  "STATE:STORAGE:"
+#define SHOWDUINO_WIRE_STORAGE_ONLINE        "ONLINE"
+#define SHOWDUINO_WIRE_STORAGE_DEGRADED      "DEGRADED"
+#define SHOWDUINO_WIRE_STORAGE_READ_ONLY     "READ_ONLY"
+#define SHOWDUINO_WIRE_STORAGE_OFFLINE       "OFFLINE"
+#define SHOWDUINO_WIRE_STORAGE_FAULT         "FAULT"
 
 #define SHOWDUINO_WIRE_ACCEPTED_RELAY_PREFIX "ACCEPTED:RELAY:"
 #define SHOWDUINO_WIRE_REJECTED_RELAY_PREFIX "REJECTED:RELAY:"
@@ -114,6 +133,171 @@ static inline ShowduinoNodeAvailWire showduino_parse_state_node_relay(const char
   if (strcmp(v, SHOWDUINO_WIRE_NODE_OFFLINE) == 0) return SHOWDUINO_NODE_WIRE_OFFLINE;
   if (strcmp(v, SHOWDUINO_WIRE_NODE_FAULT) == 0) return SHOWDUINO_NODE_WIRE_FAULT;
   return SHOWDUINO_NODE_WIRE_INVALID;
+}
+
+typedef enum ShowduinoAudioNodeWire {
+  SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE = 0,
+  SHOWDUINO_AUDIO_NODE_WIRE_ONLINE,
+  SHOWDUINO_AUDIO_NODE_WIRE_PLAYING,
+  SHOWDUINO_AUDIO_NODE_WIRE_LOOPING,
+  SHOWDUINO_AUDIO_NODE_WIRE_PAUSED,
+  SHOWDUINO_AUDIO_NODE_WIRE_FAULT,
+  SHOWDUINO_AUDIO_NODE_WIRE_EMERGENCY,
+  SHOWDUINO_AUDIO_NODE_WIRE_INVALID = -1
+} ShowduinoAudioNodeWire;
+
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_DETAIL_PREFIX "STATE:NODE:AUDIO:D:"
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_INV_PREFIX    "STATE:NODE:AUDIO:I:"
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_CAPS_PREFIX   "STATE:NODE:AUDIO:C:"
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_META_PREFIX   "STATE:NODE:AUDIO:N:"
+#define SHOWDUINO_WIRE_STATE_NODE_AUDIO_SOUND_PREFIX  "STATE:NODE:AUDIO:S:"
+#define SHOWDUINO_LOGICAL_INPUT_SOUND                 "AUDIO_NODE_SOUND_TRIGGER"
+#define SHOWDUINO_AUDIO_DETAIL_ASSET_MAX 40
+#define SHOWDUINO_AUDIO_INV_WIRE_MAX 3
+
+typedef struct ShowduinoAudioDetailWire {
+  char state[8];
+  uint8_t volume;
+  char storage[4];
+  char codec[4];
+  char fault[8];
+  char asset[SHOWDUINO_AUDIO_DETAIL_ASSET_MAX + 1];
+} ShowduinoAudioDetailWire;
+
+static inline ShowduinoAudioNodeWire showduino_parse_state_node_audio(const char *line) {
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX) - 1;
+  if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX, prefixLen) != 0) {
+    return SHOWDUINO_AUDIO_NODE_WIRE_INVALID;
+  }
+  const char *v = line + prefixLen;
+  /* Extended Director lines share the prefix; coarse parser ignores them. */
+  if (v[0] && v[1] == ':' &&
+      (v[0] == 'D' || v[0] == 'I' || v[0] == 'C' || v[0] == 'N' || v[0] == 'S')) {
+    return SHOWDUINO_AUDIO_NODE_WIRE_INVALID;
+  }
+  if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
+  if (strcmp(v, "ONLINE") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_ONLINE;
+  if (strcmp(v, "PLAYING") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_PLAYING;
+  if (strcmp(v, "LOOPING") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_LOOPING;
+  if (strcmp(v, "PAUSED") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_PAUSED;
+  if (strcmp(v, "FAULT") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_FAULT;
+  if (strcmp(v, "EMERGENCY") == 0) return SHOWDUINO_AUDIO_NODE_WIRE_EMERGENCY;
+  return SHOWDUINO_AUDIO_NODE_WIRE_INVALID;
+}
+
+static inline int showduino_parse_state_node_audio_detail(const char *line,
+                                                         ShowduinoAudioDetailWire *out) {
+  const char *p;
+  const char *next;
+  size_t n;
+  int vol = 0;
+  int digits = 0;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_AUDIO_DETAIL_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_DETAIL_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_DETAIL_PREFIX) - 1);
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->state)) n = sizeof(out->state) - 1;
+  memcpy(out->state, p, n);
+  p = next + 1;
+  while (*p >= '0' && *p <= '9') {
+    vol = vol * 10 + (*p - '0');
+    p++;
+    digits++;
+    if (digits > 3) return 0;
+  }
+  if (digits == 0 || *p != ':' || vol > 100) return 0;
+  out->volume = (uint8_t)vol;
+  p++;
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->storage)) n = sizeof(out->storage) - 1;
+  memcpy(out->storage, p, n);
+  p = next + 1;
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->codec)) n = sizeof(out->codec) - 1;
+  memcpy(out->codec, p, n);
+  p = next + 1;
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->fault)) n = sizeof(out->fault) - 1;
+  memcpy(out->fault, p, n);
+  p = next + 1;
+  n = strlen(p);
+  if (n >= sizeof(out->asset)) n = sizeof(out->asset) - 1;
+  memcpy(out->asset, p, n);
+  return 1;
+}
+
+typedef struct ShowduinoAudioSoundWire {
+  char ready[6];
+  uint8_t level;
+  uint8_t peak;
+  uint8_t floor;
+  uint8_t threshold;
+  uint8_t armed;
+  uint16_t cooldown;
+  char event[8];
+  uint8_t calibrated;
+} ShowduinoAudioSoundWire;
+
+static inline int showduino_parse_kv_u32(const char *p, const char *key, uint32_t *out) {
+  char needle[8];
+  const char *f;
+  if (!p || !key || !out) return 0;
+  snprintf(needle, sizeof(needle), "%s=", key);
+  f = strstr(p, needle);
+  if (!f) return 0;
+  *out = (uint32_t)strtoul(f + strlen(needle), NULL, 10);
+  return 1;
+}
+
+static inline int showduino_parse_state_node_audio_sound(const char *line,
+                                                         ShowduinoAudioSoundWire *out) {
+  const char *p;
+  const char *comma;
+  size_t n;
+  uint32_t v = 0;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_AUDIO_SOUND_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_SOUND_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_AUDIO_SOUND_PREFIX) - 1);
+  comma = strchr(p, ',');
+  n = comma ? (size_t)(comma - p) : strlen(p);
+  if (n >= sizeof(out->ready)) n = sizeof(out->ready) - 1;
+  memcpy(out->ready, p, n);
+  if (showduino_parse_kv_u32(p, "L", &v)) out->level = (uint8_t)v;
+  if (showduino_parse_kv_u32(p, "P", &v)) out->peak = (uint8_t)v;
+  if (showduino_parse_kv_u32(p, "F", &v)) out->floor = (uint8_t)v;
+  if (showduino_parse_kv_u32(p, "T", &v)) out->threshold = (uint8_t)v;
+  if (showduino_parse_kv_u32(p, "A", &v)) out->armed = (uint8_t)v;
+  if (showduino_parse_kv_u32(p, "C", &v)) out->cooldown = (uint16_t)v;
+  if (showduino_parse_kv_u32(p, "K", &v)) out->calibrated = (uint8_t)v;
+  {
+    const char *e = strstr(p, "E=");
+    if (e) {
+      e += 2;
+      comma = strchr(e, ',');
+      n = comma ? (size_t)(comma - e) : strlen(e);
+      if (n >= sizeof(out->event)) n = sizeof(out->event) - 1;
+      memcpy(out->event, e, n);
+    } else {
+      strncpy(out->event, "NONE", sizeof(out->event) - 1);
+    }
+  }
+  return 1;
 }
 
 /*

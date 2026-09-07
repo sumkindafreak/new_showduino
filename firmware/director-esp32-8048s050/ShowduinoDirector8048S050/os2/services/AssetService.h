@@ -13,9 +13,9 @@
 namespace Os2 {
 
 /**
- * AssetService — Compatibility contract v1 (Api::AssetService).
+ * AssetService - Compatibility contract v1 (Api::AssetService).
  * Production catalogue & metadata only. No paths to apps. No runtime.
- * Load intent → CommandService.execute(LoadProduction).
+ * Load intent -> CommandService.execute(LoadProduction).
  */
 class AssetService : public IService {
  public:

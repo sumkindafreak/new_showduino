@@ -36,7 +36,7 @@ public:
   void setCommandHandler(DisplayCommandFn fn) { commandFn_ = fn; }
   bool assetsReadyForPage(DisplayPageId page) const;
   bool assetsReadyForDesktop() const { return assetsReadyForPage(PAGE_DESKTOP); }
-  /** Theme BMPs are retired — Director UI is LVGL only. */
+  /** Theme BMPs are retired - Director UI is LVGL only. */
   bool usingBackgroundFallback() const { return true; }
   bool hasBackgroundImage() const { return false; }
   lv_obj_t *rootScreen() const { return screen_; }

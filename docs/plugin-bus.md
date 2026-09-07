@@ -31,9 +31,9 @@ These pins are shared with:
 - Onboard **ES8311** audio codec (typical address **0x18**)
 - MIPI CSI / DSI control/touch I²C
 
-Showduino show audio remains the **PCM5102A** on GPIO20/21/22. The ES8311 is discovered as an onboard plugin and is not used as the show DAC.
+The onboard ES8311 is **Showduino system / safety audio** (boot, emergency, operator tones). Attraction/programme audio is the Audio Node. There is no fallback onto the P4 speaker.
 
-Do not use GPIO4/5, 6, 14–19, 20–22, 24, 25, 39–45, or 54.
+Do not use GPIO4/5, 6, 9–13, 14–19, 24, 25, 39–45, 53, or 54.
 
 ### Voltage
 
@@ -90,6 +90,7 @@ Firmware:
 
 ```text
 src/plugin/PluginTypes.h
+src/plugin/PluginRoles.h/.cpp
 src/plugin/PluginBus.h/.cpp
 src/plugin/PluginRegistry.h/.cpp
 src/plugin/PluginDriver.h
@@ -110,27 +111,33 @@ Conceptual target path: `plugin:crypt-door-servos/channel/2`
 
 ## Discovery
 
+Identity and role are separate.
+
+| Term | Meaning |
+|------|---------|
+| **Identity** | Which physical chip ACKed (`ES8311`, `SX1509`, `UNKNOWN`) |
+| **Role** | What Showduino has configured that chip to do (`DIGITAL_INPUTS`, `P4_INTERNAL_AUDIO`) |
+
+The scanner never assigns an operational role from chip type alone. An SX1509 is not `SX1509 - Digital Inputs` until `/showduino/config/plugin-bus.json` says so.
+
 At boot, after emergency, SD, audio, and the Communications Engine UART:
 
 1. Sample SDA/SCL. If stuck LOW, warn and continue. Bounded SCL clocking is attempted only if SDA is stuck and SCL is free.
 2. `Wire.begin` at 100 kHz with a 50 ms timeout.
-3. Load SD registry/definitions if present.
-4. Scan 7-bit addresses **0x08–0x77**. No writes. No register probing unless a definition declared a safe `identify` block.
-5. Match: SD instance map → safe identify → onboard ES8311 at 0x18 → else `generic.i2c.unknown`.
+3. Load SD registry/definitions if present, then load `plugin-bus.json`.
+4. Scan 7-bit addresses **0x08–0x77** and log detections only (`[I2C] 0x3E detected`).
+5. Resolve identity: built-in ES8311 at `bus0/0x18`, role-file chip, unique safe identify, then well-known root-bus hints (`0x3E`/`0x3F` → SX1509, `0x20`–`0x27` → MCP23017).
+6. Resolve role from `plugin-bus.json` or the fixed ES8311 role. No match → unconfigured.
+7. Build the display name from **chip + resolved role** in one generator.
 
 Unknown devices are not errors:
 
 ```text
-[PLUGIN] 0x37 detected — UNKNOWN I2C DEVICE
+[I2C] 0x37 detected
+  bus0/0x37    Unknown I2C Device           UNKNOWN   ONLINE
 ```
 
-Address overlap (for example 0x40) is **never** assumed to be a PCA9685 without instance config or a declared identify match. Multiple identify hits → `AMBIGUOUS`.
-
-If no devices ACK:
-
-```text
-[PLUGIN] Plug-in Bus ready — no devices detected
-```
+Address overlap (for example 0x40) is **never** assumed to be a PCA9685. Multiple identify hits stay unknown. Configured but missing hardware is `CONFIGURED + OFFLINE`. Detected but unassigned hardware is `UNCONFIGURED + ONLINE`.
 
 The Stage Engine still reaches `[SYSTEM] Showduino ready`.
 
@@ -139,19 +146,42 @@ The Stage Engine still reaches `[SYSTEM] Showduino ready`.
 ## SD layout
 
 ```text
+/showduino/config/plugin-bus.json
 /showduino/plugins/registry.json
 /showduino/plugins/devices/*.json
 ```
 
+`plugin-bus.json` is the role map. It is versioned (`formatVersion` 1) and validated as a whole: malformed JSON, bad addresses, duplicate `bus`/`address` pairs, unknown chips, and illegal chip/role pairs are rejected. A rejected file assigns no plug-in roles.
+
+```json
+{
+  "formatVersion": 1,
+  "devices": [
+    { "bus": 0, "address": "0x3E", "chip": "SX1509", "role": "DIGITAL_INPUTS" },
+    { "bus": 0, "address": "0x3F", "chip": "SX1509", "role": "DIGITAL_OUTPUTS" }
+  ]
+}
+```
+
+Allowed roles:
+
+| Chip | Roles |
+|------|--------|
+| ES8311 | `P4_INTERNAL_AUDIO` (fixed built-in at `0x18`; not required in the file) |
+| SX1509 | `DIGITAL_INPUTS`, `DIGITAL_OUTPUTS`, `DIGITAL_IO` |
+| MCP23017 | `DIGITAL_INPUTS`, `DIGITAL_OUTPUTS`, `DIGITAL_IO` |
+| PCA9685 | `PWM_OUTPUTS`, `SERVO_OUTPUTS` |
+| TCA9548A | `I2C_MULTIPLEXER` |
+
 SD is optional. Without it:
 
 ```text
-[PLUGIN] SD plugin registry unavailable — native discovery only
+[I2C] plugin-bus.json unavailable — firmware identity only
 ```
 
-Malformed JSON is skipped; other files still load. Schema field `showduino_plugin_schema` must be **1**. Duplicate definition/instance IDs are reported.
+Plugin definition files still use `showduino_plugin_schema` 1. Malformed definition files are skipped; `plugin-bus.json` is all-or-nothing.
 
-Example files to copy: `firmware/stage-engine-p4/sd-overlay/showduino/plugins/`
+Example files: `firmware/stage-engine-p4/sd-overlay/showduino/config/` and `.../plugins/`
 
 SD holds data only. It cannot execute native code, change GPIO25, the Communications Engine UART, SDMMC, or reserved C6/SDIO pins.
 
@@ -171,7 +201,7 @@ A definition may include `identify.register` / `mask` / `equals`. That **one** r
 |----|------|
 | `generic.i2c.unknown` | ACK seen, no safe identity |
 | `generic.i2c.register` | SD-declared identify read |
-| `waveshare.es8311` | Onboard codec at 0x18 (do not treat as show audio) |
+| `waveshare.es8311` | Onboard codec at 0x18 (P4 system/safety audio only) |
 | `tca9548a` | Mux: channel scan only when this driver is assigned |
 
 Add complex devices (PCA9685, MCP23017, VL53L0X, …) as native drivers later. Do not bulk-add Arduino libraries.
@@ -215,6 +245,13 @@ PLUGIN:STATUS
 PLUGIN:INFO:<instance|0xNN>
 ```
 
+`PLUGIN:LIST` uses the canonical chip + role name:
+
+```text
+  bus0/0x18    ES8311 - P4 Internal Audio    INTERNAL  ONLINE
+  bus0/0x3E    SX1509 - Digital Inputs       PLUGIN    ONLINE
+```
+
 Listed in `HELP`. Local USB replies stay on Serial; they are not a Director protocol requirement.
 
 ---
@@ -225,7 +262,8 @@ Listed in `HELP`. Local USB replies stay on Serial; they are not a Director prot
 
 - bus init, SDA idle, SCL idle, scan
 - devices detected / known / unknown / offline configured
-- definition load PASS/FAIL
+- internal / configured plug-ins / unconfigured plug-ins
+- definition and role-file load PASS/FAIL
 
 `RUN:TEST` itself is not implemented in this task.
 

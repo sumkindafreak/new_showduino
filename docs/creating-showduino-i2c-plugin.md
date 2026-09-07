@@ -69,6 +69,8 @@ Do not invent register probes.
 
 That asserts *this installation’s* wiring. It still does not load a PCA9685 waveform driver until native `pca9685` firmware exists.
 
+Operational role (inputs vs outputs vs PWM) is **not** inferred from the chip. Put the role in `/showduino/config/plugin-bus.json`. Until that file assigns a valid chip/role pair, a detected SX1509 or MCP23017 is shown as `Unconfigured` and is not initialised as I/O.
+
 Templates: `firmware/stage-engine-p4/sd-overlay/showduino/plugins/`
 
 ---

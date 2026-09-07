@@ -7,9 +7,10 @@
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
+#include "DirectorUiText.h"
 
 /* ================================================================
- * Page 02 geometry — 800×480, below status bar, above dock
+ * Page 02 geometry - 800x480, below status bar, above dock
  * ================================================================ */
 static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
 static const int16_t kHeaderH = OS_TITLE_H;
@@ -94,12 +95,14 @@ static void update_summary_and_actions(void) {
   }
   if (s_selected_label) {
     if (s_selected >= 0 && s_selected < s_count && s_entries[s_selected].used) {
+      char shown[64];
       char buf[96];
-      snprintf(buf, sizeof(buf), "%s  ·  %d on SD", s_entries[s_selected].name, s_count);
+      director_ui_sanitize_copy(shown, sizeof(shown), s_entries[s_selected].name);
+      snprintf(buf, sizeof(buf), "%s  |  %d on SD", shown, s_count);
       lv_label_set_text(s_selected_label, buf);
     } else {
       char buf[48];
-      snprintf(buf, sizeof(buf), "No selection  ·  %d on SD", s_count);
+      snprintf(buf, sizeof(buf), "No selection  |  %d on SD", s_count);
       lv_label_set_text(s_selected_label, buf);
     }
   }
@@ -129,11 +132,21 @@ static void refresh_row_styles(void) {
     if (i < s_count && s_entries[i].used) {
       lv_obj_clear_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
       style_row(s_rows[i], i == s_selected);
-      if (s_row_names[i]) lv_label_set_text(s_row_names[i], s_entries[i].name);
-      if (s_row_descs[i]) lv_label_set_text(s_row_descs[i], s_entries[i].description);
+      if (s_row_names[i]) {
+        char shown[64];
+        director_ui_sanitize_copy(shown, sizeof(shown), s_entries[i].name);
+        lv_label_set_text(s_row_names[i], shown);
+      }
+      if (s_row_descs[i]) {
+        char shown[96];
+        director_ui_sanitize_copy(shown, sizeof(shown), s_entries[i].description);
+        lv_label_set_text(s_row_descs[i], shown);
+      }
       if (s_row_dates[i]) {
-        char dbuf[40];
-        snprintf(dbuf, sizeof(dbuf), "Modified: %s", s_entries[i].modified);
+        char date[40];
+        char dbuf[48];
+        director_ui_sanitize_copy(date, sizeof(date), s_entries[i].modified);
+        snprintf(dbuf, sizeof(dbuf), "Modified: %s", date);
         lv_label_set_text(s_row_dates[i], dbuf);
       }
       const int16_t y = (int16_t)(i * (kRowH + kRowGap));
@@ -179,7 +192,7 @@ static void action_event(lv_event_t *e) {
   if (!cmd) return;
 
   if (strcmp(cmd, PAGE02_CMD_BACK) == 0) {
-    Serial.println("[Page02] Back → Home");
+    Serial.println("[Page02] Back -> Home");
     close_dialog();
     emit(PAGE02_CMD_BACK);
     return;
@@ -192,12 +205,12 @@ static void action_event(lv_event_t *e) {
     return;
   }
   if (strcmp(cmd, PAGE02_CMD_LOAD) == 0) {
-    Serial.println("[Page02] Load → Stage");
+    Serial.println("[Page02] Load -> Stage");
     emit(PAGE02_CMD_LOAD);
     return;
   }
   if (strcmp(cmd, PAGE02_CMD_RUN) == 0) {
-    Serial.println("[Page02] Run → Stage");
+    Serial.println("[Page02] Run -> Stage");
     emit(PAGE02_CMD_RUN);
     return;
   }
@@ -252,12 +265,12 @@ static void build_header(lv_obj_t *parent) {
   showduino_theme_register(s_title, SHOWDUINO_THEME_ROLE_TEXT);
 
   s_selected_label = lv_label_create(s_header);
-  lv_label_set_text(s_selected_label, "Selected: —");
-  lv_obj_set_pos(s_selected_label, 360, 8);
+  lv_label_set_text(s_selected_label, "Selected: -");
+  lv_obj_set_pos(s_selected_label, 360, 12);
   lv_obj_set_width(s_selected_label, 420);
   lv_label_set_long_mode(s_selected_label, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_selected_label, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_selected_label, lv_color_hex(ShowduinoPalette::Muted), 0);
+  lv_obj_set_style_text_color(s_selected_label, lv_color_hex(ShowduinoPalette::Accent), 0);
 }
 
 static void build_list(lv_obj_t *parent) {
@@ -283,26 +296,27 @@ static void build_list(lv_obj_t *parent) {
     lv_obj_set_size(s_rows[i], kListW - 8, kRowH);
     lv_obj_add_flag(s_rows[i], LV_OBJ_FLAG_CLICKABLE);
     lv_obj_clear_flag(s_rows[i], LV_OBJ_FLAG_SCROLLABLE);
+    ShowduinoOsTheme::decorateCard(s_rows[i], false);
     lv_obj_add_event_cb(s_rows[i], row_event, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     showduino_theme_register(s_rows[i], SHOWDUINO_THEME_ROLE_BORDER);
     lv_obj_add_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
 
     s_row_names[i] = lv_label_create(s_rows[i]);
-    lv_obj_set_pos(s_row_names[i], 16, 10);
+    lv_obj_set_pos(s_row_names[i], 16, 16);
     lv_obj_set_width(s_row_names[i], kListW - 40);
     lv_label_set_long_mode(s_row_names[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_font(s_row_names[i], &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(s_row_names[i], lv_color_hex(ShowduinoPalette::Text), 0);
 
     s_row_descs[i] = lv_label_create(s_rows[i]);
-    lv_obj_set_pos(s_row_descs[i], 16, 34);
+    lv_obj_set_pos(s_row_descs[i], 16, 40);
     lv_obj_set_width(s_row_descs[i], kListW - 200);
     lv_label_set_long_mode(s_row_descs[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_font(s_row_descs[i], &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(s_row_descs[i], lv_color_hex(ShowduinoPalette::Muted), 0);
 
     s_row_dates[i] = lv_label_create(s_rows[i]);
-    lv_obj_set_pos(s_row_dates[i], kListW - 180, 34);
+    lv_obj_set_pos(s_row_dates[i], kListW - 180, 40);
     lv_obj_set_width(s_row_dates[i], 160);
     lv_label_set_long_mode(s_row_dates[i], LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_font(s_row_dates[i], &lv_font_montserrat_14, 0);
@@ -328,7 +342,7 @@ static void build_footer(lv_obj_t *parent) {
 
 void page_02_productions_create(lv_obj_t *parent, page02_command_fn command_cb) {
   if (!parent) {
-    Serial.println("[Page02] create failed — parent null");
+    Serial.println("[Page02] create failed - parent null");
     return;
   }
   if (s_active) page_02_productions_destroy();
@@ -340,7 +354,7 @@ void page_02_productions_create(lv_obj_t *parent, page02_command_fn command_cb) 
   s_count = 0;
   s_selected = -1;
 
-  Serial.println("[Page02] creating Productions page…");
+  Serial.println("[Page02] creating Productions page...");
   build_header(parent);
   build_list(parent);
   build_actions(parent);
@@ -356,7 +370,7 @@ void page_02_productions_destroy(void) {
   if (!s_active && !s_root) return;
   Serial.println("[Page02] destroying Productions page");
   close_dialog();
-  /* Unregister only this page's objects — do not wipe Page 01 theme entries. */
+  /* Unregister only this page's objects - do not wipe Page 01 theme entries. */
   showduino_theme_unregister(s_header_accent);
   showduino_theme_unregister(s_title);
   showduino_theme_unregister(s_btn_back);

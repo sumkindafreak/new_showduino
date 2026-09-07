@@ -115,7 +115,7 @@ void DisplayManager::highlightDock(DisplayPageId page) {
                             : (on ? ShowduinoPalette::Accent : ShowduinoPalette::AccentDark)),
         0);
     lv_obj_set_style_border_width(button, on || danger ? 2 : 1, 0);
-    lv_obj_set_style_shadow_opa(button, on ? LV_OPA_40 : LV_OPA_20, 0);
+    lv_obj_set_style_shadow_opa(button, LV_OPA_TRANSP, 0);
   }
 }
 
@@ -255,9 +255,9 @@ void DisplayManager::refreshSystemStatus(const DisplaySnapshot &snapshot) {
   if (!chromeStatus_) return;
   char line[160];
   snprintf(line, sizeof(line), "%s    %s    %s",
-           snapshot.linkState[0] ? snapshot.linkState : "LINK —",
-           snapshot.safetyState[0] ? snapshot.safetyState : "SAFETY —",
-           snapshot.runtimeState[0] ? snapshot.runtimeState : "—");
+           snapshot.linkState[0] ? snapshot.linkState : "LINK -",
+           snapshot.safetyState[0] ? snapshot.safetyState : "SAFETY -",
+           snapshot.runtimeState[0] ? snapshot.runtimeState : "-");
   ShowduinoOsTheme::setTextIfChanged(chromeStatus_, line);
   uint32_t colour = ShowduinoPalette::Muted;
   if (strstr(snapshot.safetyState, "E-STOP") || strstr(snapshot.safetyState, "FAULT") ||
@@ -314,38 +314,56 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
   lv_obj_align(kicker, LV_ALIGN_TOP_RIGHT, -34, OS_BODY_Y);
   lv_obj_clear_flag(kicker, LV_OBJ_FLAG_CLICKABLE);
 
+  const bool completeReport = (page == PAGE_COMPLETE);
+  const int actionY = SCREEN_HEIGHT - 28 - OS_BTN_H;
+  const int titleY = completeReport ? (OS_BODY_Y + 32) : (OS_BODY_Y + 40);
+  const int subtitleY = completeReport ? (OS_BODY_Y + 68) : (OS_BODY_Y + 78);
+  const int boxY = completeReport ? (OS_BODY_Y + 96) : (OS_BODY_Y + 118);
+  int boxH = completeReport ? (actionY - OS_GAP - boxY) : 120;
+  if (boxH < 120) boxH = 120;
+
   lv_obj_t *title = lv_label_create(chromeRoot_);
   lv_label_set_text(title, spec && spec->title ? spec->title : displayPageTitle(page));
   lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
   lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_pos(title, 34, OS_BODY_Y + 40);
+  lv_obj_set_pos(title, 34, titleY);
   lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *subtitle = lv_label_create(chromeRoot_);
   lv_label_set_text(subtitle, spec && spec->subtitle ? spec->subtitle : "");
   lv_obj_set_style_text_color(subtitle, lv_color_hex(accent), 0);
   lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_16, 0);
-  lv_obj_set_pos(subtitle, 36, OS_BODY_Y + 78);
+  lv_obj_set_pos(subtitle, 36, subtitleY);
   lv_obj_clear_flag(subtitle, LV_OBJ_FLAG_CLICKABLE);
 
-  lv_obj_t *infoBox = gDisplayOs.makePanel(chromeRoot_, 34, OS_BODY_Y + 118, 732, 120, false);
+  lv_obj_t *infoBox = gDisplayOs.makeRaisedCard(chromeRoot_, 34, boxY, 732, boxH, true);
   lv_obj_set_style_border_color(infoBox, lv_color_hex(accentDark), 0);
+  if (completeReport) {
+    lv_obj_set_style_pad_all(infoBox, 16, 0);
+    gDisplayOs.enableVerticalScroll(infoBox);
+  }
 
   chromeBody_ = lv_label_create(infoBox);
   lv_obj_set_width(chromeBody_, 700);
   lv_label_set_long_mode(chromeBody_, LV_LABEL_LONG_WRAP);
   lv_label_set_text(chromeBody_, spec && spec->body ? spec->body : "");
   lv_obj_set_style_text_color(chromeBody_, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_set_style_text_font(chromeBody_, &lv_font_montserrat_14, 0);
-  lv_obj_set_pos(chromeBody_, 12, 10);
+  lv_obj_set_style_text_font(chromeBody_,
+                             completeReport ? &lv_font_montserrat_16 : &lv_font_montserrat_14, 0);
+  lv_obj_set_pos(chromeBody_, completeReport ? 0 : 12, completeReport ? 0 : 10);
 
-  chromeStatus_ = lv_label_create(infoBox);
-  lv_obj_set_width(chromeStatus_, 700);
+  chromeStatus_ = lv_label_create(completeReport ? chromeRoot_ : infoBox);
+  lv_obj_set_width(chromeStatus_, completeReport ? 360 : 700);
   lv_label_set_long_mode(chromeStatus_, LV_LABEL_LONG_CLIP);
   lv_label_set_text(chromeStatus_, "Awaiting Stage status");
   lv_obj_set_style_text_color(chromeStatus_, lv_color_hex(ShowduinoPalette::Muted), 0);
   lv_obj_set_style_text_font(chromeStatus_, &lv_font_montserrat_12, 0);
-  lv_obj_set_pos(chromeStatus_, 12, 86);
+  if (completeReport) {
+    lv_obj_align(chromeStatus_, LV_ALIGN_TOP_RIGHT, -34, subtitleY + 2);
+  } else {
+    lv_obj_set_pos(chromeStatus_, 12, 86);
+  }
+  lv_obj_clear_flag(chromeStatus_, LV_OBJ_FLAG_CLICKABLE);
 
   const uint8_t n = spec ? spec->actionCount : 0;
   if (n > 0 && spec->actions) {
@@ -354,7 +372,7 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
     const int totalGap = gap * (n - 1);
     const int btnW = (732 - totalGap) / n;
     int x = 34;
-    const int y = SCREEN_HEIGHT - 28 - btnH;
+    const int y = actionY;
     for (uint8_t i = 0; i < n; i++) {
       gDisplayOs.makeButton(chromeRoot_, spec->actions[i].label, x, y, btnW, btnH,
                             dockEventThunk, this, spec->actions[i].command,

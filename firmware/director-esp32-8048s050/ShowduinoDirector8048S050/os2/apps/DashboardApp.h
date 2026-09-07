@@ -10,7 +10,7 @@
 namespace Os2 {
 
 /**
- * Dashboard.app — Mission Control.
+ * Dashboard.app - Mission Control.
  * Owns no data. Subscribes to the Event Bus. Asks services when events fire.
  */
 class DashboardApp : public IApp {
@@ -37,16 +37,16 @@ class DashboardApp : public IApp {
     const int y0 = sp.margin + 36;
 
     cardShow_ = Cards::create(workspace, x0, y0, cardW, cardH,
-                              "Current Show", "—", StatusLevel::Inactive);
+                              "Current Show", "-", StatusLevel::Inactive);
     cardRuntime_ = Cards::create(workspace, x0 + cardW + sp.gap, y0, cardW, cardH,
-                                 "Runtime", "—", StatusLevel::Inactive);
+                                 "Runtime", "-", StatusLevel::Inactive);
     cardNetwork_ = Cards::create(workspace, x0 + 2 * (cardW + sp.gap), y0, cardW, cardH,
-                                 "Network", "—", StatusLevel::Inactive);
+                                 "Network", "-", StatusLevel::Inactive);
 
     cardCue_ = Cards::create(workspace, x0, y0 + cardH + sp.gap, cardW, cardH,
-                             "Cue", "—", StatusLevel::Inactive);
+                             "Cue", "-", StatusLevel::Inactive);
     cardDevices_ = Cards::create(workspace, x0 + cardW + sp.gap, y0 + cardH + sp.gap, cardW, cardH,
-                                 "Devices", "—", StatusLevel::Inactive);
+                                 "Devices", "-", StatusLevel::Inactive);
     cardSafety_ = Cards::create(workspace, x0 + 2 * (cardW + sp.gap), y0 + cardH + sp.gap, cardW, cardH,
                                 "Safety", "CLEAR", StatusLevel::Healthy);
 
@@ -136,7 +136,7 @@ class DashboardApp : public IApp {
     if (!show) return;
     Cards::update(cardShow_, show->title(), show->status());
     char runtimeLine[48];
-    snprintf(runtimeLine, sizeof(runtimeLine), "%s · %u%%",
+    snprintf(runtimeLine, sizeof(runtimeLine), "%s | %u%%",
              show->playbackLabel(), (unsigned)show->progressPercent());
     Cards::update(cardRuntime_, runtimeLine, show->status());
   }
@@ -157,7 +157,7 @@ class DashboardApp : public IApp {
     char netLine[40];
     char nodes[16];
     net->formatNodes(nodes, sizeof(nodes));
-    snprintf(netLine, sizeof(netLine), "%s · %s", net->linkLabel(), nodes);
+    snprintf(netLine, sizeof(netLine), "%s | %s", net->linkLabel(), nodes);
     Cards::update(cardNetwork_, netLine, net->status());
   }
 

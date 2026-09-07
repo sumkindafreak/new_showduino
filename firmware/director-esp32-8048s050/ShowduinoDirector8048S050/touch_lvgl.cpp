@@ -29,7 +29,7 @@
 #define TOUCH_CAL_Y_BOT   25
 #endif
 
-/* Temporary Serial diagnostics for scroll bring-up — remove after field verify. */
+/* Temporary Serial diagnostics for scroll bring-up - remove after field verify. */
 #ifndef SHOWDUINO_TOUCH_SCROLL_DIAG
 #define SHOWDUINO_TOUCH_SCROLL_DIAG 1
 #endif
@@ -98,7 +98,7 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
   int32_t x = 0, y = 0;
   bool pressed = sampleTouch(x, y);
 
-  /* Preserve last pressed coords for release — GT911 reports no sample when up. */
+  /* Preserve last pressed coords for release - GT911 reports no sample when up. */
   if (pressed) {
     s_lastTouchX = x;
     s_lastTouchY = y;
@@ -112,7 +112,7 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
   if (pressed) {
     const bool wasOff = !backlightIsOn();
     backlightNotifyActivity();
-    /* First tap after screen-off only wakes — don't fire UI buttons. */
+    /* First tap after screen-off only wakes - don't fire UI buttons. */
     if (wasOff) {
       s_eatUntilRelease = true;
       s_hadPress = false;

@@ -1,46 +1,78 @@
 # Showduino Audio and Pixel Engine
 
-Audio and pixels are core Showduino outputs. The architecture now separates local P4 system/safety services from theatrical show outputs while keeping the P4 Show Engine authoritative for both.
+The P4 onboard ES8311 speaker provides Showduino system and safety audio only. Attraction/programme audio is exclusively produced by specialist Audio Nodes.
 
 ## 1. Audio architecture
 
-### A. P4 local audio — Showduino/system role
+### A. Showduino system / safety audio — P4 onboard ES8311
 
-The P4 keeps a local audio path for sounds that belong to Showduino itself:
-
-```text
-boot
-ready
-production loaded
-show armed
-operator notification
-link warning
-fault
-emergency/system acknowledgement
-```
-
-This path must remain local to the Stage Controller and must not depend on the Director, browser, Wi-Fi, ESP-NOW or a specialist Audio Node.
-
-The repository currently contains P4-local audio hardware definitions for both the onboard ES8311/NS4150B path and the external PCM5102A path. During the migration to specialist show-audio nodes, existing P4 audio code may still use the current PCM5102A implementation. Do not remove or break working P4 emergency/system audio while the new node path is being commissioned.
-
-Target role rule:
-
-> P4 local audio is for Showduino/system/safety sounds. Theatrical programme audio belongs to Audio Nodes.
-
-### B. Show/programme audio — specialist Audio Node
-
-The first dedicated Showduino Audio Node baseline is:
+The Waveshare ESP32-P4-Module-DEV-KIT includes:
 
 ```text
-Ai-Thinker ESP32-Audio-Kit
-└─ ESP32-A1S
-   ├─ ES8388 codec
-   ├─ local microSD
-   ├─ speaker / line audio outputs
-   └─ onboard buttons for commissioning/maintenance
+ES8311 codec @ I²C 0x18
+NS4150B power amplifier (PA_Ctrl GPIO53, active HIGH)
+MX1.25 8Ω / 2W speaker connector
+onboard microphone (unused by system audio)
 ```
 
-Use the Audio Node for:
+This path is **never** an attraction/programme player. There is no Audio Node → P4 speaker fallback.
+
+```text
+1. BOOT
+2. EMERGENCY
+3. BEEP
+4. TONE
+5. ERROR
+6. ACCEPTED
+7. COMPLETE
+8. SHUTDOWN     RESERVED — not implemented
+```
+
+Canonical SD files (`/showduino/audio/system/`):
+
+```text
+boot.wav
+emergency.wav
+beep.wav
+tone.wav
+error.wav
+accepted.wav
+complete.wav
+shutdown.wav     present-ok / unused
+```
+
+Known-good WAV: PCM, 16-bit, mono or stereo, 44.1 kHz or 48 kHz preferred, 32 kHz accepted for existing emergency assets. Headers are validated. Unsupported encodings are rejected. Playback is not claimed until codec + I2S + amplifier + a valid file + I2S bytes flowing are all true.
+
+Verified I2S mapping (Waveshare wiki + ESP-IDF P4 examples):
+
+```text
+I2C SDA     GPIO7
+I2C SCL     GPIO8
+I2S DSDIN   GPIO9     P4 DOUT → ES8311 DAC
+I2S LRCK    GPIO10    not a status LED
+I2S ASDOUT  GPIO11    unused for playback
+I2S SCLK    GPIO12
+I2S MCLK    GPIO13
+PA enable   GPIO53
+```
+
+The old external PCM5102A path (GPIO20/21/22) is retired and compiled out.
+
+Priority (local P4 only):
+
+```text
+EMERGENCY
+    ↓
+ERROR
+    ↓
+other system notifications
+```
+
+Emergency always wins. Clearing emergency stops the WAV and returns IDLE (no resume). Emergency safety does not depend on `emergency.wav` playing.
+
+### B. Show/programme audio — Audio Node (ESP32-A1S / ES8388)
+
+Theatrical and production audio now belongs to the first specialist **Audio Node**:
 
 ```text
 music
@@ -48,345 +80,230 @@ voice / dialogue
 ambience
 scare SFX
 stingers
-timeline audio
-production-specific playback
+timeline audio (future cue dispatch)
 ```
 
-Audio data is not streamed over ESP-NOW. Assets live on the node's microSD; the P4 sends commands and asset references.
+The Node stores WAV files on its own microSD and reports a confirmed lifecycle. P4 decides; Comms transports; the Node plays.
 
-## 2. Audio ownership and routing
+The retired P4 PCM5102A path is not a substitute for the Audio Node.
+
+See [`docs/audio-node.md`](audio-node.md).
+
+## 2. I2S ownership
+
+The ESP32-P4 has one I2S peripheral. It is owned by onboard ES8311 system audio.
+
+Attraction audio does not share this peripheral. The Audio Node has its own codec and SD.
+
+## 3. Audio storage
+
+Recommended P4 SD layout:
 
 ```text
-Director / WebUI
-      │ request
-      ▼
-P4 Show Engine (authority)
-      │
-      ├─ local system/safety audio
-      │
-      └─ show-audio request
-             │
-             ▼
-       S3 Comms Controller
-             │ ESP-NOW
-             ▼
-         Audio Node
+/showduino/audio/system/
+  boot.wav
+  emergency.wav
+  beep.wav
+  tone.wav
+  error.wav
+  accepted.wav
+  complete.wav
+  shutdown.wav     present-ok / unused
+
+/showduino/audio/show_machine/
+  same filenames — used when the system/ copy is missing or not a valid engine WAV
 ```
 
-The S3 Communications Engine transports node traffic only. It must not select tracks, advance shows, invent success or make safety decisions.
+Valid engine WAV: PCM or WAVE_FORMAT_EXTENSIBLE PCM, 16-bit, mono or stereo, 32 / 44.1 / 48 kHz. Missing or invalid system sounds must never stop the Show Engine booting.
 
-## 3. Audio command model
+## 4. Audio command model
 
-Keep P4-local and remote-node intent visibly separate.
+Show-level commands should remain explicit about the output role.
 
 Examples:
 
 ```text
-AUDIO:LOCAL:PLAY
-AUDIO:LOCAL:STOP
-AUDIO:LOCAL:VOLUME:60
+AUDIO:SHOW:PLAY:/showduino/audio/show/sfx/thunder.wav
+AUDIO:SHOW:STOP
+AUDIO:SHOW:VOLUME:80
 
-AUDIO:NODE:PLAY:effects/thunder.wav
-AUDIO:NODE:LOOP:ambience/chamber.wav
-AUDIO:NODE:STOP
-AUDIO:NODE:PAUSE
-AUDIO:NODE:RESUME
-AUDIO:NODE:VOLUME:80
+AUDIO:SYSTEM:PLAY:ready
+AUDIO:SYSTEM:PLAY:error
 ```
 
-The shared legacy node envelope remains `ShowduinoNodePacket` with `nodeType = "AUDIO"` while protocol v1 colon-text is active.
+The exact wire protocol may evolve, but the distinction between `SHOW` and `SYSTEM` should remain so the scheduler can enforce I2S ownership safely.
 
-## 4. Audio lifecycle and state
+## 5. Timeline audio
 
-Forwarding a command is not proof of completion.
+Show audio is timeline-first.
 
-Preferred lifecycle:
+Example cue shape:
 
-```text
-request
-→ accepted | rejected
-→ started
-→ completed | failed
-→ authoritative P4 state
+```json
+{
+  "time_ms": 0,
+  "type": "AUDIO",
+  "target": "show",
+  "file": "/showduino/audio/show/ambience/chamber.wav",
+  "volume": 85
+}
 ```
 
-Example replies:
+Required behaviour:
 
-```text
-AUDIO:ACCEPTED:142
-AUDIO:STARTED:142:thunder.wav
-AUDIO:COMPLETED:142:thunder.wav
-AUDIO:FAILED:142:FILE_NOT_FOUND
-```
+- Start on cue.
+- Allow pixel/output cues to overlap.
+- Avoid blocking delays.
+- Keep show timing independent of file-decoder blocking.
+- Report playback faults to the Show Engine.
 
-The P4 mirrors the confirmed node state to Director/WebUI.
+Perfect sample-accurate distributed sync is not required for the first release.
 
-Useful node states:
-
-```text
-UNKNOWN
-OFFLINE
-IDLE
-PLAYING
-PAUSED
-FAULT
-EMERGENCY
-```
-
-## 5. Audio Node local buttons
-
-The common Ai-Thinker board buttons are part of commissioning/maintenance, not show authority.
-
-Target uses:
-
-```text
-PLAY   → local test playback / stop while in maintenance
-VOL+   → local master volume up
-VOL-   → local master volume down
-MODE   → diagnostic/test selection
-REC    → diagnostics / future input test
-SET    → leave disabled initially where it conflicts with SD on common revisions
-```
-
-During a running show, maintenance actions that could trigger arbitrary playback should be disabled. Emergency state overrides all local playback controls.
-
-## 6. Audio emergency policy
-
-On `EMERGENCY:STOP` the Audio Node must:
-
-```text
-stop show playback immediately
-close/clear active playback
-enter emergency-locked state
-reject show-audio commands
-```
-
-`EMERGENCY:CLEAR` returns the node to safe idle. Previous show audio must not auto-resume.
-
-P4 local emergency/system audio remains independent of the remote node so loss of the node or ESP-NOW path cannot remove the Stage Controller's local safety feedback.
-
-## 7. Pixel architecture
+## 6. Pixel engine direction
 
 Pixels are part of the show language, not decoration.
 
-There are two normal show-pixel execution targets:
+The P4 local pixel baseline is now:
 
 ```text
-P4 Local Show Pixels
-Remote Pixel Nodes
+P4
+├── Emergency NeoPixel line (GPIO24, existing)
+└── General Show Pixel Line ×1 (planned GPIO23 — not implemented)
+Future expansion
+└── Pixel / LED Nodes
+    ├── additional strips
+    ├── segmented effects
+    └── zone-specific pixels
 ```
 
-Both should use the same conceptual Pixel Engine so productions do not need different cue formats for local and remote strips.
+One properly implemented P4 show-pixel line is preferable to several unfinished local lines. Do not add more P4 show-pixel outputs in this generation.
 
-The P4 decides what effect should run. The output device renders it locally.
+That single planned show line should later support:
 
-Do not stream individual pixel frames over ESP-NOW for normal effect playback.
+- Sub-strip / segment effects
+- Multiple simultaneous segments on one physical line
+- Brightness and colour control
+- Speed and direction
+- Duration
+- Layer/lane behaviour in Studio
 
-## 8. Emergency pixel line
+Example desired use on the one local show line:
 
-The existing P4 emergency strip remains independent from normal show pixel assignments.
+```text
+Show Pixel Line:
+  pixels 0-7   → LIGHTNING
+  pixels 8-10  → SOLID BLUE
+  pixels 11+   → WARM WHITE GLOW
+```
+
+`PIXEL:` commands currently reply `UNSUPPORTED:PIXEL`. HELLO still reports `PIXELS:PLANNED`.
+
+## 7. Emergency pixel line
+
+The Stage Controller's local emergency strip remains independent from normal show pixel assignments.
 
 ```text
 DATA GPIO24
 ```
 
-It belongs to the P4 emergency subsystem only.
+Normal Showduino Studio timelines must not treat the emergency line as an ordinary editable show-output lane.
 
-Normal Showduino Studio timelines and WebUI fixture editors must never expose this line as an ordinary editable show output.
-
-## 9. Shared Pixel Engine model
-
-A physical output contains one or more independently rendered segments.
-
-Example:
-
-```text
-Output 1
-├─ pixels 0-7   → LIGHTNING
-├─ pixels 8-10  → SOLID BLUE
-├─ pixels 11-29 → CANDLE
-└─ pixels 30-59 → RED PULSE
-```
-
-All segments may run simultaneously on one strip.
-
-Core data model:
-
-```text
-output
-segment id/name
-start
-count
-effect
-RGBW colour
-brightness
-speed
-direction
-duration
-```
-
-Use an RGBW-capable internal colour model even when the installed strip is RGB-only.
-
-## 10. Pixel effect vocabulary
+## 8. Pixel effect vocabulary
 
 Initial effects:
 
 ```text
 OFF
 SOLID
-FADE
+FADE_IN
+FADE_OUT
 PULSE
 FLICKER
-CANDLE
 FIRE
 STROBE
 LIGHTNING
 CHASE
-SPARKLE
-BREATH
-COLOR_CYCLE
+BUILD
+PORTAL_GLOW
+WARNING_RED
 BLACKOUT
 ```
 
-Effects run non-blocking and independently per segment.
-
-## 11. Pixel brightness and power model
-
-Brightness is hierarchical:
+Preferred effect parameters:
 
 ```text
-node master
-× output brightness
-× segment brightness
+line
+start
+count
+color
+speed
+brightness
+reverse
+duration_ms
 ```
 
-Remote Pixel Nodes should drive strip data through a suitable 5 V logic-level buffer/level shifter where required. Pixel power comes from a correctly sized external supply with common ground, fusing/power injection as appropriate, and firmware current/brightness limiting.
-
-## 12. Pixel routing
-
-Remote path:
-
-```text
-P4
-→ ROUTE:PIXEL:...
-→ S3 Comms Controller
-→ ShowduinoNodePacket (nodeType = "PIXEL")
-→ Pixel Node
-```
-
-Local P4 show pixels execute the same intent directly in the P4's local Pixel Engine without a radio hop.
-
-## 13. Pixel lifecycle and emergency behaviour
-
-Remote Pixel Nodes follow the same completion philosophy as Audio Nodes:
-
-```text
-request
-→ accepted | rejected
-→ started
-→ completed | failed
-→ authoritative P4 state
-```
-
-On `EMERGENCY:STOP` normal show pixels:
-
-```text
-blackout
-clear active effects
-lock show-pixel commands
-```
-
-`EMERGENCY:CLEAR` returns them to safe idle/black. Effects do not auto-resume.
-
-The P4 emergency GPIO24 line performs its own local emergency behaviour independently.
-
-## 14. Show-file direction
-
-Example future Audio cue:
+## 9. Example audio + pixel scene
 
 ```json
 {
-  "time_ms": 0,
-  "type": "AUDIO",
-  "target": "audio01",
-  "action": "play",
-  "file": "ambience/chamber.wav",
-  "volume": 85
+  "name": "Pixel Audio Test",
+  "duration_ms": 10000,
+  "cues": [
+    {
+      "time_ms": 0,
+      "type": "AUDIO",
+      "target": "show",
+      "file": "/showduino/audio/show/ambience/heartbeat.wav",
+      "volume": 80
+    },
+    {
+      "time_ms": 0,
+      "type": "PIXEL",
+      "line": 1,
+      "start": 0,
+      "count": 8,
+      "effect": "PULSE",
+      "color": [255, 0, 0],
+      "brightness": 150,
+      "speed": 40,
+      "duration_ms": 4000
+    },
+    {
+      "time_ms": 4000,
+      "type": "PIXEL",
+      "line": 1,
+      "start": 8,
+      "count": 3,
+      "effect": "SOLID",
+      "color": [0, 120, 255],
+      "brightness": 200,
+      "duration_ms": 3000
+    }
+  ]
 }
 ```
 
-Example future Pixel cue:
+## 10. First audio milestone under the new baseline
 
-```json
-{
-  "time_ms": 4000,
-  "type": "PIXEL",
-  "target": "pixel01",
-  "output": 1,
-  "segment": "window",
-  "effect": "LIGHTNING",
-  "color": [220, 235, 255, 0],
-  "brightness": 200,
-  "speed": 40,
-  "duration_ms": 3000
-}
-```
+1. Initialise the onboard ES8311. Play `boot.wav` when the Director touchscreen sends its first `HELLO` after being absent (screen power-on), not when the P4 itself boots — implemented; hardware confirmation required.
+2. Retired: PCM5102A show path on GPIO20/21/22. Attraction audio is Audio-Node-only.
+3. Local priority: EMERGENCY > ERROR > other system notifications.
+4. Missing system-sound files cannot block startup.
+5. Emergency latch stops Audio Node programme audio and loops P4 `emergency.wav` independently.
+6. WebUI System page shows P4 SYSTEM AUDIO health. Outputs page keeps the Audio Node.
 
-Logical device-ID routing is still a future protocol milestone; examples here describe the target production model, not a claim that device IDs are already carried on the v1 wire format.
-
-## 15. WebUI / Director requirements
-
-The operator surfaces must present these as distinct roles:
-
-```text
-Audio
-├─ System Audio — P4 local
-└─ Show Audio — Audio Node(s)
-
-Pixels
-├─ Emergency Pixels — P4 local, safety-only
-├─ P4 Local Show Pixels
-└─ Remote Pixel Node(s)
-```
-
-The UI must display confirmed P4 state rather than assuming that a forwarded command succeeded.
-
-Until runtime support is live, controls/status must say pending, unavailable or unsupported honestly.
-
-## 16. Implementation order
-
-Audio:
-
-1. Audio Node local board diagnostics.
-2. ES8388 + microSD + WAV playback.
-3. Local buttons/volume/maintenance mode.
-4. ESP-NOW node packet receive/reply.
-5. S3 `ROUTE:AUDIO` forwarding.
-6. P4 authoritative Audio Node state.
-7. Director/WebUI live Audio Node state and controls.
-8. Timeline / `.shdo` first-class audio cues.
-
-Pixels:
-
-1. Shared non-blocking segment/effect renderer.
-2. Multiple simultaneous segments on one physical strip.
-3. P4 local show-pixel target.
-4. Remote ESP32 Pixel Node target.
-5. S3 `ROUTE:PIXEL` forwarding.
-6. P4 authoritative pixel state.
-7. Director/WebUI segment/effect controls.
-8. Timeline / `.shdo` first-class pixel cues.
-
-## 17. Locked role split
+## 11. Hardware split decision
 
 ```text
 P4 Show Engine
-├─ local system/safety audio
-├─ local emergency pixels (GPIO24)
-├─ optional local show-pixel outputs using shared Pixel Engine
-└─ authoritative routing/state for specialist nodes
+├── onboard ES8311 → Showduino system/safety sounds only
+├── local emergency pixel line (GPIO24)
+├── one planned local show-pixel line (not implemented)
+└── authoritative routing/state for specialist nodes
 
 Specialist Nodes
-├─ Audio Node → theatrical/show audio
-└─ Pixel Node → distributed theatrical/show pixels
+├── Audio Node (ESP32-A1S / ES8388) → all attraction / programme audio
+└── Pixel Node → future distributed theatrical pixels
 ```
+
+**Audio Node — IMPLEMENTED / HARDWARE TEST REQUIRED.** Relay / MOSFET / LED / Pixel Nodes remain future.

@@ -8,24 +8,24 @@
 // Same RGB pin map for ESP32-8048S043 and ESP32-8048S050 (800x480 ST7262)
 // =========================================================
 
-// Touch: capacitive GT911 first. Keep XPT2046 off unless you have the resistive (R) panel —
+// Touch: capacitive GT911 first. Keep XPT2046 off unless you have the resistive (R) panel -
 // its CS pin is GPIO38, same as GT911 RST, and probing it can kill capacitive touch.
 #define SHOWDUINO_TOUCH_GT911    1
 #define SHOWDUINO_TOUCH_XPT2046  0
 
-// USB debug serial — JC8048W550C USB-C is CH340 → UART0 (GPIO43 TX / GPIO44 RX).
+// USB debug serial - JC8048W550C USB-C is CH340 -> UART0 (GPIO43 TX / GPIO44 RX).
 // Native USB CDC uses GPIO19/20, which are GT911 SDA/SCL on this panel.
 // Arduino IDE: USB CDC On Boot = Disabled so Serial is this UART, not the USB PHY.
 #define USB_DEBUG_BAUD 115200
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-#warning "Showduino Director: USB CDC On Boot is Enabled. Set it Disabled — Serial debug is the CH340 UART; GPIO19/20 are GT911."
+#warning "Showduino Director: USB CDC On Boot is Enabled. Set it Disabled - Serial debug is the CH340 UART; GPIO19/20 are GT911."
 #endif
 
 // Screen size
 #define SCREEN_WIDTH  800
 #define SCREEN_HEIGHT 480
 
-// Showduino OS 2.0 Operator Workspace (LVGL shell — no BMP chrome).
+// Showduino OS 2.0 Operator Workspace (LVGL shell - no BMP chrome).
 // 0 = legacy page UI (ShowduinoUi). 1 = OS 2.0 shell (apps + services + theme).
 #ifndef SHOWDUINO_OS2_SHELL
 #define SHOWDUINO_OS2_SHELL 0
@@ -72,7 +72,7 @@
 #define RGB_PCLK_ACTIVE_NEG 1
 #define RGB_PREFER_SPEED   16000000
 
-// GT911 capacitive touch (JC8048W550C / 8048S050C) — BankOfDad pin map
+// GT911 capacitive touch (JC8048W550C / 8048S050C) - BankOfDad pin map
 #define TOUCH_SDA_PIN 19
 #define TOUCH_SCL_PIN 20
 #define TOUCH_INT_PIN 18
@@ -85,7 +85,7 @@
  */
 #define TOUCH_GT911_LIB_ROTATION 3
 
-// XPT2046 resistive (legacy R panels) — not used with new capacitive bring-up
+// XPT2046 resistive (legacy R panels) - not used with new capacitive bring-up
 #define TOUCH_XPT_CS_PIN   38
 #define TOUCH_XPT_IRQ_PIN  18
 #define TOUCH_XPT_MOSI_PIN 11
@@ -101,10 +101,10 @@
 #define SD_MISO_PIN 13
 #define SD_SCK_PIN  12
 
-// Director JC8048W550C — NOT the P4 local show audio path.
+// Director JC8048W550C - NOT the P4 local show audio path.
 // These SDK I2S pins conflict with Stage UART (17/18) and are deferred.
 // Authoritative single local audio output lives on ESP32-P4 / IAN
-// (see firmware/stage-engine-p4/.../BoardConfig.h — P4_AUDIO_I2S_*).
+// (see firmware/stage-engine-p4/.../BoardConfig.h - P4_AUDIO_I2S_*).
 #define I2S_DOUT_PIN 17
 #define I2S_BCLK_PIN 0
 #define I2S_LRC_PIN  18
@@ -112,16 +112,22 @@
 // =========================================================
 // Ambient NeoPixel state LEDs (desk mood / status)
 // GPIO17 is free while I2S + Stage UART fallback stay deferred.
-// GPIO18 is GT911 INT — never use for pixels.
-// Two pixels on one data line (DIN → GPIO17).
+// GPIO18 is GT911 INT - never use for pixels.
+// Two pixels on one data line (DIN -> GPIO17).
 // =========================================================
 #ifndef SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
 #define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED 1
 #endif
 #define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN        17
 #define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT      2
-#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_BRIGHTNESS 64
+#define SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_BRIGHTNESS 255
 #define SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS         40
+#ifndef SHOWDUINO_DIRECTOR_LOCATOR_DURATION_MS
+#define SHOWDUINO_DIRECTOR_LOCATOR_DURATION_MS      15000UL
+#endif
+#ifndef SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS
+#define SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS    12000UL
+#endif
 
 // =========================================================
 // Portable controller transport
@@ -166,8 +172,14 @@
 #define UI_REFRESH_INTERVAL_MS  1000UL
 // Sustained silence before DISCONNECTED (~3 missed heartbeats).
 #define LINK_TIMEOUT_MS         7000UL
-/* Stage 7.7 — expected fabric nodes (relay today; expand later). */
-#define SHOWDUINO_EXPECTED_NODES  1
+/*
+ * Temporary Director-side baseline: no production Nodes are required.
+ * The supported stack is Director -> Communications S3 -> P4 Show Engine.
+ * Relay / Audio / MOSFET / LED / DMX Nodes remain future hardware.
+ * Do not invent a Node to satisfy health. Future expected-node counts
+ * should come from the P4, not this compile-time constant.
+ */
+#define SHOWDUINO_EXPECTED_NODES  0
 #define ESPNOW_RECOVER_MS       5000UL
 
 enum ShowduinoLinkState : uint8_t {
@@ -177,9 +189,11 @@ enum ShowduinoLinkState : uint8_t {
 };
 
 // =========================================================
-// Stage 4 WebUI (Studio browser desk)
+// Stage 4 WebUI - Director is no longer the browser host.
+// Canonical SoftAP / PROGMEM UI lives on the Communications S3.
+// Keep these gated stubs so a local bench re-enable still compiles.
 // =========================================================
-#define SHOWDUINO_WEBUI_ENABLED 1
+#define SHOWDUINO_WEBUI_ENABLED 0
 #define SHOWDUINO_WEBUI_AP_SSID "Showduino-Studio"
 #define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
 #define SHOWDUINO_WEBUI_MDNS "showduino-studio"

@@ -4,7 +4,9 @@
 #include <Arduino.h>
 #include "../../../protocol/showduino_protocol_version.h"
 #include "../../../protocol/showduino_desk_packet.h"
+#include "../../../protocol/showduino_node_packet.h"
 #include "../../../protocol/showduino_validation.h"
+#include "../../../protocol/showduino_web_tunnel.h"
 
 /*
  * Showduino ESP32-S3 Comms Controller
@@ -17,24 +19,31 @@
  *
  * This board is a communications processor only. It must not become the
  * Stage Engine. It must not host show state, audio, pixels, SD, or plugins.
+ * It may serve the browser WebUI from PROGMEM and proxy /api GETs to the P4.
  *
  * FUTURE / RESERVED / NOT IMPLEMENTED on this firmware:
  *   - Bluetooth LE
  *   - Bluetooth Classic
- *   - Wi-Fi SoftAP / STA networking
- *   - WebUI tunnel / proxy
  *   - OTA
+ *   - Ethernet / E1.31
  * Do not initialise Bluetooth libraries here.
- * WiFi STA mode is used only as the ESP-NOW radio bring-up, not as a network.
  */
 
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.1.0"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.2.3"
+
+#ifndef SHOWDUINO_WEBUI_ENABLED
+#define SHOWDUINO_WEBUI_ENABLED 1
+#endif
+#define SHOWDUINO_WEBUI_AP_SSID "Showduino"
+/* Documented bench WPA2 secret. Change before a public venue. Not an open AP. */
+#define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
+#define SHOWDUINO_WEBUI_MDNS "showduino"
 
 #define USB_DEBUG_BAUD 115200
 
 #define SHOWDUINO_COMMS_UART_BAUD      115200
 #define SHOWDUINO_COMMS_UART_CONFIG    SERIAL_8N1
-#define SHOWDUINO_COMMS_UART_RX_BUFFER 512
+#define SHOWDUINO_COMMS_UART_RX_BUFFER 32768
 #define SHOWDUINO_COMMS_LINE_MAX       180
 #define SHOWDUINO_COMMS_LINK_TIMEOUT_MS 8000UL
 #define SHOWDUINO_COMMS_PING_TIMEOUT_MS 2000UL
@@ -71,5 +80,32 @@
 #endif
 
 #define SHOWDUINO_ESPNOW_CHANNEL       1
+
+/*
+ * Onboard addressable RGB — COMMS STATUS only.
+ *
+ * Current Showduino Comms S3 is ESP32-S3-DevKitC-1 v1.0 style hardware:
+ *   RGB on GPIO48 (WS2812).
+ * Espressif DevKitC-1 v1.1 moved the same LED to GPIO38.
+ * Keep the pin here so the status service does not hard-code 48.
+ *
+ * This LED is not a show effect, not production-owned, and not the
+ * future Show Pixel Engine.
+ */
+#ifndef SHOWDUINO_COMMS_RGB_PIN
+#define SHOWDUINO_COMMS_RGB_PIN 48
+#endif
+#ifndef SHOWDUINO_COMMS_RGB_COUNT
+#define SHOWDUINO_COMMS_RGB_COUNT 1
+#endif
+#ifndef SHOWDUINO_COMMS_RGB_BRIGHTNESS
+#define SHOWDUINO_COMMS_RGB_BRIGHTNESS 200                                                                   
+#endif
+#ifndef SHOWDUINO_COMMS_RGB_GRACE_MS
+#define SHOWDUINO_COMMS_RGB_GRACE_MS 2500UL
+#endif
+#ifndef SHOWDUINO_COMMS_RGB_SYNC_MS
+#define SHOWDUINO_COMMS_RGB_SYNC_MS 1500UL
+#endif
 
 #endif /* SHOWDUINO_S3_COMMS_BOARD_CONFIG_H */

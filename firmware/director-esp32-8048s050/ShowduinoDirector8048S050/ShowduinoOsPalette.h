@@ -5,7 +5,7 @@
 /*
  * Showduino OS visual language.
  *
- * These tokens come from DirectorUnlockScreen — the canonical visual
+ * These tokens come from DirectorUnlockScreen - the canonical visual
  * reference for the Director: near-black green-tinted surfaces, technical
  * lime accents, restrained glow, high-contrast text, and safety colours that
  * remain visually separate from normal operation.

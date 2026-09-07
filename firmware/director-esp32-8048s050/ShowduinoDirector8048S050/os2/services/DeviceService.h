@@ -10,12 +10,12 @@
 namespace Os2 {
 
 /**
- * DeviceService — device inventory ONLY.
+ * DeviceService - device inventory ONLY.
  *
  * Owns: Director / Stage / SUE / child node presence.
  * Does NOT own: link quality (NetworkService) or show runtime (ShowService).
  *
- *   Stage Controller · Director · SUE · Child nodes
+ *   Stage Controller | Director | SUE | Child nodes
  *
  * Populated by the communication / discovery layer. Apps read only.
  */
@@ -44,7 +44,7 @@ class DeviceService : public IService {
   void begin() override {
     count_ = 0;
     revision_ = 0;
-    /* Director is always present — this board. */
+    /* Director is always present - this board. */
     upsert(Role::Director, "Director", "local", StatusLevel::Healthy, true);
   }
 

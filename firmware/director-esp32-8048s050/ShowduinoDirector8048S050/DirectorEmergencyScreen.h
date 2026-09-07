@@ -12,7 +12,7 @@
  * Full-screen Showduino emergency latch UI.
  *
  * Visual language is taken from DirectorUnlockScreen: native LVGL objects,
- * framed 800×480 chassis, technical typography, panel cards, and no image
+ * framed 800x480 chassis, technical typography, panel cards, and no image
  * assets. Safety state is displayed only; the Stage Controller remains
  * authoritative for the latch.
  */

@@ -18,9 +18,6 @@
 */
 
 #include <Arduino.h>
-#include <time.h>
-#include <sys/time.h>
-#include "driver/gpio.h"
 #include "BoardConfig.h"
 #include "ShowEngineState.h"
 #include "ShowRuntimeOwner.h"
@@ -28,9 +25,17 @@
 #include "src/ProductionStore.h"
 #include "src/StageAudio.h"
 #include "src/EmergencyPixels.h"
+#include "src/EmergencyInput.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
 #include "src/StageDiagnostics.h"
+#include "src/StageTime.h"
+#include "src/network/ShowNetwork.h"
+#include "src/e131/E131Receiver.h"
+#include "src/storage/StageStore.h"
+#include "src/storage/StageLog.h"
+#include "src/storage/StageConfig.h"
+#include "src/nodes/AudioNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 
@@ -39,8 +44,13 @@
 // -----------------------------
 #define DEBUG_BAUD 115200
 
-// Status LED pin. Change when the final P4 board pinout is chosen.
-#define STATUS_LED_PIN 10
+static void statusLedWrite(uint8_t level) {
+#if SHOWDUINO_STATUS_LED_PIN >= 0
+  digitalWrite(SHOWDUINO_STATUS_LED_PIN, level);
+#else
+  (void)level;
+#endif
+}
 
 enum class EmergencySource : uint8_t {
   Remote = 0, /* Director command via Comms UART */
@@ -69,15 +79,10 @@ unsigned long lastHeartbeatMs = 0;
 String inputBuffer = "";
 
 static CommandSource sCmdSource = CommandSource::Comms;
+static String *sWebReplySink = nullptr;
 static char sUsbLine[SHOWDUINO_COMMS_CMD_MAX + 1];
 static uint16_t sUsbLen = 0;
 static bool sUsbOverflow = false;
-
-#if SHOWDUINO_ESTOP_GPIO >= 0
-static int sEstopRaw = -1;
-static int sEstopStable = -1;
-static uint32_t sEstopEdgeMs = 0;
-#endif
 
 void triggerEmergency(EmergencySource source);
 void clearEmergencyStop();
@@ -87,16 +92,11 @@ void readCommsSerial();
 void readUsbSerial();
 void serviceCommsLink();
 
-#if SHOWDUINO_ESTOP_GPIO >= 0
 static bool physicalEstopAssertedNow() {
   /* Debounced hold check. A single noisy sample must not block Director CLEAR
    * after a momentary press that has already been released. */
-  if (sEstopStable >= 0) {
-    return sEstopStable != 0;
-  }
-  return digitalRead(SHOWDUINO_ESTOP_GPIO) == SHOWDUINO_ESTOP_ASSERTED_LEVEL;
+  return emergencyInputLoopOpen();
 }
-#endif
 
 // -----------------------------
 // Comms UART link (ESP32-S3 Comms Controller)
@@ -110,6 +110,8 @@ static bool sCommsLinkUp = false;
 static bool sCommsEverUp = false;
 static bool sCommsSawDirector = false;
 static uint32_t sCommsLastRxMs = 0;
+static bool sDirectorPresent = false;
+static uint32_t sDirectorLastDeskMs = 0;
 
 static bool uartHushActive() {
   return (int32_t)(millis() - sUartHushUntilMs) < 0;
@@ -133,10 +135,13 @@ static bool isCoprocessorBootBanner(const String &c) {
 
 static bool isKnownCommsCommand(const String &c) {
   if (c == "HELLO" || c == "HEARTBEAT" || c == "STOP:ALL") return true;
+  if (c == "PANIC" || c == "ESTOP" || c == "E-STOP") return true;
   if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("EMERGENCY:")) return true;
-  if (c.startsWith("STATUS:") || c.startsWith("DMX:") || c.startsWith("PIXEL:")) return true;
+  if (c.startsWith("STATUS:") || c.startsWith("TIME:") || c.startsWith("DMX:") ||
+      c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
+      c.startsWith("STORAGE:")) return true;
   if (c.startsWith("PLUGIN:")) return true;
-  if (c.startsWith("PRODUCTION:")) return true;
+  if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
   return false;
@@ -163,10 +168,22 @@ static void flushUartNoiseLog() {
   sUartNoiseCount = 0;
 }
 
+static void noteDirectorDeskSeen() {
+  sDirectorPresent = true;
+  sDirectorLastDeskMs = millis();
+}
+
+static void serviceDirectorPresence() {
+  if (!sDirectorPresent) return;
+  if ((millis() - sDirectorLastDeskMs) < SHOWDUINO_DIRECTOR_ABSENCE_MS) return;
+  sDirectorPresent = false;
+  Serial.println("[AUDIO] Director desk absent — next screen HELLO will play BOOT");
+}
+
 static void noteCommsValidRx(const String &command) {
   const uint32_t now = millis();
   sCommsLastRxMs = now;
-  if (!command.startsWith("DIAG:")) sCommsSawDirector = true;
+  if (!command.startsWith("DIAG:") && !command.startsWith("NODE:")) sCommsSawDirector = true;
   if (!sCommsLinkUp) {
     sCommsLinkUp = true;
     Serial.println(sCommsEverUp ? "[COMMS] Link restored" : "[COMMS] Link established");
@@ -191,13 +208,18 @@ void serviceCommsLink() {
   Serial.println("[COMMS] Link lost");
 }
 
-void sendToDirector(const String &message) {
+bool sendToDirector(const String &message) {
   if (!sCommsUartReady || uartHushActive()) {
-    return;
+    return false;
   }
   Serial1.println(message);
-  Serial.print("[COMMS] TX: ");
-  Serial.println(message);
+  const bool quietTime = message.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX) &&
+                         message != SHOWDUINO_LEGACY_TIME_REQUEST;
+  if (!quietTime) {
+    Serial.print("[COMMS] TX: ");
+    Serial.println(message);
+  }
+  return true;
 }
 
 static void sendToDirectorC(const char *line) {
@@ -221,20 +243,24 @@ void stageDiagDispatchLocal(const char *cmd) {
   handleCommand(String(cmd), CommandSource::LocalUsb);
 }
 
-bool stageEstopDebouncedAsserted() {
-#if SHOWDUINO_ESTOP_GPIO >= 0
-  return sEstopStable > 0;
-#else
-  return false;
-#endif
+bool stageWebDispatchCommand(const char *cmd, String *repliesOut) {
+  if (!cmd || !cmd[0]) return false;
+  sWebReplySink = repliesOut;
+  handleCommand(String(cmd), CommandSource::Comms);
+  sWebReplySink = nullptr;
+  return true;
 }
 
-static const char *commandSourceLabel(CommandSource source) {
-  return (source == CommandSource::LocalUsb) ? "USB" : "COMMS";
+bool stageEstopDebouncedAsserted() {
+  return emergencyInputLoopOpen();
 }
 
 /* ACK / ERR / STATUS replies for the requester. State broadcasts still use sendToDirector. */
 static void sendCommandReply(const String &message) {
+  if (sWebReplySink) {
+    if (sWebReplySink->length() > 0) *sWebReplySink += '\n';
+    *sWebReplySink += message;
+  }
   if (sCmdSource == CommandSource::LocalUsb) {
     Serial.print("[CONSOLE] ");
     Serial.println(message);
@@ -255,7 +281,7 @@ void triggerEmergency(EmergencySource source) {
   if (source == EmergencySource::Physical) {
     Serial.println("[ESTOP] Physical emergency triggered");
     Serial.printf("[ESTOP] TRIGGER source=PHYSICAL gpio=%d stable=%d latch=%s\n",
-                  gpioRaw, sEstopStable, already ? "ACTIVE" : "CLEAR");
+                  gpioRaw, emergencyInputStableOpen(), already ? "ACTIVE" : "CLEAR");
   } else if (source == EmergencySource::LocalUsb) {
     Serial.println("[ESTOP] Local USB emergency triggered");
     Serial.printf("[ESTOP] TRIGGER source=USB gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
@@ -268,8 +294,13 @@ void triggerEmergency(EmergencySource source) {
 
   if (already) {
     Serial.println("[ESTOP] already latched — extra trigger ignored");
+    stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
+
+  stageLogEmergency("ACTIVATE",
+                    source == EmergencySource::Physical ? "source=physical" :
+                    source == EmergencySource::LocalUsb ? "source=usb" : "source=remote");
 
   emergencyLocked = true;
   if (source == EmergencySource::Physical) {
@@ -290,10 +321,11 @@ void triggerEmergency(EmergencySource source) {
                 stageAudioStatus().wavPresent ? "present" : "missing");
 
   stageAudioStopShow();
+  audioNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
   emergencyPixelsSetWhite();
-  digitalWrite(STATUS_LED_PIN, HIGH);
+  statusLedWrite(HIGH);
   pluginBusOnEmergency();
 
   sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
@@ -310,12 +342,45 @@ void triggerEmergency(EmergencySource source) {
   }
 }
 
+static void rejectEmergencyClear(const char *code, const char *detail) {
+  String line = String(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX) + code;
+  sendCommandReply(line);
+  if (strcmp(code, "BUTTON_ACTIVE") == 0) {
+    sendCommandReply(SHOWDUINO_LEGACY_ERR_ESTOP_HELD);
+  }
+  Serial.printf("[ESTOP] Clear confirm rejected: %s\n", detail ? detail : code);
+  stageLogEmergency("CLEAR_REJECT", code);
+}
+
+static void applyEmergencyClear() {
+  Serial.println("[ESTOP] CLEAR authorised — releasing latch");
+  emergencyInputCancelClear();
+  stageAudioStopEmergency();
+  emergencyLocked = false;
+  gEmergencySourceId = 0;
+  gEngine.emergency = EmergencyState::Clear;
+  showEngineBump(gEngine);
+  emergencyPixelsBlackout();
+  statusLedWrite(LOW);
+  /* Latch wire first so Director unlocks before the runtime mirror arrives. */
+  sendCommandReply(SHOWDUINO_LEGACY_STATUS_ECLEARED);
+  if (sCmdSource == CommandSource::LocalUsb) {
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ECLEARED);
+  }
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_CLEAR);
+  audioNodeLinkOnEmergency(false);
+  gRuntime.onEmergencyCleared(millis(), &gEngine);
+  Serial.println("[ESTOP] Emergency cleared");
+  Serial.println("[SHOW] Returning to safe idle state");
+  stageLogEmergency("CLEAR_SUCCESS", "latch released");
+}
+
 void clearEmergencyStop() {
-#if SHOWDUINO_ESTOP_GPIO >= 0
+  /* USB / diagnostics maintenance path. Still refuses a physically open loop. */
   if (physicalEstopAssertedNow()) {
-    const int raw = digitalRead(SHOWDUINO_ESTOP_GPIO);
+    const int raw = emergencyInputRawGpio();
     Serial.printf("[ESTOP] Clear rejected: physical emergency button still asserted (gpio=%d stable=%d)\n",
-                  raw, sEstopStable);
+                  raw, emergencyInputStableOpen());
     sendCommandReply(SHOWDUINO_LEGACY_ERR_ESTOP_HELD);
     if (!emergencyLocked) {
       triggerEmergency(EmergencySource::Physical);
@@ -325,7 +390,6 @@ void clearEmergencyStop() {
     }
     return;
   }
-#endif
 
   if (!emergencyLocked) {
     Serial.println("[ESTOP] CLEAR ignored — latch already clear");
@@ -336,39 +400,59 @@ void clearEmergencyStop() {
     return;
   }
 
-  Serial.println("[ESTOP] CLEAR authorised — releasing latch");
-  stageAudioStopEmergency();
-  emergencyLocked = false;
-  gEmergencySourceId = 0;
-  gEngine.emergency = EmergencyState::Clear;
-  showEngineBump(gEngine);
-  emergencyPixelsBlackout();
-  digitalWrite(STATUS_LED_PIN, LOW);
-  /* Latch wire first so Director unlocks before the runtime mirror arrives. */
-  sendCommandReply(SHOWDUINO_LEGACY_STATUS_ECLEARED);
-  if (sCmdSource == CommandSource::LocalUsb) {
-    sendToDirector(SHOWDUINO_LEGACY_STATUS_ECLEARED);
+  applyEmergencyClear();
+}
+
+static void handleEmergencyClearConfirm() {
+  const uint32_t now = millis();
+  if (!emergencyLocked) {
+    rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
+    return;
   }
-  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_CLEAR);
-  gRuntime.onEmergencyCleared(millis(), &gEngine);
-  Serial.println("[ESTOP] Emergency cleared");
-  Serial.println("[SHOW] Returning to safe idle state");
+  if (!emergencyInputPendingClear()) {
+    rejectEmergencyClear("NO_REQUEST", "no pending clear request");
+    return;
+  }
+  if (!emergencyInputPendingClearValid(now)) {
+    emergencyInputCancelClear();
+    rejectEmergencyClear("TIMEOUT", "clear request timed out");
+    return;
+  }
+  if (physicalEstopAssertedNow()) {
+    rejectEmergencyClear("BUTTON_ACTIVE", "button still active");
+    if (sCmdSource != CommandSource::LocalUsb) {
+      sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+      sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+    }
+    return;
+  }
+
+  applyEmergencyClear();
+  sendCommandReply(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK);
+}
+
+static void handleEmergencyClearCancel() {
+  emergencyInputCancelClear();
+  Serial.println("[ESTOP] Clear request cancelled");
+  sendCommandReply("EMERGENCY:CLEAR_CANCELLED");
 }
 
 void sendCapabilities() {
   sendCommandReply("SHOWDUINO_STAGE_ENGINE");
-  sendCommandReply("FW:0.2.0");
+  sendCommandReply("FW:0.4.0");
   sendCommandReply("DMX:PLANNED");
   sendCommandReply("PIXELS:PLANNED");
-  sendCommandReply(stageAudioStatus().wavPresent ? "AUDIO:READY" : "AUDIO:PLANNED");
+  sendCommandReply(showNetworkLive().hasIp ? "ETHERNET:ONLINE" : "ETHERNET:OFFLINE");
+  sendCommandReply(String("E131:") + e131RxStateName(e131ReceiverStatus().state));
+  sendCommandReply(stageAudioStatus().codecReady ? "AUDIO:READY" : "AUDIO:FAULT");
   sendCommandReply("INPUTS:PLANNED");
-  sendCommandReply(stageStorageIsReady() ? "SD:READY" : "SD:PLANNED");
+  sendCommandReply(String("SD:") + stageStoreStateName());
+  sendCommandReply(stageTimeSynced() ? "TIME:READY" : "TIME:UNSYNCED");
   sendCommandReply("READY");
 }
 
 static void printLocalConsoleStatus() {
   const StageAudioStatus &audio = stageAudioStatus();
-  const StageStorageStatus &sd = stageStorageStatus();
   const char *prod = gRuntime.rt.showName[0] ? gRuntime.rt.showName : "(none)";
   Serial.printf("[CONSOLE] runtime=%s production=%s emergency=%s\n",
                 showStateName(gRuntime.rt.state),
@@ -376,8 +460,8 @@ static void printLocalConsoleStatus() {
                 emergencyLocked ? "ACTIVE" : "CLEAR");
 #if SHOWDUINO_ESTOP_GPIO >= 0
   Serial.printf("[CONSOLE] gpio25=%s stable=%s comms=%s director=%s\n",
-                digitalRead(SHOWDUINO_ESTOP_GPIO) == SHOWDUINO_ESTOP_ASSERTED_LEVEL ? "ASSERTED" : "released",
-                (sEstopStable > 0) ? "ASSERTED" : "released",
+                emergencyInputLoopOpen() ? "PRESSED" : "RELEASED",
+                (emergencyInputStableOpen() > 0) ? "PRESSED" : "RELEASED",
                 sCommsLinkUp ? "ALIVE" : "DOWN",
                 sCommsSawDirector ? "ONLINE" : "not-seen");
 #else
@@ -385,10 +469,15 @@ static void printLocalConsoleStatus() {
                 sCommsLinkUp ? "ALIVE" : "DOWN",
                 sCommsSawDirector ? "ONLINE" : "not-seen");
 #endif
-  Serial.printf("[CONSOLE] sd=%s audio=%s emergency_audio=%s plugins=%u\n",
-                stageStorageIsReady() ? "mounted" : sd.message,
-                audio.i2sReady ? "ready" : "not-ready",
-                audio.emergencyPlaying ? "playing" : (audio.wavPresent ? "file-present" : "file-missing"),
+  char iso[24];
+  stageTimeIso(iso, sizeof(iso));
+  Serial.printf("[CONSOLE] rtc=%s source=%s %s\n",
+                stageTimeHealth(), stageTimeSource(), iso);
+  Serial.printf("[CONSOLE] sd=%s sysaudio=%s current=%s emergency_wav=%s plugins=%u\n",
+                stageStoreStateName(),
+                audio.healthName,
+                audio.currentName,
+                audio.wavPresent ? "present" : "missing",
                 (unsigned)pluginBusInstanceCount());
 }
 
@@ -399,6 +488,13 @@ void sendStatus() {
                    (emergencyLocked ? SHOWDUINO_WIRE_EMERGENCY_ACTIVE : SHOWDUINO_WIRE_EMERGENCY_CLEAR));
   sendCommandReply(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + showRuntimeWire(gEngine.show));
   sendCommandReply(SHOWDUINO_WIRE_SNAPSHOT_END);
+  audioNodeLinkPublishToDirector();
+  {
+    char timeWire[96];
+    if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
+      sendCommandReply(timeWire);
+    }
+  }
   gRuntime.handleStateQuery();
   if (sCmdSource == CommandSource::LocalUsb) {
     printLocalConsoleStatus();
@@ -514,6 +610,8 @@ static void handleProductionCommand(const String &command) {
     String loadedId = package.manifest.productionId;
     uint16_t cueCount = package.timeline.cueCount;
     gProductionStore.release(&package);
+    stageConfigSetLastProduction(loadedId.c_str());
+    stageLogWrite(StageLogChannel::Production, "INFO", "production loaded");
     Serial.printf("[TIMELINE] %u cues loaded\n", (unsigned)cueCount);
     Serial.println("[PRODUCTION] Load complete");
     sendCommandReply(String("PRODUCTION:LOAD:OK:") + loadedId);
@@ -527,6 +625,9 @@ void handleShowCommand(const String &command) {
   const uint32_t now = millis();
 
   if (command == "SHOW:STATE?") {
+    if (sCmdSource == CommandSource::Comms) {
+      noteDirectorDeskSeen();
+    }
     gRuntime.handleStateQuery();
     return;
   }
@@ -621,38 +722,16 @@ void handleShowCommand(const String &command) {
 }
 
 void handleAudioCommand(const String &command) {
-  if (command.startsWith("AUDIO:LOCAL:PLAY") || command.startsWith("AUDIO:PLAY")) {
-    if (emergencyLocked) {
-      Serial.println("[SHOW] Start rejected: EMERGENCY ACTIVE");
-      sendCommandReply("REJECTED:AUDIO:EMERGENCY_ACTIVE");
-      return;
-    }
-    String path;
-    if (command.startsWith("AUDIO:LOCAL:PLAY:")) {
-      path = command.substring(strlen("AUDIO:LOCAL:PLAY:"));
-    } else if (command.startsWith("AUDIO:PLAY:")) {
-      path = command.substring(strlen("AUDIO:PLAY:"));
-    }
-    path.trim();
-    if (path.length() == 0) {
-      sendCommandReply("ERR:AUDIO:NO_PATH");
-      return;
-    }
-    if (stageAudioStartShow(path.c_str())) {
-      sendCommandReply("ACK:AUDIO:PLAY");
-    } else {
-      sendCommandReply("ERR:AUDIO:PLAY_FAILED");
-    }
+  if (command.startsWith("AUDIO:NODE:")) {
+    char reply[80];
+    audioNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply));
+    if (reply[0]) sendCommandReply(reply);
     return;
   }
 
-  if (command == "AUDIO:LOCAL:STOP" || command == "AUDIO:STOP") {
-    if (emergencyLocked) {
-      sendCommandReply("REJECTED:AUDIO:EMERGENCY_ACTIVE");
-      return;
-    }
-    stageAudioStopShow();
-    sendCommandReply("ACK:AUDIO:STOP");
+  char reply[96];
+  if (stageAudioHandleCommand(command.c_str(), reply, sizeof(reply))) {
+    if (reply[0]) sendCommandReply(reply);
     return;
   }
 
@@ -662,6 +741,8 @@ void handleAudioCommand(const String &command) {
 static void printUsbHelp() {
   Serial.println("[CONSOLE] Showduino P4 commands:");
   Serial.println("  STATUS:REQUEST");
+  Serial.println("  TIME:REQUEST");
+  Serial.println("  TIME:SET:<epoch> | TIME:SET:YYYY-MM-DDTHH:MM:SSZ");
   Serial.println("  SHOW:START");
   Serial.println("  SHOW:STOP");
   Serial.println("  SHOW:PAUSE");
@@ -672,11 +753,36 @@ static void printUsbHelp() {
   Serial.println("  PRODUCTION:UNLOAD");
   Serial.println("  PRODUCTION:STATUS");
   Serial.println("  EMERGENCY:STOP");
-  Serial.println("  EMERGENCY:CLEAR");
+  Serial.println("  EMERGENCY:CLEAR            (USB maintenance; loop must be healthy)");
+  Serial.println("  EMERGENCY:CLEAR_CONFIRM    (dual-action; requires pending request)");
+  Serial.println("  EMERGENCY:CLEAR_CANCEL");
   Serial.println("  PLUGIN:SCAN");
   Serial.println("  PLUGIN:LIST");
   Serial.println("  PLUGIN:STATUS");
   Serial.println("  PLUGIN:INFO:<instance|address>");
+  Serial.println("  NET:STATUS");
+  Serial.println("  NET:ENABLE:0|1");
+  Serial.println("  NET:MODE:DHCP");
+  Serial.println("  NET:STATIC:<ip>:<mask>:<gw>[:dns]");
+  Serial.println("  E131:STATUS");
+  Serial.println("  E131:CHANNELS");
+  Serial.println("  E131:CHANNELS:<from>:<count>");
+  Serial.println("  E131:ENABLE:0|1");
+  Serial.println("  E131:UNIVERSE:<n>");
+  Serial.println("  STORAGE:STATUS");
+  Serial.println("  STORAGE:LIST");
+  Serial.println("  STORAGE:CHECK");
+  Serial.println("  STORAGE:BACKUP");
+  Serial.println("  AUDIO:STATUS");
+  Serial.println("  AUDIO:TEST:BOOT | EMERGENCY | BEEP | TONE");
+  Serial.println("  AUDIO:TEST:ERROR | ACCEPTED | COMPLETE");
+  Serial.println("  AUDIO:STOP");
+  Serial.println("  AUDIO:NODE:PLAY:<path>");
+  Serial.println("  AUDIO:NODE:LOOP:<path>");
+  Serial.println("  AUDIO:NODE:STOP | PAUSE | RESUME");
+  Serial.println("  AUDIO:NODE:VOLUME:<0-100>");
+  Serial.println("  AUDIO:NODE:SOUND:STATUS|ENABLE|DISABLE|CALIBRATE|TRIGGER:TEST");
+  Serial.println("  AUDIO:NODE:SOUND:THRESHOLD:<0-100>");
   Serial.println("  RUN:TEST");
   Serial.println("  RUN:TEST:STATUS");
   Serial.println("  RUN:TEST:ABORT");
@@ -716,19 +822,75 @@ static void dispatchCommand(const String &command) {
 
   if (command == "HELLO") {
     sendCapabilities();
+    audioNodeLinkPublishToDirector();
+    if (sCmdSource == CommandSource::Comms) {
+      const bool welcome = !sDirectorPresent;
+      noteDirectorDeskSeen();
+      if (welcome) {
+        stageAudioOnDirectorHello();
+      }
+    }
     return;
   }
 
   if (command == "HEARTBEAT") {
     if (sCmdSource != CommandSource::LocalUsb) {
       lastHeartbeatMs = millis();
+      noteDirectorDeskSeen();
     }
     sendCommandReply("OK:HEARTBEAT");
+    audioNodeLinkPublishToDirector();
     return;
   }
 
   if (command == "STATUS:REQUEST") {
+    if (sCmdSource == CommandSource::Comms) {
+      noteDirectorDeskSeen();
+    }
     sendStatus();
+    return;
+  }
+
+  if (command == SHOWDUINO_LEGACY_TIME_REQUEST || command == "TIME?") {
+    if (sCmdSource == CommandSource::Comms) {
+      noteDirectorDeskSeen();
+    }
+    char timeWire[96];
+    if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
+      sendCommandReply(timeWire);
+    } else {
+      sendCommandReply("TIME:0|--:--:--|---|offline|none");
+    }
+    return;
+  }
+
+  if (command.startsWith("TIME:SET:")) {
+    uint32_t epoch = 0;
+    if (!stageTimeParseSet(command.c_str() + 9, &epoch) || !stageTimeSetEpoch(epoch)) {
+      sendCommandReply("ERR:TIME:SET");
+      return;
+    }
+    char timeWire[96];
+    if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
+      sendCommandReply(timeWire);
+      if (sCmdSource == CommandSource::LocalUsb) sendToDirector(timeWire);
+    }
+    sendCommandReply("ACK:TIME:SET");
+    return;
+  }
+
+  if (command.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
+    return;
+  }
+
+  if (command == "PANIC" || command == "EMERGENCY:PANIC" ||
+      command == "ESTOP" || command == "E-STOP") {
+    Serial.printf("[ESTOP] %s cmd %s → EMERGENCY:STOP\n",
+                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART",
+                  command.c_str());
+    triggerEmergency(sCmdSource == CommandSource::LocalUsb
+                         ? EmergencySource::LocalUsb
+                         : EmergencySource::Remote);
     return;
   }
 
@@ -744,7 +906,25 @@ static void dispatchCommand(const String &command) {
   if (command == "EMERGENCY:CLEAR") {
     Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR\n",
                   sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
-    clearEmergencyStop();
+    if (sCmdSource == CommandSource::LocalUsb) {
+      clearEmergencyStop();
+    } else {
+      handleEmergencyClearConfirm();
+    }
+    return;
+  }
+
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
+    Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR_CONFIRM\n",
+                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
+    handleEmergencyClearConfirm();
+    return;
+  }
+
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL) {
+    Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR_CANCEL\n",
+                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
+    handleEmergencyClearCancel();
     return;
   }
 
@@ -755,6 +935,11 @@ static void dispatchCommand(const String &command) {
 
   if (command.startsWith("SHOW:") || command == "STOP:ALL") {
     handleShowCommand(command);
+    return;
+  }
+
+  if (command.startsWith("NODE:AUDIO:")) {
+    audioNodeLinkHandleReport(command.c_str());
     return;
   }
 
@@ -773,10 +958,36 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("NET:")) {
+    if (showNetworkHandleCommand(command)) {
+      sendCommandReply(command == "NET:STATUS" ? "ACK:NET:STATUS" : "ACK:NET");
+    } else {
+      sendCommandReply("ERR:NET");
+    }
+    return;
+  }
+
+  if (command.startsWith("E131:")) {
+    if (e131ReceiverHandleCommand(command)) {
+      sendCommandReply(command == "E131:STATUS" ? "ACK:E131:STATUS" : "ACK:E131");
+    } else {
+      sendCommandReply("ERR:E131");
+    }
+    return;
+  }
+
+  if (command.startsWith("STORAGE:")) {
+    if (stageStoreHandleCommand(command)) {
+      sendCommandReply(command == "STORAGE:STATUS" ? "ACK:STORAGE:STATUS" : "ACK:STORAGE");
+    } else {
+      sendCommandReply("ERR:STORAGE");
+    }
+    return;
+  }
+
   if (command == "PLUGIN:SCAN") {
-    Serial.println("[PLUGIN] Scanning Showduino Plug-in Bus...");
     pluginBusScan();
-    pluginBusPrintList();
+    sendCommandReply(String("PLUGIN:SCAN:OK:") + pluginBusInstanceCount());
     return;
   }
 
@@ -821,12 +1032,17 @@ void handleCommand(String command, CommandSource source) {
     }
     const bool localOnly = (command == "HELP" || command == "STATUS:REQUEST" ||
                             command == "HELLO" || command == "HEARTBEAT" ||
+                            command.startsWith("TIME:") ||
                             command.startsWith("PLUGIN:") ||
+                            command.startsWith("NET:") ||
+                            command.startsWith("E131:") ||
                             command.startsWith("RUN:TEST") ||
                             command.startsWith("CONFIRM:"));
     gRuntime.sendFn = localOnly ? emitConsoleLine : emitRuntimeToUsbAndDirector;
     if (command != "HEARTBEAT") {
-  Serial.printf("[CMD] source=%s command=%s\n", commandSourceLabel(source), command.c_str());
+  Serial.printf("[CMD] source=%s command=%s\n",
+                source == CommandSource::LocalUsb ? "USB" : "COMMS",
+                command.c_str());
     }
   } else {
     if (isCoprocessorBootBanner(command) || commandLooksMalformed(command)) {
@@ -990,32 +1206,32 @@ void readUsbSerial() {
 }
 
 void servicePhysicalEstop() {
-#if SHOWDUINO_ESTOP_GPIO >= 0
-  /* Momentary button: latch on a debounced press edge only.
-   * Do not follow GPIO level. Do not retrigger while held.
-   * Release (HIGH) and extra presses while already latched are ignored. */
-  const int raw = digitalRead(SHOWDUINO_ESTOP_GPIO);
-  const int pressed = (raw == SHOWDUINO_ESTOP_ASSERTED_LEVEL) ? 1 : 0;
-  const uint32_t now = millis();
-
-  if (pressed != sEstopRaw) {
-    sEstopRaw = pressed;
-    sEstopEdgeMs = now;
-    Serial.printf("[ESTOP] gpio edge raw=%d (%s)\n", raw, pressed ? "LOW/press" : "HIGH/release");
+  /* Momentary pushbutton: first debounced press still latches immediately.
+   * Release does not clear. Extra gestures never weaken that latch. */
+  const EmergencyInputEvents ev = emergencyInputService(millis());
+  if (ev.loopOpened) {
+    if (!emergencyLocked) {
+      triggerEmergency(EmergencySource::Physical);
+      Serial.println("[ESTOP] Emergency latched");
+    } else {
+      Serial.println("[ESTOP] press ignored — already latched");
+    }
   }
-  if ((now - sEstopEdgeMs) < SHOWDUINO_ESTOP_DEBOUNCE_MS) return;
-  if (sEstopStable == pressed) return;
-  sEstopStable = pressed;
-  Serial.printf("[ESTOP] GPIO%d %s (debounced)\n",
-                SHOWDUINO_ESTOP_GPIO, pressed ? "PRESSED" : "RELEASED");
-  if (pressed && !emergencyLocked) {
-    triggerEmergency(EmergencySource::Physical);
-  } else if (pressed && emergencyLocked) {
-    Serial.println("[ESTOP] press ignored — already latched (CLEAR from Director)");
+  if (ev.locateRequested) {
+    Serial.println("[ESTOP] DIRECTOR:LOCATE");
+    sendToDirector(SHOWDUINO_LEGACY_DIRECTOR_LOCATE);
   }
-#else
-  (void)0;
-#endif
+  if (ev.clearRequested) {
+    Serial.println("[ESTOP] Hold detected");
+    Serial.println("[ESTOP] Clear request sent");
+    stageLogEmergency("CLEAR_REQUEST", "physical hold");
+    sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST);
+  }
+  if (ev.clearExpired) {
+    Serial.println("[ESTOP] Clear request expired");
+    stageLogEmergency("CLEAR_EXPIRED", "request timeout");
+    sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED);
+  }
 }
 
 static void pumpLocalServices() {
@@ -1032,32 +1248,19 @@ void setup() {
   Serial.println();
   Serial.println("[BOOT] Showduino P4 starting");
 
-  {
-    struct timeval tv = {};
-    if (gettimeofday(&tv, nullptr) == 0) {
-      Serial.println("[RTC] Internal RTC initialised");
-    } else {
-      Serial.println("[RTC] Internal RTC not available");
-    }
-  }
+  stageTimeBegin();
 
-  pinMode(STATUS_LED_PIN, OUTPUT);
-  digitalWrite(STATUS_LED_PIN, LOW);
+#if SHOWDUINO_STATUS_LED_PIN >= 0
+  pinMode(SHOWDUINO_STATUS_LED_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_STATUS_LED_PIN, LOW);
+#else
+  Serial.println("[BOOT] No status LED GPIO — GPIO10 is ES8311 LRCK, left unused");
+#endif
 
   /* Button before pixels. Adafruit NeoPixel show() could wait forever on P4 RMT
    * and previously blocked this pin from ever being configured. */
 #if SHOWDUINO_ESTOP_GPIO >= 0
-  gpio_reset_pin((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
-  gpio_set_direction((gpio_num_t)SHOWDUINO_ESTOP_GPIO, GPIO_MODE_INPUT);
-  gpio_pullup_en((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
-  gpio_pulldown_dis((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
-  pinMode(SHOWDUINO_ESTOP_GPIO, SHOWDUINO_ESTOP_PIN_MODE);
-  Serial.println("[ESTOP] Physical emergency input initialized");
-  Serial.printf("[ESTOP] GPIO=%d mode=%s asserted=%s sample=%d (1=released)\n",
-                SHOWDUINO_ESTOP_GPIO,
-                SHOWDUINO_ESTOP_PIN_MODE == INPUT_PULLUP ? "INPUT_PULLUP" : "INPUT",
-                SHOWDUINO_ESTOP_ASSERTED_LEVEL == LOW ? "LOW" : "HIGH",
-                digitalRead(SHOWDUINO_ESTOP_GPIO));
+  emergencyInputBegin();
 #else
   Serial.println("[ESTOP] Emergency input initialized (command path only; GPIO not assigned)");
 #endif
@@ -1080,15 +1283,9 @@ void setup() {
   gRuntime.begin(sendToDirectorC);
   gRuntime.setDispatch(timelineDispatchCommand);
 
-  if (sdOk) {
-    stageAudioBegin();
-    if (!stageAudioStatus().wavPresent) {
-      Serial.println("[ESTOP] WARNING: Emergency audio unavailable");
-      Serial.println("[ESTOP] Emergency safety state remains operational");
-    }
-    Serial.println("[AUDIO] Audio subsystem ready");
-  } else {
-    Serial.println("[ESTOP] WARNING: Emergency audio unavailable");
+  stageAudioBegin();
+  if (!sdOk) {
+    Serial.println("[ESTOP] WARNING: Emergency audio unavailable (no SD)");
     Serial.println("[ESTOP] Emergency safety state remains operational");
   }
 
@@ -1104,8 +1301,18 @@ void setup() {
   readCommsSerial();
 
   pluginBusBegin(pumpLocalServices);
+  if (!stageAudioInitHardware()) {
+    Serial.println("[AUDIO] ES8311/I2S not ready — system WAV disabled");
+    Serial.println("[AUDIO] Emergency latch and Audio Node routing still work");
+  } else if (!stageAudioStatus().wavPresent) {
+    Serial.println("[ESTOP] WARNING: emergency.wav missing — latch still works");
+  }
+  Serial.println("[AUDIO] BOOT waits for Director HELLO (screen power-on)");
+  audioNodeLinkBegin();
 
+  stageStoreBegin();
   webApiBegin(bootMs);
+  showNetworkBegin();
 
   gRuntime.bootToIdle();
   lastHeartbeatMs = millis();
@@ -1120,19 +1327,24 @@ void loop() {
   readUsbSerial();
   flushUartNoiseLog();
   serviceCommsLink();
+  serviceDirectorPresence();
   servicePhysicalEstop();
   pluginBusService();
   stageStorageLoop();
+  stageStoreLoop();
   if (!sProductionStoreReady && stageStorageIsReady() &&
       (millis() - sProductionStoreRetryMs) >= 15000UL) {
     sProductionStoreRetryMs = millis();
     sProductionStoreReady = gProductionStore.begin(stageStorageFs());
   }
   stageAudioLoop();
+  audioNodeLinkLoop();
+  stageTimeLoop(millis(), sendToDirectorC);
+  showNetworkLoop();
   gRuntime.service(millis(), &gEngine);
 
   if (emergencyLocked) {
-    digitalWrite(STATUS_LED_PIN, (millis() / 250) % 2 == 0 ? HIGH : LOW);
+    statusLedWrite((millis() / 250) % 2 == 0 ? HIGH : LOW);
     emergencyPixelsService();
   }
   stageDiagService();

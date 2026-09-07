@@ -67,8 +67,8 @@ public:
     return true;
   }
 
-  // Soft recover — keep a live peer (del/add churn drops RX).
-  // reinit: operator Retry — tear down and start ESP-NOW again.
+  // Soft recover - keep a live peer (del/add churn drops RX).
+  // reinit: operator Retry - tear down and start ESP-NOW again.
   bool recover(bool reinit = false) {
     if (reinit) {
       if (online) {
@@ -172,7 +172,7 @@ private:
 
   bool addBridgePeer() {
     if (esp_now_is_peer_exist(stageBridgeMac)) {
-      // Already present — leave it alone (del/add churn breaks RX).
+      // Already present - leave it alone (del/add churn breaks RX).
       return true;
     }
 

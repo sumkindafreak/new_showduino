@@ -10,9 +10,9 @@
 namespace Os2 {
 
 /**
- * NetworkService — fabric / link health for OS apps.
+ * NetworkService - fabric / link health for OS apps.
  *
- *   Link status · Connected nodes · Latency · Heartbeats · Health
+ *   Link status | Connected nodes | Latency | Heartbeats | Health
  *
  * Apps never open sockets or ESP-NOW. Communication layer pushes snapshots here.
  */
@@ -29,7 +29,7 @@ class NetworkService : public IService {
   void begin() override {
     link_ = Link::Searching;
     nodesOnline_ = 0;
-    nodesExpected_ = 1;
+    nodesExpected_ = 0;
     latencyMs_ = 0;
     lastHeartbeatMs_ = 0;
     heartbeatAgeMs_ = 0;
@@ -52,7 +52,7 @@ class NetworkService : public IService {
     if (nodesOnline_ == online && nodesExpected_ == expected) return;
     const uint8_t prev = nodesOnline_;
     nodesOnline_ = online;
-    nodesExpected_ = expected ? expected : 1;
+    nodesExpected_ = expected;
     bump();
     if (online > prev) events().publish(Event::NodeJoined, online, nodesExpected_);
     else if (online < prev) events().publish(Event::NodeLost, online, nodesExpected_);
@@ -63,7 +63,7 @@ class NetworkService : public IService {
     lastHeartbeatMs_ = lastReplyMs;
     uint32_t age = (lastReplyMs == 0 || nowMs < lastReplyMs) ? 0 : (nowMs - lastReplyMs);
     if (heartbeatAgeMs_ == age && latencyMs_ != 0) {
-      /* age changes often — bump only on meaningful steps */
+      /* age changes often - bump only on meaningful steps */
     }
     uint32_t prevAge = heartbeatAgeMs_;
     heartbeatAgeMs_ = age;
@@ -86,7 +86,7 @@ class NetworkService : public IService {
     if (txCount_ == tx && rxCount_ == rx) return;
     txCount_ = tx;
     rxCount_ = rx;
-    /* traffic is noisy — don't bump revision every packet */
+    /* traffic is noisy - don't bump revision every packet */
   }
 
   void tick(uint32_t nowMs) override {
@@ -135,7 +135,7 @@ class NetworkService : public IService {
   void formatHealth(char *buf, size_t n) const {
     if (!buf || n == 0) return;
     if (link_ == Link::Ready) {
-      if (latencyMs_ > 0) snprintf(buf, n, "%s · %lums", linkLabel(), (unsigned long)latencyMs_);
+      if (latencyMs_ > 0) snprintf(buf, n, "%s | %lums", linkLabel(), (unsigned long)latencyMs_);
       else snprintf(buf, n, "%s", linkLabel());
     } else {
       snprintf(buf, n, "%s", linkLabel());
@@ -149,7 +149,7 @@ class NetworkService : public IService {
 
   Link link_ = Link::Searching;
   uint8_t nodesOnline_ = 0;
-  uint8_t nodesExpected_ = 1;
+  uint8_t nodesExpected_ = 0;
   uint32_t latencyMs_ = 0;
   uint32_t lastHeartbeatMs_ = 0;
   uint32_t heartbeatAgeMs_ = 0;

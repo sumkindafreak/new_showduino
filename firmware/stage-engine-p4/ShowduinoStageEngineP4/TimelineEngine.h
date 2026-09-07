@@ -164,6 +164,10 @@ public:
   }
   uint16_t cueTotal() const { return cueCount; }
   uint16_t cuesFired() const { return nextCue; }
+  const TimelineCue *cueAt(uint16_t index) const {
+    if (!cues || index >= cueCount) return nullptr;
+    return &cues[index];
+  }
 
   uint32_t remainingMs() const {
     uint32_t t = CurrentTime();

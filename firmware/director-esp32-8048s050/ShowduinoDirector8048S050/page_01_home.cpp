@@ -7,9 +7,10 @@
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
+#include "DirectorUiText.h"
 
 /* ================================================================
- * Page 01 geometry — 800×480, below the persistent status bar
+ * Page 01 geometry - 800x480, below the persistent status bar
  * ================================================================ */
 static const int16_t kHeaderX = 0;
 static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
@@ -116,7 +117,6 @@ static void set_label_safe(lv_obj_t *lab, const char *text) {
 
 static bool production_name_is_empty(const char *name) {
   if (name == nullptr || name[0] == '\0') return true;
-  if (strcmp(name, "—") == 0) return true;
   if (strcmp(name, "-") == 0) return true;
   if (strcmp(name, "NO PRODUCTION") == 0) return true;
   if (strcmp(name, "No Show Loaded") == 0) return true;
@@ -126,42 +126,11 @@ static bool production_name_is_empty(const char *name) {
 
 static void style_control(lv_obj_t *obj, Page01VisualRole role) {
   lv_obj_remove_style_all(obj);
-  lv_opa_t bg_def = LV_OPA_20;
-  lv_opa_t bg_pr = LV_OPA_40;
-  lv_opa_t border_opa = LV_OPA_80;
-  uint8_t border_w = 2;
-  uint8_t radius = OS_PANEL_RADIUS;
-
-  if (role == PAGE01_ROLE_HERO) {
-    bg_def = LV_OPA_30;
-    bg_pr = LV_OPA_50;
-    border_opa = LV_OPA_COVER;
-    border_w = 2;
-    radius = OS_PANEL_RADIUS;
-  } else if (role == PAGE01_ROLE_QUIET) {
-    bg_def = LV_OPA_10;
-    bg_pr = LV_OPA_20;
-    border_opa = LV_OPA_40;
-    border_w = 1;
-  } else if (role == PAGE01_ROLE_TOOL) {
-    bg_def = LV_OPA_10;
-    bg_pr = LV_OPA_30;
-    border_opa = LV_OPA_60;
-  }
-
-  lv_obj_set_style_bg_opa(obj, bg_def, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_color(obj, lv_color_hex(ShowduinoPalette::PanelRaised),
-                            LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_opa(obj, bg_pr, LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_bg_color(obj, lv_color_hex(ShowduinoPalette::PanelRaised),
+  const bool quiet = (role == PAGE01_ROLE_QUIET);
+  ShowduinoOsTheme::styleRaisedCard(obj, !quiet);
+  lv_obj_set_style_bg_color(obj, lv_color_hex(ShowduinoPalette::AccentDim),
                             LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_border_width(obj, border_w, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_opa(obj, border_opa, LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_border_width(obj, border_w + 1, LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_border_opa(obj, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_PRESSED);
-  lv_obj_set_style_border_width(obj, border_w + 1, LV_PART_MAIN | LV_STATE_FOCUSED);
-  lv_obj_set_style_border_opa(obj, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_FOCUSED);
-  lv_obj_set_style_radius(obj, radius, LV_PART_MAIN);
+  lv_obj_set_style_border_width(obj, quiet ? 1 : 2, LV_PART_MAIN | LV_STATE_PRESSED);
   lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
   lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
@@ -249,7 +218,7 @@ static void recompute_readiness(void) {
   if (strcmp(s_readiness_text, next) != 0) {
     strncpy(s_readiness_text, next, sizeof(s_readiness_text) - 1);
     s_readiness_text[sizeof(s_readiness_text) - 1] = '\0';
-    Serial.printf("[Page01] readiness → %s (link=%s prod=%d)\n",
+    Serial.printf("[Page01] readiness -> %s (link=%s prod=%d)\n",
                   s_readiness_text, s_link_text, (int)s_has_production);
   }
   if (s_readiness) {
@@ -295,7 +264,7 @@ static void refresh_hero(void) {
       lv_label_set_text(hero->label, "SELECT A PRODUCTION");
     }
     if (hero->sublabel) {
-      lv_label_set_text(hero->sublabel, "No production loaded · Tap to open Productions");
+      lv_label_set_text(hero->sublabel, "No production loaded | Tap to open Productions");
       lv_obj_set_style_text_color(hero->sublabel,
                                   lv_color_hex(ShowduinoPalette::Muted), 0);
     }
@@ -309,8 +278,10 @@ static void refresh_hero(void) {
       lv_label_set_text(hero->label, "RUN SHOW");
     }
     if (hero->sublabel) {
+      char shown[64];
       char sub[96];
-      snprintf(sub, sizeof(sub), "%s · %s", s_production_name, s_readiness_text);
+      director_ui_sanitize_copy(shown, sizeof(shown), s_production_name);
+      snprintf(sub, sizeof(sub), "%s | %s", shown, s_readiness_text);
       lv_label_set_text(hero->sublabel, sub);
       lv_obj_set_style_text_color(hero->sublabel,
                                   lv_color_hex(ShowduinoPalette::Text), 0);
@@ -321,9 +292,11 @@ static void refresh_hero(void) {
     const bool canRun = (strcmp(s_link_text, "LINK OK") == 0);
     set_tile_enabled(hero, canRun);
     if (!canRun && hero->sublabel) {
+      char shown[64];
       char sub[96];
-      snprintf(sub, sizeof(sub), "%s · %s — cannot run until Stage is linked",
-               s_production_name, s_readiness_text);
+      director_ui_sanitize_copy(shown, sizeof(shown), s_production_name);
+      snprintf(sub, sizeof(sub), "%s | %s - cannot run until Stage is linked",
+               shown, s_readiness_text);
       lv_label_set_text(hero->sublabel, sub);
     }
     return;
@@ -343,14 +316,13 @@ static void build_header(lv_obj_t *parent) {
   s_header_accent = lv_obj_create(s_header);
   lv_obj_remove_style_all(s_header_accent);
   lv_obj_set_pos(s_header_accent, 16, 34);
-  lv_obj_set_size(s_header_accent, 72, 3);
+  lv_obj_set_size(s_header_accent, 120, 3);
   lv_obj_set_style_bg_opa(s_header_accent, LV_OPA_COVER, 0);
-  lv_obj_set_style_radius(s_header_accent, 1, 0);
   showduino_theme_register(s_header_accent, SHOWDUINO_THEME_ROLE_HEADER_ACCENT);
 
   s_title = lv_label_create(s_header);
   lv_label_set_text(s_title, "HOME");
-  lv_obj_set_pos(s_title, 16, 8);
+  lv_obj_set_pos(s_title, 16, 10);
   lv_obj_set_style_text_font(s_title, &lv_font_montserrat_16, 0);
   lv_obj_set_style_text_color(s_title, lv_color_hex(ShowduinoPalette::Text), 0);
   showduino_theme_register(s_title, SHOWDUINO_THEME_ROLE_TEXT);
@@ -369,7 +341,7 @@ static void build_header(lv_obj_t *parent) {
   lv_obj_set_width(s_link, 180);
   lv_label_set_long_mode(s_link, LV_LABEL_LONG_CLIP);
   lv_obj_set_style_text_font(s_link, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(s_link, lv_color_hex(ShowduinoPalette::Muted), 0);
+  lv_obj_set_style_text_color(s_link, lv_color_hex(ShowduinoPalette::Accent), 0);
 
   s_readiness = lv_label_create(s_header);
   lv_label_set_text(s_readiness, "NO PRODUCTION");
@@ -389,6 +361,7 @@ static void build_control(uint8_t index) {
   style_control(c->btn, c->role);
   lv_obj_set_pos(c->btn, c->x, c->y);
   lv_obj_set_size(c->btn, c->w, c->h);
+  ShowduinoOsTheme::decorateCard(c->btn, c->role != PAGE01_ROLE_QUIET);
   lv_obj_set_user_data(c->btn, (void *)c->command);
   lv_obj_add_event_cb(c->btn, control_event_cb, LV_EVENT_CLICKED, nullptr);
 #if SHOWDUINO_PAGE01_ALIGNMENT_DEBUG
@@ -437,7 +410,7 @@ static void build_control(uint8_t index) {
     lv_obj_align(c->icon, LV_ALIGN_LEFT_MID, 28, -10);
     lv_obj_align(c->label, LV_ALIGN_LEFT_MID, 72, -12);
     c->sublabel = lv_label_create(c->btn);
-    lv_label_set_text(c->sublabel, "No production loaded · Tap to open Productions");
+    lv_label_set_text(c->sublabel, "No production loaded | Tap to open Productions");
     lv_obj_set_style_text_font(c->sublabel, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(c->sublabel, lv_color_hex(ShowduinoPalette::Muted), 0);
     lv_obj_set_width(c->sublabel, (int16_t)(c->w - 100));
@@ -464,7 +437,7 @@ static void build_control(uint8_t index) {
 }
 
 static void build_controls(void) {
-  /* Hero — command swaps between RUN_SHOW and PRODUCTIONS via refresh_hero(). */
+  /* Hero - command swaps between RUN_SHOW and PRODUCTIONS via refresh_hero(). */
   s_ctrls[PAGE01_CTRL_HERO] = {
     nullptr, nullptr, nullptr, nullptr, nullptr,
     "RUN SHOW", LV_SYMBOL_PLAY, PAGE01_CMD_PRODUCTIONS, PAGE01_ROLE_HERO,
@@ -504,7 +477,7 @@ static void build_controls(void) {
   for (uint8_t i = 0; i < PAGE01_CTRL_COUNT; i++) {
     build_control(i);
   }
-  /* Cue Library and Outputs have no live page yet — visible, not tappable. */
+  /* Cue Library and Outputs have no live page yet - visible, not tappable. */
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
   refresh_hero();
@@ -525,9 +498,10 @@ static void build_footer(lv_obj_t *parent) {
   lv_obj_remove_style_all(s_footer);
   lv_obj_set_pos(s_footer, kFooterX, kFooterY);
   lv_obj_set_size(s_footer, kFooterW, kFooterH);
-  lv_obj_set_style_bg_opa(s_footer, LV_OPA_TRANSP, 0);
+  ShowduinoOsTheme::styleRaisedCard(s_footer, true);
   lv_obj_clear_flag(s_footer, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(s_footer, LV_OBJ_FLAG_CLICKABLE);
+  showduino_theme_register(s_footer, SHOWDUINO_THEME_ROLE_BORDER);
 
   static const char *titles[7] = {
     "SUE", "P4", "Relay", "MOSFET", "NeoPixel", "Audio", "DMX"
@@ -552,7 +526,7 @@ static void build_footer(lv_obj_t *parent) {
 
     s_footer_slots[i].label = lv_label_create(s_footer);
     char buf[28];
-    snprintf(buf, sizeof(buf), "%s —", titles[i]);
+    snprintf(buf, sizeof(buf), "%s -", titles[i]);
     lv_label_set_text(s_footer_slots[i].label, buf);
     lv_obj_set_pos(s_footer_slots[i].label, (int16_t)(x + 14), 8);
     lv_obj_set_width(s_footer_slots[i].label, (int16_t)(kFooterSlotW - 18));
@@ -563,7 +537,7 @@ static void build_footer(lv_obj_t *parent) {
   }
 
   s_notify = lv_label_create(s_footer);
-  lv_label_set_text(s_notify, "—");
+  lv_label_set_text(s_notify, "-");
   lv_obj_set_pos(s_notify, 640, 28);
   lv_obj_set_width(s_notify, 100);
   lv_label_set_long_mode(s_notify, LV_LABEL_LONG_CLIP);
@@ -573,7 +547,7 @@ static void build_footer(lv_obj_t *parent) {
 
 void page_01_home_create(lv_obj_t *parent, page01_command_fn command_cb) {
   if (parent == nullptr) {
-    Serial.println("[Page01] create failed — parent null");
+    Serial.println("[Page01] create failed - parent null");
     return;
   }
   if (s_active) {
@@ -589,7 +563,7 @@ void page_01_home_create(lv_obj_t *parent, page01_command_fn command_cb) {
   strncpy(s_link_text, "OFFLINE", sizeof(s_link_text) - 1);
   strncpy(s_readiness_text, "NO PRODUCTION", sizeof(s_readiness_text) - 1);
 
-  Serial.println("[Page01] creating Home page (status-bar layout)…");
+  Serial.println("[Page01] creating Home page (status-bar layout)...");
 #if SHOWDUINO_PAGE01_ALIGNMENT_DEBUG
   Serial.println("[Page01] ALIGNMENT DEBUG ENABLED");
   Serial.printf("[Page01][Align] header=(%d,%d %dx%d) hero=(%d,%d %dx%d) footer=(%d,%d %dx%d)\n",
@@ -681,12 +655,14 @@ void page_01_home_set_production(const char *name) {
     s_has_production = true;
     strncpy(s_production_name, name, sizeof(s_production_name) - 1);
     s_production_name[sizeof(s_production_name) - 1] = '\0';
-    lv_label_set_text(s_production, s_production_name);
+    char shown[64];
+    director_ui_sanitize_copy(shown, sizeof(shown), s_production_name);
+    lv_label_set_text(s_production, shown);
     lv_obj_set_style_text_color(s_production, lv_color_hex(ShowduinoPalette::Text), 0);
   }
 
   if (prev != s_has_production || strcmp(prev_name, s_production_name) != 0) {
-    Serial.printf("[Page01] production → %s\n", empty ? "(none)" : s_production_name);
+    Serial.printf("[Page01] production -> %s\n", empty ? "(none)" : s_production_name);
   }
   recompute_readiness();
   refresh_hero();
@@ -699,7 +675,7 @@ void page_01_home_set_link_text(const char *text) {
   if (strcmp(s_link_text, text) != 0) {
     strncpy(s_link_text, text, sizeof(s_link_text) - 1);
     s_link_text[sizeof(s_link_text) - 1] = '\0';
-    Serial.printf("[Page01] link → %s\n", s_link_text);
+    Serial.printf("[Page01] link -> %s\n", s_link_text);
   }
   set_label_safe(s_link, text);
   recompute_readiness();
@@ -731,7 +707,9 @@ void page_01_home_set_footer_notify(const char *text) {
   if (text == nullptr || s_notify == nullptr) {
     return;
   }
-  lv_label_set_text(s_notify, text);
+  char shown[64];
+  director_ui_sanitize_copy(shown, sizeof(shown), text);
+  lv_label_set_text(s_notify, shown);
 }
 
 void page_01_home_apply_theme(void) {

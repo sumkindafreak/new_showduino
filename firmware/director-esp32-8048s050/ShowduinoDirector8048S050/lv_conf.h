@@ -1,14 +1,14 @@
 /**
- * lv_conf.h — Showduino Director LVGL 9 configuration
- * JC8048W550C / ESP32-S3 / 800×480 RGB panel
+ * lv_conf.h - Showduino Director LVGL 9 configuration
+ * JC8048W550C / ESP32-S3 / 800x480 RGB panel
  *
  * Arduino IDE: copy this file to BOTH locations:
- *   1) ShowduinoDirector8048S050/lv_conf.h  (next to the sketch — already here)
+ *   1) ShowduinoDirector8048S050/lv_conf.h  (next to the sketch - already here)
  *   2) Documents/Arduino/libraries/lv_conf.h  (next to the lvgl folder)
- * The libraries copy is required — Arduino compiles LVGL separately from the sketch.
+ * The libraries copy is required - Arduino compiles LVGL separately from the sketch.
  *
  * Memory: use LVGL's built-in TLSF pool allocated from PSRAM.
- * LV_STDLIB_CLIB used system malloc → internal SRAM, which falls to <1 KB after
+ * LV_STDLIB_CLIB used system malloc -> internal SRAM, which falls to <1 KB after
  * building all screens and then abort()s on the next String/log allocation.
  */
 
@@ -28,7 +28,7 @@
 #define LV_USE_STDLIB_STRING    LV_STDLIB_CLIB
 #define LV_USE_STDLIB_SPRINTF   LV_STDLIB_CLIB
 
-/* Large TLSF pool in PSRAM — keeps Wi-Fi / ESP-NOW / Arduino String on internal heap. */
+/* Large TLSF pool in PSRAM - keeps Wi-Fi / ESP-NOW / Arduino String on internal heap. */
 #define LV_MEM_SIZE             (512ul * 1024ul)
 #define LV_MEM_ADR              0
 #define LV_MEM_POOL_INCLUDE     "esp_heap_caps.h"
@@ -93,6 +93,7 @@
 
 #define LV_USE_FONT_COMPRESSED  0
 #define LV_USE_FONT_SUBPX       0
+/* Missing glyphs draw a square. Keep live UI ASCII-safe; see DirectorUiText.h. */
 #define LV_USE_FONT_PLACEHOLDER 1
 
 #define LV_FONT_MONTSERRAT_8    0

@@ -72,7 +72,12 @@ typedef enum ShowduinoMessageType {
   SHOWDUINO_MSG_PRODUCTION_LOAD_REQUEST,
   SHOWDUINO_MSG_PRODUCTION_UNLOAD_REQUEST,
   SHOWDUINO_MSG_PRODUCTION_STATUS_REQUEST,
-  SHOWDUINO_MSG_PRODUCTION_STATE_CHANGED
+  SHOWDUINO_MSG_PRODUCTION_STATE_CHANGED,
+
+  /* Emergency locate / dual-action clear (appended to preserve existing IDs) */
+  SHOWDUINO_MSG_DIRECTOR_LOCATE,
+  SHOWDUINO_MSG_EMERGENCY_CLEAR_PENDING,
+  SHOWDUINO_MSG_EMERGENCY_CLEAR_CANCEL
 } ShowduinoMessageType;
 
 /* Lifecycle markers for future structured framing (not on v1 wire). */

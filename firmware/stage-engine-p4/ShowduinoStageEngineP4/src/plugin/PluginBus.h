@@ -19,5 +19,7 @@ uint8_t pluginBusInstanceCount();
 const PluginInstance *pluginBusInstanceAt(uint8_t index);
 void pluginBusFormatPath(const PluginLocation &loc, char *out, size_t outLen);
 bool pluginBusPing(const PluginLocation &loc);
+PluginConfigLoadResult pluginBusRoleFileResult();
+const PluginRoleFile *pluginBusRoleFile();
 
 #endif

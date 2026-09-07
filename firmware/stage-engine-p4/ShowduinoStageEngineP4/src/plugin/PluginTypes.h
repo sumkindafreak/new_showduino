@@ -4,12 +4,13 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include <string.h>
+#include "PluginRoles.h"
 
-#define PLUGIN_MAX_INSTANCES     20
+#define PLUGIN_MAX_INSTANCES     PLUGIN_ROLE_MAX_DEVICES
 #define PLUGIN_MAX_DEFS          16
-#define PLUGIN_MAX_JSON_BYTES    3072
+#define PLUGIN_MAX_JSON_BYTES    PLUGIN_ROLE_FILE_MAX_BYTES
 #define PLUGIN_ID_LEN            28
-#define PLUGIN_NAME_LEN          32
+#define PLUGIN_NAME_LEN          PLUGIN_DISPLAY_NAME_LEN
 #define PLUGIN_DRIVER_LEN        24
 #define PLUGIN_SCHEMA_VERSION    1
 
@@ -105,6 +106,10 @@ struct PluginInstance {
   uint32_t lastSeenMs = 0;
   PluginStatus status = PluginStatus::Absent;
   PluginSafeState safeState = PluginSafeState::Off;
+  PluginChip chip = PluginChip::Unknown;
+  PluginDeviceClass deviceClass = PluginDeviceClass::Unknown;
+  PluginRole role = PluginRole::None;
+  PluginClassification classification = PluginClassification::Unknown;
   bool configured = false;
   bool identityFromAddressOnly = false;
 };
@@ -115,10 +120,14 @@ struct PluginBusSelfTest {
   bool sclIdleHigh = false;
   bool scanOk = false;
   bool definitionsOk = true;
+  bool roleFileOk = true;
   uint8_t devicesFound = 0;
   uint8_t known = 0;
   uint8_t unknown = 0;
   uint8_t offlineConfigured = 0;
+  uint8_t internal = 0;
+  uint8_t configuredPlugins = 0;
+  uint8_t unconfiguredPlugins = 0;
   char detail[48] = {};
 };
 

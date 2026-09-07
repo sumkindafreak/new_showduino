@@ -118,7 +118,11 @@ inline bool showduinoValidatePacket(const ShowduinoPacketV1 &packet) {
 inline bool showduinoIsEmergencyCommand(const char *payload) {
   if (payload == nullptr) return false;
   return strcmp(payload, "EMERGENCY:STOP") == 0 ||
-         strcmp(payload, "EMERGENCY:CLEAR") == 0;
+         strcmp(payload, "EMERGENCY:CLEAR") == 0 ||
+         strcmp(payload, "EMERGENCY:CLEAR_CONFIRM") == 0 ||
+         strcmp(payload, "EMERGENCY:CLEAR_CANCEL") == 0 ||
+         strcmp(payload, "EMERGENCY:CLEAR_REQUEST") == 0 ||
+         strcmp(payload, "DIRECTOR:LOCATE") == 0;
 }
 
 #endif

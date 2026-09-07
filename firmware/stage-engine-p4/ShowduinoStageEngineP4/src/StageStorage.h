@@ -24,6 +24,10 @@ void stageStorageLoop();
 void stageStorageSetLinkPump(void (*fn)());
 const StageStorageStatus &stageStorageStatus();
 bool stageStorageIsReady();
+bool stageStorageIsWritable();
+bool stageStoragePollPresence();
+void stageStorageRefreshSpace();
+void stageStorageMarkOffline(const char *reason);
 fs::FS &stageStorageFs();
 
 #else
@@ -32,6 +36,10 @@ inline bool stageStorageBegin() { return false; }
 inline void stageStorageLoop() {}
 inline void stageStorageSetLinkPump(void (*)()) {}
 inline bool stageStorageIsReady() { return false; }
+inline bool stageStorageIsWritable() { return false; }
+inline bool stageStoragePollPresence() { return false; }
+inline void stageStorageRefreshSpace() {}
+inline void stageStorageMarkOffline(const char *) {}
 
 inline const StageStorageStatus &stageStorageStatus() {
   static StageStorageStatus disabled;

@@ -271,7 +271,7 @@ inline bool jsonGetBool(const String &json, const char *key, bool fallback = fal
 }
 
 inline void formatIsoTimestamp(char *buf, size_t buflen) {
-  // No RTC required — use uptime-based stamp; replace with RTC when available.
+  // No RTC required - use uptime-based stamp; replace with RTC when available.
   unsigned long ms = millis();
   snprintf(buf, buflen, "T+%lu.%03luZ", ms / 1000UL, ms % 1000UL);
 }

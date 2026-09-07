@@ -10,5 +10,6 @@ bool protocolBridgePingPending();
 bool protocolBridgeLastPingOk();
 bool protocolBridgeP4Alive();
 bool protocolBridgeDirectorOnline();
+bool protocolBridgeEmergencyActive();
 
 #endif

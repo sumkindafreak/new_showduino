@@ -75,6 +75,6 @@ Libraries: `lvgl` 9.x, `Arduino_GFX_Library`, `TAMC_GT911`, `Adafruit NeoPixel` 
 |------|------|
 | Communications Engine | `firmware/s3-comms-controller/` |
 | Show Engine (Stage Controller) | `firmware/stage-engine-p4/` |
-| Relay Node | `firmware/relay-node-esp32/` |
+| Relay Node prototype | `firmware/relay-node-esp32/` (experimental / future; not required) |
 
 See `docs/architecture.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).

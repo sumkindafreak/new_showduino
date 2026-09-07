@@ -14,7 +14,7 @@
 namespace Os2 {
 
 /**
- * Layer 1 — The Shell.
+ * Layer 1 - The Shell.
  *
  * This never changes. Ever.
  * It owns absolutely nothing except presentation.
@@ -254,7 +254,7 @@ class Shell {
     const Theme::Spacing &sp = th.space();
     const int slot = sp.dockIconSize + sp.gapTight;
 
-    /* Dock knows only the registry — never a hardcoded app list. */
+    /* Dock knows only the registry - never a hardcoded app list. */
     dockCount_ = 0;
     int visual = 0;
     for (int i = 0; i < apps().count(); ++i) {
@@ -315,7 +315,7 @@ class Shell {
 
   void setTopBarAppTitle(const char * /*title*/) {
     /* Brand stays SHOWDUINO; status/clock own the right side.
-       App identity lives in the workspace — nothing appears by accident. */
+       App identity lives in the workspace - nothing appears by accident. */
   }
 
   void refreshTopBarClock() {

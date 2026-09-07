@@ -7,7 +7,7 @@
 /** Landscape: native 800x480, no 90° rotation. */
 #define DISPLAY_ROTATION 0
 
-/** RGB DMA bounce buffer — required for stable ESP32-S3 RGB panels (BankOfDad bring-up). */
+/** RGB DMA bounce buffer - required for stable ESP32-S3 RGB panels (BankOfDad bring-up). */
 #define RGB_BOUNCE_BUFFER (SCREEN_WIDTH * 20)
 
 extern Arduino_RGB_Display *gfx;

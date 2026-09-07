@@ -18,7 +18,7 @@ inline void registerDefaultApps() {
   static DashboardApp dashboard;
   static LibraryApp library;
   registerApp(&dashboard);  /* primary operator workspace */
-  registerApp(&library);    /* production catalogue — not runtime */
+  registerApp(&library);    /* production catalogue - not runtime */
 
   /* Future:
    *   registerApp(&lighting);

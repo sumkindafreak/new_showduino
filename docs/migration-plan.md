@@ -35,7 +35,7 @@ Status: **DECIDED**
 - This superseded proposal would have replaced separate C3/SUE hardware with the onboard C6.
 - P4 RTC replaces external DS3231 hardware.
 - Onboard ES8311 handles Showduino/system sounds.
-- PCM5102A remains for show/programme audio.
+- Attraction/programme audio is the Audio Node. The PCM5102A path is retired.
 - GPIO24 remains emergency NeoPixel.
 - GPIO25 remains momentary emergency trigger.
 - microSD, Ethernet and USB remain native Stage Controller resources.

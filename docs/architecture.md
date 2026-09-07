@@ -59,13 +59,28 @@ ESP32-S3 Comms Controller
 Show Engine ESP32-P4 (Stage Controller)
 ```
 
-### Browser / phone path (conceptual target)
+### Browser / phone path
 
 ```text
 Phone / Tablet / Laptop
-    → Wi-Fi (FUTURE / RESERVED / NOT IMPLEMENTED on the S3 Comms Controller)
-    → Show Engine services
+    → Communications S3 SoftAP  (canonical Studio WebUI)
+    → UART WEB/GET | WEB/POST
+    → P4 Web API origin
 ```
+
+### Optional P4 Ethernet show network
+
+```text
+P4 Ethernet
+    → isolated show LAN / switch
+    → Studio laptop, lighting desk, E1.31 / sACN source
+```
+
+ESP-NOW remains the Showduino control fabric. UART remains Comms ↔ P4. Ethernet is P4 management + show network + the E1.31 test receiver. Internet is not required and is not a health test.
+
+The P4 SD card (`/showduino/`) is the persistent configuration and production
+filesystem. It is not required for boot, Comms UART, Director transport, or
+emergency. See [`docs/p4-sd-storage.md`](p4-sd-storage.md).
 
 Do **not** describe the Director as the normal Web UI host or proxy.
 
@@ -91,7 +106,7 @@ Do **not** describe the Director as the normal Web UI host or proxy.
              │ UART (to Comms) then ESP-NOW
              ▼
 ┌──────────────────────────┐
-│ Nodes (relay, …)         │
+│ Nodes (Audio Node first) │
 │ Act                      │
 └──────────────────────────┘
 ```
@@ -135,7 +150,7 @@ Responsibilities:
 - Remember Director MAC; return P4 newline-framed status over ESP-NOW
 - Device connection monitoring and transport health
 
-Must not: run shows, own show state, host SoftAP/WebUI, initialise BLE, install ESP-Hosted, or return **false success** for unimplemented routes.
+Must not: run shows, own show state, invent Audio Node success, initialise BLE, install ESP-Hosted, or return **false success** for unimplemented routes. SoftAP WebUI host + API proxy is current. Node ESP-NOW is transport-only.
 
 The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**. Do not flash it or wait for it.
 
@@ -154,16 +169,19 @@ Responsibilities (target):
 - Project storage and configuration
 - Validate requests; publish state changes
 - Dispatch node commands by logical device ID
-- Local show outputs where fitted (DMX, pixels, audio) when implemented
+- Local system/safety audio on the onboard ES8311 speaker (not attraction audio)
+- Local show outputs where fitted (DMX, pixels) when implemented
 - Web UI / Web API / WebSocket
 
-**Today:** command hub plus authoritative runtime and RAM-backed Stage 6 timeline execution. It parses requests, applies the emergency gate, publishes runtime/state, dispatches loaded cues, and transactionally loads versioned TEST/LOG productions from P4 SD. Deeper output/service capabilities remain planned. An experimental relay route is retained in source but is not part of the supported current stack.
+**Today:** command hub plus authoritative runtime and RAM-backed Stage 6 timeline execution. It parses requests, applies the emergency gate, publishes runtime/state, dispatches loaded cues, and transactionally loads versioned TEST/LOG productions from P4 SD. The P4 onboard ES8311 speaker is system/safety audio only; attraction/programme audio is Audio-Node-only. An experimental relay route is retained in source but is not part of the supported current stack.
 
 ### 4. Nodes
 
+**Current supported Node:** `firmware/audio-node-esp32-a1s/` — programme / attraction audio (local SD → ES8388). See [`audio-node.md`](audio-node.md).
+
 **Experimental / future example:** `firmware/relay-node-esp32/`
 
-The current supported stack ends at the P4. Future nodes will execute absolute commands and report results; the retained relay source is a prototype, not a supported product path. Expandable family: audio, lighting, sensor, motor, environmental, etc.
+Future nodes will execute absolute commands and report results; the retained relay source is a prototype, not a supported product path. Expandable family: MOSFET, lighting, sensor, motor, environmental, etc.
 
 ---
 
@@ -173,6 +191,7 @@ The current supported stack ends at the P4. Future nodes will execute absolute c
 firmware/director-esp32-8048s050/
 firmware/s3-comms-controller/             # Communications Engine (ESP32-S3)
 firmware/stage-engine-p4/                 # Show Engine (rename planned)
+firmware/audio-node-esp32-a1s/            # Programme Audio Node (ESP32-A1S / ES8388)
 ```
 
 ### Other trees (not the active product path)

@@ -6,10 +6,18 @@
 #include "BoardConfig.h"
 #include "DirectorStatusBar.h"
 #include "ShowduinoOsPalette.h"
+#include "showduino_theme.h"
 
 /**
- * Showduino OS — unified LVGL 9 design system.
+ * Showduino OS - unified LVGL 9 design system.
  * Presentation only: no protocol, runtime, or transport behaviour lives here.
+ *
+ * Visual language is the Nodes page: transparent header, BACK + title +
+ * 3px accent underline, solid PanelRaised cards, corner ticks, 2px accent
+ * borders, and Montserrat 14/16. No boxed "SHOWDUINO OS" title chip.
+ *
+ * Director live UI strings should remain ASCII-safe unless glyph support
+ * is explicitly verified in the compiled LVGL Montserrat fonts.
  *
  * Layout contract:
  *   Status bar -> title -> summary -> primary content -> dock
@@ -100,48 +108,39 @@ struct ShowduinoOsTheme {
     lv_style_set_text_color(&screen, lv_color_hex(OsColor::Text));
 
     lv_style_init(&panel);
-    lv_style_set_bg_color(&panel, lv_color_hex(OsColor::Panel));
+    lv_style_set_bg_color(&panel, lv_color_hex(OsColor::PanelRaised));
     lv_style_set_bg_opa(&panel, LV_OPA_COVER);
     lv_style_set_border_color(&panel, lv_color_hex(OsColor::PanelBorder));
     lv_style_set_border_width(&panel, 1);
     lv_style_set_radius(&panel, OS_PANEL_RADIUS);
-    lv_style_set_pad_all(&panel, OS_PAD);
+    lv_style_set_pad_all(&panel, 0);
     lv_style_set_text_color(&panel, lv_color_hex(OsColor::Text));
-    lv_style_set_shadow_color(&panel, lv_color_hex(OsColor::AccentSoft));
-    lv_style_set_shadow_width(&panel, 8);
-    lv_style_set_shadow_opa(&panel, LV_OPA_20);
+    lv_style_set_shadow_opa(&panel, LV_OPA_TRANSP);
 
     lv_style_init(&panelRaised);
     lv_style_set_bg_color(&panelRaised, lv_color_hex(OsColor::PanelRaised));
-    lv_style_set_border_color(&panelRaised, lv_color_hex(OsColor::ButtonBorder));
-    lv_style_set_border_width(&panelRaised, 1);
+    lv_style_set_bg_opa(&panelRaised, LV_OPA_COVER);
+    lv_style_set_border_color(&panelRaised, lv_color_hex(OsColor::Accent));
+    lv_style_set_border_width(&panelRaised, 2);
     lv_style_set_radius(&panelRaised, OS_PANEL_RADIUS);
-    lv_style_set_pad_all(&panelRaised, OS_PAD);
-    lv_style_set_shadow_color(&panelRaised, lv_color_hex(OsColor::Accent));
-    lv_style_set_shadow_width(&panelRaised, 10);
-    lv_style_set_shadow_opa(&panelRaised, LV_OPA_20);
+    lv_style_set_pad_all(&panelRaised, 0);
+    lv_style_set_shadow_opa(&panelRaised, LV_OPA_TRANSP);
 
     lv_style_init(&button);
     lv_style_set_bg_color(&button, lv_color_hex(OsColor::Button));
     lv_style_set_bg_opa(&button, LV_OPA_COVER);
     lv_style_set_border_color(&button, lv_color_hex(OsColor::ButtonBorder));
-    lv_style_set_border_width(&button, 1);
+    lv_style_set_border_width(&button, 2);
     lv_style_set_radius(&button, OS_BTN_RADIUS);
     lv_style_set_text_color(&button, lv_color_hex(OsColor::Title));
     lv_style_set_pad_all(&button, 10);
-    lv_style_set_shadow_color(&button, lv_color_hex(OsColor::AccentSoft));
-    lv_style_set_shadow_width(&button, 6);
-    lv_style_set_shadow_opa(&button, LV_OPA_20);
+    lv_style_set_shadow_opa(&button, LV_OPA_TRANSP);
 
     lv_style_init(&buttonPressed);
     lv_style_set_bg_color(&buttonPressed, lv_color_hex(OsColor::ButtonPressed));
     lv_style_set_border_color(&buttonPressed, lv_color_hex(OsColor::Accent));
     lv_style_set_border_width(&buttonPressed, 2);
-    lv_style_set_shadow_color(&buttonPressed, lv_color_hex(OsColor::Accent));
-    lv_style_set_shadow_width(&buttonPressed, 10);
-    lv_style_set_shadow_opa(&buttonPressed, LV_OPA_40);
-    lv_style_set_transform_width(&buttonPressed, -2);
-    lv_style_set_transform_height(&buttonPressed, -2);
+    lv_style_set_shadow_opa(&buttonPressed, LV_OPA_TRANSP);
 
     lv_style_init(&buttonDanger);
     lv_style_set_bg_color(&buttonDanger, lv_color_hex(OsColor::Danger));
@@ -151,18 +150,12 @@ struct ShowduinoOsTheme {
     lv_style_set_radius(&buttonDanger, OS_BTN_RADIUS);
     lv_style_set_text_color(&buttonDanger, lv_color_hex(OsColor::Title));
     lv_style_set_pad_all(&buttonDanger, 10);
-    lv_style_set_shadow_color(&buttonDanger, lv_color_hex(OsColor::DangerBorder));
-    lv_style_set_shadow_width(&buttonDanger, 8);
-    lv_style_set_shadow_opa(&buttonDanger, LV_OPA_30);
+    lv_style_set_shadow_opa(&buttonDanger, LV_OPA_TRANSP);
 
     lv_style_init(&buttonDangerPressed);
     lv_style_set_bg_color(&buttonDangerPressed, lv_color_hex(ShowduinoPalette::DangerDark));
     lv_style_set_border_color(&buttonDangerPressed, lv_color_hex(OsColor::Warn));
-    lv_style_set_shadow_color(&buttonDangerPressed, lv_color_hex(OsColor::DangerBorder));
-    lv_style_set_shadow_width(&buttonDangerPressed, 12);
-    lv_style_set_shadow_opa(&buttonDangerPressed, LV_OPA_50);
-    lv_style_set_transform_width(&buttonDangerPressed, -2);
-    lv_style_set_transform_height(&buttonDangerPressed, -2);
+    lv_style_set_shadow_opa(&buttonDangerPressed, LV_OPA_TRANSP);
 
     lv_style_init(&buttonDisabled);
     lv_style_set_bg_color(&buttonDisabled, lv_color_hex(OsColor::Panel));
@@ -173,8 +166,8 @@ struct ShowduinoOsTheme {
     lv_style_set_shadow_opa(&buttonDisabled, LV_OPA_TRANSP);
 
     lv_style_init(&title);
-    lv_style_set_text_color(&title, lv_color_hex(OsColor::Accent));
-    lv_style_set_text_letter_space(&title, 2);
+    lv_style_set_text_color(&title, lv_color_hex(OsColor::Text));
+    lv_style_set_text_letter_space(&title, 1);
     lv_style_set_text_font(&title, &lv_font_montserrat_16);
 
     lv_style_init(&heading);
@@ -227,13 +220,72 @@ struct ShowduinoOsTheme {
     return s;
   }
 
-  lv_obj_t *makePanel(lv_obj_t *parent, int x, int y, int w, int h, bool raised = false) {
+  static lv_obj_t *makeCornerTick(lv_obj_t *parent, int32_t x, int32_t y,
+                                 int32_t w, int32_t h) {
+    lv_obj_t *t = lv_obj_create(parent);
+    lv_obj_remove_style_all(t);
+    lv_obj_set_pos(t, x, y);
+    lv_obj_set_size(t, w, h);
+    lv_obj_set_style_bg_color(t, lv_color_hex(OsColor::Accent), 0);
+    lv_obj_set_style_bg_opa(t, LV_OPA_70, 0);
+    lv_obj_clear_flag(t, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(t, LV_OBJ_FLAG_SCROLLABLE);
+    return t;
+  }
+
+  static void decorateCard(lv_obj_t *panel, bool present = true) {
+    if (!panel) return;
+    const int32_t w = lv_obj_get_width(panel);
+    if (w < 20) return;
+
+    const int32_t h = lv_obj_get_height(panel);
+    if (h >= 72) {
+      lv_obj_t *bar = lv_obj_create(panel);
+      lv_obj_remove_style_all(bar);
+      lv_obj_set_pos(bar, 10, 8);
+      lv_obj_set_size(bar, 36, 3);
+      lv_obj_set_style_bg_color(bar, lv_color_hex(OsColor::Accent), 0);
+      lv_obj_set_style_bg_opa(bar, present ? LV_OPA_COVER : LV_OPA_40, 0);
+      lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+      showduino_theme_register(bar, SHOWDUINO_THEME_ROLE_HEADER_ACCENT);
+    }
+
+    makeCornerTick(panel, 0, 0, 14, 2);
+    makeCornerTick(panel, 0, 0, 2, 14);
+    makeCornerTick(panel, w - 14, 0, 14, 2);
+    makeCornerTick(panel, w - 2, 0, 2, 14);
+  }
+
+  static void styleRaisedCard(lv_obj_t *panel, bool present = true) {
+    if (!panel) return;
+    lv_obj_set_style_bg_opa(panel, present ? LV_OPA_COVER : LV_OPA_70, 0);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(OsColor::PanelRaised), 0);
+    lv_obj_set_style_border_width(panel, present ? 2 : 1, 0);
+    lv_obj_set_style_border_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, OS_PANEL_RADIUS, 0);
+    lv_obj_set_style_pad_all(panel, 0, 0);
+    lv_obj_set_style_shadow_opa(panel, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(panel,
+        lv_color_hex(present ? OsColor::Accent : OsColor::PanelBorder), 0);
+  }
+
+  static lv_obj_t *makeRaisedCard(lv_obj_t *parent, int x, int y, int w, int h,
+                                 bool present = true) {
     lv_obj_t *p = lv_obj_create(parent);
     lv_obj_remove_style_all(p);
-    lv_obj_add_style(p, raised ? &panelRaised : &panel, 0);
     lv_obj_set_pos(p, x, y);
     lv_obj_set_size(p, w, h);
     lv_obj_clear_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    styleRaisedCard(p, present);
+    decorateCard(p, present);
+    showduino_theme_register(p, SHOWDUINO_THEME_ROLE_BORDER);
+    return p;
+  }
+
+  lv_obj_t *makePanel(lv_obj_t *parent, int x, int y, int w, int h, bool raised = false) {
+    lv_obj_t *p = makeRaisedCard(parent, x, y, w, h, raised);
+    if (!raised) styleRaisedCard(p, false);
     return p;
   }
 
@@ -263,18 +315,24 @@ struct ShowduinoOsTheme {
     return l;
   }
 
-  lv_obj_t *makePageTitle(lv_obj_t *parent, const char *text, int x = 8, int y = 6) {
-    lv_obj_t *accent = lv_obj_create(parent);
-    lv_obj_remove_style_all(accent);
-    lv_obj_set_pos(accent, x, y + 1);
-    lv_obj_set_size(accent, 4, 20);
-    lv_obj_set_style_bg_color(accent, lv_color_hex(OsColor::Accent), 0);
-    lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(accent, 2, 0);
-
-    lv_obj_t *l = makeLabel(parent, text, x + 12, y);
-    lv_obj_add_style(l, &title, 0);
+  lv_obj_t *makePageTitle(lv_obj_t *parent, const char *text, int x = 16, int y = 10) {
+    lv_obj_t *l = makeLabel(parent, text, x, y);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(OsColor::Text), 0);
+    lv_obj_t *underline = makeHairline(parent, x, y + 24, 120, 3, OsColor::Accent);
+    showduino_theme_register(underline, SHOWDUINO_THEME_ROLE_HEADER_ACCENT);
     return l;
+  }
+
+  lv_obj_t *makePageHeader(lv_obj_t *parent, const char *text, int titleX = 16) {
+    lv_obj_t *header = lv_obj_create(parent);
+    lv_obj_remove_style_all(header);
+    lv_obj_set_pos(header, 0, OS_TITLE_Y);
+    lv_obj_set_size(header, SCREEN_WIDTH, OS_TITLE_H);
+    lv_obj_set_style_bg_opa(header, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(header, LV_OBJ_FLAG_SCROLLABLE);
+    makePageTitle(header, text, titleX, 10);
+    return header;
   }
 
   lv_obj_t *makeHeading(lv_obj_t *parent, const char *text, int x = 8, int y = 4) {
@@ -337,16 +395,26 @@ struct ShowduinoOsTheme {
     return btn;
   }
 
+  static lv_obj_t *makeCardContent(lv_obj_t *card, int w, int h, int insetY = 14) {
+    lv_obj_t *inner = lv_obj_create(card);
+    lv_obj_remove_style_all(inner);
+    lv_obj_set_pos(inner, 0, insetY);
+    lv_obj_set_size(inner, w, h - insetY);
+    lv_obj_set_style_bg_opa(inner, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(inner, LV_OBJ_FLAG_SCROLLABLE);
+    return inner;
+  }
+
   lv_obj_t *makePageChrome(lv_obj_t *screen, const char *pageTitle, lv_obj_t **outTitleBar = nullptr) {
-    lv_obj_t *titleBar = makePanel(screen, OS_MARGIN, OS_TITLE_Y, OS_CONTENT_FULL_W, OS_TITLE_H, true);
-    makePageTitle(titleBar, pageTitle);
-    makeChip(titleBar, "SHOWDUINO OS", OS_CONTENT_FULL_W - 150, 0);
-    if (outTitleBar) *outTitleBar = titleBar;
-    return makePanel(screen, OS_MARGIN, OS_SUMMARY_Y, OS_CONTENT_FULL_W, OS_SUMMARY_H);
+    lv_obj_t *header = makePageHeader(screen, pageTitle, 16);
+    if (outTitleBar) *outTitleBar = header;
+    lv_obj_t *card = makeRaisedCard(screen, OS_MARGIN, OS_SUMMARY_Y, OS_CONTENT_FULL_W, OS_SUMMARY_H, true);
+    return makeCardContent(card, OS_CONTENT_FULL_W, OS_SUMMARY_H, 12);
   }
 
   lv_obj_t *makePrimaryPanel(lv_obj_t *screen) {
-    return makePanel(screen, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, OS_PRIMARY_H);
+    lv_obj_t *card = makeRaisedCard(screen, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, OS_PRIMARY_H, true);
+    return makeCardContent(card, OS_CONTENT_FULL_W, OS_PRIMARY_H, 14);
   }
 
   void makeDock(lv_obj_t *screen, lv_event_cb_t cb, void *user) {
@@ -358,7 +426,7 @@ struct ShowduinoOsTheme {
     makeButton(screen, "Live", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:LIVE"); x += navW + gap;
     makeButton(screen, "Shows", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SHOWS"); x += navW + gap;
     makeButton(screen, "Settings", x, OS_DOCK_Y, navW, OS_DOCK_H, cb, user, "SCREEN:SETTINGS"); x += navW + gap;
-    /* No scroll-chain — must never lose the tap to a parent scroll gesture. */
+    /* No scroll-chain - must never lose the tap to a parent scroll gesture. */
     makeButton(screen, "E-STOP", x, OS_DOCK_Y, estopW, OS_DOCK_H, cb, user, "EMERGENCY:STOP", true, false);
   }
 
@@ -441,18 +509,20 @@ struct ShowduinoOsTheme {
     lv_obj_remove_style_all(box);
     lv_obj_set_size(box, w, h);
     lv_obj_center(box);
-    lv_obj_add_style(box, danger ? &panelRaised : &panel, 0);
-    lv_obj_set_style_border_color(box, lv_color_hex(danger ? OsColor::DangerBorder : OsColor::Accent), 0);
-    lv_obj_set_style_border_width(box, 2, 0);
-    lv_obj_set_style_bg_color(box, lv_color_hex(danger ? OsColor::Danger : OsColor::Panel), 0);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    styleRaisedCard(box, true);
+    if (danger) {
+      lv_obj_set_style_bg_color(box, lv_color_hex(OsColor::Danger), 0);
+      lv_obj_set_style_border_color(box, lv_color_hex(OsColor::DangerBorder), 0);
+    }
+    decorateCard(box, true);
     return box;
   }
 
   lv_obj_t *makeEmptyState(lv_obj_t *parent, const char *titleText, const char *bodyText) {
-    lv_obj_t *box = makePanel(parent, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, 120);
-    makeHeading(box, titleText ? titleText : "NOTHING TO SHOW", 10, 8);
-    lv_obj_t *bodyLab = makeCaption(box, bodyText ? bodyText : "", 10, 40);
+    lv_obj_t *box = makeRaisedCard(parent, OS_MARGIN, OS_PRIMARY_Y, OS_CONTENT_FULL_W, 120, false);
+    makeHeading(box, titleText ? titleText : "NOTHING TO SHOW", 12, 16);
+    lv_obj_t *bodyLab = makeCaption(box, bodyText ? bodyText : "", 12, 40);
     lv_obj_set_width(bodyLab, OS_CONTENT_FULL_W - 28);
     lv_label_set_long_mode(bodyLab, LV_LABEL_LONG_WRAP);
     return box;

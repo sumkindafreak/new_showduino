@@ -46,6 +46,7 @@ static const char *const kRequiredDirs[] = {
   "/showduino/shows",
   "/showduino/shows/packages",
   "/showduino/shows/trash",
+  "/showduino/config",
   "/showduino/plugins",
   "/showduino/plugins/devices",
   "/showduino/devices",
@@ -72,6 +73,11 @@ static const char *const kRequiredDirs[] = {
   "/showduino/updates/pending",
   "/showduino/updates/installed",
   "/showduino/updates/failed",
+  "/showduino/audio/system",
+  "/showduino/assets",
+  "/showduino/import",
+  "/showduino/export",
+  "/showduino/recovery",
   nullptr
 };
 
@@ -404,14 +410,12 @@ bool stageStorageBegin() {
     Serial.println("[Storage] Card mounted but NOT writable (WP switch / format).");
   } else if (!sStatus.folderOk) {
     strncpy(sStatus.message, "SD mounted (folders incomplete)", sizeof(sStatus.message) - 1);
-  } else if (!sStatus.hasWww) {
-    strncpy(sStatus.message, "SD ready (copy WebUI to /showduino/webui)", sizeof(sStatus.message) - 1);
-    Serial.println("[WEB] Checking /showduino/webui/index.html");
-    Serial.println("[WEB] WebUI missing - run deploy-webui-to-sd.ps1");
   } else {
     strncpy(sStatus.message, "SD ready", sizeof(sStatus.message) - 1);
-    Serial.println("[WEB] Checking /showduino/webui/index.html");
-    Serial.println("[WEB] WebUI found");
+    Serial.println("[WEB] Canonical WebUI remains Communications S3 PROGMEM");
+    if (sStatus.hasWww) {
+      Serial.println("[WEB] Optional /showduino/webui/index.html present (legacy copy)");
+    }
   }
 
   Serial.printf("[Storage] free=%llu MB writable=%s www=%s\n",
@@ -439,6 +443,34 @@ const StageStorageStatus &stageStorageStatus() {
 
 bool stageStorageIsReady() {
   return sStatus.mounted;
+}
+
+bool stageStorageIsWritable() {
+  return sStatus.mounted && sStatus.writable;
+}
+
+void stageStorageRefreshSpace() {
+  refreshSpace();
+}
+
+void stageStorageMarkOffline(const char *reason) {
+  if (sStatus.mounted) {
+    SD_MMC.end();
+  }
+  sStatus.mounted = false;
+  sStatus.writable = false;
+  sStatus.folderOk = false;
+  strncpy(sStatus.message, "SD OFFLINE", sizeof(sStatus.message) - 1);
+  Serial.printf("[Storage] SD OFFLINE (%s)\n", reason ? reason : "unknown");
+}
+
+bool stageStoragePollPresence() {
+  if (!sStatus.mounted) return false;
+  if (SD_MMC.cardType() == CARD_NONE || !SD_MMC.exists("/showduino")) {
+    stageStorageMarkOffline("card removed");
+    return false;
+  }
+  return true;
 }
 
 fs::FS &stageStorageFs() {

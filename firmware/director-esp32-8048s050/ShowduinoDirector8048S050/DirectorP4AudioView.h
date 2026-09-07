@@ -97,22 +97,16 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     int y = OS_PAD;
 
     /* ---- Engine status card ---- */
-    lv_obj_t *engineCard = lv_obj_create(h.scrollBox);
-    lv_obj_remove_style_all(engineCard);
-    lv_obj_add_style(engineCard, &os.panel, 0);
-    lv_obj_set_pos(engineCard, 0, y);
-    lv_obj_set_size(engineCard, pW, 66);
-    lv_obj_clear_flag(engineCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *engineCard = os.makeRaisedCard(h.scrollBox, 0, y, pW, 66, true);
 
     os.makeHeading(engineCard, "P4 / IAN AUDIO ENGINE", OS_PAD, 4);
 
-    /* State chip (colored rectangle) */
     h.engineStateChip = lv_obj_create(engineCard);
     lv_obj_remove_style_all(h.engineStateChip);
-    lv_obj_set_pos(h.engineStateChip, OS_PAD, 24);
-    lv_obj_set_size(h.engineStateChip, 16, 16);
-    lv_obj_set_style_radius(h.engineStateChip, 8, 0);
-    lv_obj_set_style_bg_color(h.engineStateChip, lv_color_hex(0x75A0AD), 0);
+    lv_obj_set_pos(h.engineStateChip, OS_PAD, 26);
+    lv_obj_set_size(h.engineStateChip, 10, 10);
+    lv_obj_set_style_radius(h.engineStateChip, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(h.engineStateChip, lv_color_hex(OsColor::Unknown), 0);
     lv_obj_set_style_bg_opa(h.engineStateChip, LV_OPA_COVER, 0);
 
     h.engineStateLabel = os.makeLabel(engineCard, "Awaiting P4 status", OS_PAD + 22, 24);
@@ -123,16 +117,11 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     y += 74;
 
     /* ---- Current track card ---- */
-    lv_obj_t *trackCard = lv_obj_create(h.scrollBox);
-    lv_obj_remove_style_all(trackCard);
-    lv_obj_add_style(trackCard, &os.panel, 0);
-    lv_obj_set_pos(trackCard, 0, y);
-    lv_obj_set_size(trackCard, pW, 80);
-    lv_obj_clear_flag(trackCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *trackCard = os.makeRaisedCard(h.scrollBox, 0, y, pW, 80, true);
 
     os.makeHeading(trackCard, "CURRENT TRACK", OS_PAD, 4);
 
-    h.trackNameLabel = os.makeLabel(trackCard, "No track \xe2\x80\x94 not reported by P4", OS_PAD, 24);
+    h.trackNameLabel = os.makeLabel(trackCard, "No track - not reported by P4", OS_PAD, 24);
     lv_obj_add_style(h.trackNameLabel, &os.body, 0);
     lv_obj_set_width(h.trackNameLabel, pW - OS_PAD * 2);
     lv_label_set_long_mode(h.trackNameLabel, LV_LABEL_LONG_WRAP);
@@ -148,12 +137,7 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     y += 88;
 
     /* ---- Volume / mute card ---- */
-    lv_obj_t *volCard = lv_obj_create(h.scrollBox);
-    lv_obj_remove_style_all(volCard);
-    lv_obj_add_style(volCard, &os.panel, 0);
-    lv_obj_set_pos(volCard, 0, y);
-    lv_obj_set_size(volCard, pW, 58);
-    lv_obj_clear_flag(volCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *volCard = os.makeRaisedCard(h.scrollBox, 0, y, pW, 58, true);
 
     os.makeHeading(volCard, "VOLUME / MUTE", OS_PAD, 4);
 
@@ -168,17 +152,12 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     y += 66;
 
     /* ---- Control row ---- */
-    lv_obj_t *ctrlCard = lv_obj_create(h.scrollBox);
-    lv_obj_remove_style_all(ctrlCard);
-    lv_obj_add_style(ctrlCard, &os.panel, 0);
-    lv_obj_set_pos(ctrlCard, 0, y);
-    lv_obj_set_size(ctrlCard, pW, 100);
-    lv_obj_clear_flag(ctrlCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *ctrlCard = os.makeRaisedCard(h.scrollBox, 0, y, pW, 108, true);
 
     os.makeHeading(ctrlCard, "P4 AUDIO CONTROLS", OS_PAD, 4);
-    os.makeCaption(ctrlCard, "Commands sent to P4 \xe2\x80\x94 not confirmed until P4 responds", OS_PAD, 24);
+    os.makeCaption(ctrlCard, "Commands sent to P4 - not confirmed until P4 responds", OS_PAD, 24);
 
-    /* Row 1: playback — use commands confirmed to exist in Stage protocol */
+    /* Row 1: playback - use commands confirmed to exist in Stage protocol */
     const int btnH = 36, btnY1 = 44;
     h.pauseBtn  = os.makeButton(ctrlCard, "Pause",    OS_PAD,       btnY1, 80, btnH, cb, user, "AUDIO:LOCAL:PAUSE");
     h.resumeBtn = os.makeButton(ctrlCard, "Play",     OS_PAD + 88,  btnY1, 80, btnH, cb, user, "AUDIO:LOCAL:PLAY");
@@ -188,18 +167,13 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     const int btnY2 = 88;
     h.muteBtn    = os.makeButton(ctrlCard, "Mute",    OS_PAD,       btnY2, 80, btnH, cb, user, "AUDIO:LOCAL:MUTE");
     h.unmuteBtn  = os.makeButton(ctrlCard, "Play",    OS_PAD + 88,  btnY2, 80, btnH, cb, user, "AUDIO:LOCAL:PLAY");
-    h.volDownBtn = os.makeButton(ctrlCard, "Vol \xe2\x96\xbd", OS_PAD + 176, btnY2, 60, btnH, cb, user, "AUDIO:LOCAL:VOLUME:-");
-    h.volUpBtn   = os.makeButton(ctrlCard, "Vol \xe2\x96\xb2", OS_PAD + 244, btnY2, 60, btnH, cb, user, "AUDIO:LOCAL:VOLUME:+");
+    h.volDownBtn = os.makeButton(ctrlCard, "Vol -", OS_PAD + 176, btnY2, 60, btnH, cb, user, "AUDIO:LOCAL:VOLUME:-");
+    h.volUpBtn   = os.makeButton(ctrlCard, "Vol +", OS_PAD + 244, btnY2, 60, btnH, cb, user, "AUDIO:LOCAL:VOLUME:+");
 
     y += 108;
 
     /* ---- Pending command status card ---- */
-    lv_obj_t *pendCard = lv_obj_create(h.scrollBox);
-    lv_obj_remove_style_all(pendCard);
-    lv_obj_add_style(pendCard, &os.panel, 0);
-    lv_obj_set_pos(pendCard, 0, y);
-    lv_obj_set_size(pendCard, pW, 62);
-    lv_obj_clear_flag(pendCard, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *pendCard = os.makeRaisedCard(h.scrollBox, 0, y, pW, 62, true);
 
     os.makeHeading(pendCard, "LAST COMMAND STATUS", OS_PAD, 4);
 
@@ -229,7 +203,7 @@ inline PageHandles buildChrome(lv_obj_t *screen, ShowduinoOsTheme &os,
     lv_obj_add_flag(h.emergencyPanel, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *emLab = lv_label_create(h.emergencyPanel);
-    lv_label_set_text(emLab, "\xe2\x9a\xa0  EMERGENCY AUDIO ACTIVE \xe2\x80\x94 P4 emergency audio has priority  \xe2\x9a\xa0");
+    lv_label_set_text(emLab, "EMERGENCY AUDIO ACTIVE - P4 emergency audio has priority");
     lv_obj_set_style_text_color(emLab, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(emLab);
 
@@ -262,13 +236,13 @@ inline void updateState(PageHandles &h, ShowduinoOsTheme &os,
     /* Summary link line */
     if (h.summaryLinkLabel) {
         const char *lnk;
-        if (m.emergencyAudio)    lnk = "P4 link: Online \xe2\x80\x94 EMERGENCY AUDIO";
+        if (m.emergencyAudio)    lnk = "P4 link: Online - EMERGENCY AUDIO";
         else if (!m.p4LinkOnline) lnk = "P4 link: Offline";
-        else if (!m.dataFresh)    lnk = "P4 link: Online \xe2\x80\x94 awaiting status";
-        else if (m.isStale())     lnk = "P4 link: Online \xe2\x80\x94 data stale";
+        else if (!m.dataFresh)    lnk = "P4 link: Online - awaiting status";
+        else if (m.isStale())     lnk = "P4 link: Online - data stale";
         else                      lnk = "P4 link: Online";
         ShowduinoOsTheme::setTextIfChanged(h.summaryLinkLabel, lnk);
-        uint32_t lnkColor = m.p4LinkOnline ? (m.isStale() ? 0xFFD166u : 0x3CFFB0u) : 0xFF5A6Au;
+        uint32_t lnkColor = m.p4LinkOnline ? (m.isStale() ? OsColor::Warn : OsColor::Ok) : OsColor::Fault;
         lv_obj_set_style_text_color(h.summaryLinkLabel, lv_color_hex(lnkColor), 0);
     }
 
@@ -286,7 +260,7 @@ inline void updateState(PageHandles &h, ShowduinoOsTheme &os,
     if (h.trackNameLabel) {
         const char *tn = m.trackKnown && m.trackName[0]
                          ? m.trackName
-                         : "No track \xe2\x80\x94 not reported by P4";
+                         : "No track - not reported by P4";
         ShowduinoOsTheme::setTextIfChanged(h.trackNameLabel, tn);
     }
 
@@ -321,7 +295,7 @@ inline void updateState(PageHandles &h, ShowduinoOsTheme &os,
     if (h.muteLabel) {
         const char *muteStr = m.muteKnown ? (m.muted ? "Mute: ON" : "Mute: OFF") : "Mute: Not reported";
         ShowduinoOsTheme::setTextIfChanged(h.muteLabel, muteStr);
-        uint32_t muteColor = m.muteKnown ? (m.muted ? 0xFFD166u : 0x3CFFB0u) : 0x75A0ADu;
+        uint32_t muteColor = m.muteKnown ? (m.muted ? OsColor::Warn : OsColor::Ok) : OsColor::Unknown;
         lv_obj_set_style_text_color(h.muteLabel, lv_color_hex(muteColor), 0);
     }
 
@@ -358,7 +332,7 @@ inline void updateState(PageHandles &h, ShowduinoOsTheme &os,
     if (h.pendingCmdLabel) {
         char buf[96];
         if (m.pending.active || m.pending.state != P4AudioCmdState::None) {
-            snprintf(buf, sizeof(buf), "%.48s \xe2\x80\x94 %s",
+            snprintf(buf, sizeof(buf), "%.48s - %s",
                      m.pending.command[0] ? m.pending.command : "(unknown)",
                      m.pending.stateText());
         } else {
