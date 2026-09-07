@@ -1,37 +1,30 @@
 # Showduino Relay Node — ESP32
 
 ```text
-Status: ACTIVE
-Role: Showduino Relay Node
+Status: LEGACY / SUPERSEDED
+Role: Historical relay-node prototype
+Replacement: planned Showduino MOSFET Node
 ```
 
-Nodes act. Canonical active relay node firmware.
+This source is retained as a reference only. It is **not** the next Showduino node and must not be presented as the current output-node direction.
+
+The specialist-node rollout is now:
 
 ```text
-this Node --ESP-NOW--> Communications Engine --UART--> Show Engine
+1. Audio Node
+2. C3 Lantern Node
+3. C3 Pixel Node
+4. MOSFET Node
 ```
 
-## Constitution
+The MOSFET Node replaces the old Relay Node product concept. Do not continue relay-node feature development unless the architecture is explicitly revisited.
 
-> The Nodes act.
-
-The Show Engine decides what should happen. This node switches local relays and reports results. Command **acceptance** (on the Show Engine) and **physical completion** (on this node) are separate lifecycle events.
-
-## Sketch
+Historical prototype path:
 
 ```text
 firmware/relay-node-esp32/ShowduinoRelayNodeEsp32/
 ```
 
-## Behaviour today
+Historical behaviour in this retained source includes ESP-NOW transport, absolute relay ON/OFF/pulse, local emergency safe state, and status reporting. Those implementation details may be useful when building the later MOSFET Node, but they are not the active node contract.
 
-- ESP‑NOW receive/reply with the Communications Engine
-- Absolute relay ON / OFF / pulse / all-off
-- Local emergency safe state
-- Status reporting
-
-Application-level addressing should use **logical Showduino device IDs**. Current bring-up may still key off MAC at the transport layer — that is a known follow-up, not the long-term application model.
-
-Distributed `TOGGLE` is not the preferred application command; prefer absolute ON/OFF requested by the Show Engine.
-
-See [`docs/constitution.md`](../../docs/constitution.md) and [`docs/repository-status.md`](../../docs/repository-status.md).
+See [`docs/node-roadmap.md`](../../docs/node-roadmap.md), [`docs/constitution.md`](../../docs/constitution.md), and [`docs/repository-status.md`](../../docs/repository-status.md).
