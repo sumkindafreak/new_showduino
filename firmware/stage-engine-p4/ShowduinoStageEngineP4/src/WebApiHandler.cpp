@@ -13,6 +13,7 @@
 #include "StageDiagnostics.h"
 #include "EmergencyInput.h"
 #include "EmergencyPixels.h"
+#include "ShowPixels.h"
 #include "WebApiLogger.h"
 #include "WebJson.h"
 #include "ProductionStore.h"
@@ -197,6 +198,15 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "STORAGE:CHECK" || cmd == "STORAGE:BACKUP") {
     return true;
   }
+  if (cmd == "PIXEL:STATUS" || cmd == "PIXEL:TEST" ||
+      cmd == "PIXEL:TEST:STOP" || cmd == "PIXEL:OFF" ||
+      cmd == "PIXEL:BLACKOUT") {
+    return true;
+  }
+  if (cmd.startsWith("PIXEL:SOLID:") || cmd.startsWith("PIXEL:BRIGHTNESS:") ||
+      cmd.startsWith("PIXEL:SEGMENT:")) {
+    return cmd.length() <= SHOWDUINO_COMMS_CMD_MAX;
+  }
   if (cmd.startsWith("AUDIO:NODE:")) {
     char arg[80];
     int vol = -1;
@@ -360,16 +370,16 @@ static void handleApiSystem() {
   appendQuoted(json, au.lastError);
   json += "\n  },\n";
   json += "  \"capabilities\": {\n";
-  json += "    \"dmx\": \"planned\",\n";
-  json += "    \"pixels\": \"planned\",\n";
+  json += "    \"dmx\": \"parked\",\n";
+  json += "    \"pixels\": \"" + String(showPixelsReady() ? "ready" : "fault") + "\",\n";
   json += "    \"ethernet\": \"" + String(showNetworkLive().hardwareInit ? "ready" : "optional") + "\",\n";
   json += "    \"e131\": \"test\",\n";
-    json += "    \"audio\": \"" + String(au.codecReady ? "ready" : "fault") + "\",\n";
+  json += "    \"audio\": \"" + String(au.codecReady ? "ready" : "fault") + "\",\n";
   json += "    \"inputs\": \"planned\",\n";
-    json += "    \"sd\": \"" + String(stageStoreStateName()) + "\",\n";
-    json += "    \"pluginBus\": " + String(pluginBusReady() ? "true" : "false") + ",\n";
-    json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\"\n";
-    json += "  },\n";
+  json += "    \"sd\": \"" + String(stageStoreStateName()) + "\",\n";
+  json += "    \"pluginBus\": " + String(pluginBusReady() ? "true" : "false") + ",\n";
+  json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\"\n";
+  json += "  },\n";
   json += "  \"ethernet\": {\n";
   json += "    \"link\": \"" + String(showNetworkLive().hasIp ? "UP" : (showNetworkLive().linkUp ? "UP" : "DOWN")) + "\",\n";
   json += "    \"ip\": \"" + String(showNetworkLive().ip) + "\",\n";
@@ -634,8 +644,8 @@ static void handleApiCapabilities() {
   json += "    {\"name\":\"ethernet\",\"state\":\"" +
          String(showNetworkLive().hardwareInit ? "ready" : "optional") + "\"},\n";
   json += "    {\"name\":\"e131-test\",\"state\":\"ready\"},\n";
-  json += "    {\"name\":\"dmx\",\"state\":\"planned\"},\n";
-  json += "    {\"name\":\"pixels\",\"state\":\"planned\"},\n";
+  json += "    {\"name\":\"dmx\",\"state\":\"parked\"},\n";
+  json += "    {\"name\":\"pixels\",\"state\":\"" + String(showPixelsReady() ? "ready" : "fault") + "\"},\n";
   json += "    {\"name\":\"espnow-nodes\",\"state\":\"planned\"}\n";
   json += "  ],\n";
   json += "  \"devices\": ";
@@ -770,11 +780,18 @@ static void handleApiStorage() {
 static void handleApiLighting() {
   gWebApiLogger.logHttpRequest("GET", "/api/lighting");
   String json = "{\n";
-  json += "  \"dmx\": \"unsupported\",\n";
-  json += "  \"pixelNodes\": \"unsupported\",\n";
+  json += "  \"dmx\": \"parked\",\n";
+  json += "  \"pixelNodes\": \"planned\",\n";
   json += "  \"emergencyPixelsReady\": " + String(emergencyPixelsReady() ? "true" : "false") + ",\n";
   json += "  \"emergencyPixelsWhite\": " + String(emergencyPixelsWhiteActive() ? "true" : "false") + ",\n";
   json += "  \"emergencyActive\": " + String(emergencyLocked ? "true" : "false") + ",\n";
+  json += "  \"showPixelsReady\": " + String(showPixelsReady() ? "true" : "false") + ",\n";
+  json += "  \"showPixelsCount\": " + String((unsigned)showPixelsCount()) + ",\n";
+  json += "  \"showPixelsBrightness\": " + String((unsigned)showPixelsGlobalBrightness()) + ",\n";
+  json += "  \"showPixelsEmergencyWhite\": " + String(showPixelsEmergencyOverride() ? "true" : "false") + ",\n";
+  json += "  \"showPixelPin\": " + String((unsigned)SHOWDUINO_SHOW_PIXEL_PIN) + ",\n";
+  json += "  \"showPixelMaxSegments\": " + String((unsigned)SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS) + ",\n";
+  json += "  \"showPixelFxCount\": " + String((unsigned)ShowduinoPixelFx::Count) + ",\n";
   json += "  \"devices\": ";
   appendPluginDevices(json);
   json += "\n}\n";
