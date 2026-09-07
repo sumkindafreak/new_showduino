@@ -1,12 +1,12 @@
 # Showduino Studio — Pixel Segment Authoring
 
-Status: design baseline for the Studio show designer.
+Status: **segment-first authoring baseline; live commissioning editor implemented in Studio source**.
 
 ## Core rule
 
 Studio authors **pixel segments**, not individual LEDs and not raw animation frames.
 
-A physical line is first divided into named regions. Each region then receives its own effect and parameters.
+A physical line is divided into named regions. Each region then receives its own effect and parameters.
 
 Example:
 
@@ -24,8 +24,6 @@ During show design, the operator should work with those named regions rather tha
 
 ## Why segments are the Studio primitive
 
-Segments give the author a stable theatrical object:
-
 ```text
 physical line
     ↓ split once
@@ -36,7 +34,7 @@ FX + colour + speed + intensity + timing
 show cues
 ```
 
-This means the Studio can present cues such as:
+This lets Studio present theatrical cues such as:
 
 ```text
 00:02.000  LIGHTNING ZONE → LIGHTNING
@@ -47,9 +45,49 @@ This means the Studio can present cues such as:
 
 instead of exposing low-level LED updates.
 
-## Segment definition
+## Current live commissioning editor
 
-Each segment should eventually persist with at least:
+`web/showduino-studio/js/pages/Outputs.js` now contains a live GPIO23 segment commissioning/editor surface.
+
+It exposes:
+
+- segment slot 0-15;
+- start pixel and pixel count;
+- the shared 25-FX vocabulary;
+- primary and secondary colours;
+- segment brightness;
+- speed;
+- intensity;
+- randomness;
+- reverse/direction flag;
+- duration;
+- apply, apply+start, start, stop and status controls;
+- global GPIO23 brightness, blackout and test controls.
+
+The browser UI is hosted by the **dedicated S3 Communications Engine**. It is a client/transport surface only:
+
+```text
+Browser
+  → S3 SoftAP + Studio frontend
+  → S3 API proxy / UART
+  → P4 authoritative pixel engine
+```
+
+The P4 remains the final validator and owner of pixel state. Studio controls are locked during emergency.
+
+### Important S3 embed step
+
+The canonical frontend source is `web/showduino-studio/`, but the S3 serves a generated PROGMEM bundle:
+
+```text
+firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h
+```
+
+After Studio source changes, regenerate that bundle with `tools/embed-webui/embed_webui.py` before expecting the changed UI to appear in a newly flashed S3 image. The source and generated bundle must not silently drift.
+
+## Segment definition target
+
+Each persistent segment should eventually include at least:
 
 ```text
 id
@@ -88,40 +126,26 @@ Conceptual project data:
 }
 ```
 
-This is a design target, not the current production-format-v1 schema.
+This remains a design target, **not** production-format-v1 data yet.
 
-## Studio editor concept
+## Full authoring UI direction
 
-A pixel line should be shown visually as a horizontal strip divided into coloured/labelled segment blocks:
+The eventual production designer should show a physical line as a strip divided into named blocks:
 
 ```text
 MAIN SHOW PIXELS — 0..79
 
 ┌──────────┬──────────┬──────────────────┬──────────────────┬──────────────────────┐
-│ 0..7     │ 8..15    │ 16..35           │ 36..55           │ 56..79               │
+│ 0..7     │ 8..15    │ 16..35          │ 36..55           │ 56..79               │
 │ Lightning│ Blue     │ Fire Bed         │ Warning          │ Candle Wall          │
 └──────────┴──────────┴──────────────────┴──────────────────┴──────────────────────┘
 ```
 
-Selecting a segment opens its FX controls:
-
-```text
-Effect       LIGHTNING
-Colour       255,255,255
-Colour 2     0,0,0
-Brightness   255
-Speed        70
-Intensity    85
-Randomness   90
-Reverse      No
-Duration     until next cue / explicit duration
-```
+Selecting a segment exposes its FX controls. The commissioning editor already proves the control vocabulary; the next authoring step is persistent **named** segment definitions and timeline integration.
 
 ## Cue model
 
-A Studio timeline cue should target the logical segment, not repeat the physical range every time.
-
-Preferred authoring shape:
+A production cue should target the logical segment rather than repeat the physical range every time:
 
 ```json
 {
@@ -138,11 +162,11 @@ Preferred authoring shape:
 }
 ```
 
-The P4 resolves the logical segment to its physical start/count before running the effect.
+The P4 will resolve the logical target to its physical start/count. Production format v1 does **not** accept this cue shape yet; it currently accepts TEST/LOG cues only.
 
 ## Reusable FX presets
 
-Studio should later allow an effect configuration to be saved as a reusable preset, for example:
+Studio should later allow reusable named looks such as:
 
 ```text
 Violent White Lightning
@@ -153,7 +177,7 @@ Hot Fire
 Slow Portal
 ```
 
-A preset references one of the shared Showduino FX names plus parameters; it does not create a new firmware effect ID.
+A preset references a shared Showduino FX plus parameters. It does not create a new firmware effect ID.
 
 Example:
 
@@ -171,7 +195,7 @@ Example:
 
 ## Shared P4 / C3 behaviour
 
-The Studio should not care whether a segment lives on:
+Studio should not care whether a segment ultimately lives on:
 
 ```text
 P4 GPIO23 local Show Pixel Line
@@ -179,43 +203,47 @@ C3 Pixel Node
 future pixel-capable Showduino node
 ```
 
-All use the shared vocabulary in:
+All should use the shared vocabulary in:
 
 ```text
 protocol/showduino_pixel_fx.h
 ```
 
-The device target changes; the authoring experience remains the same.
+The target changes; the authoring experience remains the same.
 
 ## Emergency policy in Studio
 
-Emergency behaviour is **not editable by a show designer**.
+Emergency behavior is **not editable by a show designer**.
 
-Studio may display the policy, but it must not expose a control that can disable or recolour it:
-
-> EMERGENCY = ALL PIXELS BRIGHT WHITE.
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
 
 This applies to every segment on every pixel-capable output. Normal segment FX are bypassed while emergency is active.
 
-The GPIO24 designated-signage line is also safety-owned and must not appear as a normal editable production pixel lane.
+GPIO24 designated emergency/signage pixels are safety-owned and do not appear as a normal editable production lane. During normal operation each 10-pixel sign group shows one green locator pixel and nine off pixels; in emergency the entire line becomes synchronized bright white.
+
+Emergency clear does not auto-resume interrupted show FX.
 
 ## Current implementation boundary
 
-Implemented now on the P4:
+Implemented now:
 
-- GPIO23 segmented engine;
-- up to 16 segment slots;
+- P4 GPIO23 segmented engine;
+- up to 16 live segment slots;
 - direct segment commands;
 - shared 25-FX vocabulary;
-- hard emergency-white override.
+- hard global emergency-white override on P4 local pixels;
+- GPIO24 grouped green-locator / synchronized-white signage behavior;
+- Studio Outputs-page commissioning/editor controls in source.
 
-Still to implement before this becomes a complete Studio production workflow:
+Still required for a complete production authoring workflow:
 
+- P4 Web API whitelist/state exposure for the new browser PIXEL controls where not yet wired;
+- regeneration of the S3 PROGMEM bundle after Studio source changes;
 - persistent named segment definitions in production/project data;
-- Studio segment editor UI;
-- Studio FX preset UI;
-- production `PIXEL` cue parsing on the P4;
+- reusable FX preset persistence/UI;
+- production `PIXEL` cue parsing;
 - logical segment-target resolution;
-- confirmed execution/state surfaces in Studio.
+- authoritative cue/result state surfaces for production playback;
+- reuse of the same segment/FX model on the future C3 Pixel Node.
 
-Until those are implemented, the direct `PIXEL:SEGMENT:...` commands remain the bench/commissioning interface.
+Until production PIXEL cues are implemented, direct `PIXEL:SEGMENT:...` commands remain the commissioning/runtime-control interface.
