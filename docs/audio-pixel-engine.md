@@ -72,7 +72,7 @@ Emergency always wins. Clearing emergency stops the WAV and returns IDLE (no res
 
 ### B. Show/programme audio — Audio Node (ESP32-A1S / ES8388)
 
-Theatrical and production audio now belongs to the first specialist **Audio Node**:
+Theatrical and production audio belongs to the first specialist **Audio Node**:
 
 ```text
 music
@@ -116,194 +116,284 @@ Recommended P4 SD layout:
 
 Valid engine WAV: PCM or WAVE_FORMAT_EXTENSIBLE PCM, 16-bit, mono or stereo, 32 / 44.1 / 48 kHz. Missing or invalid system sounds must never stop the Show Engine booting.
 
-## 4. Audio command model
+## 4. Pixel architecture — implemented P4 foundation
 
-Show-level commands should remain explicit about the output role.
+Pixels are part of the Showduino show language, not decoration.
 
-Examples:
-
-```text
-AUDIO:SHOW:PLAY:/showduino/audio/show/sfx/thunder.wav
-AUDIO:SHOW:STOP
-AUDIO:SHOW:VOLUME:80
-
-AUDIO:SYSTEM:PLAY:ready
-AUDIO:SYSTEM:PLAY:error
-```
-
-The exact wire protocol may evolve, but the distinction between `SHOW` and `SYSTEM` should remain so the scheduler can enforce I2S ownership safely.
-
-## 5. Timeline audio
-
-Show audio is timeline-first.
-
-Example cue shape:
-
-```json
-{
-  "time_ms": 0,
-  "type": "AUDIO",
-  "target": "show",
-  "file": "/showduino/audio/show/ambience/chamber.wav",
-  "volume": 85
-}
-```
-
-Required behaviour:
-
-- Start on cue.
-- Allow pixel/output cues to overlap.
-- Avoid blocking delays.
-- Keep show timing independent of file-decoder blocking.
-- Report playback faults to the Show Engine.
-
-Perfect sample-accurate distributed sync is not required for the first release.
-
-## 6. Pixel engine direction
-
-Pixels are part of the show language, not decoration.
-
-The P4 local pixel baseline is now:
+The P4 owns two physically separate local NeoPixel outputs:
 
 ```text
-P4
-├── Emergency NeoPixel line (GPIO24, existing)
-└── General Show Pixel Line ×1 (planned GPIO23 — not implemented)
-Future expansion
-└── Pixel / LED Nodes
-    ├── additional strips
-    ├── segmented effects
-    └── zone-specific pixels
+P4 GPIO24  → dedicated emergency/signage pixel line
+P4 GPIO23  → one general-purpose theatrical Show Pixel Line
 ```
 
-One properly implemented P4 show-pixel line is preferable to several unfinished local lines. Do not add more P4 show-pixel outputs in this generation.
+Additional theatrical pixel outputs belong on specialist Pixel Nodes rather than consuming more local P4 GPIOs.
 
-That single planned show line should later support:
+The GPIO23 Show Pixel Engine is now implemented as a non-blocking, segmented FX engine. The direct `PIXEL:` maintenance/bench command path is live. Production format v1 still accepts only TEST/LOG cues, so production-file `PIXEL` cue parsing/routing remains a later integration milestone.
 
-- Sub-strip / segment effects
-- Multiple simultaneous segments on one physical line
-- Brightness and colour control
-- Speed and direction
-- Duration
-- Layer/lane behaviour in Studio
+### Segment model
 
-Example desired use on the one local show line:
+One physical strip may run multiple independent visual regions at once:
 
 ```text
-Show Pixel Line:
-  pixels 0-7   → LIGHTNING
-  pixels 8-10  → SOLID BLUE
-  pixels 11+   → WARM WHITE GLOW
+pixels 0-7    → LIGHTNING
+pixels 8-10   → SOLID BLUE
+pixels 11-29  → FIRE
+pixels 30-49  → SLOW RED PULSE
+pixels 50-79  → WARM FLICKER
 ```
 
-`PIXEL:` commands currently reply `UNSUPPORTED:PIXEL`. HELLO still reports `PIXELS:PLANNED`.
-
-## 7. Emergency pixel line
-
-The Stage Controller's local emergency strip remains independent from normal show pixel assignments.
+Default P4 configuration:
 
 ```text
-DATA GPIO24
+SHOWDUINO_SHOW_PIXEL_PIN          23
+SHOWDUINO_SHOW_PIXEL_COUNT        100
+SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS 16
+SHOWDUINO_SHOW_PIXEL_FRAME_MS     20
 ```
 
-Normal Showduino Studio timelines must not treat the emergency line as an ordinary editable show-output lane.
+Count and segment limit are compile-time configuration values in `BoardConfig.h`.
 
-## 8. Pixel effect vocabulary
-
-Initial effects:
+Each segment owns:
 
 ```text
-OFF
-SOLID
-FADE_IN
-FADE_OUT
-PULSE
-FLICKER
-FIRE
-STROBE
-LIGHTNING
-CHASE
-BUILD
-PORTAL_GLOW
-WARNING_RED
-BLACKOUT
-```
-
-Preferred effect parameters:
-
-```text
-line
 start
 count
-color
-speed
+effect
+primary colour
+secondary colour
 brightness
-reverse
-duration_ms
+speed
+intensity
+randomness
+direction/reverse
+duration
+runtime phase/state
 ```
 
-## 9. Example audio + pixel scene
+No effect is allowed to use blocking `delay()` calls. The Show Engine continues servicing communications, safety, audio and timeline state while FX advance from `millis()`.
+
+If configured segments overlap, the later segment slot is rendered later and therefore wins for overlapping pixels. Normal authoring should avoid accidental overlap unless that deterministic behaviour is specifically wanted.
+
+## 5. Shared 25-effect Showduino FX vocabulary
+
+The common effect IDs live in `protocol/showduino_pixel_fx.h` so the later C3 Pixel Node can use the same language as the P4.
+
+```text
+01 OFF / BLACKOUT
+02 SOLID
+03 FADE_IN
+04 FADE_OUT
+05 PULSE
+06 BREATHE
+07 FLICKER
+08 CANDLE
+09 FIRE
+10 LIGHTNING
+11 STROBE
+12 RANDOM_STROBE
+13 CHASE
+14 BOUNCE
+15 COMET
+16 WIPE
+17 REVERSE_WIPE
+18 BUILD
+19 SPARKLE
+20 TWINKLE
+21 GLITCH
+22 WARNING / WARNING_RED
+23 PORTAL / PORTAL_GLOW
+24 RAINBOW
+25 CUSTOM_SEQUENCE
+```
+
+Effects are parameterised rather than multiplied into colour-specific variants. `LIGHTNING`, for example, can be recoloured and adjusted for speed/intensity/randomness instead of creating separate RED_LIGHTNING, BLUE_LIGHTNING, etc.
+
+## 6. P4 pixel bench command model
+
+Implemented direct commands:
+
+```text
+PIXEL:STATUS
+PIXEL:TEST
+PIXEL:TEST:STOP
+PIXEL:OFF
+PIXEL:BLACKOUT
+PIXEL:SOLID:<r>:<g>:<b>
+PIXEL:BRIGHTNESS:<0-255>
+
+PIXEL:SEGMENT:<id>:RANGE:<start>:<count>
+PIXEL:SEGMENT:<id>:FX:<name>
+PIXEL:SEGMENT:<id>:COLOR:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:COLOR2:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:BRIGHTNESS:<0-255>
+PIXEL:SEGMENT:<id>:SPEED:<1-100>
+PIXEL:SEGMENT:<id>:INTENSITY:<0-100>
+PIXEL:SEGMENT:<id>:RANDOMNESS:<0-100>
+PIXEL:SEGMENT:<id>:DURATION:<ms>
+PIXEL:SEGMENT:<id>:REVERSE:<0|1>
+PIXEL:SEGMENT:<id>:START
+PIXEL:SEGMENT:<id>:STOP
+PIXEL:SEGMENT:<id>:STATUS
+```
+
+Example:
+
+```text
+PIXEL:SEGMENT:0:RANGE:0:8
+PIXEL:SEGMENT:0:FX:LIGHTNING
+PIXEL:SEGMENT:0:COLOR:255:255:255
+PIXEL:SEGMENT:0:SPEED:70
+PIXEL:SEGMENT:0:RANDOMNESS:90
+PIXEL:SEGMENT:0:START
+
+PIXEL:SEGMENT:1:RANGE:8:12
+PIXEL:SEGMENT:1:FX:FIRE
+PIXEL:SEGMENT:1:START
+```
+
+Both segments then run at the same time on the same GPIO23 chain.
+
+`PIXEL:TEST` is non-blocking and performs red, green, blue, white and a one-pixel chase before returning to blackout.
+
+## 7. Emergency/signage pixel line — GPIO24
+
+GPIO24 is not an ordinary show lane. It is dedicated to illuminated designated emergency signage.
+
+Physical convention:
+
+```text
+1 emergency exit sign = 10 NeoPixels
+maximum configured line = 100 NeoPixels
+therefore up to 10 sign bundles per line
+```
+
+Normal state is generated automatically by the P4 safety layer:
+
+```text
+Sign 1  pixels 0-9:    pixel 0 GREEN, pixels 1-9 OFF
+Sign 2  pixels 10-19:  pixel 10 GREEN, pixels 11-19 OFF
+Sign 3  pixels 20-29:  pixel 20 GREEN, pixels 21-29 OFF
+...
+```
+
+For 100 pixels the pattern is conceptually:
+
+```text
+G.........G.........G.........G.........G.........G.........G.........G.........G.........G.........
+```
+
+The production/timeline does not own this pattern.
+
+## 8. Global emergency pixel rule — hard safety policy
+
+**EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+This rule applies above every normal FX, segment, colour and node role:
+
+```text
+P4 GPIO24 emergency/signage line → every pixel WHITE
+P4 GPIO23 Show Pixel Line         → every pixel WHITE
+C3 Pixel Nodes                    → every pixel WHITE (when implemented)
+Lantern/pixel-capable nodes       → every pixel WHITE where applicable
+future pixel-capable nodes        → every pixel WHITE
+```
+
+For GPIO24, all sign groups are prepared in memory and transmitted as one frame so they change together rather than sign-by-sign.
+
+For GPIO23, the emergency override bypasses every segment and FX and writes full-line white. The emergency frame is periodically refreshed while the latch is active.
+
+On authorised emergency clear:
+
+```text
+GPIO24 signage → returns to automatic GREEN locator pattern
+GPIO23 show pixels → BLACKOUT / safe idle
+interrupted show FX → DO NOT auto-resume
+```
+
+No normal production command is allowed to override emergency white.
+
+## 9. Pixel data-line electrical standard
+
+For each P4 NeoPixel data output, Showduino standardises on a **470 Ω series resistor**:
+
+```text
+GPIO23 / logic buffer ── 470 Ω ──> Main Show Pixel DIN
+GPIO24 / logic buffer ── 470 Ω ──> Emergency/Signage Pixel DIN
+```
+
+Place the resistor close to the P4-side driver/logic buffer.
+
+The resistor does **not** convert 3.3 V logic to 5 V. Short bench wiring may work directly from a P4 GPIO, but final installations and longer cables should use a 5 V-compatible logic buffer such as a 74AHCT125/74HCT125-class device:
+
+```text
+P4 GPIO → 5 V logic buffer → 470 Ω → NeoPixel DIN
+```
+
+Also required/recommended:
+
+- P4 ground and pixel power-supply ground must be common.
+- Power pixels from a suitably sized external 5 V supply rather than through the P4.
+- Add roughly 1000 µF bulk capacitance across 5 V/GND near the start of a substantial pixel line.
+- Power injection should be designed for the actual pixel count/current and cable length.
+
+## 10. Timeline pixel direction
+
+The local engine is ready to receive show intent, but persistent production format v1 still needs a real `PIXEL` cue type added before this becomes authoritative production-file behaviour.
+
+Desired production cue shape:
 
 ```json
 {
-  "name": "Pixel Audio Test",
-  "duration_ms": 10000,
-  "cues": [
-    {
-      "time_ms": 0,
-      "type": "AUDIO",
-      "target": "show",
-      "file": "/showduino/audio/show/ambience/heartbeat.wav",
-      "volume": 80
-    },
-    {
-      "time_ms": 0,
-      "type": "PIXEL",
-      "line": 1,
-      "start": 0,
-      "count": 8,
-      "effect": "PULSE",
-      "color": [255, 0, 0],
-      "brightness": 150,
-      "speed": 40,
-      "duration_ms": 4000
-    },
-    {
-      "time_ms": 4000,
-      "type": "PIXEL",
-      "line": 1,
-      "start": 8,
-      "count": 3,
-      "effect": "SOLID",
-      "color": [0, 120, 255],
-      "brightness": 200,
-      "duration_ms": 3000
-    }
-  ]
+  "id": "lightning_1",
+  "timeMs": 2500,
+  "type": "PIXEL",
+  "target": "p4.pixels.segment0",
+  "action": "FX",
+  "value": "LIGHTNING"
 }
 ```
 
-## 10. First audio milestone under the new baseline
+The timeline should issue high-level effect intent. It must not schedule thousands of individual LED updates.
 
-1. Initialise the onboard ES8311. Play `boot.wav` when the Director touchscreen sends its first `HELLO` after being absent (screen power-on), not when the P4 itself boots — implemented; hardware confirmation required.
-2. Retired: PCM5102A show path on GPIO20/21/22. Attraction audio is Audio-Node-only.
-3. Local priority: EMERGENCY > ERROR > other system notifications.
-4. Missing system-sound files cannot block startup.
-5. Emergency latch stops Audio Node programme audio and loops P4 `emergency.wav` independently.
-6. WebUI System page shows P4 SYSTEM AUDIO health. Outputs page keeps the Audio Node.
+Local P4 path will therefore be:
 
-## 11. Hardware split decision
+```text
+P4 Timeline → P4 Pixel Engine → GPIO23
+```
+
+No Comms S3 or ESP-NOW hop is required for the local line.
+
+## 11. Example future audio + pixel show
+
+```text
+00:00  Audio Node ambience LOOP
+00:02  P4 segment 2 warm glow
+00:05  P4 segment 0 LIGHTNING
+00:05  Audio Node thunder PLAY
+00:08  P4 pixels FADE_OUT
+00:10  Audio fade / stop
+        SHOW COMPLETE
+```
+
+This becomes a true production only after AUDIO/PIXEL production cue types are accepted and dispatched by the P4 production parser.
+
+## 12. Hardware split decision
 
 ```text
 P4 Show Engine
 ├── onboard ES8311 → Showduino system/safety sounds only
-├── local emergency pixel line (GPIO24)
-├── one planned local show-pixel line (not implemented)
+├── GPIO24 emergency/signage line → grouped 10-pixel exit signs
+├── GPIO23 segmented Show Pixel Line → 25 shared FX
 └── authoritative routing/state for specialist nodes
 
 Specialist Nodes
-├── Audio Node (ESP32-A1S / ES8388) → all attraction / programme audio
-└── Pixel Node → future distributed theatrical pixels
+├── Audio Node → attraction/programme audio
+├── C3 Lantern Node → next specialist-node hardware milestone after current P4 work
+├── C3 Pixel Node → shared Showduino FX vocabulary
+└── MOSFET Node → planned replacement for the old Relay Node concept
 ```
 
-**Audio Node — IMPLEMENTED / HARDWARE TEST REQUIRED.** Relay / MOSFET / LED / Pixel Nodes remain future.
+**Audio Node — IMPLEMENTED / HARDWARE TEST REQUIRED.**  
+**P4 local pixel engine — IMPLEMENTED / HARDWARE BENCH TEST REQUIRED.**  
+**Production PIXEL cue parsing — NOT YET IMPLEMENTED.**
