@@ -1,0 +1,51 @@
+name: Regenerate S3 Studio WebUI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/showduino-studio/**"
+      - "tools/embed-webui/embed_webui.py"
+      - ".github/workflows/embed-s3-studio.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  embed-webui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Regenerate S3 Studio assets
+        run: python tools/embed-webui/embed_webui.py
+
+      - name: Verify generated diff
+        run: git diff --check
+
+      - name: Commit regenerated bundle
+        shell: bash
+        run: |
+          if git diff --quiet -- \
+            firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h \
+            tools/embed-webui/last-build.json; then
+            echo "S3 Studio bundle is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h \
+            tools/embed-webui/last-build.json
+          git commit -m "Regenerate S3 Studio WebUI bundle"
+          git push origin HEAD:main
