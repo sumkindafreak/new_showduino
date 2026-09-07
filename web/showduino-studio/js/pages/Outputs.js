@@ -417,7 +417,7 @@ export async function OutputsPage(container) {
       const sound = el('div', { className: 'card' });
       sound.append(el('h2', { text: 'Sound input' }));
       sound.append(el('p', { className: 'sub', text: 'Microphone sensing only. P4 remains authoritative. Events do not start a show.' }));
-      sound.append(statRow('Input', si.state || (si.ready ? 'READY' : 'OFF'));
+      sound.append(statRow('Input', si.state || (si.ready ? 'READY' : 'OFF')));
       sound.append(statRow('Level', si.level != null ? String(si.level) : '—'));
       sound.append(statRow('Peak', si.peak != null ? String(si.peak) : '—'));
       sound.append(statRow('Noise floor', si.noiseFloor != null ? String(si.noiseFloor) : '—'));
