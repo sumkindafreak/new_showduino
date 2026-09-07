@@ -2,8 +2,14 @@
 #define SHOWDUINO_SHOW_PIXELS_H
 
 #include <Arduino.h>
+#include <algorithm>
 #include "../BoardConfig.h"
 #include "../../../../protocol/showduino_pixel_fx.h"
+
+/* Arduino's legacy min/max macros do not expand for explicit template calls
+ * such as min<uint32_t>(). Make the standard templates visible as well. */
+using std::min;
+using std::max;
 
 #if SHOWDUINO_SHOW_PIXEL_ENABLED
 
