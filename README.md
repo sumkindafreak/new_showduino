@@ -9,24 +9,193 @@
 > The Director commands and displays.  
 > The Nodes act.
 
-- The **Show Engine** is the single source of truth for show state, safety policy, project storage, configuration, Web UI, Web API, and WebSocket state.
-- The **Communications Engine** provides ESP‑NOW and UART transport. It must not make show-level decisions. The current hardware is a dedicated ESP32-S3 Comms Controller.
-- The **Director** is an operator interface only. It does **not** host or proxy the primary Web UI.
-- A running show must **not** depend on an active Director, browser, Wi‑Fi client, or internet connection.
-- Application code addresses devices by **logical Showduino device IDs**, not MAC addresses (transport may resolve IDs internally).
-- Relay requests use **absolute states** (ON/OFF), not distributed `TOGGLE`.
-- **Command acceptance** and **physical action completion** are separate lifecycle events.
-- USB is **not** the normal Director communication path (diagnostics / recovery only, if used later).
+- The **Show Engine** on the ESP32-P4 is the single source of truth for show state, safety policy, production runtime, configuration and authoritative device state.
+- The **Communications Engine** is the dedicated ESP32-S3. It transports ESP-NOW/UART traffic and currently hosts the static bench/browser WebUI plus API proxy. It must not make show-level decisions.
+- The **Director** is the ESP32-S3 touchscreen operator interface. Commands are requests; authoritative state comes back from the P4.
+- A running show must **not** depend on an active Director, browser, Wi-Fi client, or internet connection.
+- Application code should address devices by logical Showduino device IDs; MAC addresses remain transport details.
+- Command acceptance and physical completion are separate lifecycle events.
 
-### Naming
+The Waveshare onboard ESP32-C6 remains **unused/reserved**.
 
-| Term | Meaning |
-|------|---------|
-| **Show Engine** | Official processor role: authoritative show controller software |
-| **Stage Controller** | Physical ESP32-P4 product that runs the Show Engine |
-| ~~Stage Engine~~ | **Retired** — do not use in new documentation |
+## Current live topology
 
-The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatibility. Documentation treats it as the **Show Engine**. A rename is planned later.
+```text
+Director ESP32-S3
+        │ ESP-NOW
+        ▼
+Dedicated ESP32-S3 Communications Engine
+        │ UART 115200 8N1
+        ▼
+ESP32-P4 Show Engine / Stage Controller
+        │
+        ├── local system/safety audio (ES8311)
+        ├── GPIO24 emergency/designated-signage NeoPixels
+        ├── GPIO23 segmented theatrical Show Pixel Line
+        └── authoritative production/runtime state
+
+Specialist Nodes
+        │ ESP-NOW through Communications Engine
+        ▼
+P4 authoritative control
+```
+
+## Browser / phone path
+
+The Communications S3 now hosts the static Showduino browser UI from PROGMEM and proxies P4 API requests:
+
+```text
+Phone / Tablet / Laptop
+        │ Wi-Fi / Showduino SoftAP
+        ▼
+S3 Communications Engine — static WebUI / transport proxy
+        │ UART
+        ▼
+P4 Show Engine — authoritative state/API data
+```
+
+The S3 does not become the Show Engine merely because it serves the HTML/JS.
+
+## Core roles
+
+### Show Engine — ESP32-P4 Stage Controller
+
+Current implemented foundation includes:
+
+- authoritative runtime/emergency state;
+- start/pause/resume/stop timeline runtime;
+- transactional loading of versioned TEST/LOG productions from P4 SD;
+- P4 onboard ES8311 system/safety audio;
+- Audio Node routing/state tracking;
+- GPIO24 emergency/designated-signage pixel engine;
+- GPIO23 segmented local Show Pixel Engine;
+- local storage, Plug-in Bus, network and diagnostics foundations.
+
+Persistent production format v1 still accepts only TEST/LOG cues. `AUDIO` and `PIXEL` production cue parsing/dispatch remain follow-up work.
+
+### Communications Engine — dedicated ESP32-S3
+
+Current responsibilities:
+
+- ESP-NOW with Director and specialist nodes;
+- UART with P4 (`P4 RX=GPIO4`, `P4 TX=GPIO5`; S3 TX=GPIO17, RX=GPIO18);
+- Audio Node packet forwarding;
+- transport/link health;
+- SoftAP and static WebUI hosting;
+- proxying browser API requests to authoritative P4 services.
+
+It must not run timelines or invent show state.
+
+### Director — ESP32-S3 touchscreen
+
+- show selection and run-control requests;
+- node/output controls;
+- emergency workflow;
+- authoritative-state display;
+- local UI/diagnostic behavior.
+
+### Specialist Nodes
+
+Current rollout order is intentionally fixed:
+
+```text
+1. Audio Node
+2. C3 Lantern Node
+3. C3 Pixel Node
+4. MOSFET Node
+```
+
+The old Relay Node product concept is superseded by the MOSFET Node direction. Legacy relay source remains for reference only.
+
+DMX remains **parked/out of scope** until explicitly reopened.
+
+## P4 pixel architecture
+
+### GPIO24 — emergency/designated-signage line
+
+One emergency exit sign is a 10-pixel bundle. The configured maximum is 100 pixels / ten signs.
+
+Normal state:
+
+```text
+pixel 0 GREEN, 1-9 OFF
+pixel 10 GREEN, 11-19 OFF
+pixel 20 GREEN, 21-29 OFF
+...
+```
+
+Emergency state:
+
+```text
+ALL GPIO24 PIXELS BRIGHT WHITE
+```
+
+All groups are prepared in one frame so the signs switch together.
+
+### GPIO23 — local Show Pixel Line
+
+The P4 now contains a non-blocking segmented FX engine with up to 16 configured segment slots and the shared Showduino 25-effect vocabulary.
+
+Example simultaneous use:
+
+```text
+pixels 0-7    LIGHTNING
+pixels 8-10   SOLID BLUE
+pixels 11-29  FIRE
+pixels 30-49  PULSE RED
+pixels 50-79  FLICKER WARM WHITE
+```
+
+Hard Showduino emergency rule:
+
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+This applies to GPIO23, GPIO24, and every future pixel-capable node. Clearing emergency returns GPIO24 to green locator markers and leaves normal show pixels blacked out; interrupted FX do not auto-resume.
+
+Shared effect vocabulary: [`protocol/showduino_pixel_fx.h`](protocol/showduino_pixel_fx.h).
+
+## Pixel electrical standard
+
+Each P4 pixel data output uses a **470 Ω series resistor** near the controller/logic buffer:
+
+```text
+GPIO23 / 5V buffer → 470 Ω → Show Pixel DIN
+GPIO24 / 5V buffer → 470 Ω → Emergency/Signage DIN
+```
+
+Use common P4/pixel ground. Final/long-cable installations should use a 5 V-compatible logic buffer such as a 74AHCT125/74HCT125-class device. The 470 Ω resistor is not a level shifter. Pixels should use a suitably sized external 5 V supply, with bulk capacitance and power injection appropriate to the installation.
+
+## Firmware map
+
+### Active / current
+
+```text
+firmware/director-esp32-8048s050/     Director
+firmware/s3-comms-controller/         Communications Engine
+firmware/stage-engine-p4/             Show Engine / Stage Controller
+firmware/audio-node-esp32-a1s/        Audio Node — hardware test required
+```
+
+### Planned
+
+```text
+C3 Lantern Node                        next specialist-node milestone
+C3 Pixel Node                          follows Lantern; shares common FX vocabulary
+firmware/mosfet-node-esp32/           planned; replaces Relay Node concept
+```
+
+### Legacy / reserved / diagnostic
+
+```text
+firmware/relay-node-esp32/            LEGACY / SUPERSEDED product direction
+firmware/p4-c6-espnow-bridge/         UNUSED / RESERVED onboard C6 work
+firmware/c3-supermini-espnow-bridge/  LEGACY / SUPERSEDED SUE Comms
+firmware/director-s3/                 LEGACY
+firmware/espnow-bridge/               LEGACY
+firmware/touch-probe-8048/            DIAGNOSTIC
+firmware/controller-cyd/              ARCHIVE CANDIDATE
+firmware/executor-mega/               ARCHIVE CANDIDATE
+```
 
 ## Documentation
 
@@ -34,133 +203,24 @@ The firmware folder `firmware/stage-engine-p4/` remains temporarily for compatib
 |----------|----------|
 | [`docs/constitution.md`](docs/constitution.md) | Permanent architectural rules |
 | [`docs/architecture.md`](docs/architecture.md) | System architecture and maturity |
-| [`docs/repository-status.md`](docs/repository-status.md) | Firmware classification (ACTIVE / LEGACY / …) |
-| [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Current hardware topology, P4 pin map, UART wiring |
-| [`docs/hardware-pinout.md`](docs/hardware-pinout.md) | Current P4 resource and pin map |
-| [`docs/hardware-baseline-2026-08-25.md`](docs/hardware-baseline-2026-08-25.md) | Board-capability baseline (C6 now unused/reserved) |
-| [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | System vs programme audio and pixel architecture |
-| [`docs/audio-node.md`](docs/audio-node.md) | First specialist Audio Node (ESP32-A1S / ES8388) |
-| [`docs/future-p4-c6-sdio-transport.md`](docs/future-p4-c6-sdio-transport.md) | Future SDIO / ESP-Hosted notes (not implemented) |
-| [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus (I²C) |
-| [`docs/creating-showduino-i2c-plugin.md`](docs/creating-showduino-i2c-plugin.md) | Adding an I²C plugin definition or driver |
-| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production and timeline format |
+| [`docs/repository-status.md`](docs/repository-status.md) | Current firmware classification |
+| [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Hardware topology |
+| [`docs/hardware-pinout.md`](docs/hardware-pinout.md) | Current P4 pins and pixel wiring standard |
+| [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | Audio split, segmented FX and emergency-pixel policy |
+| [`docs/audio-node.md`](docs/audio-node.md) | ESP32-A1S / ES8388 Audio Node |
+| [`docs/node-roadmap.md`](docs/node-roadmap.md) | Audio → Lantern → C3 Pixel → MOSFET rollout |
+| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production format |
+| [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus |
 
-## Canonical communication paths
+## Current milestone
 
-### Director
+The immediate platform target is to bench-commission the **P4 pixel lines**:
 
-```text
-Director ESP32-S3
-    → ESP-NOW
-ESP32-S3 Comms Controller
-    → UART 115200 8N1
-Show Engine ESP32-P4 (Stage Controller)
-```
+1. prove GPIO24 normal green-sign pattern;
+2. prove synchronized full-white emergency signage;
+3. prove GPIO23 direct colour and commissioning test;
+4. prove multiple simultaneous segmented FX;
+5. prove emergency forces GPIO23 + GPIO24 white;
+6. prove clear returns signage to locator green and show pixels to safe blackout.
 
-### Nodes
-
-```text
-Showduino Node
-    → ESP-NOW
-ESP32-S3 Comms Controller
-    → UART
-Show Engine ESP32-P4 (Stage Controller)
-```
-
-### Phone / browser (conceptual target)
-
-```text
-Phone / Tablet / Laptop
-    → Wi-Fi (FUTURE / RESERVED / NOT IMPLEMENTED on the S3 Comms Controller)
-    → Show Engine services (Web UI / Web API / WebSocket)
-```
-
-The Director is **not** a normal Web UI host or proxy.
-
-## Core roles
-
-### Show Engine (ESP32-P4 Stage Controller)
-
-Owns authoritative:
-
-- Show / timeline / cue state
-- Project and asset storage (primary)
-- Safety and emergency policy
-- Node command dispatch and result handling
-- Web UI, Web API, WebSocket state, configuration
-
-**Maturity:** Current firmware under `firmware/stage-engine-p4/` includes an authoritative Stage 6 runtime, transactional loading of versioned productions from P4 SD, and a RAM-backed timeline engine with ordered cue dispatch, start, pause, resume, stop, finish, and emergency interruption handling. Broader project/assets storage, DMX, physical cue engines, and the Web UI/API remain incomplete. Do not overstate capability.
-
-### Communications Engine (dedicated ESP32-S3)
-
-- ESP‑NOW with the Director
-- UART with the Show Engine (P4 GPIO4/5; S3 GPIO17 TX / GPIO18 RX)
-- Must not host SoftAP/WebUI, BLE, or OTA in this phase
-- Must not run the timeline or invent show state
-
-The Waveshare onboard ESP32-C6 is **UNUSED BY SHOWDUINO / RESERVED HARDWARE**. Do not flash or require it.
-
-The previous external Communications Engine was an ESP32-C3 SuperMini (`firmware/c3-supermini-espnow-bridge/`). It remains in-tree as **LEGACY / SUPERSEDED**.
-
-### Director (ESP32-S3 touchscreen)
-
-- Show selection and start/stop/pause/resume **requests**
-- Manual cue **requests**
-- Status, timeline, node, fault, and emergency **display**
-- Local UI preferences / temporary SD features as implementation details
-
-A Director command is a **request**. Successful display of a state change requires authoritative confirmation from the Show Engine. Existing Director SD show/storage features are **not** the final location of authoritative projects.
-
-### Nodes
-
-Specialist devices (relay, audio, lighting, sensor, motor, etc.) that **act** on commanded absolute states and report results.
-
-## Firmware map (summary)
-
-**ACTIVE** (canonical runtime):
-
-```text
-firmware/director-esp32-8048s050/          Director (ESP32-S3)              [ACTIVE]
-firmware/s3-comms-controller/              Communications Engine (ESP32-S3) [ACTIVE]
-firmware/stage-engine-p4/                  Show Engine / Stage Controller    [ACTIVE]
-```
-
-**Other** (not the supported production stack):
-
-```text
-firmware/relay-node-esp32/                 [EXPERIMENTAL / FUTURE] relay prototype
-firmware/p4-c6-espnow-bridge/              [UNUSED / RESERVED] onboard C6
-firmware/c3-supermini-espnow-bridge/       [LEGACY / SUPERSEDED] previous external C3 / SUE
-firmware/director-s3/                      [LEGACY]
-firmware/espnow-bridge/                    [LEGACY]
-firmware/touch-probe-8048/                 [DIAGNOSTIC]
-firmware/sue-esp32s3-node/                 [INCOMPLETE]
-firmware/controller-cyd/                   [ARCHIVE CANDIDATE]
-firmware/executor-mega/                    [ARCHIVE CANDIDATE]
-```
-
-Full table, ownership boundaries, archive proposal, and naming debt: [`docs/repository-status.md`](docs/repository-status.md).
-
-## Repository layout
-
-```text
-firmware/     MCU sketches (classified in docs/repository-status.md)
-web/          GoreFX dashboard / Scene Manager (host-side; not yet the live Show Engine Web UI)
-docs/         Constitution, architecture, repository status, hardware
-```
-
-## Current progress (honest)
-
-- Live transport path: Director ↔ ESP‑NOW ↔ dedicated ESP32-S3 Comms Controller ↔ UART ↔ P4. Onboard C6 is unused/reserved. Factory P4↔C6 SDIO and ESP-Hosted are not used.
-- Show Engine command parsing, emergency gate, and an experimental relay route retained for future node work
-- Director LVGL UI and ESP‑NOW client
-- Relay Node ESP‑NOW prototype (not part of the supported current stack)
-- Host-side GoreFX / Scene Manager prototypes under `web/`
-
-**Implemented foundation:** shared protocol package, authoritative runtime/state publication, confirmed Director relay display, RAM-backed Stage 6 timeline playback, and transactional loading of versioned TEST/LOG productions from P4 SD.
-
-**Not yet:** broader P4 asset/project management, a complete authoritative Show Engine Web UI/API product, Communications Engine Wi‑Fi front door, completion-driven node state/fault handling, logical device-ID addressing throughout firmware, or a supported node product path.
-
-## Long-term vision
-
-Hardware may evolve; roles stay fixed. Shows are authored and stored against the Show Engine. Operators use the Director and/or browsers. Nodes remain replaceable specialists on the same fabric.
+After current P4/Audio work, the next specialist node is the **C3 Lantern Node**, followed by **C3 Pixel**, then **MOSFET**.
