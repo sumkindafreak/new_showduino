@@ -164,30 +164,65 @@
 #endif
 
 /*
- * Emergency NeoPixel DATA on GPIO24.
- * Count / colour order / timing come from the existing implementation
- * (not from a newly confirmed strip datasheet).
+ * Dedicated emergency/signage NeoPixel line on GPIO24.
+ *
+ * Physical convention:
+ *   - each emergency-exit sign is a fixed bundle of 10 NeoPixels;
+ *   - up to 100 pixels = up to 10 signs on one chain;
+ *   - NORMAL: first pixel of each 10-pixel group is GREEN, remaining 9 OFF;
+ *   - EMERGENCY: every pixel in every group is full-bright WHITE;
+ *   - all groups are written into one frame, then transmitted together.
+ *
+ * The emergency/signage line is safety-owned. Productions cannot repurpose it.
  */
 #ifndef SHOWDUINO_EMERGENCY_PIXEL_ENABLED
 #define SHOWDUINO_EMERGENCY_PIXEL_ENABLED  1
 #endif
-
 #define SHOWDUINO_EMERGENCY_PIXEL_PIN        24
 #define SHOWDUINO_EMERGENCY_PIXEL_COUNT      100
 #define SHOWDUINO_EMERGENCY_PIXEL_BRIGHTNESS 255
+#define SHOWDUINO_EMERGENCY_SIGN_PIXELS       10
+#define SHOWDUINO_EMERGENCY_SIGN_LOCATOR_INDEX 0
+#define SHOWDUINO_EMERGENCY_SIGN_NORMAL_R      0
+#define SHOWDUINO_EMERGENCY_SIGN_NORMAL_G    255
+#define SHOWDUINO_EMERGENCY_SIGN_NORMAL_B      0
 
 /*
- * Local pixel baseline:
- *   GPIO24  CURRENT  dedicated emergency/status NeoPixel line
- *   GPIO23  TARGET   the only planned general-purpose Show NeoPixel line
- * Additional strips belong to future Pixel / LED Nodes. Do not add more
- * local P4 show-pixel outputs in this firmware generation.
+ * P4 local theatrical pixels.
+ *   GPIO24 = dedicated emergency/signage line above.
+ *   GPIO23 = the only general-purpose local Show Pixel Line.
+ *
+ * GPIO23 supports independent segments and a reusable non-blocking FX library.
+ * Emergency policy sits above ALL FX: when the Showduino emergency latch is
+ * active, every pixel on GPIO23 is forced full-bright WHITE. Clearing emergency
+ * leaves show pixels OFF; interrupted effects never auto-resume.
+ *
+ * Final-install wiring standard for EACH pixel data output:
+ *   P4/5V logic buffer -> 470 ohm series resistor -> first pixel DIN
+ * Put the resistor near the controller/logic buffer. Common P4/pixel ground is
+ * mandatory. A 74AHCT125/74HCT125-class 5V logic buffer is recommended for
+ * final/long-cable installs. The 470 ohm resistor is not a level shifter.
  */
 #ifndef SHOWDUINO_SHOW_PIXEL_PIN
 #define SHOWDUINO_SHOW_PIXEL_PIN             23
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_ENABLED
-#define SHOWDUINO_SHOW_PIXEL_ENABLED         0
+#define SHOWDUINO_SHOW_PIXEL_ENABLED         1
+#endif
+#ifndef SHOWDUINO_SHOW_PIXEL_COUNT
+#define SHOWDUINO_SHOW_PIXEL_COUNT           100
+#endif
+#ifndef SHOWDUINO_SHOW_PIXEL_BRIGHTNESS
+#define SHOWDUINO_SHOW_PIXEL_BRIGHTNESS      255
+#endif
+#ifndef SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS
+#define SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS    16
+#endif
+#ifndef SHOWDUINO_SHOW_PIXEL_FRAME_MS
+#define SHOWDUINO_SHOW_PIXEL_FRAME_MS        20UL
+#endif
+#ifndef SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS
+#define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS   470
 #endif
 
 /*
