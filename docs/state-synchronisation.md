@@ -1,56 +1,119 @@
-# Showduino State Synchronisation (Stage 3)
+# Showduino State Synchronisation
 
-**Status:** Show and emergency synchronisation are implemented. Relay channel and relay-node fields are retained compatibility/prototype surfaces; no production node is currently supported.
+**Status:** show/emergency synchronisation is implemented. Audio Node lifecycle tracking is active. P4 local pixel commissioning control is active. Relay fields remain legacy compatibility surfaces and are not the current Node roadmap.
 
 ## Ownership
 
 | Concern | Owner |
-|---------|--------|
-| Authoritative show / emergency / relay knowledge | Show Engine |
-| Transport | Communications Engine |
-| Display + pending UI | Director |
-| Physical GPIO | Future specialist Node (relay prototype exists) |
+|---------|-------|
+| Authoritative show/emergency/runtime state | P4 Show Engine |
+| Audio Node requested/confirmed lifecycle | P4 Show Engine, based on Node reports |
+| P4 local pixel engine/segments | P4 Show Engine |
+| ESP-NOW/UART transport | S3 Communications Engine |
+| Browser static UI host | S3 Communications Engine |
+| Operator display/pending UI | Director / Studio clients |
+| Physical specialist-node hardware | The relevant Node |
 
-Acceptance ≠ completion. Confirmed relay display uses `STATE:RELAY` only.
-
-## Future relay lifecycle (prototype / not a supported current path)
-
-```text
-Director  RELAY:n:ON|OFF
-   → Show Engine validates
-   → ACCEPTED:RELAY:<seq>:n:ON|OFF   (forwarded; not completed)
-   → ROUTE:RELAY:RELAY:n:ON|OFF
-   → Node OK:RELAY:n:ON|OFF
-   → STATE:RELAY:n:ON|OFF            (Director confirms UI)
-```
-
-Failures: `REJECTED:RELAY:…` (before route) or `FAILED:RELAY:…` (timeout / route / node error). Last confirmed state is retained.
-
-Pending timeout: **3 s**. Relay node offline after **10 s** without node traffic.
+**Acceptance ≠ completion.** A transmitted command is not proof that a remote physical action completed.
 
 ## Snapshot / reconnect
 
 On Director link READY:
 
 1. `STATUS:REQUEST`
-2. `SNAPSHOT:BEGIN` … lines … `SNAPSHOT:END`
+2. `SNAPSHOT:BEGIN` … authoritative state lines … `SNAPSHOT:END`
 3. Director exits SYNCING
 
-Director restart does **not** stop a running show. Relays start as UNKNOWN until snapshot/node confirm.
+Director restart or browser disconnect does **not** stop a running show.
 
 ## Emergency
 
 - `STATE:EMERGENCY:ACTIVE|CLEAR` is authoritative.
 - E-STOP may show local activating feedback immediately.
-- E-CLEAR unlock waits for `STATE:EMERGENCY:CLEAR`.
-- Legacy `STATUS:EMERGENCY_*` still emitted for compatibility.
+- E-CLEAR unlock waits for authoritative clear state.
+- Legacy `STATUS:EMERGENCY_*` strings may still be emitted for compatibility.
+- Emergency clear does not automatically resume a show or interrupted pixel effects.
 
-## Placeholders
+### Global pixel safety state
 
-`PIXEL:*` / `AUDIO:*` → `UNSUPPORTED:…` (or `NODE_UNAVAILABLE:` if a leftover `ROUTE:` reaches C3). No false `ACK`.
+Emergency has a fixed global pixel policy:
 
-## Not in Stage 3
+> **ALL PIXELS BRIGHT WHITE.**
 
-Timeline engine, pause/resume, device-ID routing, UART CRC, binary framing, multi-node discovery.
+The P4 GPIO23 Show Pixel Line and GPIO24 emergency/signage line implement the local side of this policy. Future C3 Pixel/Lantern pixel outputs and every later pixel-capable Node must implement the same override.
 
-See also: `docs/command-protocol.md`, `protocol/README.md`.
+No Studio command, segment FX or production cue may override emergency white.
+
+## Audio Node lifecycle
+
+The specialist Audio Node reports accepted/started/completed/failed and state information through the Communications S3 to the P4. The P4 tracks this lifecycle rather than treating route/transmit as playback completion.
+
+Programme audio remains Audio-Node-only. P4 ES8311 audio is system/safety audio only.
+
+## P4 local pixel state
+
+`PIXEL:*` is **not a generic unsupported placeholder anymore** for the P4 local line.
+
+Current direct/commissioning commands include:
+
+```text
+PIXEL:STATUS
+PIXEL:TEST
+PIXEL:TEST:STOP
+PIXEL:BLACKOUT
+PIXEL:SOLID:r:g:b
+PIXEL:BRIGHTNESS:<0-255>
+PIXEL:SEGMENT:<id>:...
+```
+
+Segments support independent range/effect/colour/brightness/speed/intensity/randomness/reverse/duration state. The P4 remains authoritative for acceptance and emergency rejection.
+
+Persistent production `PIXEL` cue parsing and named logical segment persistence are **not** implemented in production-format v1 yet. Direct `PIXEL:*` control should therefore be described as commissioning/runtime control, not completed production authoring.
+
+Distributed C3 Pixel Node routing is also still future.
+
+## Emergency/signage line state
+
+GPIO24 is safety-owned and not a normal Studio production lane.
+
+Normal state per 10-pixel sign group:
+
+```text
+GREEN + 9 OFF
+```
+
+Emergency state:
+
+```text
+10 WHITE
+```
+
+All configured sign groups are updated in one frame so the signage changes together.
+
+## Legacy relay state
+
+Relay lifecycle/state strings remain in compatibility code and historical documentation. The old Relay Node is superseded by the future MOSFET Node direction; do not treat Relay as the next production Node.
+
+Where legacy relay state is still used, absolute ON/OFF remains preferred over distributed TOGGLE.
+
+## Current specialist-node order
+
+```text
+Audio Node
+→ C3 Lantern Node
+→ C3 Pixel Node
+→ MOSFET Node
+```
+
+DMX remains parked/out of scope.
+
+## Still incomplete
+
+- persistent production AUDIO/PIXEL cue types and dispatch;
+- named logical pixel segment persistence/binding;
+- logical device-ID routing end to end;
+- generic completion-driven state/fault lifecycle for all future Nodes;
+- structured binary framing beyond the current compatibility protocol;
+- hardware commissioning of the current P4 pixel engine and Audio Node.
+
+See also: `docs/command-protocol.md`, `docs/studio-pixel-authoring.md`, `protocol/README.md`.
