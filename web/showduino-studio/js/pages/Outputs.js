@@ -3,10 +3,41 @@ import { subscribeStore } from '../store.js';
 import { el, p4OfflineBanner, plannedNote, statRow } from '../utils.js';
 import { emergencyWord } from '../status.js';
 
+const PIXEL_FX = [
+  'OFF', 'SOLID', 'FADE_IN', 'FADE_OUT', 'PULSE', 'BREATHE', 'FLICKER',
+  'CANDLE', 'FIRE', 'LIGHTNING', 'STROBE', 'RANDOM_STROBE', 'CHASE',
+  'BOUNCE', 'COMET', 'WIPE', 'REVERSE_WIPE', 'BUILD', 'SPARKLE',
+  'TWINKLE', 'GLITCH', 'WARNING', 'PORTAL', 'RAINBOW', 'CUSTOM_SEQUENCE'
+];
+
+function hexRgb(value) {
+  const v = String(value || '#000000').replace('#', '').padStart(6, '0').slice(0, 6);
+  return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) || 0);
+}
+
+function numberField(label, value, min, max, onChange) {
+  const wrap = el('label', { className: 'sub' });
+  wrap.append(document.createTextNode(label + ' '));
+  const input = el('input', {
+    className: 'text-input',
+    type: 'number',
+    value: String(value),
+    min: String(min),
+    max: String(max)
+  });
+  input.addEventListener('change', () => {
+    const n = Math.max(min, Math.min(max, Number(input.value) || 0));
+    input.value = String(n);
+    onChange(n);
+  });
+  wrap.append(input);
+  return wrap;
+}
+
 export async function OutputsPage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'P4 local audio is system/safety only. Programme audio is the Audio Node. Relay and MOSFET hardware remain future Nodes.'
+    text: 'P4 GPIO23 is the local segmented Show Pixel Line. GPIO24 is safety-owned emergency signage. Programme audio is the Audio Node. Next specialist-node order: C3 Lantern → C3 Pixel → MOSFET.'
   }));
 
   const host = el('div', { className: 'page-stack' });
@@ -17,6 +48,20 @@ export async function OutputsPage(container) {
   let lastResult = '';
   let lastSnap = { p4Online: false, system: null };
   let assetPath = 'system-test.wav';
+  const px = {
+    id: 0,
+    start: 0,
+    count: 10,
+    fx: 'SOLID',
+    color: '#ffffff',
+    color2: '#000000',
+    brightness: 255,
+    speed: 50,
+    intensity: 80,
+    randomness: 70,
+    duration: 0,
+    reverse: false
+  };
 
   async function send(cmd) {
     pending = cmd;
@@ -31,6 +76,52 @@ export async function OutputsPage(container) {
     paint();
   }
 
+  async function sendMany(commands, label = 'PIXEL:SEGMENT') {
+    pending = label;
+    lastResult = '';
+    paint();
+    const replies = [];
+    try {
+      for (const cmd of commands) {
+        const data = await postCommand(cmd);
+        if (isP4Offline(data)) {
+          replies.push('P4 OFFLINE');
+          break;
+        }
+        replies.push(data.replies || cmd + ': OK');
+      }
+      lastResult = replies.join(' | ');
+      try {
+        const data = await fetchLighting();
+        lighting = isP4Offline(data) ? null : data;
+      } catch (_) {}
+    } catch (err) {
+      lastResult = err.message;
+    }
+    pending = null;
+    paint();
+  }
+
+  function segmentCommands(includeStart) {
+    const c1 = hexRgb(px.color);
+    const c2 = hexRgb(px.color2);
+    const base = `PIXEL:SEGMENT:${px.id}`;
+    const commands = [
+      `${base}:RANGE:${px.start}:${px.count}`,
+      `${base}:FX:${px.fx}`,
+      `${base}:COLOR:${c1[0]}:${c1[1]}:${c1[2]}`,
+      `${base}:COLOR2:${c2[0]}:${c2[1]}:${c2[2]}`,
+      `${base}:BRIGHTNESS:${px.brightness}`,
+      `${base}:SPEED:${px.speed}`,
+      `${base}:INTENSITY:${px.intensity}`,
+      `${base}:RANDOMNESS:${px.randomness}`,
+      `${base}:DURATION:${px.duration}`,
+      `${base}:REVERSE:${px.reverse ? 1 : 0}`
+    ];
+    if (includeStart) commands.push(`${base}:START`);
+    return commands;
+  }
+
   function paint() {
     host.innerHTML = '';
     if (!lastSnap.p4Online) host.append(p4OfflineBanner());
@@ -38,20 +129,166 @@ export async function OutputsPage(container) {
     const emergency = emergencyWord(s);
 
     const pixels = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
-    pixels.append(el('h2', { text: 'Emergency NeoPixel line' }));
+    pixels.append(el('h2', { text: 'Emergency signage — GPIO24' }));
     if (lastSnap.p4Online && lighting) {
       pixels.append(statRow('Line', lighting.emergencyPixelsReady ? 'READY' : 'FAULT'));
-      pixels.append(statRow('White', lighting.emergencyPixelsWhite ? 'ACTIVE' : 'OFF'));
+      pixels.append(statRow('Emergency white', lighting.emergencyPixelsWhite ? 'ACTIVE' : 'OFF'));
       pixels.append(statRow('Emergency latch', emergency === 'EMERGENCY' ? 'EMERGENCY' : 'CLEAR'));
-      pixels.append(el('p', { className: 'sub', text: 'Dedicated emergency line. Not a general show-pixel engine.' }));
+      pixels.append(el('p', {
+        className: 'sub',
+        text: 'Safety-owned 10-pixel sign groups. Normal state is one green locator pixel per group; emergency changes the complete line to synchronized bright white.'
+      }));
     } else {
       pixels.append(el('p', { className: 'sub', text: lastSnap.p4Online ? 'Waiting for P4 lighting status…' : 'Unavailable while P4 is offline.' }));
     }
     host.append(pixels);
 
-    const showPx = el('div', { className: 'card' });
-    showPx.append(el('h2', { text: 'Show Pixel Line' }));
-    showPx.append(plannedNote('One local show-pixel line is planned. No engine or controls are implemented yet.'));
+    const showPx = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
+    showPx.append(el('h2', { text: 'P4 Show Pixel Line — GPIO23' }));
+    if (lastSnap.p4Online && lighting) {
+      showPx.append(statRow('Engine', lighting.showPixelsReady ? 'READY' : 'FAULT'));
+      showPx.append(statRow('Pixels', lighting.showPixelsCount != null ? String(lighting.showPixelsCount) : '—'));
+      showPx.append(statRow('Global brightness', lighting.showPixelsBrightness != null ? String(lighting.showPixelsBrightness) : '—'));
+      showPx.append(statRow('Emergency override', lighting.showPixelsEmergencyWhite ? 'ALL WHITE' : 'CLEAR'));
+      showPx.append(statRow('Segment slots', lighting.showPixelMaxSegments != null ? String(lighting.showPixelMaxSegments) : '16'));
+      showPx.append(statRow('FX library', lighting.showPixelFxCount != null ? String(lighting.showPixelFxCount) : '25'));
+    } else {
+      showPx.append(el('p', { className: 'sub', text: lastSnap.p4Online ? 'Waiting for P4 pixel status…' : 'Unavailable while P4 is offline.' }));
+    }
+    showPx.append(el('p', {
+      className: 'sub',
+      text: 'Segments are the Studio authoring primitive: define a region once, then apply FX to that region. Emergency policy is fixed and cannot be edited here.'
+    }));
+
+    const globalRow = el('div', { className: 'filter-row' });
+    const pixelBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY';
+    globalRow.append(el('button', {
+      className: 'btn-primary',
+      text: pending === 'PIXEL:TEST' ? 'TEST…' : 'RUN PIXEL TEST',
+      disabled: pixelBusy,
+      onClick: () => send('PIXEL:TEST')
+    }));
+    globalRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'STOP TEST',
+      disabled: pixelBusy,
+      onClick: () => send('PIXEL:TEST:STOP')
+    }));
+    globalRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'BLACKOUT',
+      disabled: pixelBusy,
+      onClick: () => send('PIXEL:BLACKOUT')
+    }));
+    showPx.append(globalRow);
+
+    const globalBrightness = el('input', {
+      type: 'range',
+      min: '0',
+      max: '255',
+      value: String(lighting && lighting.showPixelsBrightness != null ? lighting.showPixelsBrightness : 255),
+      disabled: pixelBusy
+    });
+    globalBrightness.addEventListener('change', () => send('PIXEL:BRIGHTNESS:' + globalBrightness.value));
+    showPx.append(el('p', { className: 'sub', text: 'Global line brightness' }));
+    showPx.append(globalBrightness);
+
+    showPx.append(el('h3', { text: 'Segment editor / commissioning' }));
+    const pickRow = el('div', { className: 'filter-row' });
+    const segSelect = el('select', { className: 'text-input' });
+    for (let i = 0; i < 16; i++) {
+      const opt = el('option', { value: String(i), text: `Segment ${i}` });
+      if (i === px.id) opt.selected = true;
+      segSelect.append(opt);
+    }
+    segSelect.addEventListener('change', () => { px.id = Number(segSelect.value); });
+    pickRow.append(segSelect);
+
+    const fxSelect = el('select', { className: 'text-input' });
+    for (const name of PIXEL_FX) {
+      const opt = el('option', { value: name, text: name });
+      if (name === px.fx) opt.selected = true;
+      fxSelect.append(opt);
+    }
+    fxSelect.addEventListener('change', () => { px.fx = fxSelect.value; });
+    pickRow.append(fxSelect);
+    showPx.append(pickRow);
+
+    const rangeRow = el('div', { className: 'filter-row' });
+    rangeRow.append(numberField('Start', px.start, 0, 999, (v) => { px.start = v; }));
+    rangeRow.append(numberField('Count', px.count, 1, 1000, (v) => { px.count = v; }));
+    rangeRow.append(numberField('Brightness', px.brightness, 0, 255, (v) => { px.brightness = v; }));
+    rangeRow.append(numberField('Speed', px.speed, 1, 100, (v) => { px.speed = v; }));
+    showPx.append(rangeRow);
+
+    const fxRow = el('div', { className: 'filter-row' });
+    fxRow.append(numberField('Intensity', px.intensity, 0, 100, (v) => { px.intensity = v; }));
+    fxRow.append(numberField('Randomness', px.randomness, 0, 100, (v) => { px.randomness = v; }));
+    fxRow.append(numberField('Duration ms', px.duration, 0, 4294967295, (v) => { px.duration = v; }));
+    const reverse = el('label', { className: 'sub' });
+    const reverseBox = el('input', { type: 'checkbox', checked: px.reverse });
+    reverseBox.addEventListener('change', () => { px.reverse = reverseBox.checked; });
+    reverse.append(reverseBox, document.createTextNode(' Reverse'));
+    fxRow.append(reverse);
+    showPx.append(fxRow);
+
+    const colorRow = el('div', { className: 'filter-row' });
+    const c1Wrap = el('label', { className: 'sub' });
+    c1Wrap.append(document.createTextNode('Primary '));
+    const c1 = el('input', { type: 'color', value: px.color });
+    c1.addEventListener('change', () => { px.color = c1.value; });
+    c1Wrap.append(c1);
+    colorRow.append(c1Wrap);
+    const c2Wrap = el('label', { className: 'sub' });
+    c2Wrap.append(document.createTextNode('Secondary '));
+    const c2 = el('input', { type: 'color', value: px.color2 });
+    c2.addEventListener('change', () => { px.color2 = c2.value; });
+    c2Wrap.append(c2);
+    colorRow.append(c2Wrap);
+    showPx.append(colorRow);
+
+    const segRow = el('div', { className: 'filter-row' });
+    segRow.append(el('button', {
+      className: 'btn-primary',
+      text: pending === 'PIXEL:SEGMENT:APPLY_START' ? 'APPLYING…' : 'APPLY + START',
+      disabled: pixelBusy,
+      onClick: () => sendMany(segmentCommands(true), 'PIXEL:SEGMENT:APPLY_START')
+    }));
+    segRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'APPLY ONLY',
+      disabled: pixelBusy,
+      onClick: () => sendMany(segmentCommands(false), 'PIXEL:SEGMENT:APPLY')
+    }));
+    segRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'START',
+      disabled: pixelBusy,
+      onClick: () => send(`PIXEL:SEGMENT:${px.id}:START`)
+    }));
+    segRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'STOP',
+      disabled: pixelBusy,
+      onClick: () => send(`PIXEL:SEGMENT:${px.id}:STOP`)
+    }));
+    segRow.append(el('button', {
+      className: 'btn-cancel',
+      text: 'STATUS',
+      disabled: !lastSnap.p4Online || !!pending,
+      onClick: () => send(`PIXEL:SEGMENT:${px.id}:STATUS`)
+    }));
+    showPx.append(segRow);
+
+    if (emergency === 'EMERGENCY') {
+      showPx.append(el('p', {
+        className: 'sub',
+        text: 'EMERGENCY ACTIVE — every pixel-capable output is forced bright white. Segment/show controls are locked.'
+      }));
+    }
+    if (lastResult && String(pending || lastResult).includes('PIXEL')) {
+      showPx.append(el('p', { className: 'sub', text: lastResult }));
+    }
     host.append(showPx);
 
     const audio = el('div', { className: 'card' });
@@ -180,7 +417,7 @@ export async function OutputsPage(container) {
       const sound = el('div', { className: 'card' });
       sound.append(el('h2', { text: 'Sound input' }));
       sound.append(el('p', { className: 'sub', text: 'Microphone sensing only. P4 remains authoritative. Events do not start a show.' }));
-      sound.append(statRow('Input', si.state || (si.ready ? 'READY' : 'OFF')));
+      sound.append(statRow('Input', si.state || (si.ready ? 'READY' : 'OFF'));
       sound.append(statRow('Level', si.level != null ? String(si.level) : '—'));
       sound.append(statRow('Peak', si.peak != null ? String(si.peak) : '—'));
       sound.append(statRow('Noise floor', si.noiseFloor != null ? String(si.noiseFloor) : '—'));
@@ -255,8 +492,8 @@ export async function OutputsPage(container) {
     host.append(node);
 
     const future = el('div', { className: 'card' });
-    future.append(el('h2', { text: 'Node outputs' }));
-    future.append(plannedNote('Relay, MOSFET, LED, and DMX outputs belong to future Showduino Nodes.'));
+    future.append(el('h2', { text: 'Specialist-node roadmap' }));
+    future.append(plannedNote('Audio Node first; C3 Lantern next; C3 Pixel after Lantern; MOSFET Node after C3 Pixel. The old Relay Node concept is superseded. DMX remains parked/out of scope until explicitly revisited.'));
     host.append(future);
   }
 
