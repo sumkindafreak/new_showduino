@@ -6,64 +6,40 @@ Role: Showduino Show Engine
 Product: Stage Controller (ESP32-P4)
 ```
 
-Canonical active Show Engine firmware. Folder name `stage-engine-p4` is temporary; rename planned.
+Canonical active Show Engine firmware:
 
 ```text
 Director --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 ```
 
-## Constitution
-
 > The Show Engine decides.
 
-Owns (target): authoritative show state, timeline/cues, project storage, configuration, safety policy, Web API, and node command lifecycle (accept vs complete). The Communications S3 hosts the static browser WebUI from PROGMEM and proxies API GETs here.
+## Current implemented foundation
 
-## Maturity — do not overstate
+- Authoritative show/emergency runtime.
+- Persistent P4 SD production discovery and transactional TEST/LOG timeline loading.
+- Start/pause/resume/stop timeline execution independent of Director/browser presence.
+- Dedicated S3 Comms UART on P4 GPIO4/5.
+- P4 onboard ES8311 system/safety audio.
+- Audio Node command routing and confirmed lifecycle tracking.
+- GPIO24 emergency/designated-signage NeoPixel engine.
+- GPIO23 local segmented theatrical Show Pixel Engine with shared 25-FX vocabulary.
+- Plug-in Bus, storage, diagnostics and optional network foundations.
 
-Current sketch is an authoritative command/runtime hub:
+Persistent production format v1 still accepts only TEST/LOG cues. Production-file `AUDIO` and `PIXEL` cue types are not yet implemented.
 
-- Parses colon-text requests over UART
-- Tracks simple flags (e.g. show running, emergency lock)
-- Routes relay (and stub) work through the Communications Engine
-- Returns basic ACK / status lines
-- Discovers versioned productions under `/showduino/productions/`
-- Validates and transactionally loads persistent TEST/LOG timelines into RAM
-- Runs loaded timelines independently of Director, browser, Wi-Fi, or internet
-- Optional onboard Ethernet (IP101GRI / RMII) with DHCP or static IP
-- Isolated E1.31 / sACN test receiver (Universe 1 default, observation only)
-- Authoritative Audio Node tracker (`AUDIO:NODE:*` → `ROUTE:AUDIO:`, confirmed lifecycle)
-- P4 onboard ES8311 system/safety audio (`AUDIO:STATUS`, `AUDIO:TEST:*`, `AUDIO:STOP`)
+## Arduino build / flash
 
-It does **not** yet implement broader production assets, physical cue engines,
-logical target routing, production DMX/E1.31 mapping, or a complete authoring/project-management system.
-
-Ethernet is optional. Missing cable / DHCP / E1.31 must not fail boot or stop a local show.
-
-**Stage 4 WebUI:** REST API (`/api/system`, `/api/devices`, `/api/logs`) is implemented on P4. The Communications S3 is the canonical static host (PROGMEM). P4 static SD serving is compiled out (`SHOWDUINO_P4_STATIC_WEBUI 0`) but the SD serve path is retained behind that flag. See `web/showduino-studio/README.md`.
-
-**Stage Controller SD:** Onboard microSD on **SDMMC Slot 0**, GPIO39–45 (`SHOWDUINO_SD_ENABLED`). Creates `/showduino/...` folders, reports mount status in `/api/system`. Boot continues if the card is missing. Do not move the card onto the internal C6 SDIO pins.
-
-**Emergency Neopixel:** optional local strip on the Stage Controller turns solid white on E-stop (`BoardConfig.h`: pin/count/brightness). Requires **Adafruit NeoPixel** library. Remote PIXEL nodes remain unsupported until that engine exists.
-
-## Sketch
-
-```text
-firmware/stage-engine-p4/ShowduinoStageEngineP4/
-```
-
-### Arduino IDE / CLI flash (this hardware)
-
-The Stage Controller P4 on this bench reports **16 MB** SPI flash (`Detected size(16384k)`).  
-Do **not** build or flash a **32 MB** image. That writes `32768k` into the binary header; ESP-IDF then aborts in `init_flash` and reboot-loops.
+The bench Stage Controller reports **16 MB** SPI flash. Do not flash a 32 MB image.
 
 Arduino IDE:
 
 - Board: **ESP32P4 Dev Module**
 - Flash Size: **16MB (128Mb)**
 - PSRAM: **Enabled**
-- Partition Scheme: **Default** (not any 32M FAT / 13MB APP scheme)
-- Chip Variant: **v3.00 or newer** if the ROM banner is `ESP-ROM:esp32p4-eco2-…`
+- Partition Scheme: **Default**
+- Chip Variant: **v3.00 or newer** if ROM banner is `ESP-ROM:esp32p4-eco2-...`
 
 arduino-cli:
 
@@ -72,65 +48,98 @@ arduino-cli compile --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,Chip
 arduino-cli upload -p COMx --fqbn "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3" firmware/stage-engine-p4/ShowduinoStageEngineP4
 ```
 
-Replace `COMx` with the P4 USB serial port.
-
-### SD card layout (FAT32)
+## P4 SD layout
 
 ```text
-/showduino/productions/   Authoritative runtime production folders
-/showduino/config/        Versioned persistent settings
-/showduino/audio/system/  P4 system/safety WAV (boot, emergency, beep, tone, error, accepted, complete; shutdown reserved)
-/showduino/logs/          Bounded event logs
+/showduino/productions/   authoritative runtime productions
+/showduino/config/        persistent settings
+/showduino/audio/system/  P4 system/safety WAVs
+/showduino/logs/          bounded event logs
 /showduino/diagnostics/   RUN:TEST exports
-/showduino/backups/       Config snapshots
-/showduino/system/        storage-version / last-boot
-/showduino/webui/         Legacy optional copy (canonical UI is S3 PROGMEM)
-/showduino/shows/         Legacy packages
+/showduino/backups/       config snapshots
+/showduino/system/        storage metadata
 ```
 
-See [`docs/p4-sd-storage.md`](../../docs/p4-sd-storage.md). SD is the persistent backbone, not the safety backbone. USB: `STORAGE:STATUS`, `STORAGE:LIST`, `STORAGE:CHECK`, `STORAGE:BACKUP`.
-
-SDMMC pins (defaults in `BoardConfig.h`):
-
-```text
-D0=39  D1=40  D2=41  D3=42  CLK=43  CMD=44  POWER=45 (active LOW)
-```
-
-Comms UART (dedicated ESP32-S3; P4 pins unchanged):
+## Comms UART
 
 ```text
 P4 GPIO4 RX  <-  S3 GPIO17 TX
 P4 GPIO5 TX  ->  S3 GPIO18 RX
-115200 8N1, newline-framed ASCII
+115200 8N1
 ```
 
-Reserved onboard C6 infrastructure (do not allocate): GPIO6, GPIO14–19, GPIO54. The onboard C6 is unused reserved hardware.
+Onboard C6 remains unused/reserved: GPIO6, GPIO14-19, GPIO54.
 
-Onboard Ethernet (Waveshare IP101GRI, PHY addr 1): MDC=31 MDIO=52 RST=51 TX_EN=49 TXD=34/35 RXD=29/30 CRS_DV=28 REF_CLK=50. Config: `/showduino/config/network.json`. USB: `NET:STATUS`, `E131:STATUS`, `E131:CHANNELS`.
-
-Authoritative pin map: [`docs/final-hardware-architecture.md`](../../docs/final-hardware-architecture.md).
-
-## Local USB maintenance console
-
-The P4 USB Serial/debug connection is an **additional** command input. It does **not** replace:
+## Emergency input
 
 ```text
-Director --ESP-NOW--> ESP32-S3 Comms Controller --UART GPIO4/5--> this Show Engine
+GPIO25 → momentary pushbutton → GND
+INPUT_PULLUP
 ```
 
-Open Arduino Serial Monitor (or any terminal) on the P4 USB port:
+Press latches emergency. Release does not clear. USB `EMERGENCY:CLEAR` is the maintenance path and refuses a still-held input. Director clearance retains the dual-action physical-hold/confirmation policy.
 
-- Baud: **115200** (same as existing debug output)
-- Line ending: **Newline** or **Both NL & CR**
-- Type Showduino colon-text commands and press Enter
+## Pixel outputs
 
-USB and Comms UART both call the same Stage Engine command dispatcher. Authoritative state changes (for example `EMERGENCY:STOP` or `SHOW:START`) still notify the Director over UART if the comms controller is up.
+### GPIO24 — emergency/designated-signage line
 
-`HELP` and local `STATUS:REQUEST` replies stay on USB Serial. They are not forwarded to the Director.
+```text
+configured count: 100
+sign bundle size: 10 pixels
+```
 
-Physical emergency is a momentary pushbutton from GPIO25 to GND. Released/HIGH is healthy. Pressed/LOW latches emergency. Release does not clear. USB `EMERGENCY:CLEAR` is a bench maintenance path and still refuses a held button. Director clearance is dual-action: a 3 s physical hold sends `EMERGENCY:CLEAR_REQUEST`, then `EMERGENCY:CLEAR_CONFIRM` succeeds only while that request is pending, not timed out, and the button is released again. Clearing emergency does not restart the show.
+Normal state is automatically generated:
 
-Implemented console commands:
+```text
+pixel 0 GREEN, 1-9 OFF
+pixel 10 GREEN, 11-19 OFF
+pixel 20 GREEN, 21-29 OFF
+...
+```
+
+Emergency changes **all GPIO24 pixels to bright white in one frame**.
+
+### GPIO23 — local Show Pixel Line
+
+Implemented non-blocking segmented FX engine:
+
+```text
+default count: 100
+segment slots: 16
+frame service: 20 ms
+```
+
+Shared effects in `protocol/showduino_pixel_fx.h`:
+
+```text
+OFF, SOLID, FADE_IN, FADE_OUT, PULSE, BREATHE, FLICKER, CANDLE, FIRE,
+LIGHTNING, STROBE, RANDOM_STROBE, CHASE, BOUNCE, COMET, WIPE,
+REVERSE_WIPE, BUILD, SPARKLE, TWINKLE, GLITCH, WARNING, PORTAL,
+RAINBOW, CUSTOM_SEQUENCE
+```
+
+Hard safety rule:
+
+> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+
+The emergency override sits above every GPIO23 segment/effect. On clear, GPIO24 returns to green locator markers and GPIO23 remains blacked out; interrupted effects never auto-resume.
+
+### Pixel wiring standard
+
+Each P4 data output uses a **470 Ω series resistor** near the controller/logic buffer:
+
+```text
+GPIO23 / 5V buffer → 470 Ω → Show Pixel DIN
+GPIO24 / 5V buffer → 470 Ω → Signage Pixel DIN
+```
+
+Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recommended for final/long-cable installs. Use external 5 V pixel power, bulk capacitance and suitable power injection.
+
+## Local USB / command console
+
+USB is an additional maintenance input; it does not replace the Director → Comms → P4 path.
+
+Core commands:
 
 ```text
 HELP
@@ -139,7 +148,6 @@ SHOW:START
 SHOW:STOP
 SHOW:PAUSE
 SHOW:RESUME
-SHOW:LOAD:<name>
 PRODUCTION:LIST
 PRODUCTION:LOAD:<id>
 PRODUCTION:UNLOAD
@@ -147,20 +155,50 @@ PRODUCTION:STATUS
 EMERGENCY:STOP
 EMERGENCY:CLEAR
 STORAGE:STATUS
-STORAGE:LIST
-STORAGE:CHECK
-STORAGE:BACKUP
 AUDIO:STATUS
-AUDIO:TEST:BOOT | EMERGENCY | BEEP | TONE | ERROR | ACCEPTED | COMPLETE
-AUDIO:STOP
 AUDIO:NODE:PLAY:<path>
+RUN:TEST
 ```
 
-Existing debug lines (`[SD]`, `[AUDIO]`, `[COMMS]`, `[WEB]`, `[Runtime]`, `[ESTOP]`) continue on the same Serial port.
+P4 local pixel commands:
+
+```text
+PIXEL:STATUS
+PIXEL:TEST
+PIXEL:TEST:STOP
+PIXEL:OFF
+PIXEL:BLACKOUT
+PIXEL:SOLID:<r>:<g>:<b>
+PIXEL:BRIGHTNESS:<0-255>
+PIXEL:SEGMENT:<id>:RANGE:<start>:<count>
+PIXEL:SEGMENT:<id>:FX:<name>
+PIXEL:SEGMENT:<id>:COLOR:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:COLOR2:<r>:<g>:<b>
+PIXEL:SEGMENT:<id>:BRIGHTNESS:<0-255>
+PIXEL:SEGMENT:<id>:SPEED:<1-100>
+PIXEL:SEGMENT:<id>:INTENSITY:<0-100>
+PIXEL:SEGMENT:<id>:RANDOMNESS:<0-100>
+PIXEL:SEGMENT:<id>:DURATION:<ms>
+PIXEL:SEGMENT:<id>:REVERSE:<0|1>
+PIXEL:SEGMENT:<id>:START
+PIXEL:SEGMENT:<id>:STOP
+PIXEL:SEGMENT:<id>:STATUS
+```
+
+Example simultaneous segments:
+
+```text
+PIXEL:SEGMENT:0:RANGE:0:8
+PIXEL:SEGMENT:0:FX:LIGHTNING
+PIXEL:SEGMENT:0:COLOR:255:255:255
+PIXEL:SEGMENT:0:START
+
+PIXEL:SEGMENT:1:RANGE:8:20
+PIXEL:SEGMENT:1:FX:FIRE
+PIXEL:SEGMENT:1:START
+```
 
 ## Showduino Plug-in Bus
-
-3.3V I²C peripheral bus on the Waveshare I²C header:
 
 ```text
 SDA = GPIO7
@@ -168,18 +206,21 @@ SCL = GPIO8
 100 kHz
 ```
 
-USB commands: `PLUGIN:SCAN`, `PLUGIN:LIST`, `PLUGIN:STATUS`, `PLUGIN:INFO:<instance|address>`.
+## Current development order
 
-Discovery reports chip identity first. Operational roles come from `/showduino/config/plugin-bus.json` (or the fixed onboard ES8311 role). An SX1509 is `SX1509 - Unconfigured` until that file assigns `DIGITAL_INPUTS`, `DIGITAL_OUTPUTS`, or `DIGITAL_IO`. Unknown devices are listed, not treated as faults. See [`docs/plugin-bus.md`](../../docs/plugin-bus.md).
+Immediate platform work: **bench commission the P4 pixel lines**.
 
-## Policy reminders for later firmware work
+Specialist node order after current P4/Audio work:
 
-- Absolute relay states only (no distributed `TOGGLE`)
-- No false success for placeholder pixel/audio routes
-- Address nodes by logical device ID at the application layer
-- Publish state changes; treat Director/browser input as requests
-- Running show must not require Director or browser presence
+```text
+Audio Node → C3 Lantern Node → C3 Pixel Node → MOSFET Node
+```
 
-Onboard C6 remains unused/reserved. Qualification sketches live under `firmware/p4-c6-espnow-bridge/` and are not the live Communications Engine.
+The previous Relay Node product direction is superseded. DMX remains parked until explicitly reopened.
 
-See [`docs/constitution.md`](../../docs/constitution.md), [`docs/architecture.md`](../../docs/architecture.md), [`docs/hardware-pinout.md`](../../docs/hardware-pinout.md), and [`docs/repository-status.md`](../../docs/repository-status.md).
+See:
+
+- [`docs/audio-pixel-engine.md`](../../docs/audio-pixel-engine.md)
+- [`docs/hardware-pinout.md`](../../docs/hardware-pinout.md)
+- [`docs/node-roadmap.md`](../../docs/node-roadmap.md)
+- [`docs/production-storage.md`](../../docs/production-storage.md)
