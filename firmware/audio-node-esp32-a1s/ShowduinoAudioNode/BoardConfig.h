@@ -18,7 +18,7 @@
  *   esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
  */
 
-#define SHOWDUINO_AUDIO_NODE_FW            "0.3.0"
+#define SHOWDUINO_AUDIO_NODE_FW            "0.3.1"
 #define SHOWDUINO_AUDIO_NODE_BOARD         "ESP32-A1S Audio Kit V2.2 A161"
 #define SHOWDUINO_AUDIO_NODE_CODEC         "ES8388"
 
@@ -93,8 +93,24 @@
 #define SHOWDUINO_AUDIO_KEY6               5   /* next test asset */
 #endif
 
-#ifndef SHOWDUINO_AUDIO_STATUS_LED_PIN
-#define SHOWDUINO_AUDIO_STATUS_LED_PIN     22  /* LED4. LED5 shares KEY3/GPIO19 */
+/*
+ * External one-pixel WS2812 / NeoPixel status indicator.
+ *
+ * The development Audio Node has no useful populated onboard status LED.
+ * GPIO22 was already reserved by Showduino for the old LED4 assumption and
+ * is not used by the codec, SD, keys, PA, headphone detect, or microphone.
+ * It is therefore the dedicated external status-pixel data output.
+ *
+ * This is diagnostics/connectivity only — never a programme/show pixel.
+ */
+#ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_PIN   22
+#endif
+#ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT 1
+#endif
+#ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER (NEO_GRB + NEO_KHZ800)
 #endif
 
 #ifndef SHOWDUINO_AUDIO_HP_DETECT_PIN
