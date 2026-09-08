@@ -3,26 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Showduino</title>
+  <meta name="theme-color" content="#071015">
+  <meta name="description" content="Local Showduino system console hosted by the ESP32-S3 Communications Engine.">
+  <title>Showduino System Console</title>
   <link rel="stylesheet" href="/css/studio.css">
+  <link rel="stylesheet" href="/css/system-console.css">
   <style>
     #boot {
       min-height: 100vh;
+      display: grid;
+      place-items: center;
       padding: 2rem 1.25rem;
-      background: #0a0a0a;
-      color: #e8e8e8;
+      background:
+        radial-gradient(circle at 50% 22%, rgba(0,230,195,.09), transparent 22rem),
+        #071015;
+      color: #e7f0f2;
       font-family: "Segoe UI", system-ui, sans-serif;
     }
-    #boot h1 { color: #c41e1e; letter-spacing: 0.08em; margin: 0 0 0.5rem; }
-    #boot p { color: #888; max-width: 36rem; line-height: 1.5; }
-    #boot.hidden { display: none; }
+    .boot-card {
+      width: min(560px, 100%);
+      padding: 1.4rem;
+      border: 1px solid #29424d;
+      border-radius: 12px;
+      background: linear-gradient(145deg, #101a21, #080d11);
+      box-shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+    .boot-brand { display:flex; align-items:center; gap:.6rem; font-weight:900; letter-spacing:.12em; }
+    .boot-dot { width:8px; height:8px; border-radius:50%; background:#00e6c3; box-shadow:0 0 14px rgba(0,230,195,.9); }
+    #boot h1 { margin:.9rem 0 .25rem; color:#f0f7f8; font-size:1.65rem; }
+    #boot p { color:#81939d; max-width:36rem; line-height:1.55; }
+    #boot strong { color:#c8f8ef; }
+    .boot-rule { margin-top:1rem; padding:.55rem .7rem; border:1px solid rgba(0,230,195,.2); border-radius:6px; color:#9cebdd; font-size:.75rem; }
+    #boot.hidden { display:none; }
   </style>
 </head>
 <body>
   <div id="boot">
-    <h1>SHOWDUINO</h1>
-    <p id="boot-msg">Loading Communications WebUI…</p>
-    <p>Join Wi-Fi <strong>Showduino</strong> from the Comms S3, then open <strong>http://192.168.4.1/</strong>. Do not use Showduino-Studio or a second leftover Showduino AP.</p>
+    <div class="boot-card">
+      <div class="boot-brand"><span class="boot-dot"></span>SHOWDUINO</div>
+      <h1>Communications Engine</h1>
+      <p id="boot-msg">Loading local system console…</p>
+      <p>Connected through the ESP32-S3 Communications Controller. The browser is a system client; the <strong>ESP32-P4 Show Engine remains authoritative.</strong></p>
+      <div class="boot-rule">S3 = transport + diagnostics + WebUI host · P4 = runtime + safety + show authority</div>
+    </div>
   </div>
   <script>
     window.addEventListener('error', function (ev) {
@@ -34,7 +57,7 @@
         var src = ev.filename || (ev.target && (ev.target.src || ev.target.href)) || '';
         if (src) detail = (detail ? detail + ' — ' : '') + src;
       }
-      msg.textContent = 'WebUI script failed to load. Hard-refresh this page, or you are on the wrong Showduino Wi-Fi.';
+      msg.textContent = 'System console failed to load. Hard-refresh this page and confirm you are connected to the Showduino Communications S3.';
       if (detail) msg.textContent += ' (' + detail + ')';
     });
   </script>
