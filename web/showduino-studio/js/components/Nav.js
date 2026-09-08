@@ -1,29 +1,57 @@
 import { el } from '../utils.js';
 import { navigate } from '../router.js';
 
-const NAV_ITEMS = [
-  { route: '/', label: 'Home', icon: '◉' },
-  { route: '/productions', label: 'Productions', icon: '▦' },
-  { route: '/live', label: 'Live', icon: '▶' },
-  { route: '/outputs', label: 'Outputs', icon: '▣' },
-  { route: '/devices', label: 'Devices', icon: '⬡' },
-  { route: '/network', label: 'Network', icon: '⌁' },
-  { route: '/system', label: 'System', icon: '≡' },
-  { route: '/settings', label: 'Settings', icon: '⚙' }
+const NAV_GROUPS = [
+  {
+    label: 'SYSTEM',
+    items: [
+      { route: '/', label: 'Overview', icon: '◉' },
+      { route: '/live', label: 'Runtime', icon: '▶' },
+      { route: '/productions', label: 'Productions', icon: '▦' }
+    ]
+  },
+  {
+    label: 'HARDWARE',
+    items: [
+      { route: '/outputs', label: 'Outputs', icon: '▣' },
+      { route: '/devices', label: 'Nodes & Bus', icon: '⬡' }
+    ]
+  },
+  {
+    label: 'TRANSPORT',
+    items: [
+      { route: '/network', label: 'Network', icon: '⌁' },
+      { route: '/system', label: 'Diagnostics', icon: '≡' }
+    ]
+  },
+  {
+    label: 'CONFIGURATION',
+    items: [
+      { route: '/settings', label: 'Settings', icon: '⚙' }
+    ]
+  }
 ];
 
 export function Nav() {
   const list = el('ul', { className: 'nav-list' });
-  for (const item of NAV_ITEMS) {
-    list.append(el('li', {}, [
-      el('a', {
-        className: 'nav-link',
-        href: `#${item.route}`,
-        'data-route': item.route,
-        onClick: (e) => { e.preventDefault(); navigate(item.route); closeDrawer(); }
-      }, [`${item.icon}  ${item.label}`])
-    ]));
+
+  for (const group of NAV_GROUPS) {
+    list.append(el('li', { className: 'nav-group-label', text: group.label }));
+    for (const item of group.items) {
+      list.append(el('li', {}, [
+        el('a', {
+          className: 'nav-link',
+          href: `#${item.route}`,
+          'data-route': item.route,
+          onClick: (e) => { e.preventDefault(); navigate(item.route); closeDrawer(); }
+        }, [
+          el('span', { className: 'nav-icon', text: item.icon }),
+          el('span', { text: item.label })
+        ])
+      ]));
+    }
   }
+
   return list;
 }
 
