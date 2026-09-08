@@ -43,6 +43,14 @@ function paintShell(snap) {
   document.body.classList.toggle('p4-offline', !snap.p4Online);
   document.body.classList.toggle('emergency-active', emergency === 'EMERGENCY');
   document.body.classList.toggle('comms-offline', !snap.commsOnline);
+
+  const authority = document.getElementById('header-authority');
+  if (authority) {
+    authority.textContent = emergency === 'EMERGENCY'
+      ? 'P4 AUTHORITY · EMERGENCY'
+      : (snap.p4Online ? 'P4 RUNTIME AUTHORITY' : 'P4 AUTHORITY OFFLINE');
+  }
+
   const panic = document.getElementById('header-panic');
   if (panic) panic.disabled = !snap.p4Online;
 }
@@ -55,15 +63,20 @@ export function Layout() {
     el('div', { className: 'layout' }, [
       el('aside', { className: 'sidebar' }, [
         el('div', { className: 'sidebar-brand' }, [
-          'SHOWDUINO',
-          el('span', { text: 'Configuration WebUI' })
+          el('div', { className: 'brand-line' }, [
+            el('span', { className: 'brand-dot' }),
+            el('span', { text: 'SHOWDUINO' })
+          ]),
+          el('span', { className: 'brand-role', text: 'Communications Engine' }),
+          el('span', { className: 'brand-sub', text: 'LOCAL SYSTEM CONSOLE' })
         ]),
         Nav()
       ]),
       el('div', { className: 'main' }, [
         el('header', { className: 'header' }, [
-          el('button', { id: 'menu-toggle', className: 'menu-toggle', text: '☰' }),
-          el('h1', { id: 'page-title', className: 'header-title', text: 'Home' }),
+          el('button', { id: 'menu-toggle', className: 'menu-toggle', text: '☰', title: 'Open system navigation' }),
+          el('h1', { id: 'page-title', className: 'header-title', text: 'Overview' }),
+          el('div', { id: 'header-authority', className: 'header-authority', text: 'P4 RUNTIME AUTHORITY' }),
           el('div', { className: 'header-status', id: 'status-shell' }, [
             chip('chip-comms', 'COMMS …'),
             chip('chip-p4', 'P4 …'),
@@ -95,6 +108,7 @@ export function Layout() {
     ]),
     el('div', { id: 'nav-overlay', className: 'overlay' })
   ]);
+
   document.body.append(app);
   bindMenuToggle();
   startStore();

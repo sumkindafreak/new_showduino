@@ -12,12 +12,19 @@ function tile(label, word) {
   ]);
 }
 
-export async function HomePage(container) {
-  container.append(el('p', {
-    className: 'info-panel',
-    text: 'System summary from the Communications S3 and the authoritative P4 Show Engine. This is not the Director operator desk.'
-  }));
+function topologyNode(role, name, detail, extraClass = '') {
+  return el('div', { className: `system-topology-node ${extraClass}`.trim() }, [
+    el('span', { className: 'topology-role', text: role }),
+    el('strong', { text: name }),
+    el('span', { text: detail })
+  ]);
+}
 
+function sectionLabel(text) {
+  return el('div', { className: 'system-section-label', text });
+}
+
+export async function HomePage(container) {
   const host = el('div', {});
   container.append(host);
 
@@ -32,25 +39,49 @@ export async function HomePage(container) {
     const showState = showDisplayState(sys);
     const emergency = emergencyWord(sys);
 
+    host.append(el('section', { className: 'system-console-hero' }, [
+      el('div', { className: 'system-console-kicker', text: 'LOCAL SHOWDUINO SYSTEM CONSOLE' }),
+      el('h2', { text: 'Communications Engine' }),
+      el('p', {
+        text: 'This interface is hosted by the ESP32-S3 Communications Controller. It exposes transport health, commissioning and P4-authoritative system state. It does not become the Show Engine.'
+      }),
+      el('div', {
+        className: 'system-console-rule',
+        text: 'S3 transports · P4 decides · Nodes actuate · Director operates'
+      })
+    ]));
+
+    host.append(sectionLabel('CORE STATUS'));
     host.append(el('div', { className: 'dash-status' }, [
-      tile('COMMS', commsWord),
-      tile('P4', p4Word),
+      tile('COMMS S3', commsWord),
+      tile('P4 SHOW ENGINE', p4Word),
       tile('DIRECTOR', directorWord),
-      tile('SYSTEM', health)
+      tile('SYSTEM HEALTH', health)
     ]));
 
     if (!snap.p4Online) host.append(p4OfflineBanner());
 
+    host.append(sectionLabel('SYSTEM PATH'));
+    host.append(el('div', { className: 'system-topology' }, [
+      topologyNode('OPERATOR', 'Director', directorWord === 'ONLINE' ? 'ESP-NOW operator link online' : `ESP-NOW operator link ${directorWord.toLowerCase()}`),
+      topologyNode('TRANSPORT', 'S3 Comms', snap.commsOnline ? 'WebUI host + ESP-NOW ↔ UART transport' : 'Communications controller unavailable'),
+      topologyNode('AUTHORITY', 'P4 Show Engine', snap.p4Online ? 'Timeline · state · safety · cue dispatch' : 'Authoritative runtime unavailable', 'authority'),
+      topologyNode('ACTION', 'Specialist Nodes', 'Audio · Lantern · Pixel · MOSFET execution')
+    ]));
+
+    host.append(sectionLabel('AUTHORITATIVE RUNTIME'));
+    const runtimeGrid = el('div', { className: 'page-grid' });
+
     const production = el('div', { className: 'card' });
-    production.append(el('h2', { text: 'Current production' }));
+    production.append(el('h2', { text: 'Loaded production' }));
     production.append(el('div', { className: 'value', text: productionLabel(sys) }));
     production.append(el('div', { className: 'sub', text: snap.p4Online
-      ? (sys && sys.productionId ? `ID ${sys.productionId}` : 'No production loaded on the P4')
-      : 'Production name withheld while P4 is offline' }));
-    host.append(production);
+      ? (sys && sys.productionId ? `P4 production ID · ${sys.productionId}` : 'No production loaded on the P4')
+      : 'Withheld while P4 is offline' }));
+    runtimeGrid.append(production);
 
     const runtime = el('div', { className: showState === 'EMERGENCY' ? 'card danger-card' : 'card' });
-    runtime.append(el('h2', { text: 'Runtime' }));
+    runtime.append(el('h2', { text: 'Runtime state' }));
     runtime.append(el('div', { className: 'value', text: showState }));
     if (snap.p4Online && sys) {
       runtime.append(statRow('P4 state', sys.showState || '—'));
@@ -59,79 +90,88 @@ export async function HomePage(container) {
     } else {
       runtime.append(el('p', { className: 'sub', text: 'No authoritative runtime while P4 is offline.' }));
     }
-    host.append(runtime);
+    runtimeGrid.append(runtime);
 
     const safety = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
-    safety.append(el('h2', { text: 'Emergency' }));
-    safety.append(el('div', { className: 'value', text: emergency === 'EMERGENCY' ? 'EMERGENCY ACTIVE' : 'CLEAR' }));
+    safety.append(el('h2', { text: 'Safety state' }));
+    safety.append(el('div', { className: 'value', text: emergency === 'EMERGENCY' ? 'EMERGENCY ACTIVE' : (emergency === 'OFFLINE' ? 'P4 OFFLINE' : 'CLEAR') }));
     if (snap.p4Online && sys) {
       safety.append(statRow('Physical loop', loopWord(sys)));
       safety.append(statRow('Clear request', sys.emergencyPendingClear ? 'PENDING' : 'None'));
       safety.append(statRow('Latch source', sys.emergencySource || '—'));
     }
-    host.append(safety);
+    runtimeGrid.append(safety);
+
+    host.append(runtimeGrid);
+
+    host.append(sectionLabel('HARDWARE + TRANSPORT'));
+    const hardwareGrid = el('div', { className: 'page-grid' });
+
+    const commsCard = el('div', { className: 'card' });
+    commsCard.append(el('h2', { text: 'Communications S3' }));
+    if (comms) {
+      commsCard.append(statRow('Role', 'TRANSPORT'));
+      commsCard.append(statRow('WebUI host', 'LOCAL PROGMEM'));
+      commsCard.append(statRow('SSID', comms.ssid || 'Showduino'));
+      commsCard.append(statRow('ESP-NOW channel', comms.radioChannel ?? comms.espnowChannel ?? '—'));
+      commsCard.append(statRow('P4 UART', comms.p4Online ? 'ONLINE' : 'OFFLINE'));
+    } else {
+      commsCard.append(el('p', { className: 'sub', text: 'Communications status unavailable.' }));
+    }
+    hardwareGrid.append(commsCard);
 
     const bus = el('div', { className: 'card' });
-    bus.append(el('h2', { text: 'Plug-in Bus' }));
+    bus.append(el('h2', { text: 'P4 Plug-in Bus' }));
     if (snap.p4Online && sys && sys.pluginBus) {
       const pb = sys.pluginBus;
       bus.append(statRow('Devices', pb.total ?? 0));
       bus.append(statRow('Configured', pb.configuredPlugins ?? 0));
       bus.append(statRow('Unconfigured', pb.unconfiguredPlugins ?? 0));
     } else {
-      bus.append(el('p', { className: 'sub', text: 'Bus summary unavailable.' }));
+      bus.append(el('p', { className: 'sub', text: 'Plug-in Bus summary unavailable.' }));
     }
-    host.append(bus);
-
-    const net = el('div', { className: 'card' });
-    net.append(el('h2', { text: 'Show network' }));
-    if (snap.p4Online && sys) {
-      const eth = sys.ethernet || {};
-      const e131 = sys.e131 || {};
-      net.append(statRow('Ethernet', eth.ip ? `${eth.link || 'UP'} ${eth.ip}` : (eth.link || 'OFFLINE')));
-      net.append(statRow('E1.31 test', e131.state || 'UNAVAILABLE'));
-      net.append(el('p', { className: 'sub', text: 'Configuration lives on the Network page. The Director does not set Ethernet or universes.' }));
-    } else {
-      net.append(el('p', { className: 'sub', text: 'P4 network summary unavailable.' }));
-    }
-    host.append(net);
-
-    const storage = el('div', { className: 'card' });
-    storage.append(el('h2', { text: 'Storage' }));
-    if (snap.p4Online && sys) {
-      const st = sys.storage || {};
-      storage.append(statRow('State', st.state || sys.storageState || (sys.storageReady ? 'ONLINE' : 'OFFLINE')));
-      storage.append(statRow('Card', st.cardType || sys.storageCardType || '—'));
-      storage.append(el('p', { className: 'sub', text: 'SD is the persistent backbone, not the safety backbone. Details are on System.' }));
-    } else {
-      storage.append(el('p', { className: 'sub', text: 'P4 storage summary unavailable.' }));
-    }
-    host.append(storage);
+    hardwareGrid.append(bus);
 
     const nodes = el('div', { className: 'card' });
-    nodes.append(el('h2', { text: 'Showduino Nodes' }));
+    nodes.append(el('h2', { text: 'Specialist Nodes' }));
     const an = (sys && sys.audioNode) || {};
     if (snap.p4Online && (an.seen || an.online)) {
       nodes.append(statRow('Audio Node', an.online ? (an.state || 'ONLINE') : 'OFFLINE'));
     } else {
-      nodes.append(el('p', { className: 'sub', text: 'No Showduino Nodes detected' }));
-      nodes.append(el('p', { className: 'sub', text: 'Audio Node appears here after ESP-NOW announce. Relay, MOSFET, LED, and DMX remain future.' }));
+      nodes.append(statRow('Audio Node', 'NOT DETECTED'));
     }
-    host.append(nodes);
+    nodes.append(el('p', {
+      className: 'sub',
+      text: 'Current rollout: Audio Node → C3 Lantern Node → C3 Pixel Node → MOSFET Node.'
+    }));
+    hardwareGrid.append(nodes);
 
-    const softap = el('div', { className: 'card' });
-    softap.append(el('h2', { text: 'Network' }));
-    if (comms) {
-      softap.append(statRow('WebUI host', 'COMMS S3'));
-      softap.append(statRow('SSID', comms.ssid || 'Showduino'));
-      softap.append(statRow('Channel', comms.radioChannel ?? comms.espnowChannel ?? '—'));
-      softap.append(statRow('P4 Ethernet', 'NOT CONFIGURED'));
+    const network = el('div', { className: 'card' });
+    network.append(el('h2', { text: 'P4 Network' }));
+    if (snap.p4Online && sys) {
+      const eth = sys.ethernet || {};
+      network.append(statRow('Ethernet', eth.ip ? `${eth.link || 'UP'} ${eth.ip}` : (eth.link || 'OFFLINE')));
+      network.append(statRow('Configuration owner', 'P4'));
     } else {
-      softap.append(el('p', { className: 'sub', text: 'Comms status unavailable.' }));
+      network.append(el('p', { className: 'sub', text: 'P4 network summary unavailable.' }));
     }
-    host.append(softap);
+    hardwareGrid.append(network);
+
+    const storage = el('div', { className: 'card' });
+    storage.append(el('h2', { text: 'P4 Storage' }));
+    if (snap.p4Online && sys) {
+      const st = sys.storage || {};
+      storage.append(statRow('State', st.state || sys.storageState || (sys.storageReady ? 'ONLINE' : 'OFFLINE')));
+      storage.append(statRow('Card', st.cardType || sys.storageCardType || '—'));
+      storage.append(statRow('Role', 'PERSISTENT DATA'));
+    } else {
+      storage.append(el('p', { className: 'sub', text: 'P4 storage summary unavailable.' }));
+    }
+    hardwareGrid.append(storage);
+
+    host.append(hardwareGrid);
   }
 
   return subscribeStore(paint);
 }
-HomePage.title = 'Home';
+HomePage.title = 'Overview';
