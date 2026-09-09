@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Convert web/showduino-studio into S3 PROGMEM assets. Do not hand-edit the output.
+"""Build the Communications-S3 flash-resident web assets.
 
-Source stays ES modules for editing. The embedder inlines the app.js graph into
-one /js/app.js so SoftAP does not have to serve 18 parallel module requests.
+Two browser surfaces are embedded:
+
+* `/` — the existing Showduino commissioning/runtime WebUI from this repository.
+* `/studio/` — a snapshot of the canonical website Studio V4 from
+  `sumkindafreak/showduino.com`.
+
+The authoring Studio is fetched only while regenerating the firmware asset
+bundle. The flashed S3 does not require internet access. The exact source commit
+is recorded in the generated header and last-build report.
 """
 
 from __future__ import annotations
@@ -14,7 +21,10 @@ import os
 import posixpath
 import re
 import sys
+import urllib.request
 from datetime import datetime, timezone
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 WEB_ROOT = os.path.join(ROOT, "web", "showduino-studio")
@@ -29,6 +39,11 @@ OUT_H = os.path.join(
 )
 OUT_JSON = os.path.join(os.path.dirname(__file__), "last-build.json")
 
+AUTHORING_REPO = "sumkindafreak/showduino.com"
+AUTHORING_REF = os.environ.get("SHOWDUINO_AUTHORING_REF", "main")
+AUTHORING_COMMIT_OVERRIDE = os.environ.get("SHOWDUINO_AUTHORING_COMMIT", "").strip()
+AUTHORING_DYNAMIC_FILES = ("css/studio-mobile-v4.css",)
+
 MIME = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -36,6 +51,9 @@ MIME = {
     ".json": "application/json",
     ".svg": "image/svg+xml",
     ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
     ".ico": "image/x-icon",
     ".woff": "font/woff",
     ".woff2": "font/woff2",
@@ -53,6 +71,7 @@ EXPORT_NAME_RE = re.compile(
     r"^export\s+(?:async\s+)?(?:function|const|let|class)\s+([\w$]+)",
     re.MULTILINE,
 )
+CSS_URL_RE = re.compile(r"url\(\s*['\"]?([^)'\"]+)['\"]?\s*\)", re.IGNORECASE)
 
 
 def web_path_to_abs(url: str) -> str:
@@ -123,6 +142,160 @@ def bundle_js(entry: str) -> tuple[str, list[str]]:
     return "".join(chunks), order
 
 
+def fetch_bytes(url: str, timeout: int = 25) -> bytes:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Showduino-S3-WebUI-Builder/1.0",
+            "Accept": "application/vnd.github+json, text/plain, */*",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read()
+
+
+def resolve_authoring_commit() -> str:
+    if AUTHORING_COMMIT_OVERRIDE:
+        return AUTHORING_COMMIT_OVERRIDE
+    api = f"https://api.github.com/repos/{AUTHORING_REPO}/commits/{AUTHORING_REF}"
+    data = json.loads(fetch_bytes(api).decode("utf-8"))
+    sha = str(data.get("sha", "")).strip()
+    if len(sha) < 12:
+        raise RuntimeError("Could not resolve canonical website Studio commit")
+    return sha
+
+
+def authoring_raw_url(commit: str, path: str) -> str:
+    return f"https://raw.githubusercontent.com/{AUTHORING_REPO}/{commit}/{path.lstrip('/')}"
+
+
+def fetch_authoring_file(commit: str, path: str) -> bytes:
+    try:
+        return fetch_bytes(authoring_raw_url(commit, path))
+    except Exception as exc:
+        raise RuntimeError(f"Could not fetch canonical Studio file {path} at {commit[:12]}: {exc}") from exc
+
+
+class StudioReferenceParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.refs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        values = dict(attrs)
+        if tag == "script" and values.get("src"):
+            self.refs.append(values["src"])
+        elif tag == "link" and values.get("href"):
+            self.refs.append(values["href"])
+
+
+def is_local_reference(ref: str) -> bool:
+    if not ref or ref.startswith("#") or ref.startswith("//"):
+        return False
+    parsed = urlparse(ref)
+    return not parsed.scheme and not parsed.netloc
+
+
+def strip_external_authoring_dependencies(html: str) -> str:
+    # The local S3 copy is intentionally offline/local-first. Supabase and Anime
+    # are optional in Studio V4, so remove external CDN requests rather than
+    # making the phone wait for internet that is not present on the SoftAP.
+    html = re.sub(
+        r"\s*<script\b[^>]*\bsrc=['\"]https?://[^'\"]+['\"][^>]*>\s*</script>",
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+    html = re.sub(
+        r"\s*<link\b[^>]*\bhref=['\"]https?://[^'\"]+['\"][^>]*>",
+        "",
+        html,
+        flags=re.IGNORECASE,
+    )
+    html = html.replace('href="index.html" aria-label="Showduino website"', 'href="/" aria-label="Showduino commissioning UI"')
+    return html
+
+
+def offline_runtime_config() -> bytes:
+    return (
+        "// Generated local Showduino Studio runtime configuration.\n"
+        "window.SHOWDUINO_CONFIG = Object.freeze({\n"
+        "  environment: 'showduino-local',\n"
+        "  features: {\n"
+        "    supabase: false, authentication: false, cloudSync: false,\n"
+        "    firebase: false, stripe: false, subscriptions: false\n"
+        "  },\n"
+        "  supabase: { url: '', publishableKey: '' },\n"
+        "  firebase: {}, stripe: {}, plans: {}\n"
+        "});\n"
+    ).encode("utf-8")
+
+
+def discover_css_assets(commit: str, source_path: str, css: bytes) -> list[str]:
+    text = css.decode("utf-8")
+    out: list[str] = []
+    base = posixpath.dirname(source_path)
+    for ref in CSS_URL_RE.findall(text):
+        ref = ref.strip()
+        if not is_local_reference(ref) or ref.startswith("data:"):
+            continue
+        clean = ref.split("?", 1)[0].split("#", 1)[0]
+        if not clean:
+            continue
+        resolved = posixpath.normpath(posixpath.join(base, clean))
+        if resolved.startswith("../"):
+            continue
+        out.append(resolved)
+    return out
+
+
+def build_authoring_records() -> tuple[list[tuple[str, str, bytes]], str, list[str]]:
+    commit = resolve_authoring_commit()
+    raw_html = fetch_authoring_file(commit, "studio.html").decode("utf-8")
+    parser = StudioReferenceParser()
+    parser.feed(raw_html)
+
+    source_paths: list[str] = []
+    for ref in parser.refs:
+        if not is_local_reference(ref):
+            continue
+        clean = ref.split("?", 1)[0].split("#", 1)[0].lstrip("/")
+        if clean and clean not in source_paths:
+            source_paths.append(clean)
+    for path in AUTHORING_DYNAMIC_FILES:
+        if path not in source_paths:
+            source_paths.append(path)
+
+    records: list[tuple[str, str, bytes]] = []
+    transformed_html = strip_external_authoring_dependencies(raw_html).encode("utf-8")
+    records.append(("/studio/index.html", MIME[".html"], transformed_html))
+
+    fetched: dict[str, bytes] = {}
+    pending = list(source_paths)
+    while pending:
+        path = pending.pop(0)
+        if path in fetched:
+            continue
+        if path == "config/runtime-config.js":
+            data = offline_runtime_config()
+        else:
+            data = fetch_authoring_file(commit, path)
+        fetched[path] = data
+
+        ext = os.path.splitext(path)[1].lower()
+        if ext == ".css":
+            for extra in discover_css_assets(commit, path, data):
+                if extra not in fetched and extra not in pending:
+                    pending.append(extra)
+
+    for path, data in fetched.items():
+        ext = os.path.splitext(path)[1].lower()
+        mime = MIME.get(ext, "application/octet-stream")
+        records.append((f"/studio/{path}", mime, data))
+
+    return records, commit, list(fetched.keys())
+
+
 def gzip_bytes(data: bytes) -> bytes:
     return gzip.compress(data, compresslevel=9, mtime=0)
 
@@ -153,6 +326,9 @@ def main() -> None:
             records.append((path, MIME[ext], fh.read()))
     records.append((ENTRY_JS, MIME[".js"], bundle))
 
+    authoring_records, authoring_commit, authoring_files = build_authoring_records()
+    records.extend(authoring_records)
+
     raw_blob = b"".join(data for _path, _mime, data in records)
     digest = hashlib.sha256(raw_blob).hexdigest()
     short = digest[:12]
@@ -177,6 +353,10 @@ def main() -> None:
         gz_total += len(payload)
         rewritten.append((path, mime, data, payload, use_gz))
 
+    authoring_asset_count = sum(1 for path, *_rest in rewritten if path.startswith("/studio/"))
+    authoring_raw_bytes = sum(len(raw) for path, _mime, raw, _payload, _use_gz in rewritten if path.startswith("/studio/"))
+    authoring_embedded_bytes = sum(len(payload) for path, _mime, _raw, payload, _use_gz in rewritten if path.startswith("/studio/"))
+
     lines = [
         "/* Generated by tools/embed-webui/embed_webui.py — do not hand-edit. */",
         "#ifndef SHOWDUINO_S3_WEB_ASSETS_GENERATED_H",
@@ -188,6 +368,11 @@ def main() -> None:
         "",
         f'#define SHOWDUINO_WEBUI_BUILD_HASH "{short}"',
         f'#define SHOWDUINO_WEBUI_BUILD_UTC "{stamp}"',
+        f'#define SHOWDUINO_AUTHORING_SOURCE_REPO "{AUTHORING_REPO}"',
+        f'#define SHOWDUINO_AUTHORING_SOURCE_COMMIT "{authoring_commit}"',
+        f"#define SHOWDUINO_AUTHORING_ASSET_COUNT {authoring_asset_count}",
+        f"#define SHOWDUINO_AUTHORING_RAW_BYTES {authoring_raw_bytes}",
+        f"#define SHOWDUINO_AUTHORING_EMBEDDED_BYTES {authoring_embedded_bytes}",
         f"#define SHOWDUINO_WEBUI_ASSET_COUNT {len(rewritten)}",
         f"#define SHOWDUINO_WEBUI_RAW_BYTES {raw_total}",
         f"#define SHOWDUINO_WEBUI_EMBEDDED_BYTES {gz_total}",
@@ -203,7 +388,7 @@ def main() -> None:
         "",
     ]
 
-    for i, (path, mime, raw, payload, use_gz) in enumerate(rewritten):
+    for i, (_path, _mime, _raw, payload, _use_gz) in enumerate(rewritten):
         lines.extend(c_array(f"kWebAsset_{i}", payload))
 
     lines.append("static const ShowduinoWebAsset kShowduinoWebAssets[] = {")
@@ -226,12 +411,24 @@ def main() -> None:
     report = {
         "buildHash": short,
         "buildUtc": stamp,
-        "source": "web/showduino-studio",
+        "source": "web/showduino-studio + canonical website Studio V4",
         "output": os.path.relpath(OUT_H, ROOT).replace("\\", "/"),
         "assetCount": len(rewritten),
         "rawBytes": raw_total,
         "embeddedBytes": gz_total,
         "bundledModules": module_order,
+        "authoringStudio": {
+            "repo": AUTHORING_REPO,
+            "ref": AUTHORING_REF,
+            "commit": authoring_commit,
+            "route": "/studio/",
+            "assetCount": authoring_asset_count,
+            "rawBytes": authoring_raw_bytes,
+            "embeddedBytes": authoring_embedded_bytes,
+            "sourceFiles": authoring_files,
+            "cloudEnabled": False,
+            "externalCdnDependencies": False,
+        },
         "assets": [
             {
                 "path": path,
@@ -249,7 +446,11 @@ def main() -> None:
 
     print(f"Generated {OUT_H}")
     print(f"Build {short}  assets={len(rewritten)}  raw={raw_total}  embedded={gz_total}")
-    print(f"Bundled {len(module_order)} modules into /js/app.js")
+    print(f"Bundled {len(module_order)} commissioning modules into /js/app.js")
+    print(
+        f"Authoring Studio {authoring_commit[:12]}  assets={authoring_asset_count} "
+        f"raw={authoring_raw_bytes} embedded={authoring_embedded_bytes}"
+    )
     for path, _mime, raw, payload, use_gz in rewritten:
         flag = "gzip" if use_gz else "raw"
         print(f"  {path}  {len(raw)} -> {len(payload)} ({flag})")
