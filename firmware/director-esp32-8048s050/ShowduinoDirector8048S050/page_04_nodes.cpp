@@ -229,8 +229,8 @@ void page_04_nodes_create(lv_obj_t *parent, page04_command_fn command_cb) {
 
   s_cards[PAGE04_ROLE_AUDIO].name = "AUDIO NODE";
   s_cards[PAGE04_ROLE_AUDIO].idle_detail = "No compatible node detected.\nProgramme WAV stays on this role.";
-  s_cards[PAGE04_ROLE_RELAY].name = "RELAY NODE";
-  s_cards[PAGE04_ROLE_RELAY].idle_detail = "No compatible node detected.\nIsolated on/off outputs.";
+  s_cards[PAGE04_ROLE_LAMP].name = "LAMP NODE";
+  s_cards[PAGE04_ROLE_LAMP].idle_detail = "No compatible node detected.\nCarbide / theatrical lamp FX.";
   s_cards[PAGE04_ROLE_MOSFET].name = "MOSFET NODE";
   s_cards[PAGE04_ROLE_MOSFET].idle_detail = "No compatible node detected.\nPWM / dimming outputs.";
   s_cards[PAGE04_ROLE_NEOPIXEL].name = "NEOPIXEL NODE";
@@ -243,7 +243,7 @@ void page_04_nodes_create(lv_obj_t *parent, page04_command_fn command_cb) {
   Serial.println("[Page04] creating Nodes page...");
   build_header(parent);
   build_card(PAGE04_ROLE_AUDIO, 0, 0);
-  build_card(PAGE04_ROLE_RELAY, 1, 0);
+  build_card(PAGE04_ROLE_LAMP, 1, 0);
   build_card(PAGE04_ROLE_MOSFET, 2, 0);
   build_card(PAGE04_ROLE_NEOPIXEL, 0, 1);
   build_card(PAGE04_ROLE_DMX, 1, 1);

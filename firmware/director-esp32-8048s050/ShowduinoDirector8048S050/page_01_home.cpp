@@ -81,7 +81,7 @@ struct Page01FooterSlot {
 };
 
 static bool cap_always(const ShowduinoCapabilities *) { return true; }
-static bool cap_relay(const ShowduinoCapabilities *c) { return c && c->relay; }
+static bool cap_lamp(const ShowduinoCapabilities *c) { return c && c->lamp; }
 static bool cap_mosfet(const ShowduinoCapabilities *c) { return c && c->mosfet; }
 static bool cap_neopixel(const ShowduinoCapabilities *c) { return c && c->neopixel; }
 static bool cap_audio(const ShowduinoCapabilities *c) { return c && c->audio; }
@@ -504,10 +504,10 @@ static void build_footer(lv_obj_t *parent) {
   showduino_theme_register(s_footer, SHOWDUINO_THEME_ROLE_BORDER);
 
   static const char *titles[7] = {
-    "SUE", "P4", "Relay", "MOSFET", "NeoPixel", "Audio", "DMX"
+    "SUE", "P4", "Lamp", "MOSFET", "NeoPixel", "Audio", "DMX"
   };
   static bool (*cap_fns[7])(const ShowduinoCapabilities *) = {
-    cap_always, cap_always, cap_relay, cap_mosfet, cap_neopixel, cap_audio, cap_dmx
+    cap_always, cap_always, cap_lamp, cap_mosfet, cap_neopixel, cap_audio, cap_dmx
   };
 
   for (uint8_t i = 0; i < 7; i++) {
@@ -626,8 +626,8 @@ void page_01_home_set_capabilities(const ShowduinoCapabilities *caps) {
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
   apply_footer_visibility();
   refresh_hero();
-  Serial.printf("[Page01] caps relay=%d mosfet=%d neo=%d audio=%d dmx=%d\n",
-                (int)s_caps.relay, (int)s_caps.mosfet, (int)s_caps.neopixel,
+  Serial.printf("[Page01] caps lamp=%d mosfet=%d neo=%d audio=%d dmx=%d\n",
+                (int)s_caps.lamp, (int)s_caps.mosfet, (int)s_caps.neopixel,
                 (int)s_caps.audio, (int)s_caps.dmx);
 }
 
@@ -697,7 +697,7 @@ static void set_footer_slot(uint8_t index, const char *text) {
 
 void page_01_home_set_footer_sue(const char *text) { set_footer_slot(0, text); }
 void page_01_home_set_footer_p4(const char *text) { set_footer_slot(1, text); }
-void page_01_home_set_footer_relay(const char *text) { set_footer_slot(2, text); }
+void page_01_home_set_footer_lamp(const char *text) { set_footer_slot(2, text); }
 void page_01_home_set_footer_mosfet(const char *text) { set_footer_slot(3, text); }
 void page_01_home_set_footer_neopixel(const char *text) { set_footer_slot(4, text); }
 void page_01_home_set_footer_audio(const char *text) { set_footer_slot(5, text); }

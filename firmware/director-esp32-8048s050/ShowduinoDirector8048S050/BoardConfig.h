@@ -2,6 +2,7 @@
 #define SHOWDUINO_BOARD_CONFIG_H
 
 #include <Arduino.h>
+#include "../../../protocol/showduino_log.h"
 
 // =========================================================
 // Showduino Director - Sunton ESP32-S3 RGB panel config
@@ -170,8 +171,9 @@
 #define HEARTBEAT_INTERVAL_MS   2000UL
 #define HELLO_RETRY_INTERVAL_MS  2000UL
 #define UI_REFRESH_INTERVAL_MS  1000UL
-// Sustained silence before DISCONNECTED (~3 missed heartbeats).
-#define LINK_TIMEOUT_MS         7000UL
+// Sustained silence before DISCONNECTED. UART/ESP-NOW can burst with
+// node telemetry, so this must outlast a short congestion gap.
+#define LINK_TIMEOUT_MS         15000UL
 /*
  * Temporary Director-side baseline: no production Nodes are required.
  * The supported stack is Director -> Communications S3 -> P4 Show Engine.

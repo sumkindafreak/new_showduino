@@ -92,7 +92,7 @@ public:
     if (!online) return false;
 
     unsigned long startWait = millis();
-    while (sendBusy && (millis() - startWait) < 30) {
+    while (sendBusy && (millis() - startWait) < 15) {
       delay(1);
     }
 
@@ -118,7 +118,7 @@ public:
     }
 
     unsigned long t0 = millis();
-    while (!callbackSeen && (millis() - t0) < 80) {
+    while (!callbackSeen && (millis() - t0) < 25) {
       delay(1);
     }
 
@@ -145,7 +145,7 @@ public:
   bool wasLastSendOk() const { return lastSendOk; }
 
 private:
-  static const uint8_t RX_QUEUE_DEPTH = 16;
+  static const uint8_t RX_QUEUE_DEPTH = 32;
 
   bool online = false;
   bool lastSendOk = false;

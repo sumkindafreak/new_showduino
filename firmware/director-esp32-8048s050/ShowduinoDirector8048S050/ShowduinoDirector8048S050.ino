@@ -52,6 +52,7 @@
 #include "src/TimelineEngine.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_show_runtime.h"
 
 // =========================================================
@@ -280,11 +281,14 @@ void applyLinkState(uint8_t state) {
   linkState = state;
   ui.setLinkState(state);
   if (state == LINK_DISCONNECTED) {
+    if (prev != LINK_DISCONNECTED) SD_LOGW("DIRECTOR", "Comms lost");
     ui.markRelayStaleUnknown();
     syncRequested = false;
     runtimeQuerySent = false;
+    ui.setSynchronising(false);
     gShowMirror.stageConnected = 0;
   } else if (state == LINK_READY && prev != LINK_READY) {
+    SD_LOGI("DIRECTOR", "Comms online");
     requestStateSync();
   }
   ui.updateStatusWidgets(false);
@@ -309,12 +313,16 @@ void onStorageStatus(const StorageStatus &st) {
 bool isQuietLinkTraffic(const String &msg) {
   return msg == SHOWDUINO_LEGACY_HEARTBEAT ||
          msg == SHOWDUINO_LEGACY_ACK_HEARTBEAT ||
+         msg == "OK:HEARTBEAT" ||
          msg == SHOWDUINO_LEGACY_HELLO ||
          msg == SHOWDUINO_LEGACY_READY ||
          msg == SHOWDUINO_LEGACY_SHOWDUINO_STAGE ||
          msg == "BOOT:STAGE_ENGINE_READY" ||
          msg == SHOWDUINO_WIRE_SNAPSHOT_BEGIN ||
          msg == SHOWDUINO_WIRE_SNAPSHOT_END ||
+         msg == "ERR:UNKNOWN_COMMAND" ||
+         msg.startsWith("ERR:UNKNOWN_COMMAND:") ||
+         msg.startsWith("STATE:") ||
          msg.startsWith(SHOW_RUNTIME_WIRE_PREFIX) ||
          /* Quiet 1 Hz clock pushes; keep TIME:REQUEST visible for diagnostics. */
          (msg.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX) &&
@@ -423,9 +431,9 @@ void handleStageLine(String line) {
     }
   }
 
-  ShowduinoNodeAvailWire nodeW = showduino_parse_state_node_relay(line.c_str());
-  if (nodeW != SHOWDUINO_NODE_WIRE_INVALID) {
-    ui.setRelayNodeAvail(nodeW);
+  ShowduinoLampNodeWire lampW = showduino_parse_state_node_lamp(line.c_str());
+  if (lampW != SHOWDUINO_LAMP_NODE_WIRE_INVALID) {
+    ui.setLampNodeAvail(showduino_lamp_wire_to_avail(lampW));
     gNodesOnline = ui.getNodeCount();
 #if SHOWDUINO_OS2_SHELL
     publishOs2Services();
@@ -434,7 +442,10 @@ void handleStageLine(String line) {
 
   ShowduinoAudioNodeWire audioW = showduino_parse_state_node_audio(line.c_str());
   if (audioW != SHOWDUINO_AUDIO_NODE_WIRE_INVALID) {
-    Serial.printf("[Nodes] %s\n", line.c_str());
+    static char sLastAudioWire[48] = "";
+    if (showduino_log_changed(sLastAudioWire, sizeof(sLastAudioWire), line.c_str())) {
+      SD_LOGI("DIRECTOR", "Audio node %s", line.c_str());
+    }
     ui.setAudioNodeWire(audioW);
     gNodesOnline = ui.getNodeCount();
 #if SHOWDUINO_OS2_SHELL
@@ -537,7 +548,22 @@ void handleStageLine(String line) {
   }
 
   if (line == "ERR:UNKNOWN_COMMAND" || line.startsWith("ERR:UNKNOWN_COMMAND:")) {
-    ui.appendLog("Stage rejected command (unknown) - check P4 firmware build");
+    static uint32_t lastUnknownMs = 0;
+    static uint16_t unknownBurst = 0;
+    unknownBurst++;
+    if ((millis() - lastUnknownMs) >= 4000UL) {
+      lastUnknownMs = millis();
+      if (line.startsWith("ERR:UNKNOWN_COMMAND:") && line.length() > 21) {
+        ui.appendLog(String("Stage rejected: ") + line.substring(21));
+      } else {
+        ui.appendLog("Stage rejected command (unknown) - check P4 firmware build");
+      }
+      if (unknownBurst > 1) {
+        ui.appendLog(String("Stage unknown-command burst x") + String(unknownBurst));
+      }
+      unknownBurst = 0;
+    }
+    return;
   }
 
   if (line.startsWith("ACK:SHOW:TL:END:")) {
@@ -581,6 +607,8 @@ void handleStageLine(String line) {
   }
 
   if (!isQuietLinkTraffic(line)) {
+    /* Operator log / Serial: meaningful events only. Quiet covers heartbeats,
+     * STATE sync, unknown-command bursts already handled above. */
     ui.appendLog("RX <- Stage: " + line);
   }
 
@@ -1074,7 +1102,7 @@ void handleUiCommand(const String &command) {
 
   backlightNotifyActivity();
   if (command.startsWith("RELAY:")) {
-    ui.appendLog("Relay node not available");
+    ui.appendLog("Relay retired — use Lamp Node");
     return;
   }
   if (command.startsWith("AUDIO:") &&
@@ -1114,8 +1142,10 @@ void readEspNowReplies() {
 #if SHOWDUINO_USE_ESPNOW
   if (!espNowReady) return;
   String reply;
-  while (espNowTransport.popReply(reply)) {
+  uint8_t n = 0;
+  while (n < 32 && espNowTransport.popReply(reply)) {
     handleStageLine(reply);
+    n++;
   }
 #endif
 }
@@ -1148,9 +1178,11 @@ void handleUsbLine(String command) {
   if (command.length() == 0) return;
 
   if (command == "HELP") {
-    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:RUN:<name>, SHOW:START, SHOW:PAUSE, SHOW:RESUME, SHOW:STOP, EMERGENCY:STOP/CLEAR");
+    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, LOG:LEVEL");
     return;
   }
+
+  if (showduino_log_handle_command(command.c_str())) return;
 
   if (command == "HEALTH") {
     ui.printHealthDiagnostic();
@@ -1216,14 +1248,6 @@ void sendHelloIfNeeded() {
       applyLinkState(LINK_SEARCHING);
     }
     sendToStage("HELLO");
-
-    // Brief wait for READY/ACK so reconnect isn't delayed a full loop cycle.
-    unsigned long t0 = millis();
-    while ((millis() - t0) < 300UL && linkState != LINK_READY) {
-      readEspNowReplies();
-      lvglPortLoop();
-      delay(5);
-    }
   }
 }
 

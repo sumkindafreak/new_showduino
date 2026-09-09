@@ -14,7 +14,7 @@
  * Update them when real discovery / HELLO data arrives.
  */
 struct ShowduinoCapabilities {
-  bool relay;     /* Relay output node(s) present */
+  bool lamp;      /* C3 Lamp Node present (replaces retired Relay Node role) */
   bool mosfet;    /* MOSFET / high-current driver node(s) present */
   bool neopixel;  /* NeoPixel / LED strip node(s) present */
   bool audio;     /* Audio playback node / P4 local audio present */
@@ -24,11 +24,11 @@ struct ShowduinoCapabilities {
 /**
  * Default bring-up flags.
  * No specialist node is assumed present until discovery reports it.
- * P4-local relays were removed; do not advertise relay control.
+ * Relay Node is retired — do not advertise relay control.
  */
 inline ShowduinoCapabilities showduino_capabilities_defaults(void) {
   ShowduinoCapabilities caps;
-  caps.relay = false;
+  caps.lamp = false;
   caps.mosfet = false;
   caps.neopixel = false;
   caps.audio = false;
@@ -41,7 +41,7 @@ inline bool showduino_capabilities_any_output(const ShowduinoCapabilities *caps)
   if (caps == nullptr) {
     return false;
   }
-  return caps->relay || caps->mosfet || caps->neopixel || caps->audio || caps->dmx;
+  return caps->lamp || caps->mosfet || caps->neopixel || caps->audio || caps->dmx;
 }
 
 #endif

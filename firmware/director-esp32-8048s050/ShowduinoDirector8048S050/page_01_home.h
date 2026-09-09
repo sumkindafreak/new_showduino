@@ -70,7 +70,7 @@ void page_01_home_set_clock_text(const char *text);
  */
 void page_01_home_set_footer_sue(const char *text);
 void page_01_home_set_footer_p4(const char *text);
-void page_01_home_set_footer_relay(const char *text);
+void page_01_home_set_footer_lamp(const char *text);
 void page_01_home_set_footer_mosfet(const char *text);
 void page_01_home_set_footer_neopixel(const char *text);
 void page_01_home_set_footer_audio(const char *text);

@@ -109,10 +109,10 @@ Libraries include LVGL 9.x, Arduino_GFX_Library, TAMC_GT911 and Adafruit NeoPixe
 | Communications Engine | `firmware/s3-comms-controller/` — ACTIVE, including S3-hosted Studio |
 | Show Engine | `firmware/stage-engine-p4/` — ACTIVE |
 | Audio Node | `firmware/audio-node-esp32-a1s/` — implemented firmware / hardware test required |
-| C3 Lantern Node | next specialist Node, work only when explicitly started |
-| C3 Pixel Node | follows Lantern |
-| MOSFET Node | follows C3 Pixel; replaces old Relay Node direction |
-| Relay Node | legacy/superseded reference only |
+| C3 Lamp Node | `firmware/c3-lamp-node/` — ACTIVE (replaces retired Relay product role) |
+| C3 Pixel Node | follows Lamp |
+| MOSFET Node | follows C3 Pixel; digital/PWM specialist |
+| Relay Node | retired — legacy reference only (`firmware/relay-node-esp32/`) |
 | DMX | parked/out of scope |
 
 See `docs/architecture.md`, `docs/studio-pixel-authoring.md` and root `README.md`. Classification: [`docs/repository-status.md`](../../docs/repository-status.md).

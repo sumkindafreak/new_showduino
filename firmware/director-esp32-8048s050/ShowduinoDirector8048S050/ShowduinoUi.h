@@ -214,17 +214,17 @@ public:
 
   uint8_t getNodeCount() const { return nodeCount; }
 
-  void setRelayNodeAvail(ShowduinoNodeAvailWire wire) {
-    if (relayNodeWire_ == wire) return;
-    relayNodeWire_ = wire;
+  void setLampNodeAvail(ShowduinoNodeAvailWire wire) {
+    if (lampNodeWire_ == wire) return;
+    lampNodeWire_ = wire;
     const bool present = (wire == SHOWDUINO_NODE_WIRE_ONLINE ||
                           wire == SHOWDUINO_NODE_WIRE_FAULT);
     ShowduinoCapabilities caps = page_01_home_get_capabilities();
-    if (caps.relay != present) {
-      caps.relay = present;
+    if (caps.lamp != present) {
+      caps.lamp = present;
       page_01_home_set_capabilities(&caps);
     }
-    page_01_home_set_footer_relay(present
+    page_01_home_set_footer_lamp(present
         ? (wire == SHOWDUINO_NODE_WIRE_FAULT ? "FAULT" : "ONLINE")
         : "-");
     recountSpecialistNodes();
@@ -557,15 +557,13 @@ public:
     lastHealthStage_ = stageOnline;
     healthLogReady_ = true;
 
-    Serial.printf("[HEALTH] link=%s\n", healthLinkWord());
-    Serial.printf("[HEALTH] stage=%s\n", stageOnline ? "ONLINE" : "OFFLINE");
-    Serial.printf("[HEALTH] synchronising=%s\n", synchronising ? "true" : "false");
-    Serial.printf("[HEALTH] nodes=%u/%u\n",
-                  (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES);
-    Serial.printf("[HEALTH] network=%s\n", healthNetworkWord(net));
-    Serial.printf("[HEALTH] system=%s\n", healthSystemWord(sys));
+    SD_LOGD("HEALTH", "link=%s stage=%s sync=%s nodes=%u/%u net=%s sys=%s",
+            healthLinkWord(), stageOnline ? "ONLINE" : "OFFLINE",
+            synchronising ? "true" : "false",
+            (unsigned)nodeCount, (unsigned)SHOWDUINO_EXPECTED_NODES,
+            healthNetworkWord(net), healthSystemWord(sys));
     if (net == DirectorStatusBar::NetworkState::Degraded) {
-      Serial.printf("[HEALTH] DEGRADED reason=%s\n", healthDegradedReason());
+      SD_LOGW("HEALTH", "DEGRADED reason=%s", healthDegradedReason());
     }
   }
 
@@ -619,7 +617,15 @@ public:
   }
 
   void appendLog(const String &line) {
-    Serial.println(line);
+    if (line.startsWith("RX <- Stage:") || line.startsWith("TX -> Stage")) {
+      SD_LOGT("DIRECTOR", "%s", line.c_str());
+    } else if (line.startsWith("WARN:") || line.indexOf("rejected") >= 0 ||
+               line.indexOf("FAILED") >= 0 || line.indexOf("failed") >= 0 ||
+               line.indexOf("DISCONNECTED") >= 0) {
+      SD_LOGW("DIRECTOR", "%s", line.c_str());
+    } else {
+      SD_LOGI("DIRECTOR", "%s", line.c_str());
+    }
     pushOperatorEvent(line.c_str());
   }
 
@@ -628,6 +634,11 @@ public:
     if (!eventLog) ensureEventLogStorage();
     if (!eventLog) {
       Serial.println(msg);
+      return;
+    }
+    /* Duplicate flood (UNKNOWN_COMMAND, STATE echoes) must not rebuild LVGL. */
+    if (eventLogCount > 0 &&
+        strncmp(eventSlot(0), msg, OPERATOR_EVENT_LINE_LEN - 1) == 0) {
       return;
     }
     /* Newest first: shift down, insert at 0. */
@@ -1194,8 +1205,8 @@ private:
 
   void recountSpecialistNodes() {
     uint8_t n = 0;
-    if (relayNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
-        relayNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT) n++;
+    if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
+        lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT) n++;
     if (audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_ONLINE ||
         audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_PLAYING ||
         audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_PAUSED ||
@@ -1250,21 +1261,21 @@ private:
                            audioDetail, audioCol);
     refreshAudioNodePage();
 
-    const bool relayOn = (relayNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
-                          relayNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT);
-    uint32_t relayCol = ShowduinoPalette::Disabled;
-    const char *relaySt = "NOT DETECTED";
-    const char *relayDet = "No compatible node detected.\nIsolated on/off outputs.";
-    if (relayNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE) {
-      relayCol = ShowduinoPalette::Accent;
-      relaySt = "ONLINE";
-      relayDet = "Relay Node present.";
-    } else if (relayNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT) {
-      relayCol = ShowduinoPalette::Danger;
-      relaySt = "FAULT";
-      relayDet = "Relay Node fault reported.";
+    const bool lampOn = (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
+                         lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT);
+    uint32_t lampCol = ShowduinoPalette::Disabled;
+    const char *lampSt = "NOT DETECTED";
+    const char *lampDet = "No compatible node detected.\nCarbide / theatrical lamp FX.";
+    if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE) {
+      lampCol = ShowduinoPalette::Accent;
+      lampSt = "ONLINE";
+      lampDet = "C3 Lamp Node present.";
+    } else if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT) {
+      lampCol = ShowduinoPalette::Danger;
+      lampSt = "FAULT";
+      lampDet = "Lamp Node fault reported.";
     }
-    page_04_nodes_set_card(PAGE04_ROLE_RELAY, relayOn, relaySt, relayDet, relayCol);
+    page_04_nodes_set_card(PAGE04_ROLE_LAMP, lampOn, lampSt, lampDet, lampCol);
 
     page_04_nodes_set_card(PAGE04_ROLE_MOSFET, false, "NOT DETECTED",
                            "No compatible node detected.\nPWM / dimming outputs.",
@@ -1378,7 +1389,7 @@ private:
   bool liveStageConnected = false;
   char liveStateName[24] = "IDLE";
   uint8_t nodeCount = 0;
-  ShowduinoNodeAvailWire relayNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  ShowduinoNodeAvailWire lampNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
   ShowduinoAudioNodeWire audioNodeWire_ = SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
   DirectorAudioNodeControl audioNodeCtrl_;
   uint16_t sessionEmergencyCount = 0;
@@ -2181,7 +2192,7 @@ private:
       ShowduinoCapabilities caps = showduino_capabilities_defaults();
       page_01_home_set_capabilities(&caps);
       page_01_home_set_footer_p4("-");
-      page_01_home_set_footer_relay("-");
+      page_01_home_set_footer_lamp("-");
       page_01_home_set_footer_mosfet("-");
       page_01_home_set_footer_neopixel("-");
       page_01_home_set_footer_audio("-");
