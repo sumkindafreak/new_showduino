@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "../../firmware/stage-engine-p4/ShowduinoStageEngineP4/src/WebTimelineUploadPolicy.h"
+#include "../../protocol/showduino_web_timeline_upload_policy.h"
 
 static int failures = 0;
 
