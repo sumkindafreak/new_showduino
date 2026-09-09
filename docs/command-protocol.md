@@ -16,7 +16,7 @@ ESP32-P4 Show Engine
 
 Browser commands use the S3-hosted Studio/WebUI and are proxied to the P4. ESP-NOW, UART, Wi-Fi and HTTP are transports; application messages describe intent/state.
 
-The first specialist Node is the Audio Node. Current Node roadmap after Audio is C3 Lantern → C3 Pixel → MOSFET. The old Relay Node direction is superseded. DMX is parked/out of scope.
+The first specialist Node is the Audio Node. Current Node roadmap after Audio is C3 Lamp → C3 Pixel → MOSFET. The Relay Node product is **retired** (Lamp occupies that Director slot). DMX is parked/out of scope.
 
 ---
 
@@ -255,7 +255,10 @@ AUDIO:NODE:DUCK
 AUDIO:NODE:UNDUCK
 AUDIO:NODE:INVENTORY:...
 AUDIO:NODE:SOUND:...
+AUDIO:NODE:OWN:GRANT
 ```
+
+P4 ownership GRANT is required before the Audio Node accepts theatrical commands from the show path. Hearing ESP-NOW is not ownership. See [`standalone-node-architecture.md`](standalone-node-architecture.md).
 
 Transport envelope:
 

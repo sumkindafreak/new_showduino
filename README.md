@@ -100,12 +100,12 @@ Current rollout order is intentionally fixed:
 
 ```text
 1. Audio Node
-2. C3 Lantern Node
+2. C3 Lamp Node
 3. C3 Pixel Node
 4. MOSFET Node
 ```
 
-The old Relay Node product concept is superseded by the MOSFET Node direction. Legacy relay source remains for reference only.
+The Relay Node product role is **retired**. The C3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. Legacy relay source remains for reference only.
 
 DMX remains **parked/out of scope** until explicitly reopened.
 
@@ -174,20 +174,20 @@ firmware/director-esp32-8048s050/     Director
 firmware/s3-comms-controller/         Communications Engine
 firmware/stage-engine-p4/             Show Engine / Stage Controller
 firmware/audio-node-esp32-a1s/        Audio Node — hardware test required
+firmware/c3-lamp-node/                C3 Lamp Node — replaces retired Relay role
 ```
 
 ### Planned
 
 ```text
-C3 Lantern Node                        next specialist-node milestone
-C3 Pixel Node                          follows Lantern; shares common FX vocabulary
-firmware/mosfet-node-esp32/           planned; replaces Relay Node concept
+C3 Pixel Node                          follows Lamp; shares common FX vocabulary
+firmware/mosfet-node-esp32/           planned; digital/PWM specialist
 ```
 
 ### Legacy / reserved / diagnostic
 
 ```text
-firmware/relay-node-esp32/            LEGACY / SUPERSEDED product direction
+firmware/relay-node-esp32/            LEGACY / RETIRED product role
 firmware/p4-c6-espnow-bridge/         UNUSED / RESERVED onboard C6 work
 firmware/c3-supermini-espnow-bridge/  LEGACY / SUPERSEDED SUE Comms
 firmware/director-s3/                 LEGACY
@@ -208,7 +208,7 @@ firmware/executor-mega/               ARCHIVE CANDIDATE
 | [`docs/hardware-pinout.md`](docs/hardware-pinout.md) | Current P4 pins and pixel wiring standard |
 | [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | Audio split, segmented FX and emergency-pixel policy |
 | [`docs/audio-node.md`](docs/audio-node.md) | ESP32-A1S / ES8388 Audio Node |
-| [`docs/node-roadmap.md`](docs/node-roadmap.md) | Audio → Lantern → C3 Pixel → MOSFET rollout |
+| [`docs/node-roadmap.md`](docs/node-roadmap.md) | Audio → Lamp → C3 Pixel → MOSFET rollout |
 | [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production format |
 | [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus |
 
@@ -223,4 +223,4 @@ The immediate platform target is to bench-commission the **P4 pixel lines**:
 5. prove emergency forces GPIO23 + GPIO24 white;
 6. prove clear returns signage to locator green and show pixels to safe blackout.
 
-After current P4/Audio work, the next specialist node is the **C3 Lantern Node**, followed by **C3 Pixel**, then **MOSFET**.
+After Audio, the specialist order is **C3 Lamp Node**, then **C3 Pixel**, then **MOSFET**.

@@ -1,9 +1,11 @@
 # Showduino Audio Node
 
 **Status:** IMPLEMENTED / HARDWARE TEST REQUIRED  
-**Firmware:** `0.3.0` · protocol `1.2`  
+**Firmware:** `0.4.0` · protocol `1.3`  
 **Board:** Ai-Thinker ESP32-Audio-Kit **V2.2 A161** · ESP32-A1S · **ES8388**  
 **Not** the AC101 A1S (often silkscreen 2379).
+
+The Audio Node uses the same ownership model as other specialist nodes. See [`standalone-node-architecture.md`](standalone-node-architecture.md). Playback states (`IDLE` / `PLAYING` / …) stay separate from ownership (`SEARCHING` / `STANDALONE` / `SHOW_CONTROLLED`).
 
 ```text
 Director / WebUI  →  request
@@ -157,16 +159,19 @@ AUDIO:NODE:UNDUCK
 AUDIO:NODE:INVENTORY[:page]
 AUDIO:NODE:STATUS
 AUDIO:NODE:TEST
+AUDIO:NODE:OWN:GRANT
 EMERGENCY:STOP
 EMERGENCY:CLEAR
 ```
+
+`AUDIO:NODE:OWN:GRANT` is sent by the P4 (via Comms). Hearing ESP-NOW is not ownership. STATUS may keep an existing grant; it must not create one.
 
 Lifecycle: `AUDIO:ACCEPTED` `STARTED` `COMPLETED` `FAILED` plus `AUDIO:CAPS:` `AUDIO:META:` `AUDIO:INVENTORY:`.
 
 Capabilities advertised only if implemented:
 
 ```text
-WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD
+WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD,STANDALONE,OWN
 ```
 
 ## 5b. Sound input / trigger engine
@@ -201,12 +206,15 @@ Director Audio Node page and WebUI show INPUT LEVEL / NOISE FLOOR / TRIGGER / LA
 
 P4 stores `AUDIO_NODE_SOUND_TRIGGER` with subtype LEVEL / TRANSIENT / SUSTAINED / QUIET as a logical input. Future scare/clap/quiet-room mappings are not implemented.
 
-## 6. Emergency and comms loss
+## 6. Emergency, ownership, and comms loss
 
 - `EMERGENCY:STOP`: stop, close file, mute ES8388, PA off, cancel fade/duck, reject new attraction play. No auto-resume.
-- `EMERGENCY:CLEAR` → IDLE (or stay FAULT / NO_STORAGE).
+- `EMERGENCY:CLEAR` → IDLE (or stay FAULT / NO_STORAGE). Does not resume the previous file.
 - P4 `emergency.wav` is independent system audio.
-- Show-controlled playback with no authoritative packet for `commsTimeoutMs` (default 5 s): STOP, MUTE, IDLE. No auto-resume.
+- Boot: safe idle → ESP-NOW → search ~8 s for **P4 GRANT**. Grant → `SHOW_CONTROLLED`. Else → `STANDALONE` + SoftAP `Showduino-Audio-XXXX` on channel 1.
+- P4 GRANT loss (no GRANT keepalive for 8 s): STOP, MUTE, IDLE, then standalone WebUI. No auto-resume.
+- While `SHOW_CONTROLLED`, local keys, USB theatrical commands, and the node WebUI cannot PLAY/STOP/VOLUME. Firmware rejects them (`SHOW_CONTROLLED`). Hiding UI is not sufficient.
+- GPIO22 remains a **status-only** diagnostic WS2812. Never a programme pixel.
 
 ## 7. Local commissioning
 
@@ -221,20 +229,23 @@ P4 stores `AUDIO_NODE_SOUND_TRIGGER` with subtype LEVEL / TRANSIENT / SUSTAINED 
 | KEY6 | short | Next test asset |
 | KEY7 | — | Not present |
 
-Local keys never override emergency. PLAY/PREV/NEXT never hijack a P4-controlled show session. Volume still works unless emergency is latched.
+Local keys never override emergency. PLAY/PREV/NEXT/VOLUME never hijack a P4-owned session.
 
-### LED4 (GPIO22)
+### GPIO22 status pixel (diagnostics only)
 
 | State | Pattern |
 |-------|---------|
-| BOOTING | slow blink (~700 ms) |
-| Searching (no Comms) | medium blink (~350 ms) |
-| IDLE + Comms | steady |
-| PLAYING / LOOPING / LOADING | activity blink (~180 ms) |
-| PAUSED | slow blink (~900 ms) |
-| NO_STORAGE | three short flashes, pause |
-| FAULT | fast blink (~110 ms) |
-| EMERGENCY | rapid unmistakable (~70 ms) |
+| BOOTING | slow dim blue (~700 ms) |
+| SEARCHING (no P4 GRANT) | amber blink (~350 ms) |
+| STANDALONE | slow violet |
+| SHOW_CONTROLLED + IDLE | steady green |
+| Fresh ESP-NOW RX (P4-owned) | brief bright-green kick |
+| PLAYING / LOOPING | cyan |
+| LOADING / STOPPING | cyan blink (~180 ms) |
+| PAUSED | slow purple blink (~900 ms) |
+| NO_STORAGE | three short orange flashes, pause |
+| FAULT | fast red blink (~110 ms) |
+| EMERGENCY | bright white |
 
 `LED:TEST` forces a 1.5 s rapid pattern. `RUN:TEST` is silent and does not blast the speaker. Audible test is `AUDIO:TEST` at the current volume.
 
@@ -242,11 +253,15 @@ USB: `HELP` `STATUS` `MAC` `STORAGE:STATUS` `ASSET:LIST` `AUDIO:*` `SOUND:*` `KE
 
 ## 8. WebUI
 
-Browser → Comms S3 WebUI → P4 → Comms → Audio Node. The browser never talks to the Node.
+Two UIs exist. Neither is the show engine.
 
-- **Devices:** compact Audio Node card; commissioning details expand.
-- **Outputs:** PLAY / LOOP / PAUSE / RESUME / STOP / VOLUME / FADE IN / FADE OUT / DUCK / UNDUCK and the Node-reported library page.
-- **System:** codec, storage, output, last contact, capabilities.
+**Showduino Studio / Comms SoftAP:** browser → Comms S3 WebUI → P4 → Comms → Audio Node. Used when the node is P4-owned.
+
+**Node SoftAP (firmware 0.4.1):** `Showduino-Audio-XXXX` on ESP-NOW channel 1, password `showduino`, `http://192.168.5.1` (not 192.168.4.1 — that is Comms Studio). Tabs: STATUS, AUDIO, LIBRARY, SOUND INPUT, CONNECTION, DIAGNOSTICS, SETTINGS.
+
+- STANDALONE: full local PLAY/LOOP/STOP/VOLUME.
+- SHOW_CONTROLLED: status only; theatrical posts return `CONTROLLED BY SHOWDUINO`.
+- Live PLAY is never saved as a boot state.
 
 ## 9. Arduino FQBN
 
@@ -258,7 +273,7 @@ Arduino-ESP32 3.3.11 exposes `FlashMode=qio` and `FlashMode=dio` only — there 
 esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
 ```
 
-Arduino-ESP32 3.3.x. Libraries: `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`. No MP3 framework. No SoftAP / Bluetooth / independent WebUI on the Node.
+Arduino-ESP32 3.3.x. Libraries: `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, Adafruit NeoPixel. No MP3 framework. SoftAP stays on ESP-NOW channel 1.
 
 ## 10. Hardware acceptance
 
@@ -276,7 +291,7 @@ K. FADE / DUCK / UNDUCK
 L. Missing file: `FILE_NOT_FOUND`  
 M. Pull SD during play — `NO_STORAGE`, no crash  
 N. Emergency during play — stop, no resume; P4 emergency WAV still independent  
-O. Comms loss during LOOP — stop after timeout  
+O. Comms / GRANT loss during LOOP — stop, then standalone WebUI; no resume  
 P. WebUI + Director + volume + STATUS during continuous WAV — emergency still instant  
 
 Sound-input bench (after ADC path is confirmed):
@@ -301,4 +316,4 @@ Q. Playback stays clean while the input engine runs
 
 ## 11. Deliberately not implemented
 
-Bluetooth speaker, internet radio, Spotify/Alexa/DLNA, SoftAP, Node WebUI, OTA, cloud, MP3/Ogg/FLAC decode, simultaneous mix, sample-accurate gapless, PSRAM preload, speech/wake-word AI, FFT bands, automatic scare/cue mapping from microphone events, Relay / MOSFET / LED / DMX work.
+Bluetooth speaker, internet radio, Spotify/Alexa/DLNA, OTA, cloud, MP3/Ogg/FLAC decode, simultaneous mix, sample-accurate gapless, PSRAM preload, speech/wake-word AI, FFT bands, automatic scare/cue mapping from microphone events, Relay / MOSFET / LED / DMX work.

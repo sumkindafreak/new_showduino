@@ -62,8 +62,8 @@ The onboard ESP32-C6 is **unused/reserved hardware**. Do not require, erase or f
 | **Communications Engine** | Dedicated ESP32-S3 Dev Module |
 | **Director** | ESP32-S3 touchscreen operator desk |
 | **Audio Node** | ESP32-A1S/ES8388 programme-audio specialist |
-| **C3 Lantern Node** | Next planned specialist Node after Audio commissioning |
-| **C3 Pixel Node** | Planned after Lantern |
+| **C3 Lamp Node** | Second specialist after Audio; replaces retired Relay product role |
+| **C3 Pixel Node** | Planned after Lamp |
 | **MOSFET Node** | Planned after C3 Pixel; supersedes Relay Node direction |
 | ~~Stage Engine~~ | Retired role term; may remain in legacy path names |
 | ~~Relay Node as next product~~ | Superseded by MOSFET Node direction |
@@ -157,7 +157,7 @@ The rule applies to:
 
 - P4 GPIO23 Main Show Pixels;
 - P4 GPIO24 emergency/signage pixels;
-- future C3 Lantern pixels where fitted;
+- future C3 Lamp pixels where fitted;
 - future C3 Pixel Node outputs;
 - every later Showduino pixel-capable output.
 
@@ -293,21 +293,21 @@ Firmware: `firmware/audio-node-esp32-a1s/`
 
 ESP32-A1S/ES8388 with local SD WAV playback. Implemented firmware; hardware commissioning required.
 
-### C3 Lantern Node — next
+### C3 Lamp Node — second specialist
 
-Next specialist-node milestone after current Audio/P4 pixel commissioning. Do not alter its assembly/code until explicitly requested.
+Replaces the retired Relay Node product role. Firmware: `firmware/c3-lamp-node/`.
 
-### C3 Pixel Node — after Lantern
+### C3 Pixel Node — after Lamp
 
 Will reuse `protocol/showduino_pixel_fx.h` so P4 and C3 share the same Showduino FX names/parameters and emergency-white rule.
 
 ### MOSFET Node — after C3 Pixel
 
-Supersedes the old Relay Node product direction.
+Digital/PWM specialist. Not a Relay revival.
 
 ### Legacy Relay prototype
 
-`firmware/relay-node-esp32/` remains historical/experimental source only. It is not the next production Node.
+`firmware/relay-node-esp32/` remains historical/experimental source only. It is not a production Node.
 
 ---
 
@@ -368,7 +368,7 @@ Showduino Director
 Showduino Stage Controller / Show Engine
 Showduino Communications Engine
 Showduino Audio Node
-Showduino C3 Lantern Node
+Showduino C3 Lamp Node
 Showduino C3 Pixel Node
 Showduino MOSFET Node
 ```

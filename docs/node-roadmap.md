@@ -24,24 +24,24 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 
 ```text
 1. Audio Node
-2. C3 Lantern Node
+2. C3 Lamp Node
 3. C3 Pixel Node
 4. MOSFET Node
 ```
 
 ### 1. Audio Node
 
-Current first production specialist node. Firmware exists and requires hardware commissioning.
+Current first production specialist node. Firmware exists (0.4.0) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
 
-### 2. C3 Lantern Node
+### 2. C3 Lamp Node
 
-Next node after the Audio Node / current P4 pixel work. Hardware is substantially complete, but code modifications will be required.
+Second specialist node. Replaces the retired Relay Node product role on the Director (Page 04 / Home footer). Firmware lives in `firmware/c3-lamp-node/`. Carbide / theatrical lamp FX; not a 1:1 mapping of old `RELAY:n:ON` commands.
 
-**Do not modify or expand the Lantern firmware until the hardware assembly is ready and work is explicitly started.**
+P4 links via `ROUTE:LAMP:` / `LampNodeLink` (Audio Node parity).
 
 ### 3. C3 Pixel Node
 
-Follows the Lantern Node.
+Follows the Lamp Node.
 
 It should reuse the common Showduino pixel-effect vocabulary in:
 
@@ -59,7 +59,7 @@ No local FX or segment may override it.
 
 ### 4. MOSFET Node
 
-The MOSFET Node replaces the previous Relay Node product concept.
+Digital on/off and PWM / dimming specialist. Not a revival of the Relay Node product.
 
 The existing `firmware/relay-node-esp32/` tree is retained only as legacy/reference source. Do not advance it as the current node design.
 

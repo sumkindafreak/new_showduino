@@ -126,11 +126,11 @@ The previous ESP32-C3 SuperMini/SUE Communications Engine is legacy/superseded.
 Development order after the current P4 pixel work is:
 
 1. **Audio Node** — implemented firmware; hardware commissioning required.
-2. **C3 Lantern Node** — next specialist node; hardware/code work begins only when explicitly requested.
-3. **C3 Pixel Node** — follows Lantern; will reuse the shared pixel FX vocabulary.
-4. **MOSFET Node** — replaces the old Relay Node product direction.
+2. **C3 Lamp Node** — second specialist; replaces the retired Relay Node product role (Director fabric slot).
+3. **C3 Pixel Node** — follows Lamp; will reuse the shared pixel FX vocabulary.
+4. **MOSFET Node** — digital/PWM specialist (not a Relay revival).
 
-`firmware/relay-node-esp32/` remains historical/experimental source only. It is superseded by the MOSFET Node direction and must not be presented as the next production Node.
+`firmware/relay-node-esp32/` remains historical/experimental source only. It must not be presented as a production Node.
 
 DMX remains parked/out of scope.
 

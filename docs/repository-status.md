@@ -30,10 +30,10 @@ The supported current stack also includes the first specialist **Audio Node**.
 Current specialist-node rollout order:
 
 ```text
-Audio Node → C3 Lantern Node → C3 Pixel Node → MOSFET Node
+Audio Node → C3 Lamp Node → C3 Pixel Node → MOSFET Node
 ```
 
-The old Relay Node product concept is superseded by the planned MOSFET Node. DMX remains parked until explicitly reopened.
+The Relay Node product role is **retired**. The C3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. DMX remains parked until explicitly reopened.
 
 The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxies API requests to the P4. It remains transport/UI hosting only; it does not own show decisions.
 
@@ -45,6 +45,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | Communications Engine — dedicated ESP32-S3 ESP-NOW + UART + SoftAP/WebUI proxy |
 | `firmware/stage-engine-p4/` | Show Engine on Stage Controller |
 | `firmware/audio-node-esp32-a1s/` | First specialist Audio Node — implemented, hardware test required |
+| `firmware/c3-lamp-node/` | C3 Lamp Node — ACTIVE (replaces retired Relay product role) |
 
 ---
 
@@ -56,8 +57,9 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Communications Engine, Audio Node routing, SoftAP/WebUI/API proxy | Keep transport-only; no show decisions |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Authoritative Show Engine | Current platform focus includes P4 pixel bench commissioning |
 | `firmware/audio-node-esp32-a1s/` | **ACTIVE / HARDWARE TEST REQUIRED** | Ai-Thinker ESP32-A1S / ES8388 | Attraction/programme audio node | Bench commission before claiming hardware-complete |
-| `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output specialist node | Comes after C3 Pixel Node; no implementation yet |
-| `firmware/relay-node-esp32/` | **LEGACY / SUPERSEDED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; replaced by MOSFET Node direction |
+| `firmware/c3-lamp-node/` | **ACTIVE** | ESP32-C3 Super Mini OLED / lamp | Carbide / theatrical lamp FX specialist | Replaces retired Relay product role; P4 `LampNodeLink` |
+| `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output / PWM specialist | Comes after C3 Pixel Node; no implementation yet |
+| `firmware/relay-node-esp32/` | **LEGACY / RETIRED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; not a production Node |
 | `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 | Historical C6 bridge qualification | C6 hardware remains unused/reserved |
 | `firmware/c3-supermini-espnow-bridge/` | **LEGACY / SUPERSEDED** | ESP32-C3 SuperMini | Previous SUE Communications Engine | Retain as reference; not current path |
 | `firmware/director-s3/` | **LEGACY** | ESP32-S3 + TFT_eSPI | Earlier UART Director scaffold | Do not extend |
@@ -120,19 +122,19 @@ Shared FX vocabulary: `protocol/showduino_pixel_fx.h`.
 
 **Classification:** implemented / hardware test required.
 
-Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inventory and local diagnostics. It does not own P4 system/emergency audio or show decisions.
+Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inventory, P4 GRANT ownership, and a channel-1 SoftAP WebUI when standalone. It does not own P4 system/emergency audio or show decisions.
 
-### C3 Lantern Node
+### C3 Lamp Node
 
-Next specialist-node milestone after current Audio/P4 work. Hardware is substantially complete, but firmware modifications are deferred until assembly/work is explicitly started.
+**Classification:** ACTIVE. Replaces the retired Relay Node product role on the Director fabric. Carbide / theatrical lamp FX via `firmware/c3-lamp-node/`; P4 `LampNodeLink` / Comms `ROUTE:LAMP:`.
 
 ### C3 Pixel Node
 
-Follows Lantern. It should reuse the common Showduino 25-effect vocabulary and implement the same hard emergency rule: **all connected pixels bright white**.
+Follows Lamp. It should reuse the common Showduino 25-effect vocabulary and implement the same hard emergency rule: **all connected pixels bright white**.
 
 ### MOSFET Node
 
-Planned after C3 Pixel. Replaces the previous Relay Node product concept. The old relay firmware tree is legacy/reference only.
+Planned after C3 Pixel. Digital on/off and PWM specialist — not a Relay revival. The old relay firmware tree is legacy/reference only.
 
 ---
 
