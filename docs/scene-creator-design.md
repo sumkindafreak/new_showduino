@@ -32,7 +32,7 @@ Current development order around the first real show is:
 2. commission the Audio Node;
 3. extend production/timeline cues so AUDIO and PIXEL can be driven by stored shows;
 4. build the segment-first Studio authoring workflow around those proven engines;
-5. next specialist Node: C3 Lantern;
+5. next specialist Node: C3 Lamp;
 6. then C3 Pixel;
 7. then MOSFET Node.
 
@@ -144,7 +144,7 @@ Initial useful track families:
 ```text
 Audio Node
 P4 Pixel Segments
-C3 Lantern                 when implemented
+C3 Lamp                     when implemented
 C3 Pixel Segments          when implemented
 MOSFET Outputs             when implemented
 Triggers / Inputs          as runtime support matures

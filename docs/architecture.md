@@ -337,7 +337,8 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 - logical device-ID addressing end to end;
 - completion-driven state/fault handling for all future Nodes;
 - Audio Node and P4 pixel physical bench commissioning;
-- C3 Lantern, then C3 Pixel, then MOSFET Node milestones.
+- C3 Lamp Node hardware commissioning;
+- C3 Pixel, then MOSFET Node milestones.
 
 ### Explicitly parked
 

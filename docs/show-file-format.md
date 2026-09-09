@@ -1,8 +1,24 @@
 # Showduino Show File Format
 
-This is the first shared show/project format for Showduino v1.
+**Status: LEGACY / SUPERSEDED as a native format.**
 
-The goal is to let the WebUI, CYD touchscreen, executor firmware, SD card tools and future add-on nodes understand the same show structure.
+This document records the early CYD / Mega / `steps[]` JSON idea. It is **not** the current Showduino production format.
+
+Current sources of truth:
+
+| Layer | Document / code |
+|-------|-----------------|
+| Portable authoring interchange | [`docs/studio/production-format.md`](studio/production-format.md) — SHDO v2 |
+| Persistent P4 runtime store | [`docs/production-storage.md`](production-storage.md) — format v1 `manifest.json` + `timeline.json` |
+| Live S3 commissioning UI | [`web/showduino-studio/README.md`](../web/showduino-studio/README.md) |
+
+Do not add new productions in this `steps[]` shape. Keep the text below as import/migration reference only.
+
+---
+
+This was the first shared show/project format for Showduino v1.
+
+The original goal was to let the WebUI, CYD touchscreen, executor firmware, SD card tools and future add-on nodes understand the same show structure.
 
 ## Design rules
 

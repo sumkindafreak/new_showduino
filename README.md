@@ -209,7 +209,9 @@ firmware/executor-mega/               ARCHIVE CANDIDATE
 | [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | Audio split, segmented FX and emergency-pixel policy |
 | [`docs/audio-node.md`](docs/audio-node.md) | ESP32-A1S / ES8388 Audio Node |
 | [`docs/node-roadmap.md`](docs/node-roadmap.md) | Audio → Lamp → C3 Pixel → MOSFET rollout |
-| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production format |
+| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production format v1 |
+| [`docs/studio/README.md`](docs/studio/README.md) | Studio/WebUI vs SHDO v2 vs P4 store |
+| [`docs/standalone-node-architecture.md`](docs/standalone-node-architecture.md) | GRANT / standalone specialist nodes |
 | [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus |
 
 ## Current milestone

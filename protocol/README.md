@@ -31,7 +31,8 @@ protocol/
 ├── showduino_state_wire.h      # Stage 3 STATE/SNAPSHOT/ACCEPTED tokens
 ├── showduino_audio_node.h      # Audio Node path/command/state rules
 ├── showduino_node_ownership.h  # GRANT / standalone / command origin
-└── showduino_lamp_node.h       # C3 Lamp Node FX/command rules
+├── showduino_lamp_node.h       # C3 Lamp Node FX/command rules
+└── showduino_web_timeline_upload_policy.h  # Studio RAM timeline envelope
 ```
 
 No pins, Wi-Fi, ESP-NOW init, UART drivers, LVGL, or GPIO live here.
@@ -136,6 +137,8 @@ Optional: copy or junction this folder into the Arduino `libraries/` path using 
 ```text
 tools/protocol-tests/
 tools/audio-node-tests/
+tools/lamp-node-tests/
+tools/production-tests/
 ```
 
 Compile without Arduino / ESP32 SDK (`run_tests.ps1` / `run_tests.sh`).

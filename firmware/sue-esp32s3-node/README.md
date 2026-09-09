@@ -1,8 +1,8 @@
 # Showduino v1 SUE ESP32-S3 Node Firmware
 
 ```text
-Status: INCOMPLETE
-Placeholder / stub; not operational production firmware.
+Status: INCOMPLETE / SUPERSEDED PLACEHOLDER
+This is NOT the Communications Engine and NOT current specialist-node firmware.
 ```
 
 See [`docs/repository-status.md`](../../docs/repository-status.md).

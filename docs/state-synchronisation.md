@@ -100,7 +100,7 @@ Where legacy relay state is still used, absolute ON/OFF remains preferred over d
 
 ```text
 Audio Node
-→ C3 Lantern Node
+→ C3 Lamp Node
 → C3 Pixel Node
 → MOSFET Node
 ```

@@ -389,7 +389,7 @@ P4 Show Engine
 
 Specialist Nodes
 ├── Audio Node → attraction/programme audio
-├── C3 Lantern Node → next specialist-node hardware milestone after current P4 work
+├── C3 Lamp Node → specialist-node hardware after Audio; firmware present, hardware test required
 ├── C3 Pixel Node → shared Showduino FX vocabulary
 └── MOSFET Node → planned replacement for the old Relay Node concept
 ```

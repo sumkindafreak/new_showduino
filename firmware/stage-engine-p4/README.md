@@ -4,6 +4,7 @@
 Status: ACTIVE
 Role: Showduino Show Engine
 Product: Stage Controller (ESP32-P4)
+Firmware: 0.5.0
 ```
 
 Canonical active Show Engine firmware:
@@ -23,11 +24,13 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 - Dedicated S3 Comms UART on P4 GPIO4/5.
 - P4 onboard ES8311 system/safety audio.
 - Audio Node command routing and confirmed lifecycle tracking.
+- C3 Lamp Node routing (`LampNodeLink`) and emergency white override.
 - GPIO24 emergency/designated-signage NeoPixel engine.
 - GPIO23 local segmented theatrical Show Pixel Engine with shared 25-FX vocabulary.
 - Plug-in Bus, storage, diagnostics and optional network foundations.
+- Optional Studio RAM timeline ingest (`/api/studio-timeline`) for PIXEL and AUDIO:NODE cues. This is commissioning-only; a loaded show does not depend on the WebUI.
 
-Persistent production format v1 still accepts only TEST/LOG cues. Production-file `AUDIO` and `PIXEL` cue types are not yet implemented.
+Persistent production format v1 still accepts only TEST/LOG cues. Production-file `AUDIO` and `PIXEL` cue types are not yet implemented. SHDO v2 is not parsed on the P4.
 
 ## Arduino build / flash
 
@@ -213,7 +216,7 @@ Immediate platform work: **bench commission the P4 pixel lines**.
 Specialist node order after current P4/Audio work:
 
 ```text
-Audio Node → C3 Lantern Node → C3 Pixel Node → MOSFET Node
+Audio Node → C3 Lamp Node → C3 Pixel Node → MOSFET Node
 ```
 
 The previous Relay Node product direction is superseded. DMX remains parked until explicitly reopened.

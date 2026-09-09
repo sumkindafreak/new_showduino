@@ -3,7 +3,7 @@
 ```text
 Status: LEGACY / SUPERSEDED
 Role: Historical relay-node prototype
-Replacement: planned Showduino MOSFET Node
+Replacement: C3 Lamp Node occupies that Director fabric slot; MOSFET Node remains the later digital/PWM specialist
 ```
 
 This source is retained as a reference only. It is **not** the next Showduino node and must not be presented as the current output-node direction.
@@ -12,7 +12,7 @@ The specialist-node rollout is now:
 
 ```text
 1. Audio Node
-2. C3 Lantern Node
+2. C3 Lamp Node
 3. C3 Pixel Node
 4. MOSFET Node
 ```

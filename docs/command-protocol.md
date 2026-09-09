@@ -117,7 +117,7 @@ Every pixel-capable output must implement:
 
 > **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
 
-On the P4 this applies to both GPIO23 Show Pixels and GPIO24 emergency/signage pixels. Future C3 Lantern/C3 Pixel and any later pixel-capable Node must follow the same rule.
+On the P4 this applies to both GPIO23 Show Pixels and GPIO24 emergency/signage pixels. The C3 Lamp Node and any later pixel-capable Node must follow the same rule.
 
 Normal FX/segment commands are subordinate to this safety state.
 
@@ -383,7 +383,7 @@ P4 pixel commands are further validated by the P4 pixel engine, including segmen
 - end-to-end logical device-ID routing;
 - generic completion-driven state/fault handling for every specialist Node;
 - stronger node framing / future structured binary protocol;
-- C3 Lantern, C3 Pixel, then MOSFET Node protocols as those milestones begin.
+- C3 Pixel, then MOSFET Node protocols as those milestones begin.
 
 DMX is deliberately excluded from this roadmap until explicitly unparked.
 

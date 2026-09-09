@@ -79,7 +79,9 @@ S3 GND        --  P4 GND
 
 - Receive Director ESP-NOW desk packets (magic `0x5348444F`, version 1, 96-byte command)
 - Receive Audio Node ESP-NOW packets (116-byte node packet, type `AUDIO`) and forward `NODE:AUDIO:` to the P4
+- Receive Lamp Node ESP-NOW packets (type `LAMP`) and forward `NODE:LAMP:` to the P4
 - Forward `ROUTE:AUDIO:<seq>:<cmd>` from the P4 to the Audio Node (transport only)
+- Forward `ROUTE:LAMP:<seq>:<cmd>` from the P4 to the Lamp Node (transport only)
 - Validate and reject malformed packets
 - Remember Director MAC and Audio Node MAC
 - Newline-frame commands to the P4 UART
@@ -88,8 +90,9 @@ S3 GND        --  P4 GND
 - USB maintenance: `HELP`, `STATUS`, `MAC`, `PING:P4`, `RGB:STATUS`, `RGB:TEST`
 - Onboard WS2812 status RGB on **GPIO48** (DevKitC-1 v1.0). v1.1 boards use GPIO38 — change only `SHOWDUINO_COMMS_RGB_PIN`.
 - `PING:P4` sends `DIAG:PING` and waits for `DIAG:PONG`
-- SoftAP `Showduino` on channel 1 (AP+STA, WPA2) serving PROGMEM WebUI
-- Local `GET /api/comms` plus UART proxy of `GET /api/system|/logs|/devices`
+- SoftAP `Showduino` on channel 1 (AP+STA, WPA2) serving PROGMEM system console / commissioning WebUI
+- Local `GET /api/comms` plus UART proxy of P4 `/api/*`
+- `GET/POST /api/studio-timeline` envelope check, then UART proxy to the P4 (PIXEL / AUDIO:NODE RAM cues only)
 
 USB does **not** inject arbitrary Stage Engine commands.
 

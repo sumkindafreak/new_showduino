@@ -85,6 +85,14 @@ Parsing is strict and bounded. Malformed JSON, unsupported versions, missing
 required fields, numeric overflow, path traversal, duplicate cue IDs, descending
 cue times, oversized strings, and unsupported cue types fail explicitly.
 
+SHDO v2 (`.shdo`) is the Studio **authoring/interchange** contract
+([`docs/studio/production-format.md`](studio/production-format.md)). It is not
+what this P4 parser reads. A production must be projected to this format-v1
+folder layout before it can be stored on SD. Studio RAM timeline upload
+(`/api/studio-timeline`) can load PIXEL / AUDIO:NODE cues into RAM for
+commissioning; that path does not write format-v1 SD productions and is not
+required to keep a loaded show running.
+
 ## Commands and responses
 
 Requests:

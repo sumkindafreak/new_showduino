@@ -1,6 +1,11 @@
 # GoreFX Dashboard for Showduino v1
 
-This folder will contain the browser dashboard for Showduino v1.
+```text
+Status: LEGACY / SUPERSEDED
+Canonical browser UI: web/showduino-studio/ hosted by the Communications S3.
+```
+
+This folder retains the earlier GoreFX dashboard idea. Do not treat it as the current Showduino Studio.
 
 ## Purpose
 

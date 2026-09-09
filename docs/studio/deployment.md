@@ -1,7 +1,7 @@
 # Showduino Studio — Deployment Specification
 
-**Phase:** 0 (Planning)
-**Status:** Blueprint — design only
+**Phase:** 1 (partial)
+**Status:** Blueprint for packaged `.shdo` deploy. The only live firmware deploy path today is the S3/P4 **RAM timeline** endpoint (`/api/studio-timeline`), which accepts PIXEL and AUDIO:NODE cues and does not persist SHDO onto SD.
 
 ---
 

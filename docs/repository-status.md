@@ -155,12 +155,12 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 
 | Maturity | Current repository scope |
 |----------|--------------------------|
-| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy |
-| **HARDWARE TEST REQUIRED** | Audio Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
-| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; logical target routing; WebUI surfaces for all new pixel controls |
-| **PLANNED** | C3 Lantern Node modifications; C3 Pixel Node; MOSFET Node; production AUDIO/PIXEL cue dispatch |
+| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO:NODE ingest |
+| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
+| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; logical target routing; SHDO v2 authoring vs P4 format-v1 store |
+| **PLANNED** | C3 Pixel Node; MOSFET Node; production AUDIO/PIXEL cue dispatch; native `.shdo` ingest on the P4 |
 | **PARKED** | DMX work until explicitly reopened |
-| **LEGACY** | Relay Node product concept, C3/SUE Comms, onboard-C6 Comms attempt, CYD/Mega generation |
+| **LEGACY** | Relay Node product concept, C3/SUE Comms, onboard-C6 Comms attempt, CYD/Mega generation, GoreFX dashboard tree |
 
 ---
 

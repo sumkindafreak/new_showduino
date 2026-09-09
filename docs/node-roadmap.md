@@ -31,7 +31,7 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 
 ### 1. Audio Node
 
-Current first production specialist node. Firmware exists (0.4.0) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
+Current first production specialist node. Firmware exists (0.4.1) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
 
 ### 2. C3 Lamp Node
 
