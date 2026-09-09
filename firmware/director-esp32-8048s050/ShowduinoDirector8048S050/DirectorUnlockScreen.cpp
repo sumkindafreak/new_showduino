@@ -85,21 +85,23 @@ void DirectorUnlockScreen::begin(uint32_t nowMs) {
   currentStep_ = 0;
   readySinceMs_ = 0;
   finalStateApplied_ = false;
+  exiting_ = false;
+  finished_ = false;
   buildUi();
   visible_ = true;
   setStep(0, STEP_STATUS[0], STEP_PRIMARY[0], STEP_SECONDARY[0]);
-  Serial.println("[BootUI] Showduino OS boot overlay active");
+  Serial.println("[BootUI] Boot screen loaded as first LVGL screen");
 }
 
 void DirectorUnlockScreen::buildUi() {
-  root_ = lv_obj_create(lv_layer_top());
+  root_ = lv_obj_create(nullptr);
   lv_obj_remove_style_all(root_);
-  lv_obj_set_pos(root_, 0, 0);
   lv_obj_set_size(root_, SCREEN_WIDTH, SCREEN_HEIGHT);
   lv_obj_set_style_bg_color(root_, lv_color_hex(COL_BACKGROUND), 0);
   lv_obj_set_style_bg_opa(root_, LV_OPA_COVER, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(root_, LV_OBJ_FLAG_CLICKABLE);
+  lv_screen_load(root_);
 
   buildFrameDecorations();
   buildScanner();
@@ -358,12 +360,23 @@ void DirectorUnlockScreen::applyFinalState(bool stageLinked, bool emergencyLocke
   }
 }
 
+void DirectorUnlockScreen::abortForEmergency() {
+  if (finished_) return;
+  Serial.println("[BootUI] Emergency override - boot screen aborted");
+  finish(true);
+}
+
 void DirectorUnlockScreen::tick(uint32_t nowMs, bool espNowReady,
                                 uint8_t linkState, bool emergencyLocked) {
   if (finished_) return;
   if (!visible_) {
     begin(nowMs);
     if (!visible_) return;
+  }
+
+  if (emergencyLocked) {
+    abortForEmergency();
+    return;
   }
 
   const uint32_t elapsed = nowMs - startedMs_;
@@ -394,16 +407,16 @@ void DirectorUnlockScreen::tick(uint32_t nowMs, bool espNowReady,
     applyFinalState(stageLinked, emergencyLocked, nowMs);
   }
 
-  if (finalStateApplied_ && (nowMs - readySinceMs_) >= EXIT_HOLD_MS) {
-    destroy();
+  if (finalStateApplied_ && !exiting_ && (nowMs - readySinceMs_) >= EXIT_HOLD_MS) {
+    finish(false);
   }
 }
 
-void DirectorUnlockScreen::destroy() {
-  if (root_) {
-    lv_obj_delete(root_);
-    root_ = nullptr;
-  }
+void DirectorUnlockScreen::finish(bool emergency) {
+  if (finished_ || exiting_) return;
+  exiting_ = true;
+  visible_ = false;
+  finished_ = true;
   scannerOuter_ = nullptr;
   scannerMiddle_ = nullptr;
   scannerInner_ = nullptr;
@@ -414,7 +427,17 @@ void DirectorUnlockScreen::destroy() {
   infoPrimary_ = nullptr;
   infoSecondary_ = nullptr;
   for (uint8_t i = 0; i < STEP_COUNT; ++i) dots_[i] = nullptr;
-  visible_ = false;
-  finished_ = true;
-  Serial.println("[BootUI] Boot overlay complete");
+
+  lv_obj_t *boot = root_;
+  root_ = nullptr;
+  Serial.println(emergency ? "[BootUI] Boot screen aborted"
+                           : "[BootUI] Boot screen complete");
+  if (finishedFn_) finishedFn_();
+  /* Non-emergency exit uses lv_screen_load_anim auto_del on the boot screen.
+   * Only delete here if it is still the active screen, or on emergency. */
+  if (boot && lv_obj_is_valid(boot)) {
+    if (emergency || lv_screen_active() == boot) {
+      lv_obj_delete(boot);
+    }
+  }
 }

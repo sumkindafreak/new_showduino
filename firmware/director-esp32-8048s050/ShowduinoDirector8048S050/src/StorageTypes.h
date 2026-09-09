@@ -122,6 +122,9 @@ struct DirectorConfig {
   bool confirmBeforeStart;      /* Require confirmation before SHOW:START */
   bool confirmBeforeStop;       /* Require confirmation before SHOW:STOP  */
   bool autoOpenLiveAfterLoad;   /* Navigate to Live automatically after confirmed load */
+  bool ambientLedsEnabled;
+  uint8_t ambientBrightness;
+  uint8_t uiAnimationMode;      /* 0=off 1=reduced 2=on */
 };
 
 struct ShowDefinition {

@@ -16,6 +16,7 @@
 #define SHOWDUINO_CUE_ACTION_MAX            16U
 #define SHOWDUINO_CUE_VALUE_MAX             96U
 #define SHOWDUINO_CUE_COMMAND_MAX           64U
+#define SHOWDUINO_CUE_TYPE_MAX              12U
 #define SHOWDUINO_PRODUCTION_MAX_CUES       512U
 
 enum class ProductionParseResult : uint8_t {
@@ -49,7 +50,7 @@ struct ProductionManifest {
 struct ProductionCue {
   char id[SHOWDUINO_CUE_ID_MAX] = {};
   uint32_t timeMs = 0;
-  char type[8] = {};
+  char type[SHOWDUINO_CUE_TYPE_MAX] = {};
   char target[SHOWDUINO_CUE_TARGET_MAX] = {};
   char action[SHOWDUINO_CUE_ACTION_MAX] = {};
   char value[SHOWDUINO_CUE_VALUE_MAX] = {};

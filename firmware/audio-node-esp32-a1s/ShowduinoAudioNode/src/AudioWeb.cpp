@@ -346,7 +346,7 @@ static void addRoutes() {
 }
 
 void audioWebEnsure() {
-  nodeSoftApSetRadioHook(audioEspNowRecover);
+  nodeSoftApSetRadioHook(audioEspNowReassert);
   if (!nodeSoftApStarted()) {
     uint8_t mac[6];
     audioEspNowMacBytes(mac);

@@ -1,5 +1,6 @@
 #include "lvgl_port.h"
 
+#include <Arduino.h>
 #include <esp_heap_caps.h>
 
 Arduino_RGB_Display *gfx = nullptr;
@@ -7,9 +8,18 @@ Arduino_RGB_Display *gfx = nullptr;
 static lv_display_t *s_disp = nullptr;
 static lv_color_t *s_buf1 = nullptr;
 static lv_color_t *s_buf2 = nullptr;
+static bool s_flushEnabled = false;
+
+void lvglPortEnableFlush(bool enable) {
+  s_flushEnabled = enable;
+}
+
+bool lvglPortFlushEnabled() {
+  return s_flushEnabled;
+}
 
 static void flushCb(lv_display_t *disp, const lv_area_t *area, uint8_t *pxMap) {
-  if (!gfx) {
+  if (!gfx || !s_flushEnabled) {
     lv_display_flush_ready(disp);
     return;
   }
@@ -25,6 +35,7 @@ bool lvglPortInit(Arduino_RGB_Display *panel, Arduino_ESP32RGBPanel *rgbPanel) {
   gfx = panel;
   if (!gfx) return false;
 
+  s_flushEnabled = false;
   if (!gfx->begin()) {
     Serial.println("LVGL port: gfx->begin() failed");
     return false;
@@ -57,6 +68,13 @@ bool lvglPortInit(Arduino_RGB_Display *panel, Arduino_ESP32RGBPanel *rgbPanel) {
     Serial.println("LVGL: single partial buffer (landscape).");
   }
 
+  lv_obj_t *def = lv_screen_active();
+  if (def) {
+    lv_obj_set_style_bg_color(def, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(def, LV_OPA_COVER, 0);
+  }
+
+  Serial.println("LVGL: flush held until boot screen is ready");
   return true;
 }
 

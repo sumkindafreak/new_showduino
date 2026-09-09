@@ -1,11 +1,4 @@
 #include "backlight.h"
-#include "DirectorUnlockScreen.h"
-
-/* These are owned by the main Director sketch.  The unlock screen only reads
- * them; it never changes transport, runtime or emergency state. */
-extern bool espNowReady;
-extern uint8_t linkState;
-extern bool emergencyLocked;
 
 enum BlState : uint8_t {
   BL_STATE_FULL = 0,
@@ -16,13 +9,14 @@ enum BlState : uint8_t {
 static uint8_t  s_pin = 255;
 static uint16_t s_pwmFull = BL_PWM_MAX;
 static uint16_t s_pwmDim = BL_PWM_DIM_FLOOR;
-static uint16_t s_pwm = BL_PWM_MAX;
-static BlState  s_state = BL_STATE_FULL;
+static uint16_t s_pwm = 0;
+static BlState  s_state = BL_STATE_OFF;
 static uint32_t s_lastActive = 0;
 static uint32_t s_wakeUntil = 0;
 static uint8_t  s_timeoutMin = 10;
 static uint8_t  s_brightness = 255;
 static bool     s_autoEnabled = true;
+static bool     s_heldOff = true;
 #if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 0, 0)
 static uint8_t  s_ledcCh = 0;
 #endif
@@ -44,7 +38,15 @@ static void applyPwm(uint16_t duty) {
 }
 
 static void setState(BlState st) {
-  if (s_state == st) return;
+  if (s_heldOff) {
+    applyPwm(0);
+    s_state = BL_STATE_OFF;
+    return;
+  }
+  if (s_state == st) {
+    if (st == BL_STATE_FULL) applyPwm(s_pwmFull);
+    return;
+  }
   s_state = st;
   switch (st) {
     case BL_STATE_FULL: applyPwm(s_pwmFull); break;
@@ -56,21 +58,21 @@ static void setState(BlState st) {
 void backlightInit(uint8_t pin) {
   s_pin = pin;
   pinMode(s_pin, OUTPUT);
+  digitalWrite(s_pin, LOW);
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
   ledcAttach(s_pin, 1000, 10);
-  ledcWrite(s_pin, BL_PWM_MAX);
+  ledcWrite(s_pin, 0);
 #else
   s_ledcCh = 0;
   ledcSetup(s_ledcCh, 1000, 10);
   ledcAttachPin(s_pin, s_ledcCh);
-  ledcWrite(s_ledcCh, BL_PWM_MAX);
+  ledcWrite(s_ledcCh, 0);
 #endif
-  s_state = BL_STATE_FULL;
-  s_pwm = BL_PWM_MAX;
-  uint32_t now = millis();
-  s_lastActive = now;
-  s_wakeUntil = now + BL_WAKE_LATCH_MS;
-  Serial.printf("Backlight: ON (auto idle pin=%u)\n", (unsigned)s_pin);
+  s_heldOff = true;
+  s_state = BL_STATE_OFF;
+  s_pwm = 0;
+  s_lastActive = millis();
+  Serial.printf("Backlight: HELD OFF until first boot frame (pin=%u)\n", (unsigned)s_pin);
 }
 
 void backlightConfigure(uint8_t timeoutMinutes, uint8_t brightness255) {
@@ -86,18 +88,37 @@ void backlightConfigure(uint8_t timeoutMinutes, uint8_t brightness255) {
     s_pwmDim = (s_pwmFull > 1) ? (s_pwmFull / 2) : 1;
   }
 
-  if (!s_autoEnabled) {
-    setState(BL_STATE_FULL);
-  } else if (s_state == BL_STATE_FULL) {
-    applyPwm(s_pwmFull);
+  if (!s_heldOff) {
+    if (!s_autoEnabled) {
+      setState(BL_STATE_FULL);
+    } else if (s_state == BL_STATE_FULL) {
+      applyPwm(s_pwmFull);
+    }
   }
 
-  Serial.printf("Backlight: timeout=%umin brightness=%u auto=%s\n",
+  Serial.printf("Backlight: timeout=%umin brightness=%u auto=%s hold=%s\n",
                 (unsigned)s_timeoutMin, (unsigned)s_brightness,
-                s_autoEnabled ? "on" : "off");
+                s_autoEnabled ? "on" : "off",
+                s_heldOff ? "yes" : "no");
+}
+
+bool backlightIsHeldOff() {
+  return s_heldOff;
+}
+
+void backlightRevealNow() {
+  if (s_pin == 255) return;
+  s_heldOff = false;
+  uint32_t now = millis();
+  s_lastActive = now;
+  s_wakeUntil = now + BL_WAKE_LATCH_MS;
+  applyPwm(s_pwmFull);
+  s_state = BL_STATE_FULL;
+  Serial.printf("Backlight: REVEAL immediate pwm=%u\n", (unsigned)s_pwmFull);
 }
 
 void backlightNotifyActivity() {
+  if (s_heldOff) return;
   uint32_t now = millis();
   if (s_state == BL_STATE_OFF || s_state == BL_STATE_DIM) {
     s_wakeUntil = now + BL_WAKE_LATCH_MS;
@@ -107,7 +128,7 @@ void backlightNotifyActivity() {
 }
 
 bool backlightIsOn() {
-  return s_state != BL_STATE_OFF;
+  return !s_heldOff && s_state != BL_STATE_OFF;
 }
 
 bool backlightAutoEnabled() {
@@ -123,6 +144,7 @@ uint8_t backlightBrightness() {
 }
 
 const char *backlightStatusText() {
+  if (s_heldOff) return "Backlight held for boot";
   if (!s_autoEnabled) return "Backlight always on";
   switch (s_state) {
     case BL_STATE_DIM: return "Backlight dim";
@@ -132,17 +154,17 @@ const char *backlightStatusText() {
 }
 
 void backlightSet(bool on) {
+  if (s_heldOff) return;
   if (on) backlightNotifyActivity();
   else setState(BL_STATE_OFF);
 }
 
 void backlightTick(uint32_t nowMs) {
-  /* backlightTick already runs once per Director loop after LVGL, the desktop,
-   * storage and communications have been initialised.  It is therefore a safe,
-   * non-blocking home for the one-shot startup verification overlay. */
-  gDirectorUnlockScreen.tick(nowMs, espNowReady, linkState, emergencyLocked);
-
   if (s_pin == 255) return;
+  if (s_heldOff) {
+    applyPwm(0);
+    return;
+  }
   if (!s_autoEnabled) {
     if (s_state != BL_STATE_FULL) setState(BL_STATE_FULL);
     return;

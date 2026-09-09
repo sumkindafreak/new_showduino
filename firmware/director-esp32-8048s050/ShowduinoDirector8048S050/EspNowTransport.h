@@ -90,11 +90,7 @@ public:
 
   bool sendCommand(const String &command) {
     if (!online) return false;
-
-    unsigned long startWait = millis();
-    while (sendBusy && (millis() - startWait) < 15) {
-      delay(1);
-    }
+    if (sendBusy) return false;
 
     ShowduinoEspNowPacket packet = {};
     packet.magic = SHOWDUINO_ESPNOW_MAGIC;
@@ -117,13 +113,8 @@ public:
       return false;
     }
 
-    unsigned long t0 = millis();
-    while (!callbackSeen && (millis() - t0) < 25) {
-      delay(1);
-    }
-
-    lastSendOk = (callbackSeen && lastCallbackOk);
-    return lastSendOk;
+    lastSendOk = true;
+    return true;
   }
 
   bool popReply(String &outLine) {
@@ -178,7 +169,7 @@ private:
 
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, stageBridgeMac, 6);
-    peerInfo.channel = SHOWDUINO_ESPNOW_CHANNEL;
+    peerInfo.channel = 0;
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_STA;
 

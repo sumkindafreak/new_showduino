@@ -400,7 +400,13 @@ static void reassertAp() {
   sChannel = ch;
   const bool apOn = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
   if (apOn && ch == SHOWDUINO_ESPNOW_CHANNEL) return;
-  Serial.println("[WEBUI] SoftAP missing or off-channel — restarting");
+  if (apOn && ch != SHOWDUINO_ESPNOW_CHANNEL) {
+    Serial.printf("[WEBUI] radio left ch%u — locking ch%u without AP restart\n",
+                  (unsigned)ch, (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
+    (void)esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    return;
+  }
+  Serial.println("[WEBUI] SoftAP missing — restarting");
   startSoftAp();
 }
 

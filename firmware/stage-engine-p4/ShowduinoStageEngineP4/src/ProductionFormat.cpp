@@ -202,7 +202,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
   if (!cue || !r.take('{')) return false;
   *cue = ProductionCue{};
   enum : uint8_t { SeenId = 1, SeenTime = 2, SeenType = 4, SeenTarget = 8,
-                   SeenAction = 16, SeenValue = 32, SeenParams = 64 };
+                   SeenAction = 16, SeenValue = 32, SeenParams = 64,
+                   SeenCommand = 128 };
   uint8_t seen = 0;
   bool done = false;
   if (r.take('}')) return false;
@@ -217,6 +218,7 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
     else if (strcmp(key, "action") == 0) bit = SeenAction;
     else if (strcmp(key, "value") == 0) bit = SeenValue;
     else if (strcmp(key, "parameters") == 0) bit = SeenParams;
+    else if (strcmp(key, "command") == 0) bit = SeenCommand;
     if (bit && (seen & bit)) return false;
     seen |= bit;
 
@@ -237,6 +239,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
       if (!r.string(cue->value, sizeof(cue->value))) return false;
     } else if (bit == SeenParams) {
       if (r.peek() != '{' || !r.skipValue()) return false;
+    } else if (bit == SeenCommand) {
+      if (!r.string(cue->command, sizeof(cue->command))) return false;
     } else if (!r.skipValue()) {
       return false;
     }
@@ -255,21 +259,44 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
       return false;
     }
   }
-  if (!textIsSingleLine(cue->value) || !textIsSingleLine(cue->target)) {
+  if (!textIsSingleLine(cue->value) || !textIsSingleLine(cue->target) ||
+      !textIsSingleLine(cue->command)) {
     setResult(result, ProductionParseResult::InvalidJson);
     return false;
   }
-  if (strcmp(cue->type, "TEST") != 0 && strcmp(cue->type, "LOG") != 0) {
+  const bool hardwareCue = strcmp(cue->type, "PIXEL") == 0 ||
+                           strcmp(cue->type, "AUDIO") == 0 ||
+                           strcmp(cue->type, "LAMP") == 0;
+  const bool diagnosticCue = strcmp(cue->type, "TEST") == 0 ||
+                             strcmp(cue->type, "LOG") == 0;
+  if (!hardwareCue && !diagnosticCue) {
     setResult(result, ProductionParseResult::UnsupportedCueType);
     return false;
   }
-  if (cue->action[0] && strcmp(cue->action, "LOG") != 0) {
+  if (diagnosticCue) {
+    if (cue->action[0] && strcmp(cue->action, "LOG") != 0) {
+      setResult(result, ProductionParseResult::InvalidCueAction);
+      return false;
+    }
+    int n = snprintf(cue->command, sizeof(cue->command), "INTERNAL:%s:%s:%s",
+                     cue->type, cue->id, cue->value);
+    if (n <= 0 || (size_t)n >= sizeof(cue->command)) {
+      setResult(result, ProductionParseResult::CommandTooLong);
+      return false;
+    }
+    return true;
+  }
+  if (!cue->command[0]) {
+    setResult(result, ProductionParseResult::MissingField);
+    return false;
+  }
+  if ((strcmp(cue->type, "PIXEL") == 0 && strncmp(cue->command, "PIXEL:", 6) != 0) ||
+      (strcmp(cue->type, "AUDIO") == 0 && strncmp(cue->command, "AUDIO:NODE:", 11) != 0) ||
+      (strcmp(cue->type, "LAMP") == 0 && strncmp(cue->command, "LAMP:", 5) != 0)) {
     setResult(result, ProductionParseResult::InvalidCueAction);
     return false;
   }
-  int n = snprintf(cue->command, sizeof(cue->command), "INTERNAL:%s:%s:%s",
-                   cue->type, cue->id, cue->value);
-  if (n <= 0 || (size_t)n >= sizeof(cue->command)) {
+  if (strlen(cue->command) >= SHOWDUINO_CUE_COMMAND_MAX) {
     setResult(result, ProductionParseResult::CommandTooLong);
     return false;
   }

@@ -79,16 +79,16 @@ inline const SystemPageSpec *displaySystemPageSpec(DisplayPageId id) {
   };
   static const SystemPageSpec kLinkLost = {
     "///  COMMUNICATIONS",
-    "CONNECTION LOST",
-    "STAGE LINK DOWN",
-    "The Director is not receiving Stage state. Outputs stay as last commanded by Stage. Retry when SUE is reachable.",
+    "SHOWDUINO CONNECTION LOST",
+    "COMMS LINK DOWN",
+    "The Director is not receiving the Communications S3 or P4 Show Engine. Physical outputs stay as last commanded by the P4. Reconnecting automatically. Use RETRY LINK if the fabric does not return.",
     kLinkActions, 2, true
   };
   static const SystemPageSpec kNoNet = {
     "///  COMMUNICATIONS",
     "NO NETWORK",
-    "FABRIC UNAVAILABLE",
-    "ESP-NOW has not joined the show fabric. The Director can still display local pages. Retry discovery.",
+    "ESP-NOW UNAVAILABLE",
+    "ESP-NOW has not joined the Showduino fabric. The Director can still display local pages. Retry discovery. Outputs stay as last commanded by the P4.",
     kLinkActions, 2, true
   };
   static const SystemPageSpec kNoSd = {

@@ -17,6 +17,8 @@
 #include "DirectorEmergencyScreen.h"
 #include "DirectorEmergencyClearDialog.h"
 #include "DirectorUnlockScreen.h"
+#include "DirectorUiMotion.h"
+#include "DirectorAmbientPixels.h"
 #include "touch_lvgl.h"
 #include "page_01_home.h"
 #include "page_02_productions.h"
@@ -84,6 +86,9 @@ public:
     statusBar_.setLogCallback(statusBarLogThunk);
     statusBarSelf_ = this;
     statusBar_.begin();
+    if (statusBar_.root()) {
+      lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+    }
     displaySelf_ = this;
     gDirectorEmergencyScreen.setClearRequestHandler(emergencyClearThunk);
     gDirectorEmergencyScreen.setFinishedHandler(emergencyFinishedThunk);
@@ -92,10 +97,34 @@ public:
     touchLvglSetHook(displayTouchHook);
     Serial.println("[UI] building screens...");
     buildScreens();
-    Serial.println("[UI] loading desktop...");
-    showDesktop();
+    if (!gDirectorUnlockScreen.ownsDisplay()) {
+      Serial.println("[UI] loading desktop...");
+      showDesktop();
+    } else {
+      Serial.println("[UI] boot screen owns display - desktop deferred");
+    }
     syncStatusBarHealth();
     Serial.println("[UI] ready");
+  }
+
+  void onBootPresentationFinished() {
+    directorAmbientHoldPresentation(false);
+    directorUiMotionSetEmergency(emergencyLocked);
+    DisplayPageId page = displayManager_.takeDeferredPage();
+    if (emergencyLocked) {
+      if (page == PAGE_NONE) page = PAGE_DESKTOP;
+      displayManager_.showPage(page);
+      showEmergencyOverlay();
+      updateStatusWidgets(true);
+      return;
+    }
+    if (page == PAGE_NONE) page = PAGE_DESKTOP;
+    if (page == PAGE_CONNECTION_LOST && linkState == LINK_READY) {
+      page = PAGE_DESKTOP;
+    }
+    if (page == PAGE_DESKTOP) showDesktop();
+    else displayManager_.showPage(page);
+    updateStatusWidgets(true);
   }
 
   void setBootTime(unsigned long startedAt) { bootMs = startedAt; }
@@ -125,6 +154,7 @@ public:
   }
   uint8_t getLinkState() const { return linkState; }
   void setEmergencyLocked(bool locked) {
+    directorUiMotionSetEmergency(locked);
     const bool wasLocked = emergencyLocked;
     if (wasLocked == locked) {
       if (locked) {
@@ -157,7 +187,11 @@ public:
       gDirectorEmergencyScreen.setShowName(estopShowName);
       gDirectorEmergencyScreen.setActiveSince(emergencyActiveSinceMs);
       gDirectorEmergencyScreen.setLatchActive(true, emergencyActiveSinceMs);
-      showEmergencyOverlay();
+      if (gDirectorUnlockScreen.ownsDisplay()) {
+        gDirectorUnlockScreen.abortForEmergency();
+      } else {
+        showEmergencyOverlay();
+      }
       pushOperatorEvent("Emergency Activated");
       emergencyAlarmOnHook();
     } else if (!locked && wasLocked) {
@@ -206,10 +240,14 @@ public:
 
   void setNodeCount(uint8_t n) {
     if (nodeCount == n) return;
+    const uint8_t prev = nodeCount;
     nodeCount = n;
     liveStatusDirty = true;
     syncStatusBarHealth();
     refreshNodesPage();
+    if (n > prev) {
+      directorAmbientPulse(DIRECTOR_AMBIENT_EVT_NODE_DISCOVERED);
+    }
   }
 
   uint8_t getNodeCount() const { return nodeCount; }
@@ -379,11 +417,19 @@ public:
     /* State-transition operator events */
     if (prev != rt.state) {
       switch (rt.state) {
-        case SHOW_STATE_SHOW_LOADED: pushOperatorEvent("Show Loaded"); break;
+        case SHOW_STATE_SHOW_LOADED:
+          if (prev == SHOW_STATE_RUNNING || prev == SHOW_STATE_PAUSED) {
+            pushOperatorEvent("Show Stopped");
+          } else {
+            pushOperatorEvent("Show Loaded");
+          }
+          break;
         case SHOW_STATE_RUNNING:
-          if (prev == SHOW_STATE_PAUSED && !justConfirmedResume) pushOperatorEvent("Resumed");
-          else if (prev != SHOW_STATE_EMERGENCY_STOP && prev != SHOW_STATE_PAUSED)
+          if (prev == SHOW_STATE_PAUSED && !justConfirmedResume) {
+            pushOperatorEvent("Resumed");
+          } else if (prev != SHOW_STATE_EMERGENCY_STOP && prev != SHOW_STATE_PAUSED) {
             pushOperatorEvent("Show Started");
+          }
           break;
         case SHOW_STATE_PAUSED:
           if (prev == SHOW_STATE_RUNNING) pushOperatorEvent("Paused");
@@ -397,8 +443,9 @@ public:
           pushOperatorEvent(rt.lastError[0] ? rt.lastError : "Error");
           break;
         case SHOW_STATE_IDLE:
-          if (!justConfirmedAbort && prev == SHOW_STATE_FINISHED)
-            /* menu return path */;
+          if (prev == SHOW_STATE_RUNNING || prev == SHOW_STATE_PAUSED) {
+            pushOperatorEvent("Show Stopped");
+          }
           break;
         default: break;
       }
@@ -897,6 +944,15 @@ public:
 
   uint8_t getScreenTimeoutMinutes() const { return screenTimeoutMinutes; }
 
+  void applyAtmosphereSettings(bool ledsOn, uint8_t ledBri, uint8_t animMode) {
+    directorAmbientSetEnabled(ledsOn);
+    directorAmbientSetBrightness(ledBri);
+    directorUiMotionSetMode((DirectorUiAnimMode)animMode);
+    refreshAtmosphereLabel();
+  }
+
+  void refreshAtmospherePresentation() { refreshAtmosphereLabel(); }
+
   /** SUE TimeService wire (TIME:...) - display only, no local clock. */
   bool applySueTimeWire(const char *line) { return statusBar_.applyTimeWire(line); }
 
@@ -976,6 +1032,7 @@ public:
     statusBar_.update(millis());
     if (statusBar_.root()) {
       const bool cover =
+          gDirectorUnlockScreen.ownsDisplay() ||
           gDirectorUnlockScreen.isVisible() ||
           gDirectorEmergencyScreen.isVisible() ||
           gDirectorEmergencyClearDialog.isVisible() ||
@@ -1330,6 +1387,7 @@ private:
   lv_obj_t *diagnosticsScreen = nullptr;
   lv_obj_t *settingsScreen = nullptr;
   lv_obj_t *timeoutLabel = nullptr;
+  lv_obj_t *atmosphereLabel_ = nullptr;
   lv_obj_t *showsListPanel = nullptr;
   lv_obj_t *showsListTitle = nullptr;
   lv_obj_t *showListScroll = nullptr;
@@ -2388,12 +2446,23 @@ private:
     makeButton(settings, "Cycle", 412, 140, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
     os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
 
-    os_.makeHeading(settings, "SYSTEM", 8, 210);
-    makeButton(settings, "Backup", 8, 236, 140, 44, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 156, 236, 120, 44, "STORAGE:EXPORT");
-    makeButton(settings, "About", 284, 236, 120, 44, "SETTINGS:ABOUT");
+    os_.makeHeading(settings, "ATMOSPHERE", 8, 210);
+    makeButton(settings, "LEDs", 8, 238, 110, 44, "SETTINGS:AMBIENT:TOGGLE");
+    makeButton(settings, "LED Bri", 126, 238, 120, 44, "SETTINGS:AMBIENT:BRI:CYCLE");
+    makeButton(settings, "UI Motion", 254, 238, 140, 44, "SETTINGS:ANIM:CYCLE");
+    atmosphereLabel_ = makeLabel(settings, "LEDs ON  |  Bright 180  |  Motion ON", 8, 288);
+    lv_obj_add_style(atmosphereLabel_, &os_.caption, 0);
+    lv_obj_set_width(atmosphereLabel_, OS_CONTENT_FULL_W - 24);
+    lv_label_set_long_mode(atmosphereLabel_, LV_LABEL_LONG_CLIP);
+    os_.makeCaption(settings, "Emergency indication always remains available.", 8, 310);
+
+    os_.makeHeading(settings, "SYSTEM", 8, 338);
+    makeButton(settings, "Backup", 8, 364, 140, 44, "STORAGE:BACKUP");
+    makeButton(settings, "Export", 156, 364, 120, 44, "STORAGE:EXPORT");
+    makeButton(settings, "About", 284, 364, 120, 44, "SETTINGS:ABOUT");
 
     refreshTimeoutLabel();
+    refreshAtmosphereLabel();
     uiBuildPump();
 
     Serial.println("[UI] logs...");
@@ -2412,7 +2481,7 @@ private:
     buildAbortConfirm();
     uiBuildPump();
     buildCompleteOverlay();
-    if (statusBar_.root()) lv_obj_move_foreground(statusBar_.root());
+    if (statusBar_.root()) lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
     pushOperatorEvent("Showduino ready");
     Serial.printf("[UI] screens built heap=%u psram=%u\n",
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram());
@@ -2776,6 +2845,16 @@ private:
                (unsigned)screenTimeoutMinutes);
     }
     lv_label_set_text(timeoutLabel, buf);
+  }
+
+  void refreshAtmosphereLabel() {
+    if (atmosphereLabel_ == nullptr) return;
+    char buf[72];
+    snprintf(buf, sizeof(buf), "LEDs %s  |  Bright %u  |  Motion %s",
+             directorAmbientEnabled() ? "ON" : "OFF",
+             (unsigned)directorAmbientBrightness(),
+             directorUiMotionModeName());
+    lv_label_set_text(atmosphereLabel_, buf);
   }
 
   void clearShowListChildren() {

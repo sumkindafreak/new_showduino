@@ -3,6 +3,8 @@
 #include "DisplaySystemPages.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
+#include "DirectorUnlockScreen.h"
+#include "DirectorUiMotion.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <string.h>
@@ -424,6 +426,12 @@ bool DisplayManager::loadBackground(DisplayPageId /*page*/) {
 
 bool DisplayManager::showPage(DisplayPageId page) {
   if (!begun_) begin();
+  if (gDirectorUnlockScreen.ownsDisplay()) {
+    deferredPage_ = page;
+    hasDeferredPage_ = true;
+    Serial.printf("[Display] defer page %u until boot screen exits\n", (unsigned)page);
+    return true;
+  }
   if (phase2Active_ && currentPage_ == page && lv_screen_active() == screen_) {
     return true;
   }
@@ -445,6 +453,8 @@ bool DisplayManager::showPage(DisplayPageId page) {
     return false;
   }
 
+  const bool leavingBoot = (lv_screen_active() != screen_);
+
   state_ = DISPLAY_TRANSITION;
   ensureShell();
   hidePagePanels();
@@ -456,7 +466,9 @@ bool DisplayManager::showPage(DisplayPageId page) {
   highlightDock(page);
   raiseLayers();
   if (dock_) lv_obj_move_foreground(dock_);
-  if (lv_screen_active() != screen_) lv_screen_load(screen_);
+  if (lv_screen_active() != screen_) {
+    directorUiMotionLoadScreen(screen_, leavingBoot);
+  }
   afterShowPage(page);
   Serial.printf("[Display] showPage %u lvgl ready\n", (unsigned)page);
   return true;

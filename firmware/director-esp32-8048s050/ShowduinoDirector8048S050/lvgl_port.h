@@ -13,4 +13,6 @@
 extern Arduino_RGB_Display *gfx;
 
 bool lvglPortInit(Arduino_RGB_Display *panel, Arduino_ESP32RGBPanel *rgbPanel);
+void lvglPortEnableFlush(bool enable);
+bool lvglPortFlushEnabled();
 void lvglPortLoop();

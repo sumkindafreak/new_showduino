@@ -43,6 +43,9 @@
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
 #include "ShowduinoUi.h"
+#include "DirectorUnlockScreen.h"
+#include "DirectorUiMotion.h"
+#include "DirectorAmbientPixels.h"
 #if SHOWDUINO_OS2_SHELL
 #include "os2/ShowduinoOs.h"
 #endif
@@ -289,6 +292,7 @@ void applyLinkState(uint8_t state) {
     gShowMirror.stageConnected = 0;
   } else if (state == LINK_READY && prev != LINK_READY) {
     SD_LOGI("DIRECTOR", "Comms online");
+    directorAmbientPulse(DIRECTOR_AMBIENT_EVT_CONNECTION_RESTORED);
     requestStateSync();
   }
   ui.updateStatusWidgets(false);
@@ -1014,23 +1018,27 @@ void handleUiCommand(const String &command) {
       return;
     }
     requestShowRun(key);
+    directorAmbientPulse(DIRECTOR_AMBIENT_EVT_START_REQUESTED);
     return;
   }
 
   if (command == "UI:SHOW:STOP" || command == "SHOW:STOP" || command == "STOP:ALL") {
     requestShowStop();
+    directorAmbientPulse(DIRECTOR_AMBIENT_EVT_STOP_REQUESTED);
     return;
   }
 
   if (command == "SHOW:PAUSE" || command == "UI:SHOW:PAUSE") {
     sendToStage("SHOW:PAUSE");
     ui.appendLog("Requested SHOW:PAUSE (await Stage)");
+    directorAmbientPulse(DIRECTOR_AMBIENT_EVT_PAUSE_REQUESTED);
     return;
   }
 
   if (command == "SHOW:RESUME" || command == "UI:SHOW:RESUME") {
     sendToStage("SHOW:RESUME");
     ui.appendLog("Requested SHOW:RESUME (await Stage)");
+    directorAmbientPulse(DIRECTOR_AMBIENT_EVT_RESUME_REQUESTED);
     return;
   }
 
@@ -1071,6 +1079,40 @@ void handleUiCommand(const String &command) {
     ui.setScreenTimeoutMinutes(next);
     if (next == 0) ui.appendLog("Auto backlight: NEVER");
     else ui.appendLog(String("Auto backlight: ") + next + " min");
+    return;
+  }
+
+  if (command == "SETTINGS:AMBIENT:TOGGLE" ||
+      command == "SETTINGS:AMBIENT:BRI:CYCLE" ||
+      command == "SETTINGS:ANIM:CYCLE") {
+    DirectorConfig &cfg = gStorage.getConfig();
+    if (command == "SETTINGS:AMBIENT:TOGGLE") {
+      cfg.ambientLedsEnabled = !cfg.ambientLedsEnabled;
+    } else if (command == "SETTINGS:AMBIENT:BRI:CYCLE") {
+      static const uint8_t kBri[] = {40, 100, 180, 255};
+      uint8_t idx = 0;
+      bool found = false;
+      for (uint8_t i = 0; i < sizeof(kBri); i++) {
+        if (kBri[i] == cfg.ambientBrightness) {
+          idx = (uint8_t)((i + 1) % sizeof(kBri));
+          found = true;
+          break;
+        }
+      }
+      if (!found) idx = 2;
+      cfg.ambientBrightness = kBri[idx];
+    } else {
+      cfg.uiAnimationMode = (uint8_t)directorUiMotionNextMode(
+          (DirectorUiAnimMode)cfg.uiAnimationMode);
+    }
+    gStorage.markConfigDirty();
+    gStorage.saveAllConfiguration();
+    ui.applyAtmosphereSettings(cfg.ambientLedsEnabled, cfg.ambientBrightness,
+                               cfg.uiAnimationMode);
+    ui.appendLog(String("Atmosphere: LEDs ") +
+                 (cfg.ambientLedsEnabled ? "ON" : "OFF") +
+                 " bri " + String(cfg.ambientBrightness) +
+                 " motion " + directorUiMotionModeName());
     return;
   }
 
@@ -1296,7 +1338,15 @@ void checkLinkWatchdog() {
 // =========================================================
 // Setup
 // =========================================================
+void onDirectorBootFinished() {
+  ui.onBootPresentationFinished();
+}
+
 void setup() {
+  /* Kill the panel backlight before anything else so a reset cannot show
+   * an uninitialised RGB framebuffer or leftover LVGL chrome. */
+  backlightInit(TFT_BL_PIN);
+
   Serial.begin(USB_DEBUG_BAUD);
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   /* CDC Serial is the unused USB PHY. Keep UART0 alive on the CH340 COM port. */
@@ -1319,8 +1369,6 @@ void setup() {
     while (true) delay(2000);
   }
   Serial.printf("PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
-
-  backlightInit(TFT_BL_PIN);
 
 #if SHOWDUINO_USE_ESPNOW
   /* Wi-Fi/ESP-NOW before LVGL: the RGB UI build leaves too little internal heap. */
@@ -1358,17 +1406,40 @@ void setup() {
   }
 
   if (!storageOk && gfx) {
-    gfx->setTextColor(RGB565_WHITE);
-    gfx->setTextSize(2);
-    gfx->setCursor(20, 20);
-    gfx->println("SHOWDUINO DIRECTOR");
-    gfx->setCursor(20, 50);
-    gfx->println("SD RECOVERY MODE");
+    /* Keep recovery text off the panel until the boot screen owns the first
+     * visible frame. The NO SD page is deferred until boot exits. */
+    Serial.println("SD recovery mode - UI after boot screen");
   }
 
   bootMs = millis();
   ui.setBootTime(bootMs);
-  Serial.println("UI: begin...");
+  {
+    const DirectorConfig &cfg = gStorage.getConfig();
+    backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
+    directorUiMotionSetMode((DirectorUiAnimMode)cfg.uiAnimationMode);
+    directorAmbientSetEnabled(cfg.ambientLedsEnabled);
+    directorAmbientSetBrightness(cfg.ambientBrightness);
+  }
+
+  gDirectorUnlockScreen.setFinishedHandler(onDirectorBootFinished);
+  gDirectorUnlockScreen.begin(bootMs);
+  lv_tick_inc(1);
+  lvglPortEnableFlush(true);
+  lv_timer_handler();
+  lastLvglTickMs = millis();
+  backlightRevealNow();
+
+  directorAmbientBegin();
+  gShowMirror.state = SHOW_STATE_BOOTING;
+  directorAmbientHoldPresentation(true);
+  directorAmbientSetState(DIRECTOR_AMBIENT_BOOT);
+
+  /* HELLO now so the P4 can queue boot.wav while the boot screen is visible
+   * and application UI continues constructing in the background. */
+  lastHelloMs = millis();
+  sendToStage("HELLO");
+
+  Serial.println("UI: begin (behind boot screen)...");
   ui.begin(handleUiCommand);
   gDirectorEmergencyClearDialog.setConfirmHandler(onEmergencyClearConfirm);
   gDirectorEmergencyClearDialog.setCancelHandler(onEmergencyClearCancel);
@@ -1389,8 +1460,9 @@ void setup() {
   {
     const DirectorConfig &cfg = gStorage.getConfig();
     backlightConfigure(cfg.screenTimeoutMinutes, cfg.brightness);
-    backlightNotifyActivity();
     ui.setScreenTimeoutMinutes(cfg.screenTimeoutMinutes);
+    ui.applyAtmosphereSettings(cfg.ambientLedsEnabled, cfg.ambientBrightness,
+                               cfg.uiAnimationMode);
   }
 
   ui.appendLog("Showduino portable Director online.");
@@ -1424,20 +1496,13 @@ void setup() {
 #endif
 
   lastHeartbeatMs = millis();
-  lastHelloMs = 0;
   lastUiRefreshMs = millis();
   lastLvglTickMs = millis();
 
   showRuntimeClear(&gShowMirror);
   gShowMirror.state = SHOW_STATE_BOOTING;
+  directorAmbientHoldPresentation(true);
 
-  directorAmbientBegin();
-  directorAmbientSync(linkState, gShowMirror.state, emergencyLocked,
-                      gShowMirror.stageConnected != 0,
-                      ui.isSynchronising(),
-                      ui.nodesRequiredMissing());
-
-  sendToStage("HELLO");
   Serial.println("Setup complete. Type HELP in Serial Monitor for bench commands.");
 }
 
@@ -1454,6 +1519,7 @@ void loop() {
   }
 
   ui.setEmergencyLocked(emergencyLocked);
+  gDirectorUnlockScreen.tick(now, espNowReady, linkState, emergencyLocked);
   ui.tickEmergencyOverlay(now);
   gDirectorEmergencyClearDialog.tick(now);
   ui.setTraffic(txCount, rxCount);

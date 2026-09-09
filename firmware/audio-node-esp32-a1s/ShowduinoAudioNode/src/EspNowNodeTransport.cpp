@@ -20,7 +20,6 @@ static uint32_t sRx = 0;
 static uint32_t sTx = 0;
 static uint32_t sRej = 0;
 static uint32_t sLastRx = 0;
-static uint32_t sLastRecover = 0;
 static uint32_t sSendFail = 0;
 static uint32_t sLastService = 0;
 static AudioNodeRxFn sHandler = nullptr;
@@ -31,11 +30,16 @@ static bool addPeer(const uint8_t *mac) {
   if (esp_now_is_peer_exist(mac)) return true;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, mac, 6);
-  peer.channel = SHOWDUINO_ESPNOW_CHANNEL;
+  peer.channel = 0;
   peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
+  wifi_mode_t mode = WIFI_MODE_NULL;
+  esp_wifi_get_mode(&mode);
+  peer.ifidx = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) ? WIFI_IF_AP : WIFI_IF_STA;
   const esp_err_t err = esp_now_add_peer(&peer);
-  return err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST;
+  if (err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST) return true;
+  peer.ifidx = (peer.ifidx == WIFI_IF_AP) ? WIFI_IF_STA : WIFI_IF_AP;
+  const esp_err_t err2 = esp_now_add_peer(&peer);
+  return err2 == ESP_OK || err2 == ESP_ERR_ESPNOW_EXIST;
 }
 
 static void lockChannel() {
@@ -105,20 +109,10 @@ void audioEspNowReassert() {
 }
 
 void audioEspNowRecover() {
-  const uint32_t now = millis();
-  if (sLastRecover && (now - sLastRecover) < 1500UL) {
-    audioEspNowReassert();
-    return;
-  }
-  sLastRecover = now;
-  lockChannel();
-  if (sReady) {
-    esp_now_deinit();
-    sReady = false;
-    delay(20);
-  }
-  if (!initEspNow()) return;
-  SD_LOGI("ESPNOW", "rebound — still listening for Showduino");
+  /* Do not deinit ESP-NOW. Tearing down the radio on the node does not repair
+   * Comms, and SoftAP bring-up used to call this hook on every Audio Node
+   * power-on. Reassert channel and peers only. */
+  audioEspNowReassert();
 }
 
 void audioEspNowService() {
@@ -169,9 +163,9 @@ bool audioEspNowSend(const char *command, uint32_t sequence) {
     sSendFail++;
     addPeer(kBroadcast);
     if (esp_now_send(kBroadcast, (const uint8_t *)&pkt, sizeof(pkt)) != ESP_OK) {
-      if (sSendFail >= 3) {
+      if (sSendFail >= 8) {
         sSendFail = 0;
-        audioEspNowRecover();
+        audioEspNowReassert();
       }
       return false;
     }

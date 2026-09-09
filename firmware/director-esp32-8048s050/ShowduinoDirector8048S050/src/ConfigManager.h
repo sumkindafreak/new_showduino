@@ -31,6 +31,9 @@ public:
     cfg.confirmBeforeStart    = false;
     cfg.confirmBeforeStop     = false;
     cfg.autoOpenLiveAfterLoad = false;
+    cfg.ambientLedsEnabled    = true;
+    cfg.ambientBrightness     = 180;
+    cfg.uiAnimationMode       = 2;
   }
 
   bool load(DirectorConfig &cfg) {
@@ -64,6 +67,15 @@ public:
     cfg.confirmBeforeStart    = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStart",    false);
     cfg.confirmBeforeStop     = ShowduinoFileUtil::jsonGetBool(json, "confirmBeforeStop",     false);
     cfg.autoOpenLiveAfterLoad = ShowduinoFileUtil::jsonGetBool(json, "autoOpenLiveAfterLoad", false);
+    cfg.ambientLedsEnabled    = ShowduinoFileUtil::jsonGetBool(json, "ambientLedsEnabled", true);
+    long bri = ShowduinoFileUtil::jsonGetLong(json, "ambientBrightness", 180);
+    if (bri < 1) bri = 1;
+    if (bri > 255) bri = 255;
+    cfg.ambientBrightness = (uint8_t)bri;
+    long anim = ShowduinoFileUtil::jsonGetLong(json, "uiAnimationMode", 2);
+    if (anim < 0) anim = 0;
+    if (anim > 2) anim = 2;
+    cfg.uiAnimationMode = (uint8_t)anim;
 
     if (cfg.schemaVersion < STORAGE_SCHEMA_VERSION) {
       Serial.printf("[Config] migrating schema %u -> %u\n", cfg.schemaVersion, STORAGE_SCHEMA_VERSION);
@@ -153,7 +165,10 @@ private:
     j += "  \"maxLogStorageMb\": " + String(cfg.maxLogStorageMb) + ",\n";
     j += "  \"confirmBeforeStart\": " + String(cfg.confirmBeforeStart ? "true" : "false") + ",\n";
     j += "  \"confirmBeforeStop\": " + String(cfg.confirmBeforeStop ? "true" : "false") + ",\n";
-    j += "  \"autoOpenLiveAfterLoad\": " + String(cfg.autoOpenLiveAfterLoad ? "true" : "false") + "\n";
+    j += "  \"autoOpenLiveAfterLoad\": " + String(cfg.autoOpenLiveAfterLoad ? "true" : "false") + ",\n";
+    j += "  \"ambientLedsEnabled\": " + String(cfg.ambientLedsEnabled ? "true" : "false") + ",\n";
+    j += "  \"ambientBrightness\": " + String(cfg.ambientBrightness) + ",\n";
+    j += "  \"uiAnimationMode\": " + String(cfg.uiAnimationMode) + "\n";
     j += "}\n";
     return j;
   }

@@ -6,18 +6,17 @@
 #include "../../../protocol/showduino_show_runtime.h"
 
 /**
- * Director ambient NeoPixel mood lighting.
- * Driven from link + mirrored ShowRuntime + emergency lock.
- * Non-blocking: call directorAmbientBegin() once, directorAmbientLoop() each loop.
+ * Director ambient NeoPixel engine.
  *
- * Pages must not set pixel colours. This service owns GPIO17.
+ * Pages and system events request a named state or a short pulse.
+ * This service owns GPIO17 colour, brightness, fades and emergency override.
+ * Non-blocking: millis() frames at SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS.
  *
- * Visual priority:
- *   Real emergency remains authoritative in UI/state (overlay, latch, status).
- *   Locator mode may temporarily flash red/blue only to find the desk.
- *   Locator never changes the emergency latch or show state.
- *   After the locator window, pixels return to the current semantic colour
- *   (both red if emergency is still active).
+ * Persistent states remain until a new authoritative state arrives.
+ * Temporary events (node discovered, deploy success) restore the previous
+ * persistent state. SUCCESS never falls back to READY blindly.
+ *
+ * Emergency has absolute priority over cosmetic lighting.
  */
 
 enum DirectorAmbientMode : uint8_t {
@@ -32,13 +31,28 @@ enum DirectorAmbientMode : uint8_t {
   DIRECTOR_AMBIENT_SUCCESS,
   DIRECTOR_AMBIENT_DISCOVERY,
   DIRECTOR_AMBIENT_DEGRADED,
-  DIRECTOR_AMBIENT_OFFLINE
+  DIRECTOR_AMBIENT_OFFLINE,
+  DIRECTOR_AMBIENT_PAUSED,
+  DIRECTOR_AMBIENT_STOPPED,
+  DIRECTOR_AMBIENT_DEPLOYING
+};
+
+enum DirectorAmbientEvent : uint8_t {
+  DIRECTOR_AMBIENT_EVT_NONE = 0,
+  DIRECTOR_AMBIENT_EVT_NODE_DISCOVERED,
+  DIRECTOR_AMBIENT_EVT_DEPLOY_REQUESTED,
+  DIRECTOR_AMBIENT_EVT_DEPLOY_SUCCESS,
+  DIRECTOR_AMBIENT_EVT_START_REQUESTED,
+  DIRECTOR_AMBIENT_EVT_PAUSE_REQUESTED,
+  DIRECTOR_AMBIENT_EVT_RESUME_REQUESTED,
+  DIRECTOR_AMBIENT_EVT_STOP_REQUESTED,
+  DIRECTOR_AMBIENT_EVT_CONNECTION_RESTORED
 };
 
 void directorAmbientBegin();
 void directorAmbientLoop(uint32_t nowMs);
 
-/** Push Director operational context (call when state may have changed). */
+/** Authoritative Director/P4 context. Does not imply success from a tap. */
 void directorAmbientSync(uint8_t linkState,
                          ShowState showState,
                          bool emergencyLocked,
@@ -46,13 +60,19 @@ void directorAmbientSync(uint8_t linkState,
                          bool synchronising = false,
                          bool degraded = false);
 
-/** Presentation-only locate flash. Does not change emergency state. */
-void directorAmbientStartLocator(uint32_t nowMs);
-bool directorAmbientLocatorActive();
+void directorAmbientSetState(DirectorAmbientMode mode);
+void directorAmbientPulse(DirectorAmbientEvent event);
+void directorAmbientHoldPresentation(bool hold);
+bool directorAmbientPresentationHeld();
 
+void directorAmbientSetEnabled(bool enabled);
+bool directorAmbientEnabled();
 void directorAmbientSetBrightness(uint8_t brightness);
 uint8_t directorAmbientBrightness();
 DirectorAmbientMode directorAmbientMode();
 bool directorAmbientReady();
+
+void directorAmbientStartLocator(uint32_t nowMs);
+bool directorAmbientLocatorActive();
 
 #endif

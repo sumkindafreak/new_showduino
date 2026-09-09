@@ -45,6 +45,14 @@ public:
   /** Replace the system-page body copy (SHOW COMPLETE detail, etc.). */
   void setSystemDetail(const char *text);
 
+  DisplayPageId takeDeferredPage() {
+    if (!hasDeferredPage_) return PAGE_NONE;
+    hasDeferredPage_ = false;
+    DisplayPageId page = deferredPage_;
+    deferredPage_ = PAGE_NONE;
+    return page;
+  }
+
 private:
   const DisplayPage *pageDesc(DisplayPageId id) const;
   void probeCapabilities();
@@ -76,10 +84,12 @@ private:
   lv_obj_t *chromeStatus_ = nullptr;
 
   DisplayPageId currentPage_ = PAGE_NONE;
+  DisplayPageId deferredPage_ = PAGE_NONE;
   DisplayState state_ = DISPLAY_LOADING;
   bool phase2Active_ = false;
   bool begun_ = false;
   bool backgroundFallback_ = false;
+  bool hasDeferredPage_ = false;
 
   DisplayCapabilities caps_{};
   DisplayStats stats_{};

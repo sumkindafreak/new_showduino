@@ -105,7 +105,7 @@ static void applyMaster(uint8_t v, bool persist) {
 
 void audioCommandBegin(uint8_t volume) {
   nodeConfigBegin("audio");
-  nodeSoftApSetRadioHook(audioEspNowRecover);
+  nodeSoftApSetRadioHook(audioEspNowReassert);
   applyMaster((uint8_t)showduino_audio_clamp_volume(volume), false);
   audioCodecApplyOutput(audioStorageConfig().output);
 }

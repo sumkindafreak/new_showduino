@@ -70,6 +70,7 @@ class DirectorStatusBar {
 
     syncState_ = SyncState::Synchronising;
     dirtyTime_ = dirtySys_ = dirtyNet_ = dirtyNodes_ = dirtyEmerg_ = dirtyChrome_ = true;
+    lv_obj_add_flag(root_, LV_OBJ_FLAG_HIDDEN);
   }
 
   lv_obj_t *root() const { return root_; }

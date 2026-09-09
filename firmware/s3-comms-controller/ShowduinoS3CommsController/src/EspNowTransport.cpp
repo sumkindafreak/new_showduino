@@ -58,16 +58,31 @@ bool espNowTransportReadStaMac(uint8_t out[6]) {
   return false;
 }
 
+static wifi_interface_t commsEspNowIf() {
+  wifi_mode_t mode = WIFI_MODE_NULL;
+  esp_wifi_get_mode(&mode);
+  if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) return WIFI_IF_AP;
+  return WIFI_IF_STA;
+}
+
 static bool addPeer(const uint8_t *mac) {
   if (!mac) return false;
   if (esp_now_is_peer_exist(mac)) return true;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, mac, 6);
-  peer.channel = SHOWDUINO_ESPNOW_CHANNEL;
+  /* Channel 0 = current radio channel. Hard-coding channel 1 while SoftAP is
+   * up on AP+STA is a known ESP-NOW failure mode that can drop the Director. */
+  peer.channel = 0;
   peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
+  peer.ifidx = commsEspNowIf();
   esp_err_t err = esp_now_add_peer(&peer);
-  return err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST;
+  if (err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+    peer.ifidx = (peer.ifidx == WIFI_IF_AP) ? WIFI_IF_STA : WIFI_IF_AP;
+    err = esp_now_add_peer(&peer);
+  }
+  if (err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST) return true;
+  Serial.printf("[ESPNOW] addPeer failed err=%d ifidx=%d\n", (int)err, (int)peer.ifidx);
+  return false;
 }
 
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
