@@ -29,6 +29,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Refresh latest main for non-PR runs
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
