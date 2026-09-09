@@ -151,6 +151,8 @@
 #define SHOWDUINO_COMMS_MAC_4 0xB5
 #define SHOWDUINO_COMMS_MAC_5 0x38
 
+/* Historical alias only. This is the dedicated Communications S3 MAC.
+ * It does NOT address the unused/reserved onboard ESP32-C6. */
 #ifndef SHOWDUINO_P4_C6_MAC_0
 #define SHOWDUINO_P4_C6_MAC_0 SHOWDUINO_COMMS_MAC_0
 #define SHOWDUINO_P4_C6_MAC_1 SHOWDUINO_COMMS_MAC_1

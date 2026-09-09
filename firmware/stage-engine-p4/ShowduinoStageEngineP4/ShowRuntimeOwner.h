@@ -252,7 +252,8 @@ struct ShowRuntimeOwner {
   }
 
   bool handleRun(uint32_t nowMs, ShowEngineState *legacy) {
-    if (legacy && legacy->emergency == EmergencyState::Active) {
+    if (rt.state == SHOW_STATE_EMERGENCY_STOP ||
+        (legacy && legacy->emergency == EmergencyState::Active)) {
       Serial.println("[SHOW] Start rejected: EMERGENCY ACTIVE");
       if (sendFn) sendFn("REJECTED:SHOW:EMERGENCY_ACTIVE");
       return false;
@@ -377,6 +378,7 @@ struct ShowRuntimeOwner {
     if (timeline.state() == TimelinePlayState::Running) {
       timeline.Pause();
     }
+    if (legacy) legacy->emergency = EmergencyState::Active;
     syncFromTimeline();
     transitionLogged(SHOW_STATE_EMERGENCY_STOP, nowMs);
     syncLegacyShow(legacy);

@@ -1,10 +1,10 @@
 #include "CommsWebServer.h"
-#include "../../../../../protocol/showduino_web_timeline_upload_policy.h"
+#include "../../../protocol/showduino_web_timeline_upload_policy.h"
 
 /* Preserve the current S3 WebUI server unchanged and add only the dedicated
  * Studio timeline route after the normal server has been initialised. */
 #define commsWebBegin commsWebBeginBase
-#include "CommsWebServerBase.inc"
+#include "CommsWebServerBase.h"
 #undef commsWebBegin
 
 #if SHOWDUINO_WEBUI_ENABLED

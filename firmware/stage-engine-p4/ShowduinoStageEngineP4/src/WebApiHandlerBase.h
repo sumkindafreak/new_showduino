@@ -23,6 +23,7 @@
 #include "e131/E131Receiver.h"
 #include "storage/StageStore.h"
 #include "nodes/AudioNodeLink.h"
+#include "nodes/LampNodeLink.h"
 
 #ifndef SHOWDUINO_P4_STATIC_WEBUI
 #define SHOWDUINO_P4_STATIC_WEBUI 0
@@ -207,6 +208,10 @@ static bool webCommandAllowed(const String &cmd) {
       cmd.startsWith("PIXEL:SEGMENT:")) {
     return cmd.length() <= SHOWDUINO_COMMS_CMD_MAX;
   }
+  if (cmd == "LAMP:STATUS" || cmd == "LAMP:OFF" || cmd == "LAMP:STOP" ||
+      cmd == "LAMP:NODE:STATUS" || cmd == "LAMP:NODE:STOP") {
+    return true;
+  }
   if (cmd.startsWith("AUDIO:NODE:")) {
     char arg[80];
     int vol = -1;
@@ -275,7 +280,7 @@ static void handleApiSystem() {
   appendIsoTime(iso, timeSynced, epoch);
 
   String json = "{\n";
-  json += "  \"firmwareVersion\": \"0.4.0\",\n";
+  json += "  \"firmwareVersion\": \"" SHOWDUINO_P4_FIRMWARE_VERSION "\",\n";
   json += "  \"protocolVersion\": \"1.0\",\n";
   json += "  \"boardName\": \"ESP32-P4 Stage Engine\",\n";
   json += "  \"role\": \"stage\",\n";
@@ -378,7 +383,8 @@ static void handleApiSystem() {
   json += "    \"inputs\": \"planned\",\n";
   json += "    \"sd\": \"" + String(stageStoreStateName()) + "\",\n";
   json += "    \"pluginBus\": " + String(pluginBusReady() ? "true" : "false") + ",\n";
-  json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\"\n";
+  json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
+  json += "    \"lampNode\": \"" + String(lampNodeLinkStatus().online ? "ready" : "searching") + "\"\n";
   json += "  },\n";
   json += "  \"ethernet\": {\n";
   json += "    \"link\": \"" + String(showNetworkLive().hasIp ? "UP" : (showNetworkLive().linkUp ? "UP" : "DOWN")) + "\",\n";
@@ -406,6 +412,8 @@ static void handleApiSystem() {
   stageStoreAppendJson(json);
   json += ",\n  \"audioNode\": ";
   audioNodeLinkAppendJson(json);
+  json += ",\n  \"lampNode\": ";
+  lampNodeLinkAppendJson(json);
   json += "\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
@@ -429,7 +437,7 @@ static void handleApiDevices() {
   json += "      \"role\": \"stage\",\n";
   json += "      \"online\": true,\n";
   json += "      \"connectionStatus\": \"uart-authoritative\",\n";
-  json += "      \"firmwareVersion\": \"0.2.0\"\n";
+  json += "      \"firmwareVersion\": \"" SHOWDUINO_P4_FIRMWARE_VERSION "\"\n";
   json += "    }";
   const uint8_t n = pluginBusInstanceCount();
   for (uint8_t i = 0; i < n; i++) {
@@ -476,6 +484,25 @@ static void handleApiDevices() {
     json += an.state;
     json += "\",\n      \"capabilities\": \"";
     json += an.capabilities;
+    json += "\"\n    }";
+  }
+  const LampNodeStatus &ln = lampNodeLinkStatus();
+  if (ln.seen) {
+    json += ",\n    {\n";
+    json += "      \"id\": \"lamp-node\",\n";
+    json += "      \"name\": \"Lamp Node\",\n";
+    json += "      \"friendlyName\": \"C3 Lamp Node\",\n";
+    json += "      \"board\": \"ESP32-C3\",\n";
+    json += "      \"role\": \"LAMP\",\n";
+    json += "      \"online\": ";
+    json += ln.online ? "true" : "false";
+    json += ",\n      \"connectionStatus\": \"espnow-node\",\n";
+    json += "      \"mac\": \"";
+    json += ln.mac;
+    json += "\",\n      \"firmwareVersion\": \"";
+    json += ln.firmware;
+    json += "\",\n      \"state\": \"";
+    json += ln.state;
     json += "\"\n    }";
   }
   json += "\n  ]\n}\n";

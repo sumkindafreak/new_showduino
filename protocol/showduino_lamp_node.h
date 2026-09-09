@@ -257,8 +257,11 @@ static inline ShowduinoLampCmd showduino_lamp_parse_command(
   }
 
   cmd = showduino_lamp_strip_prefix(raw);
-  if (strncmp(cmd, "LAMP:", 5) != 0) return SHOWDUINO_LAMP_CMD_NONE;
-  cmd += 5;
+  if (strncmp(cmd, "LAMP:", 5) == 0) {
+    cmd += 5;
+  } else if (strncmp(raw, "LAMP:NODE:", 10) != 0) {
+    return SHOWDUINO_LAMP_CMD_NONE;
+  }
 
   if (strcmp(cmd, "STATUS") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_STATUS;
   else if (strcmp(cmd, "OFF") == 0 || strcmp(cmd, "STOP") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_OFF;
