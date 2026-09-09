@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "showduino_node_ownership.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,11 +24,11 @@ extern "C" {
 #define SHOWDUINO_AUDIO_COMMS_TIMEOUT_MS   5000u
 #define SHOWDUINO_AUDIO_TEST_FILE          "system-test.wav"
 #define SHOWDUINO_AUDIO_CAPS \
-  "WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD"
+  "WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD,STANDALONE,OWN"
 #define SHOWDUINO_AUDIO_INV_PER_PAGE       6
 #define SHOWDUINO_AUDIO_INV_MAX            48
 #define SHOWDUINO_AUDIO_FADE_MAX_MS        15000
-#define SHOWDUINO_AUDIO_PROTOCOL           "1.2"
+#define SHOWDUINO_AUDIO_PROTOCOL           "1.3"
 
 typedef enum ShowduinoAudioNodeState {
   SHOWDUINO_AUDIO_ST_UNKNOWN = 0,
@@ -57,6 +58,7 @@ typedef enum ShowduinoAudioCmd {
   SHOWDUINO_AUDIO_CMD_DUCK,
   SHOWDUINO_AUDIO_CMD_UNDUCK,
   SHOWDUINO_AUDIO_CMD_INVENTORY,
+  SHOWDUINO_AUDIO_CMD_OWN_GRANT,
   SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP,
   SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR,
   SHOWDUINO_AUDIO_CMD_LOCAL_REJECT
@@ -100,7 +102,9 @@ typedef enum ShowduinoAudioFail {
   SHOWDUINO_AUDIO_FAIL_STORAGE,
   SHOWDUINO_AUDIO_FAIL_NO_STORAGE,
   SHOWDUINO_AUDIO_FAIL_CONFIG_FAULT,
-  SHOWDUINO_AUDIO_FAIL_COMMS_TIMEOUT
+  SHOWDUINO_AUDIO_FAIL_COMMS_TIMEOUT,
+  SHOWDUINO_AUDIO_FAIL_SHOW_CONTROLLED,
+  SHOWDUINO_AUDIO_FAIL_NOT_OWNER
 } ShowduinoAudioFail;
 
 typedef enum ShowduinoAudioButton {
@@ -163,6 +167,8 @@ static inline const char *showduino_audio_fail_name(ShowduinoAudioFail f) {
     case SHOWDUINO_AUDIO_FAIL_NO_STORAGE: return "NO_STORAGE";
     case SHOWDUINO_AUDIO_FAIL_CONFIG_FAULT: return "CONFIG_FAULT";
     case SHOWDUINO_AUDIO_FAIL_COMMS_TIMEOUT: return "COMMS_TIMEOUT";
+    case SHOWDUINO_AUDIO_FAIL_SHOW_CONTROLLED: return "SHOW_CONTROLLED";
+    case SHOWDUINO_AUDIO_FAIL_NOT_OWNER: return "NOT_OWNER";
     default: return "FAILED";
   }
 }
@@ -364,6 +370,10 @@ static inline ShowduinoAudioCmd showduino_audio_parse_command_ex(const char *cmd
 
   if (strcmp(cmd, "EMERGENCY:STOP") == 0) return SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP;
   if (strcmp(cmd, "EMERGENCY:CLEAR") == 0) return SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR;
+  if (strcmp(cmd, "OWN:GRANT") == 0 || strcmp(cmd, "AUDIO:OWN:GRANT") == 0 ||
+      strcmp(cmd, "AUDIO:NODE:OWN:GRANT") == 0) {
+    return SHOWDUINO_AUDIO_CMD_OWN_GRANT;
+  }
   if (strcmp(cmd, "AUDIO:NODE:STOP") == 0 || strcmp(cmd, "AUDIO:STOP") == 0) {
     return SHOWDUINO_AUDIO_CMD_STOP;
   }
@@ -493,6 +503,58 @@ static inline ShowduinoAudioFail showduino_audio_can_accept(ShowduinoAudioNodeSt
   return SHOWDUINO_AUDIO_FAIL_NONE;
 }
 
+static inline int showduino_audio_cmd_theatrical(ShowduinoAudioCmd cmd) {
+  return cmd == SHOWDUINO_AUDIO_CMD_PLAY || cmd == SHOWDUINO_AUDIO_CMD_LOOP ||
+         cmd == SHOWDUINO_AUDIO_CMD_TEST || cmd == SHOWDUINO_AUDIO_CMD_VOLUME ||
+         cmd == SHOWDUINO_AUDIO_CMD_PAUSE || cmd == SHOWDUINO_AUDIO_CMD_RESUME ||
+         cmd == SHOWDUINO_AUDIO_CMD_DUCK || cmd == SHOWDUINO_AUDIO_CMD_UNDUCK ||
+         cmd == SHOWDUINO_AUDIO_CMD_STOP;
+}
+
+static inline ShowduinoAudioFail showduino_audio_owner_can_accept(
+    ShowduinoNodeOwnerMode owner, ShowduinoAudioCmd cmd, ShowduinoCmdOrigin origin) {
+  if (cmd == SHOWDUINO_AUDIO_CMD_NONE || cmd == SHOWDUINO_AUDIO_CMD_LOCAL_REJECT) {
+    return SHOWDUINO_AUDIO_FAIL_BAD_COMMAND;
+  }
+  if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP) return SHOWDUINO_AUDIO_FAIL_NONE;
+  if (cmd == SHOWDUINO_AUDIO_CMD_STATUS || cmd == SHOWDUINO_AUDIO_CMD_INVENTORY) {
+    return SHOWDUINO_AUDIO_FAIL_NONE;
+  }
+  if (cmd == SHOWDUINO_AUDIO_CMD_OWN_GRANT) {
+    return origin == SHOWDUINO_CMD_ORIGIN_SHOW ? SHOWDUINO_AUDIO_FAIL_NONE
+                                               : SHOWDUINO_AUDIO_FAIL_NOT_OWNER;
+  }
+  if (owner == SHOWDUINO_OWNER_EMERGENCY) {
+    if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR &&
+        origin == SHOWDUINO_CMD_ORIGIN_SHOW) {
+      return SHOWDUINO_AUDIO_FAIL_NONE;
+    }
+    if (cmd == SHOWDUINO_AUDIO_CMD_STOP) return SHOWDUINO_AUDIO_FAIL_NONE;
+    return SHOWDUINO_AUDIO_FAIL_EMERGENCY;
+  }
+  if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR) {
+    if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) return SHOWDUINO_AUDIO_FAIL_NONE;
+    if (owner == SHOWDUINO_OWNER_STANDALONE) return SHOWDUINO_AUDIO_FAIL_NONE;
+    return SHOWDUINO_AUDIO_FAIL_SHOW_CONTROLLED;
+  }
+  if (showduino_audio_cmd_theatrical(cmd)) {
+    if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) {
+      return owner == SHOWDUINO_OWNER_SHOW_CONTROLLED
+                 ? SHOWDUINO_AUDIO_FAIL_NONE
+                 : SHOWDUINO_AUDIO_FAIL_NOT_OWNER;
+    }
+    if (owner == SHOWDUINO_OWNER_SHOW_CONTROLLED) {
+      return SHOWDUINO_AUDIO_FAIL_SHOW_CONTROLLED;
+    }
+    if (owner == SHOWDUINO_OWNER_STANDALONE) return SHOWDUINO_AUDIO_FAIL_NONE;
+    if (owner == SHOWDUINO_OWNER_SEARCHING && origin == SHOWDUINO_CMD_ORIGIN_LOCAL) {
+      return SHOWDUINO_AUDIO_FAIL_NONE;
+    }
+    return SHOWDUINO_AUDIO_FAIL_NOT_OWNER;
+  }
+  return SHOWDUINO_AUDIO_FAIL_NONE;
+}
+
 static inline ShowduinoAudioNodeState showduino_audio_next_state(ShowduinoAudioNodeState st,
                                                                 ShowduinoAudioLifecycle life,
                                                                 ShowduinoAudioCmd cmd) {
@@ -534,7 +596,9 @@ static inline int showduino_audio_button_allowed(ShowduinoAudioNodeState st,
                                                  ShowduinoAudioButton btn) {
   if (st == SHOWDUINO_AUDIO_ST_EMERGENCY) return 0;
   if (btn == SHOWDUINO_AUDIO_BTN_MODE || btn == SHOWDUINO_AUDIO_BTN_SET) return 0;
-  if (btn == SHOWDUINO_AUDIO_BTN_VOL_UP || btn == SHOWDUINO_AUDIO_BTN_VOL_DOWN) return 1;
+  if (btn == SHOWDUINO_AUDIO_BTN_VOL_UP || btn == SHOWDUINO_AUDIO_BTN_VOL_DOWN) {
+    return showControlled ? 0 : 1;
+  }
   if (btn == SHOWDUINO_AUDIO_BTN_PLAY || btn == SHOWDUINO_AUDIO_BTN_PREV ||
       btn == SHOWDUINO_AUDIO_BTN_NEXT) {
     if (showControlled) return 0;

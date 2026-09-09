@@ -202,6 +202,67 @@ int main() {
              SHOWDUINO_AUDIO_CFG_BAD, "timeout too low");
   expect(showduino_audio_config_parse("{\"formatVersion\":2}", 20, &cfg) ==
              SHOWDUINO_AUDIO_CFG_BAD, "bad format version");
+  expect(showduino_audio_parse_command("AUDIO:NODE:OWN:GRANT", arg, sizeof(arg), &vol) ==
+             SHOWDUINO_AUDIO_CMD_OWN_GRANT, "parse own grant");
+  expect(showduino_audio_parse_command("OWN:GRANT", arg, sizeof(arg), &vol) ==
+             SHOWDUINO_AUDIO_CMD_OWN_GRANT, "parse own grant short");
+  expect(showduino_audio_parse_command("AUDIO:OWN:GRANT", arg, sizeof(arg), &vol) ==
+             SHOWDUINO_AUDIO_CMD_OWN_GRANT, "parse audio own grant");
+
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_STANDALONE,
+                                         SHOWDUINO_AUDIO_CMD_PLAY,
+                                         SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_AUDIO_FAIL_NONE, "standalone web play");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_SHOW_CONTROLLED,
+                                         SHOWDUINO_AUDIO_CMD_PLAY,
+                                         SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_AUDIO_FAIL_SHOW_CONTROLLED, "p4 blocks web play");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_SHOW_CONTROLLED,
+                                         SHOWDUINO_AUDIO_CMD_PLAY,
+                                         SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_AUDIO_FAIL_NONE, "p4 play when owned");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_SEARCHING,
+                                         SHOWDUINO_AUDIO_CMD_PLAY,
+                                         SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_AUDIO_FAIL_NOT_OWNER, "show play before grant rejected");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_SEARCHING,
+                                         SHOWDUINO_AUDIO_CMD_PLAY,
+                                         SHOWDUINO_CMD_ORIGIN_LOCAL) ==
+             SHOWDUINO_AUDIO_FAIL_NONE, "local play during search");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_SHOW_CONTROLLED,
+                                         SHOWDUINO_AUDIO_CMD_OWN_GRANT,
+                                         SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_AUDIO_FAIL_NOT_OWNER, "web cannot grant");
+  expect(showduino_audio_owner_can_accept(SHOWDUINO_OWNER_STANDALONE,
+                                         SHOWDUINO_AUDIO_CMD_STATUS,
+                                         SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_AUDIO_FAIL_NONE, "web status always");
+  expect(showduino_audio_button_allowed(SHOWDUINO_AUDIO_ST_PLAYING, 1,
+                                        SHOWDUINO_AUDIO_BTN_VOL_UP) == 0,
+         "show blocks local volume");
+
+  {
+    ShowduinoOwnerMachine m;
+    showduino_owner_begin(&m, 0);
+    showduino_owner_apply(&m, SHOWDUINO_OWNER_EV_TICK, 7999, 8000, 8000);
+    expect(m.mode == SHOWDUINO_OWNER_SEARCHING, "searching before 8s");
+    showduino_owner_apply(&m, SHOWDUINO_OWNER_EV_KEEP, 100, 8000, 8000);
+    expect(m.granted == 0 && m.mode == SHOWDUINO_OWNER_SEARCHING,
+           "status keep does not grant");
+    showduino_owner_apply(&m, SHOWDUINO_OWNER_EV_TICK, 8000, 8000, 8000);
+    expect(m.mode == SHOWDUINO_OWNER_STANDALONE && m.enteredStandalone,
+           "standalone after search");
+    showduino_owner_begin(&m, 0);
+    showduino_owner_apply(&m, SHOWDUINO_OWNER_EV_GRANT, 500, 8000, 8000);
+    expect(m.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED && m.enteredShow,
+           "grant takes show control");
+    showduino_owner_apply(&m, SHOWDUINO_OWNER_EV_TICK, 8500, 8000, 8000);
+    expect(m.mode == SHOWDUINO_OWNER_STANDALONE && m.lostAuthority,
+           "lost grant after keepalive");
+  }
+
+  expect(strstr(SHOWDUINO_AUDIO_CAPS, "STANDALONE") != NULL, "standalone advertised");
+  expect(strstr(SHOWDUINO_AUDIO_CAPS, "OWN") != NULL, "own advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "MP3") == NULL, "mp3 not advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "FADE") != NULL, "fade advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "MIC") != NULL, "mic advertised");

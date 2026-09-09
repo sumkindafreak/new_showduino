@@ -20,6 +20,7 @@ extern "C" {
 #define SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX "STATE:EMERGENCY:"
 #define SHOWDUINO_WIRE_STATE_NODE_RELAY_PREFIX "STATE:NODE:RELAY:"
 #define SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX "STATE:NODE:AUDIO:"
+#define SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX  "STATE:NODE:LAMP:"
 #define SHOWDUINO_WIRE_STATE_RELAY_PREFIX "STATE:RELAY:"
 /* Reserved for a future Director Ethernet / E1.31 status page. Not published yet. */
 #define SHOWDUINO_WIRE_STATE_ETHERNET_PREFIX "STATE:ETHERNET:"
@@ -133,6 +134,109 @@ static inline ShowduinoNodeAvailWire showduino_parse_state_node_relay(const char
   if (strcmp(v, SHOWDUINO_WIRE_NODE_OFFLINE) == 0) return SHOWDUINO_NODE_WIRE_OFFLINE;
   if (strcmp(v, SHOWDUINO_WIRE_NODE_FAULT) == 0) return SHOWDUINO_NODE_WIRE_FAULT;
   return SHOWDUINO_NODE_WIRE_INVALID;
+}
+
+/* Lamp Node presence for Director capability gating (replaces Relay Node slot). */
+typedef enum ShowduinoLampNodeWire {
+  SHOWDUINO_LAMP_NODE_WIRE_OFFLINE = 0,
+  SHOWDUINO_LAMP_NODE_WIRE_ONLINE,
+  SHOWDUINO_LAMP_NODE_WIRE_ACTIVE,
+  SHOWDUINO_LAMP_NODE_WIRE_FAULT,
+  SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY,
+  SHOWDUINO_LAMP_NODE_WIRE_INVALID = -1
+} ShowduinoLampNodeWire;
+
+#define SHOWDUINO_WIRE_STATE_NODE_LAMP_DETAIL_PREFIX "STATE:NODE:LAMP:D:"
+
+typedef struct ShowduinoLampDetailWire {
+  char state[16];
+  char fx[24];
+  uint8_t brightness;
+  char mac[18];
+  char firmware[12];
+} ShowduinoLampDetailWire;
+
+static inline ShowduinoLampNodeWire showduino_parse_state_node_lamp(const char *line) {
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX) - 1;
+  if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX, prefixLen) != 0) {
+    return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+  }
+  const char *v = line + prefixLen;
+  if (v[0] && v[1] == ':' && v[0] == 'D') return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+  if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_OFFLINE;
+  if (strcmp(v, "ONLINE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_ONLINE;
+  if (strcmp(v, "ACTIVE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_ACTIVE;
+  if (strcmp(v, "FAULT") == 0) return SHOWDUINO_LAMP_NODE_WIRE_FAULT;
+  if (strcmp(v, "EMERGENCY") == 0) return SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY;
+  /* Ownership-oriented names from the node still mean "present". */
+  if (strcmp(v, "STANDALONE") == 0 || strcmp(v, "SHOW_CONTROLLED") == 0 ||
+      strcmp(v, "SEARCHING") == 0 || strcmp(v, "IDLE") == 0) {
+    return SHOWDUINO_LAMP_NODE_WIRE_ONLINE;
+  }
+  return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+}
+
+static inline ShowduinoNodeAvailWire showduino_lamp_wire_to_avail(ShowduinoLampNodeWire w) {
+  if (w == SHOWDUINO_LAMP_NODE_WIRE_ONLINE || w == SHOWDUINO_LAMP_NODE_WIRE_ACTIVE) {
+    return SHOWDUINO_NODE_WIRE_ONLINE;
+  }
+  if (w == SHOWDUINO_LAMP_NODE_WIRE_FAULT || w == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY) {
+    return SHOWDUINO_NODE_WIRE_FAULT;
+  }
+  if (w == SHOWDUINO_LAMP_NODE_WIRE_OFFLINE) return SHOWDUINO_NODE_WIRE_OFFLINE;
+  return SHOWDUINO_NODE_WIRE_INVALID;
+}
+
+static inline int showduino_parse_state_node_lamp_detail(const char *line,
+                                                        ShowduinoLampDetailWire *out) {
+  const char *p;
+  const char *next;
+  size_t n;
+  int bri = 0;
+  int digits = 0;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_LAMP_DETAIL_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_DETAIL_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_DETAIL_PREFIX) - 1);
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->state)) n = sizeof(out->state) - 1;
+  memcpy(out->state, p, n);
+  p = next + 1;
+  next = strchr(p, ':');
+  if (!next) return 0;
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->fx)) n = sizeof(out->fx) - 1;
+  memcpy(out->fx, p, n);
+  p = next + 1;
+  while (*p >= '0' && *p <= '9') {
+    bri = bri * 10 + (*p - '0');
+    p++;
+    digits++;
+    if (digits > 3) return 0;
+  }
+  if (digits == 0 || *p != ':' || bri > 100) return 0;
+  out->brightness = (uint8_t)bri;
+  p++;
+  next = strchr(p, ':');
+  if (!next) {
+    n = strlen(p);
+    if (n >= sizeof(out->mac)) n = sizeof(out->mac) - 1;
+    memcpy(out->mac, p, n);
+    return 1;
+  }
+  n = (size_t)(next - p);
+  if (n >= sizeof(out->mac)) n = sizeof(out->mac) - 1;
+  memcpy(out->mac, p, n);
+  p = next + 1;
+  n = strlen(p);
+  if (n >= sizeof(out->firmware)) n = sizeof(out->firmware) - 1;
+  memcpy(out->firmware, p, n);
+  return 1;
 }
 
 typedef enum ShowduinoAudioNodeWire {

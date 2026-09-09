@@ -21,6 +21,7 @@ protocol/
 ├── README.md
 ├── library.properties          # optional Arduino library metadata
 ├── showduino_protocol_version.h
+├── showduino_log.h             # shared Serial log levels (INFO default)
 ├── showduino_message_types.h   # enum catalog (intent IDs)
 ├── showduino_messages.h        # aliases / catalog include
 ├── showduino_desk_packet.h     # Director <-> Comms ESP-NOW (v1 wire)
@@ -28,7 +29,9 @@ protocol/
 ├── showduino_validation.h      # pure C/C++ validators
 ├── showduino_legacy_strings.h  # colon-text compatibility constants
 ├── showduino_state_wire.h      # Stage 3 STATE/SNAPSHOT/ACCEPTED tokens
-└── showduino_audio_node.h      # Audio Node path/command/state rules
+├── showduino_audio_node.h      # Audio Node path/command/state rules
+├── showduino_node_ownership.h  # GRANT / standalone / command origin
+└── showduino_lamp_node.h       # C3 Lamp Node FX/command rules
 ```
 
 No pins, Wi-Fi, ESP-NOW init, UART drivers, LVGL, or GPIO live here.
