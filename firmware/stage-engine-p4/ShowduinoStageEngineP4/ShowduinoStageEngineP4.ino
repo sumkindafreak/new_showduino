@@ -43,6 +43,8 @@
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_deploy.h"
+#include "src/ProductionDeploy.h"
 
 // -----------------------------
 // Serial configuration
@@ -1285,12 +1287,50 @@ static void timelineDispatchCommand(const char *command) {
 
 void readCommsSerial() {
   if (!sCommsUartReady) return;
+  static bool sBodyMode = false;
+  static ShowduinoWebBodyHeader sBodyHdr{};
+  static uint8_t sBodyBuf[SHOWDUINO_DEPLOY_CHUNK_MAX + 1];
+  static size_t sBodyGot = 0;
+
   while (Serial1.available() > 0) {
     char c = (char)Serial1.read();
+    if (sBodyMode) {
+      if (sBodyGot < sBodyHdr.length && sBodyGot < SHOWDUINO_DEPLOY_CHUNK_MAX) {
+        sBodyBuf[sBodyGot] = (uint8_t)c;
+      }
+      sBodyGot++;
+      if (sBodyGot >= sBodyHdr.length) {
+        const size_t n = (sBodyHdr.length <= SHOWDUINO_DEPLOY_CHUNK_MAX)
+                             ? sBodyHdr.length : 0;
+        sBodyBuf[n] = 0;
+        sBodyMode = false;
+        sBodyGot = 0;
+        sCmdSource = CommandSource::Comms;
+        webApiDispatch(sBodyHdr.method, sBodyHdr.path, n ? (const char *)sBodyBuf : "");
+      }
+      continue;
+    }
 
     if (c == '\n' || c == '\r') {
       if (inputBuffer.length() > 0) {
-        handleCommand(inputBuffer);
+        if (inputBuffer.startsWith(SHOWDUINO_WEB_BODY_REQ_PREFIX)) {
+          ShowduinoWebBodyHeader hdr{};
+          if (showduino_web_body_parse_header(inputBuffer.c_str(), &hdr) &&
+              hdr.length <= SHOWDUINO_DEPLOY_CHUNK_MAX) {
+            if (hdr.length == 0) {
+              sCmdSource = CommandSource::Comms;
+              webApiDispatch(hdr.method, hdr.path, "");
+            } else {
+              sBodyHdr = hdr;
+              sBodyGot = 0;
+              sBodyMode = true;
+            }
+          } else {
+            Serial.println("[COMMS] WEB/BODY header rejected");
+          }
+        } else {
+          handleCommand(inputBuffer);
+        }
         inputBuffer = "";
       }
     } else {

@@ -1,7 +1,11 @@
 # Showduino Studio — Deployment Specification
 
 **Phase:** 1 (partial)
-**Status:** Blueprint for packaged `.shdo` deploy. The only live firmware deploy path today is the S3/P4 **RAM timeline** endpoint (`/api/studio-timeline`), which accepts PIXEL and AUDIO:NODE cues and does not persist SHDO onto SD.
+**Status:** Canonical SHDO v2 persist is implemented on the commissioning WebUI
+(`web/showduino-studio/` Productions page) via Comms `/api/productions/deploy/*`
+and P4 `WEB/BODY` compile-to-SD. The embedded website Studio V4 at `/studio/`
+still uses the **RAM timeline** endpoint (`/api/studio-timeline`) unless that
+authoring repo is patched. Persist never auto-starts. Emergency aborts commit.
 
 ---
 

@@ -1,6 +1,7 @@
 #ifndef SHOWDUINO_HOST_TEST_FS_H
 #define SHOWDUINO_HOST_TEST_FS_H
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #define FILE_READ "r"
+#define FILE_WRITE "w"
 
 namespace fs { class FS; }
 
@@ -27,6 +29,14 @@ public:
     std::error_code ec;
     const auto bytes = std::filesystem::file_size(state_->path, ec);
     return ec ? 0 : static_cast<size_t>(bytes);
+  }
+
+  size_t write(const uint8_t *data, size_t length) {
+    if (!state_ || state_->directory || !data) return 0;
+    std::ofstream out(state_->path, std::ios::binary | std::ios::trunc);
+    if (!out) return 0;
+    out.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(length));
+    return out ? length : 0;
   }
 
   size_t readBytes(char *buffer, size_t length) {
@@ -92,10 +102,22 @@ public:
            (!ec && std::filesystem::is_directory(resolved));
   }
 
-  File open(const char *path, const char * = FILE_READ) const {
+  File open(const char *path, const char *mode = FILE_READ) const {
     if (!path) return File();
     const auto resolved = resolve(path);
+    if (mode && mode[0] == 'w') {
+      std::error_code ec;
+      std::filesystem::create_directories(resolved.parent_path(), ec);
+      std::ofstream created(resolved, std::ios::binary | std::ios::trunc);
+      if (!created) return File();
+    }
     return std::filesystem::exists(resolved) ? File(resolved) : File();
+  }
+
+  bool remove(const char *path) {
+    if (!path) return false;
+    std::error_code ec;
+    return std::filesystem::remove(resolve(path), ec);
   }
 
 private:

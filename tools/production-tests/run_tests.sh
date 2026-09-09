@@ -22,3 +22,15 @@ g++ -std=c++17 -Wall -Wextra \
   -o "$HERE/web_timeline_upload_policy_tests" \
   "$HERE/test_web_timeline_upload_policy.cpp"
 "$HERE/web_timeline_upload_policy_tests"
+
+g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
+  -o "$HERE/version_tests" "$HERE/test_version.cpp"
+"$HERE/version_tests"
+
+g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
+  -o "$HERE/shdo_tests" "$HERE/test_shdo.cpp"
+"$HERE/shdo_tests"
+
+g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
+  -o "$HERE/web_body_tests" "$HERE/test_web_body.cpp"
+"$HERE/web_body_tests"

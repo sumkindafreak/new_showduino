@@ -60,3 +60,77 @@ export function postCommand(cmd) {
 export function postPanic() {
   return postCommand('EMERGENCY:STOP');
 }
+
+export function fetchGateway() { return request('/api/gateway'); }
+export function fetchGatewayScan() { return request('/api/gateway/scan'); }
+export function startGatewayScan() {
+  return request('/api/gateway/scan', { method: 'POST', body: '{}' });
+}
+export function connectGateway(ssid, password) {
+  return request('/api/gateway/connect', {
+    method: 'POST',
+    body: JSON.stringify({ ssid, password: password || '' })
+  });
+}
+export function disconnectGateway() {
+  return request('/api/gateway/disconnect', { method: 'POST', body: '{}' });
+}
+export function forgetGateway() {
+  return request('/api/gateway/forget', { method: 'POST', body: '{}' });
+}
+export function setGatewayMode(mode) {
+  return request('/api/gateway/mode', {
+    method: 'POST',
+    body: JSON.stringify({ mode })
+  });
+}
+export function fetchUpdates() { return request('/api/updates'); }
+export function checkUpdates() {
+  return request('/api/updates/check', { method: 'POST', body: '{}' });
+}
+
+function crc32Ieee(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let b = 0; b < 8; b++) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function toHex(bytes) {
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, '0');
+  }
+  return out;
+}
+
+export async function persistShdo(text) {
+  const bytes = new TextEncoder().encode(text);
+  const crc32 = crc32Ieee(bytes);
+  const begin = await request('/api/productions/deploy/begin', {
+    method: 'POST',
+    body: JSON.stringify({ bytes: bytes.length, crc32 })
+  });
+  if (begin && begin.ok === false) return begin;
+  const chunk = 640;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    const part = await request('/api/productions/deploy/chunk', {
+      method: 'POST',
+      body: JSON.stringify({ hex: toHex(slice) })
+    });
+    if (part && part.ok === false) return part;
+  }
+  return request('/api/productions/deploy/commit', {
+    method: 'POST',
+    body: JSON.stringify({ crc32 })
+  });
+}
+
+export function fetchDeployStatus() {
+  return request('/api/productions/deploy/status');
+}

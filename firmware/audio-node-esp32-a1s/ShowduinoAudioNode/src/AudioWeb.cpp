@@ -365,7 +365,9 @@ void audioWebEnsure() {
 }
 
 void audioWebService() {
-  if (nodeSoftApStarted()) nodeSoftApService();
+  if (nodeSoftApStarted() && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+    nodeSoftApService();
+  }
   if (sBegun) sServer.handleClient();
 }
 

@@ -39,6 +39,8 @@ static bool isQuietDeskCmd(const char *command) {
     return true;
   }
   if (!strncmp(command, "TIME:", 5) && strcmp(command, "TIME:REQUEST") != 0) return true;
+  if (!strncmp(command, "STATE:GATEWAY:", 14)) return true;
+  if (!strncmp(command, "STATE:UPDATE:", 13)) return true;
   if (!strncmp(command, "STATE:", 6) || !strncmp(command, "SNAPSHOT:", 9)) return true;
   return false;
 }

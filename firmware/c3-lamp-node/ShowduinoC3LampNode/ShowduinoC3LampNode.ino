@@ -95,6 +95,7 @@ void loop() {
   pollUsb();
   pollButtons();
   lampEngineService();
+  lampEspNowService();
   lampProtocolService();
   lampDisplayService();
   nodeDiagMarkLoop(micros() - t0);

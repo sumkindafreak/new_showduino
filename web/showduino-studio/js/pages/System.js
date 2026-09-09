@@ -1,4 +1,4 @@
-import { fetchLogs, postCommand, isP4Offline } from '../api.js';
+import { fetchLogs, postCommand, isP4Offline, fetchUpdates, checkUpdates } from '../api.js';
 import { subscribeStore } from '../store.js';
 import { MemoryBar } from '../components/MemoryBar.js';
 import {
@@ -34,6 +34,9 @@ export async function SystemPage(container) {
   let logs = [];
   let filter = 'ALL';
   let lastSnap = { comms: null, system: null, p4Online: false };
+  let updates = null;
+  let updateBusy = false;
+  let updateNote = '';
 
   function paintMain() {
     host.innerHTML = '';
@@ -62,6 +65,44 @@ export async function SystemPage(container) {
       comms.append(el('p', { className: 'sub', text: 'Comms status unavailable.' }));
     }
     host.append(comms);
+
+    const software = el('div', { className: 'card' });
+    software.append(el('h2', { text: 'SHOWDUINO SOFTWARE' }));
+    software.append(statRow('Product', 'Showduino 1.0.0-rc.1'));
+    software.append(statRow('Installed', (updates && updates.installed) || (c && c.productVersion) || '1.0.0-rc.1'));
+    software.append(statRow('Latest', (updates && updates.latest) || '—'));
+    software.append(statRow('Status', (updates && updates.status) ? String(updates.status).replace(/_/g, ' ').toUpperCase() : 'NOT CHECKED'));
+    software.append(statRow('Internet', (updates && updates.internet) || ((c && c.gateway && c.gateway.internet) || 'unknown')));
+    software.append(statRow('OTA install', 'NOT IMPLEMENTED'));
+    if (updates && updates.releaseNotes) {
+      software.append(el('p', { className: 'sub', text: updates.releaseNotes }));
+    }
+    software.append(el('p', { className: 'sub', text: 'Check for Updates reads GitHub Releases. It does not install firmware. No published release is not a Showduino fault.' }));
+    software.append(el('button', {
+      className: 'btn-primary',
+      text: updateBusy ? 'Checking…' : 'Check for Updates',
+      disabled: updateBusy,
+      onClick: async () => {
+        updateBusy = true;
+        updateNote = '';
+        paintMain();
+        try {
+          await checkUpdates();
+          for (let i = 0; i < 10; i++) {
+            await new Promise((r) => setTimeout(r, 400));
+            updates = await fetchUpdates();
+            if (updates && updates.checking === false && updates.status !== 'never_checked') break;
+          }
+          updateNote = updates && updates.htmlUrl ? updates.htmlUrl : '';
+        } catch (err) {
+          updateNote = err.message;
+        }
+        updateBusy = false;
+        paintMain();
+      }
+    }));
+    if (updateNote) software.append(el('p', { className: 'sub', text: updateNote }));
+    host.append(software);
 
     const p4 = el('div', { className: 'card' });
     p4.append(el('h2', { text: 'P4 Show Engine' }));
@@ -332,6 +373,7 @@ export async function SystemPage(container) {
     lastSnap = snap;
     paintMain();
   });
+  try { updates = await fetchUpdates(); } catch (_) { updates = null; }
   await pollLogs();
   const timer = setInterval(pollLogs, 5000);
   return () => {

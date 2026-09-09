@@ -9,6 +9,7 @@ typedef void (*NodeSoftApRadioHook)();
 bool nodeSoftApBegin(const char *typeToken, const uint8_t mac[6],
                      uint8_t channel, const char *password);
 void nodeSoftApSetRadioHook(NodeSoftApRadioHook fn);
+void nodeSoftApFollowChannel(uint8_t channel);
 void nodeSoftApService();
 void nodeSoftApLockChannel();
 bool nodeSoftApReady();

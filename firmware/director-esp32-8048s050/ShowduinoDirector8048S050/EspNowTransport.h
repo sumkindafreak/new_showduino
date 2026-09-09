@@ -9,6 +9,7 @@
 #include "BoardConfig.h"
 #include "../../../protocol/showduino_desk_packet.h"
 #include "../../../protocol/showduino_validation.h"
+#include "../../../protocol/showduino_radio_follow.h"
 
 // =========================================================
 // Showduino ESP-NOW transport
@@ -28,7 +29,8 @@ public:
 
     // Critical on RGB S3 boards: modem sleep kills ESP-NOW within seconds.
     esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    follow_.begin(SHOWDUINO_RADIO_HOME_CHANNEL);
+    follow_.lock(SHOWDUINO_RADIO_HOME_CHANNEL);
     delay(50);
 
     uint8_t primary = 0;
@@ -81,12 +83,18 @@ public:
       return begin();
     }
     esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    follow_.lock(follow_.channel());
     if (!esp_now_is_peer_exist(stageBridgeMac)) {
       return addBridgePeer();
     }
     return true;
   }
+
+  void service(bool haveLink) {
+    follow_.tick(haveLink);
+  }
+
+  uint8_t radioChannel() const { return follow_.channel(); }
 
   bool sendCommand(const String &command) {
     if (!online) return false;
@@ -160,6 +168,7 @@ private:
     SHOWDUINO_COMMS_MAC_4,
     SHOWDUINO_COMMS_MAC_5
   };
+  ShowduinoRadioFollow follow_{};
 
   bool addBridgePeer() {
     if (esp_now_is_peer_exist(stageBridgeMac)) {

@@ -1,4 +1,4 @@
-import { fetchE131, fetchE131Channels, fetchNetwork, isP4Offline, postCommand } from '../api.js';
+import { fetchE131, fetchE131Channels, fetchNetwork, isP4Offline, postCommand, startGatewayScan, fetchGatewayScan, connectGateway, disconnectGateway, forgetGateway, setGatewayMode } from '../api.js';
 import { subscribeStore } from '../store.js';
 import { el, p4OfflineBanner, statRow } from '../utils.js';
 import { linkWord } from '../status.js';
@@ -13,7 +13,7 @@ function field(label, attrs) {
 export async function NetworkPage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'Communications stay on the S3 SoftAP. P4 Ethernet is an optional isolated show LAN. The Director does not configure this page. E1.31 values are observation only.'
+    text: 'Comms owns the Showduino SoftAP and optional home/venue Wi-Fi. P4 Ethernet is an isolated show LAN. Internet is optional. Losing internet is not SHOWDUINO CONNECTION LOST. The Director does not configure this page.'
   }));
 
   const host = el('div', { className: 'page-stack' });
@@ -26,6 +26,9 @@ export async function NetworkPage(container) {
   let pending = '';
   let lastResult = '';
   let lastSnap = { comms: null, p4Online: false };
+  let scan = { state: 'idle', networks: [] };
+  let gwBusy = '';
+  let gwResult = '';
 
   async function applyNet() {
     if (!p4net || !p4net.saved) return;
@@ -70,6 +73,128 @@ export async function NetworkPage(container) {
     host.innerHTML = '';
     const c = lastSnap.comms;
     if (!lastSnap.p4Online) host.append(p4OfflineBanner());
+
+    const gw = (c && c.gateway) || {};
+    const gateway = el('div', { className: 'card' });
+    gateway.append(el('h2', { text: 'Showduino network' }));
+    gateway.append(el('p', { className: 'sub', text: 'SoftAP SSID Showduino stays up. Home/venue STA is optional. Passwords are never displayed.' }));
+    gateway.append(statRow('Product', `${(c && c.productName) || 'Showduino'} ${(c && c.productVersion) || '1.0.0-rc.1'}`));
+    gateway.append(statRow('AP', gw.apOnline ? (gw.apSsid || 'Showduino') : 'OFF'));
+    gateway.append(statRow('AP IP', gw.apIp || (c && c.ip) || '192.168.4.1'));
+    gateway.append(statRow('Mode', (gw.mode || 'ap_only').toUpperCase()));
+    gateway.append(statRow('Home Wi-Fi', (gw.staState || 'idle').toUpperCase()));
+    gateway.append(statRow('Saved SSID', gw.staSsid || '—'));
+    gateway.append(statRow('STA IP', gw.staIp || '—'));
+    gateway.append(statRow('RSSI', gw.rssi != null ? String(gw.rssi) : '—'));
+    gateway.append(statRow('Radio / ESP-NOW channel', String(gw.radioChannel ?? c?.radioChannel ?? '—')));
+    gateway.append(statRow('Internet', (gw.internet || 'unknown').toUpperCase()));
+    gateway.append(statRow('Password stored', gw.passwordConfigured ? 'YES' : 'NO'));
+    const ssidIn = el('input', { id: 'gw-ssid', value: gw.staSsid || '', placeholder: 'Home / venue SSID' });
+    const passIn = el('input', { id: 'gw-pass', type: 'password', placeholder: 'Password (never shown again)' });
+    gateway.append(el('label', { className: 'cmd-field' }, [el('span', { text: 'SSID' }), ssidIn]));
+    gateway.append(el('label', { className: 'cmd-field' }, [el('span', { text: 'Password' }), passIn]));
+    gateway.append(el('div', { className: 'filter-row' }, [
+      el('button', {
+        className: 'btn-primary',
+        text: gwBusy === 'connect' ? 'Connecting…' : 'Connect',
+        disabled: !!gwBusy,
+        onClick: async () => {
+          gwBusy = 'connect';
+          gwResult = '';
+          paint();
+          try {
+            const data = await connectGateway(host.querySelector('#gw-ssid')?.value?.trim() || '', host.querySelector('#gw-pass')?.value || '');
+            gwResult = data && data.ok === false ? (data.error || 'connect failed') : 'Connecting — SoftAP remains available.';
+          } catch (err) {
+            gwResult = err.message;
+          }
+          gwBusy = '';
+          paint();
+        }
+      }),
+      el('button', {
+        className: 'btn-cancel',
+        text: 'Disconnect',
+        disabled: !!gwBusy,
+        onClick: async () => {
+          gwBusy = 'disconnect';
+          paint();
+          try {
+            await disconnectGateway();
+            gwResult = 'AP-only. Saved credentials kept.';
+          } catch (err) {
+            gwResult = err.message;
+          }
+          gwBusy = '';
+          paint();
+        }
+      }),
+      el('button', {
+        className: 'btn-cancel',
+        text: 'Forget',
+        disabled: !!gwBusy,
+        onClick: async () => {
+          gwBusy = 'forget';
+          paint();
+          try {
+            await forgetGateway();
+            gwResult = 'Credentials forgotten.';
+          } catch (err) {
+            gwResult = err.message;
+          }
+          gwBusy = '';
+          paint();
+        }
+      }),
+      el('button', {
+        className: 'btn-cancel',
+        text: scan.state === 'scanning' || gwBusy === 'scan' ? 'Scanning…' : 'Scan',
+        disabled: !!gwBusy,
+        onClick: async () => {
+          gwBusy = 'scan';
+          paint();
+          try {
+            await startGatewayScan();
+            for (let i = 0; i < 8; i++) {
+              await new Promise((r) => setTimeout(r, 500));
+              scan = await fetchGatewayScan();
+              if (scan && scan.state === 'ready') break;
+            }
+            gwResult = scan && scan.networks && scan.networks.length
+              ? `Found ${scan.networks.length} networks.`
+              : 'Scan finished.';
+          } catch (err) {
+            gwResult = err.message;
+          }
+          gwBusy = '';
+          paint();
+        }
+      }),
+      el('button', {
+        className: 'btn-cancel',
+        text: 'AP only',
+        disabled: !!gwBusy,
+        onClick: async () => {
+          try { await setGatewayMode('ap_only'); gwResult = 'Mode AP only.'; }
+          catch (err) { gwResult = err.message; }
+          paint();
+        }
+      })
+    ]));
+    if (scan && Array.isArray(scan.networks) && scan.networks.length) {
+      for (const net of scan.networks) {
+        gateway.append(el('button', {
+          className: 'btn-cancel',
+          text: `${net.ssid || '(hidden)'}  ch${net.channel}  ${net.rssi} dBm`,
+          onClick: () => {
+            const field = host.querySelector('#gw-ssid');
+            if (field) field.value = net.ssid || '';
+          }
+        }));
+      }
+    }
+    if (gwResult) gateway.append(el('p', { className: 'sub', text: gwResult }));
+    host.append(gateway);
 
     const comms = el('div', { className: 'card' });
     comms.append(el('h2', { text: 'Communications Network' }));

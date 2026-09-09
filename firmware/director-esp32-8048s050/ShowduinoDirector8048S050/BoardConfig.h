@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_version.h"
 
 // =========================================================
 // Showduino Director - Sunton ESP32-S3 RGB panel config

@@ -1,5 +1,7 @@
 #include "WebApiHandler.h"
 #include "../../../protocol/showduino_web_timeline_upload_policy.h"
+#include "ProductionDeploy.h"
+#include "../../../protocol/showduino_version.h"
 
 /*
  * Keep the existing P4 Web API implementation byte-for-byte as the base and
@@ -104,6 +106,18 @@ bool webApiDispatch(const char *method, const char *pathIn, const char *body) {
     gWebApiLogger.logHttpRequest("GET", "/api/studio-timeline");
     sendStudioTimelineCapability();
     return true;
+  }
+
+  {
+    int deployStatus = 0;
+    String deployJson;
+    if (productionDeployTry(methodText.c_str(), cleanPath.c_str(),
+                            body ? body : "", body ? strlen(body) : 0,
+                            &deployStatus, &deployJson)) {
+      gWebApiLogger.logHttpRequest(methodText.c_str(), cleanPath.c_str());
+      sendWebr(deployStatus, "application/json", deployJson.c_str(), deployJson.length());
+      return true;
+    }
   }
 
   if (methodText == "POST" &&

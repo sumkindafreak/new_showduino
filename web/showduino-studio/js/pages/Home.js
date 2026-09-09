@@ -52,12 +52,25 @@ export async function HomePage(container) {
     ]));
 
     host.append(sectionLabel('CORE STATUS'));
+    const gw = (comms && comms.gateway) || {};
+    const homeWifi = gw.staState === 'connected' ? 'ONLINE' : (gw.staState === 'connecting' ? 'CONNECTING' : 'OFF');
+    const internet = gw.internet === 'online' ? 'ONLINE' : (gw.internet === 'offline' ? 'OFFLINE' : 'UNKNOWN');
     host.append(el('div', { className: 'dash-status' }, [
       tile('COMMS S3', commsWord),
       tile('P4 SHOW ENGINE', p4Word),
       tile('DIRECTOR', directorWord),
       tile('SYSTEM HEALTH', health)
     ]));
+    host.append(el('div', { className: 'dash-status' }, [
+      tile('SHOWDUINO LINK', directorWord),
+      tile('HOME NETWORK', homeWifi),
+      tile('INTERNET', internet),
+      tile('RADIO CH', String(gw.radioChannel ?? comms?.radioChannel ?? comms?.espnowChannel ?? '—'))
+    ]));
+    host.append(el('p', {
+      className: 'sub',
+      text: 'Internet loss is not SHOWDUINO CONNECTION LOST. Home Wi-Fi is optional and is not required to run a loaded production.'
+    }));
 
     if (!snap.p4Online) host.append(p4OfflineBanner());
 
@@ -114,6 +127,8 @@ export async function HomePage(container) {
       commsCard.append(statRow('WebUI host', 'LOCAL PROGMEM'));
       commsCard.append(statRow('SSID', comms.ssid || 'Showduino'));
       commsCard.append(statRow('ESP-NOW channel', comms.radioChannel ?? comms.espnowChannel ?? '—'));
+      commsCard.append(statRow('Home Wi-Fi', (comms.gateway && comms.gateway.staState) ? comms.gateway.staState.toUpperCase() : 'IDLE'));
+      commsCard.append(statRow('Internet', (comms.gateway && comms.gateway.internet) ? comms.gateway.internet.toUpperCase() : 'UNKNOWN'));
       commsCard.append(statRow('P4 UART', comms.p4Online ? 'ONLINE' : 'OFFLINE'));
     } else {
       commsCard.append(el('p', { className: 'sub', text: 'Communications status unavailable.' }));

@@ -86,12 +86,20 @@ required fields, numeric overflow, path traversal, duplicate cue IDs, descending
 cue times, oversized strings, and unsupported cue types fail explicitly.
 
 SHDO v2 (`.shdo`) is the Studio **authoring/interchange** contract
-([`docs/studio/production-format.md`](studio/production-format.md)). It is not
-what this P4 parser reads. A production must be projected to this format-v1
-folder layout before it can be stored on SD. Studio RAM timeline upload
-(`/api/studio-timeline`) can load PIXEL / AUDIO:NODE cues into RAM for
-commissioning; that path does not write format-v1 SD productions and is not
-required to keep a loaded show running.
+([`docs/studio/production-format.md`](studio/production-format.md)). The P4
+does not execute the authoring document. Persist path:
+
+```text
+Browser / commissioning WebUI
+  → POST /api/productions/deploy/{begin,chunk,commit} on Comms
+  → WEB/BODY UART tunnel
+  → P4 shdoCompile
+  → /showduino/productions/<id>/{manifest.json,timeline.json}
+```
+
+Commit does **not** auto-load or auto-start. Emergency aborts commit.
+Studio RAM timeline upload (`/api/studio-timeline`) remains a separate
+commissioning path for PIXEL / AUDIO:NODE cues and does not write SD.
 
 ## Commands and responses
 

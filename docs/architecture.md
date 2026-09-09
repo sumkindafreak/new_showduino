@@ -100,6 +100,10 @@ The source for the browser UI is `web/showduino-studio/`. The generated S3 bundl
 
 A running show must not depend on the Director, browser, Wi-Fi client association, or internet.
 
+### Cross-component synchronisation
+
+Every feature is checked against Director, Comms, P4, WebUI/Studio, protocol, and applicable nodes. See `docs/constitution.md` Article XIV, `docs/network-gateway.md`, and `docs/v1-feature-matrix.md`.
+
 ### Optional P4 Ethernet
 
 P4 Ethernet remains optional management/show-network infrastructure. The E1.31 receiver is an isolated **observation/test foundation only**. DMX/E1.31 production control is parked and out of scope until explicitly revisited.

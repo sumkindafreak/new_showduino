@@ -16,5 +16,9 @@ bool commsWebTunnelGet(const char *path, String &bodyOut, int &statusOut,
                        String &mimeOut, uint32_t timeoutMs = 1800);
 bool commsWebTunnelPost(const char *path, String &bodyOut, int &statusOut,
                         String &mimeOut, uint32_t timeoutMs = 4000);
+bool commsWebTunnelPostBody(const char *method, const char *path,
+                            const uint8_t *data, size_t len,
+                            String &bodyOut, int &statusOut, String &mimeOut,
+                            uint32_t timeoutMs = 8000);
 
 #endif

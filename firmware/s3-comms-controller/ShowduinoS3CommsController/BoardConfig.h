@@ -8,6 +8,9 @@
 #include "../../../protocol/showduino_node_packet.h"
 #include "../../../protocol/showduino_validation.h"
 #include "../../../protocol/showduino_web_tunnel.h"
+#include "../../../protocol/showduino_version.h"
+#include "../../../protocol/showduino_radio.h"
+#include "../../../protocol/showduino_gateway_wire.h"
 
 /*
  * Showduino ESP32-S3 Comms Controller
@@ -25,12 +28,13 @@
  * FUTURE / RESERVED / NOT IMPLEMENTED on this firmware:
  *   - Bluetooth LE
  *   - Bluetooth Classic
- *   - OTA
+ *   - OTA installation / rollback
  *   - Ethernet / E1.31
+ * GitHub update discovery is implemented. Firmware install is not.
  * Do not initialise Bluetooth libraries here.
  */
 
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.2.3"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.3.0"
 
 #ifndef SHOWDUINO_WEBUI_ENABLED
 #define SHOWDUINO_WEBUI_ENABLED 1

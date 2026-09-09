@@ -43,6 +43,11 @@ public:
   bool begin(fs::FS &fs);
   bool scan();
   ProductionStoreResult load(const char *productionId, ProductionPackage *out);
+  ProductionStoreResult persistRuntimeFiles(const char *productionId,
+                                            const char *manifestJson,
+                                            size_t manifestLen,
+                                            const char *timelineJson,
+                                            size_t timelineLen);
   void release(ProductionPackage *package);
   void markLoaded(const ProductionManifest &manifest);
   void unload();
@@ -63,6 +68,8 @@ private:
 
   ProductionStoreResult readManifest(const char *folder, ProductionManifest *out);
   bool readText(const char *path, size_t maxBytes, char **out, size_t *outLen);
+  bool writeText(const char *path, const char *data, size_t len);
+  bool ensureDir(const char *path);
   void setError(const char *message);
 };
 

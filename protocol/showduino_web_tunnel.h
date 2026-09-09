@@ -13,6 +13,10 @@
  *   WEB/GET/api/logs
  *   WEB/POST/api/command/SHOW:START
  *
+ * Body-bearing deploy (see protocol/showduino_deploy.h):
+ *   WEB/BODY:<len>:<METHOD>:<path>\n
+ *   <len bytes>
+ *
  * (Legacy double-slash WEB/GET//api/... is also accepted on P4.)
  *
  * Response (P4 → bridge):

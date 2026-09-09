@@ -3,9 +3,10 @@
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_version.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.5.0"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.5.1"
 #endif
 
 /*

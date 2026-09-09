@@ -281,6 +281,8 @@ static void handleApiSystem() {
 
   String json = "{\n";
   json += "  \"firmwareVersion\": \"" SHOWDUINO_P4_FIRMWARE_VERSION "\",\n";
+  json += "  \"productName\": \"" SHOWDUINO_PRODUCT_NAME "\",\n";
+  json += "  \"productVersion\": \"" SHOWDUINO_PLATFORM_VERSION "\",\n";
   json += "  \"protocolVersion\": \"1.0\",\n";
   json += "  \"boardName\": \"ESP32-P4 Stage Engine\",\n";
   json += "  \"role\": \"stage\",\n";

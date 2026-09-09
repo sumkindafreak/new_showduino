@@ -1,11 +1,11 @@
-import { fetchProductions, postCommand, isP4Offline } from '../api.js';
+import { fetchProductions, postCommand, isP4Offline, persistShdo } from '../api.js';
 import { subscribeStore } from '../store.js';
 import { el, emptyState, p4OfflineBanner, statRow } from '../utils.js';
 
 export async function ProductionsPage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'Persistent P4 productions on SD. Load asks the Show Engine. The WebUI does not invent outputs or node dependencies.'
+    text: 'Persistent P4 productions on SD. SHDO v2 persist compiles on the P4 and does not auto-load or auto-start. Load asks the Show Engine. RAM Studio timeline remains a separate live path.'
   }));
 
   const banner = el('div', {});
@@ -98,6 +98,39 @@ export async function ProductionsPage(container) {
       onClick: () => send('PRODUCTION:UNLOAD')
     }));
     host.append(actions);
+
+    const persist = el('div', { className: 'card' });
+    persist.append(el('h2', { text: 'Persist SHDO v2 to P4 SD' }));
+    persist.append(el('p', { className: 'sub', text: 'Uploads a canonical showduino-production-v2 document. The P4 compiles it to format-v1 manifest/timeline. Emergency aborts commit. The production is not loaded automatically.' }));
+    const file = el('input', { type: 'file', accept: '.shdo,.json,application/json' });
+    persist.append(file);
+    persist.append(el('button', {
+      className: 'btn-primary',
+      text: pending === 'SHDO' ? 'PERSISTING…' : 'Persist to SD',
+      disabled: !lastSnap.p4Online || !!pending || !!(lastSnap.system && lastSnap.system.emergencyActive),
+      onClick: async () => {
+        const chosen = file.files && file.files[0];
+        if (!chosen) {
+          result.textContent = 'Choose a .shdo / JSON file first.';
+          return;
+        }
+        pending = 'SHDO';
+        result.textContent = 'Persisting SHDO to P4 SD…';
+        paint();
+        try {
+          const text = await chosen.text();
+          const data = await persistShdo(text);
+          if (isP4Offline(data)) result.textContent = 'P4 OFFLINE — persist did not complete.';
+          else if (data && data.ok === false) result.textContent = data.error || JSON.stringify(data);
+          else result.textContent = `Persisted ${data.productionId || chosen.name} · cues ${data.cueCount ?? '—'} · not loaded`;
+        } catch (err) {
+          result.textContent = err.message;
+        }
+        pending = null;
+        await poll();
+      }
+    }));
+    host.append(persist);
   }
 
   async function poll() {

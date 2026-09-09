@@ -201,6 +201,25 @@ Large rewrites require clear evidence that incremental refactoring cannot safely
 
 ---
 
+## Article XIV — Cross-component synchronisation
+
+Every new Showduino feature is a system change until proven otherwise.
+
+Before a feature is treated as done it must be checked against:
+
+* Director
+* Communications Engine
+* P4 Show Engine
+* WebUI / Studio
+* protocol / wire contracts
+* every applicable specialist node
+
+Home/venue Wi-Fi, internet, and GitHub are Communications-owned. They must not
+be modelled as P4 show state. Director **LINK** (Director↔Comms) is not
+**WIFI** (Comms STA). Internet loss is not SHOWDUINO CONNECTION LOST.
+
+---
+
 > The Show Engine decides.  
 > The Communications Engine transports.  
 > The Director commands and displays.  

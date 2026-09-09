@@ -60,7 +60,7 @@ class DirectorStatusBar {
 
     /* Global health only - RTC detail removed (date/time imply clock feed). */
     sysLabel_ = makeLabel(root_, "SYS -", 304, 4, ShowduinoPalette::Muted);
-    netLabel_ = makeLabel(root_, "NET -", 304, 20, ShowduinoPalette::Muted);
+    netLabel_ = makeLabel(root_, "LINK -", 304, 20, ShowduinoPalette::Muted);
     nodesLabel_ = makeLabel(root_, "NODES -/-", 520, 4, ShowduinoPalette::Muted);
     emergLabel_ = makeLabel(root_, "CLEAR", 520, 20, ShowduinoPalette::Accent);
 
@@ -149,6 +149,28 @@ class DirectorStatusBar {
     logEvent("Runtime State Changed");
   }
 
+  void setHomeWifi(bool on) {
+    if (wifiOn_ == on) return;
+    wifiOn_ = on;
+    dirtyExpand_ = true;
+  }
+
+  void setUpdateHint(bool available, const char *ver) {
+    const bool next = available;
+    if (updateAvail_ == next &&
+        (!ver || strcmp(updateVer_, ver) == 0)) {
+      return;
+    }
+    updateAvail_ = next;
+    if (ver) {
+      strncpy(updateVer_, ver, sizeof(updateVer_) - 1);
+      updateVer_[sizeof(updateVer_) - 1] = '\0';
+    } else {
+      updateVer_[0] = '\0';
+    }
+    dirtyExpand_ = true;
+  }
+
   void setNetworkState(NetworkState st) {
     if (networkState_ == st) return;
     NetworkState prev = networkState_;
@@ -214,7 +236,9 @@ class DirectorStatusBar {
       dirtyNet_ = false;
       const char *t = networkStateName(networkState_);
       uint32_t c = levelColor(networkLevel(networkState_));
-      setLabelColor(netLabel_, t, c);
+      char buf[24];
+      snprintf(buf, sizeof(buf), "LINK %s", t);
+      setLabelColor(netLabel_, buf, c);
     }
 
     if (dirtyNodes_) {
@@ -226,6 +250,17 @@ class DirectorStatusBar {
         lv = (nodesConnected_ == 0) ? Level::Fault : Level::Warn;
       }
       setLabelColor(nodesLabel_, buf, levelColor(lv));
+    }
+
+    if (dirtyExpand_) {
+      dirtyExpand_ = false;
+      char buf[28];
+      if (updateAvail_) {
+        snprintf(buf, sizeof(buf), "WIFI %s UPD", wifiOn_ ? "ON" : "OFF");
+      } else {
+        snprintf(buf, sizeof(buf), "WIFI %s", wifiOn_ ? "ON" : "OFF");
+      }
+      setLabelIfChanged(expandSlot_, buf);
     }
 
     if (dirtyEmerg_) {
@@ -270,12 +305,16 @@ class DirectorStatusBar {
   uint8_t nodesConnected_ = 0;
   uint8_t nodesExpected_ = 0;
 
+  bool wifiOn_ = false;
+  bool updateAvail_ = false;
+  char updateVer_[20] = "";
   bool dirtyTime_ = true;
   bool dirtySys_ = true;
   bool dirtyNet_ = true;
   bool dirtyNodes_ = true;
   bool dirtyEmerg_ = true;
   bool dirtyChrome_ = true;
+  bool dirtyExpand_ = true;
   LogFn logFn_ = nullptr;
 
   static lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, int x, int y, uint32_t color) {
@@ -366,9 +405,9 @@ class DirectorStatusBar {
 
   static const char *networkStateName(NetworkState st) {
     switch (st) {
-      case NetworkState::Online: return "ONLINE";
-      case NetworkState::Degraded: return "DEGRADED";
-      case NetworkState::Offline: return "OFFLINE";
+      case NetworkState::Online: return "ON";
+      case NetworkState::Degraded: return "DEG";
+      case NetworkState::Offline: return "OFF";
       case NetworkState::Lost: return "LOST";
       default: return "-";
     }

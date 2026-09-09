@@ -1,6 +1,7 @@
 #include "CommsWebTunnel.h"
 #include "../CommsUart.h"
 #include "../../BoardConfig.h"
+#include "../../../protocol/showduino_deploy.h"
 
 #include <string.h>
 
@@ -165,6 +166,42 @@ bool commsWebTunnelPost(const char *path, String &bodyOut, int &statusOut,
   }
 
   Serial.println("[WEBUI] UART <- P4 timeout (no WEBR:)");
+  resetProxyWait();
+  return false;
+}
+
+bool commsWebTunnelPostBody(const char *method, const char *path,
+                            const uint8_t *data, size_t len,
+                            String &bodyOut, int &statusOut, String &mimeOut,
+                            uint32_t timeoutMs) {
+  if (!method || !path || !commsUartReady()) return false;
+  if (len > SHOWDUINO_DEPLOY_CHUNK_MAX) return false;
+
+  resetProxyWait();
+  sProxyWaiting = true;
+  if (sPumpFn) sPumpFn();
+
+  char req[SHOWDUINO_COMMS_LINE_MAX + 1];
+  snprintf(req, sizeof(req), "%s%u:%s:%s",
+           SHOWDUINO_WEB_BODY_REQ_PREFIX, (unsigned)len, method, path);
+  commsUartWriteLine(req);
+  if (len && data) commsUartWriteBytes(data, len);
+
+  const uint32_t deadline = millis() + timeoutMs;
+  while ((int32_t)(millis() - deadline) < 0) {
+    if (sPumpFn) sPumpFn();
+    if (sProxyReady) {
+      bodyOut = sProxyBody;
+      statusOut = sProxyStatus;
+      mimeOut = sProxyMime;
+      resetProxyWait();
+      return true;
+    }
+    delay(1);
+    yield();
+  }
+
+  Serial.println("[WEBUI] UART <- P4 timeout (no WEBR: for WEB/BODY)");
   resetProxyWait();
   return false;
 }

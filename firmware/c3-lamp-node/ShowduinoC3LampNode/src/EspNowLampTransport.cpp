@@ -4,6 +4,7 @@
 #include "../../../protocol/showduino_validation.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_lamp_node.h"
+#include "../../../protocol/showduino_radio_follow.h"
 
 #include <string.h>
 #include <WiFi.h>
@@ -19,6 +20,7 @@ static uint32_t sRx = 0;
 static uint32_t sTx = 0;
 static uint32_t sRej = 0;
 static uint32_t sLastRx = 0;
+static ShowduinoRadioFollow sFollow;
 static LampNodeRxFn sHandler = nullptr;
 static const uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -27,11 +29,16 @@ static bool addPeer(const uint8_t *mac) {
   if (esp_now_is_peer_exist(mac)) return true;
   esp_now_peer_info_t peer = {};
   memcpy(peer.peer_addr, mac, 6);
-  peer.channel = SHOWDUINO_ESPNOW_CHANNEL;
+  peer.channel = 0;
   peer.encrypt = false;
-  peer.ifidx = WIFI_IF_STA;
+  wifi_mode_t mode = WIFI_MODE_NULL;
+  esp_wifi_get_mode(&mode);
+  peer.ifidx = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) ? WIFI_IF_AP : WIFI_IF_STA;
   const esp_err_t err = esp_now_add_peer(&peer);
-  return err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST;
+  if (err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST) return true;
+  peer.ifidx = (peer.ifidx == WIFI_IF_AP) ? WIFI_IF_STA : WIFI_IF_AP;
+  const esp_err_t err2 = esp_now_add_peer(&peer);
+  return err2 == ESP_OK || err2 == ESP_ERR_ESPNOW_EXIST;
 }
 
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -74,9 +81,8 @@ bool lampEspNowBegin() {
   WiFi.disconnect(false, false);
   esp_wifi_set_ps(WIFI_PS_NONE);
   delay(80);
-  if (esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
-    Serial.println("[ESPNOW] channel set failed");
-  }
+  sFollow.begin(SHOWDUINO_RADIO_HOME_CHANNEL);
+  sFollow.lock(SHOWDUINO_RADIO_HOME_CHANNEL);
   memset(sSelfMac, 0, 6);
   esp_read_mac(sSelfMac, ESP_MAC_WIFI_STA);
   if (esp_now_init() != ESP_OK) {
@@ -89,6 +95,12 @@ bool lampEspNowBegin() {
   sReady = true;
   Serial.println("[ESPNOW] ready");
   return true;
+}
+
+void lampEspNowService() {
+  const bool haveLink = sHaveComms && sLastRx &&
+      (millis() - sLastRx) < SHOWDUINO_RADIO_LINK_FRESH_MS;
+  sFollow.tick(haveLink);
 }
 
 bool lampEspNowReady() { return sReady; }

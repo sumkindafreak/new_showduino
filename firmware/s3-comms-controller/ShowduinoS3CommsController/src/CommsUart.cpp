@@ -36,6 +36,13 @@ void commsUartWriteLine(const char *line) {
   sTxCount++;
 }
 
+void commsUartWriteBytes(const uint8_t *data, size_t len) {
+  if (!sReady || !data || len == 0) return;
+  Serial1.write(data, len);
+  Serial1.flush();
+  sTxCount++;
+}
+
 bool commsUartReadLine(char *out, size_t outSize) {
   if (!sReady || !out || outSize < 2) return false;
 

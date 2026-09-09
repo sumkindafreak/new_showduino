@@ -20,7 +20,7 @@
  *   esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
  */
 
-#define SHOWDUINO_AUDIO_NODE_FW            "0.4.1"
+#define SHOWDUINO_AUDIO_NODE_FW            "0.4.2"
 #define SHOWDUINO_AUDIO_NODE_BOARD         "ESP32-A1S Audio Kit V2.2 A161"
 #define SHOWDUINO_AUDIO_NODE_CODEC         "ES8388"
 

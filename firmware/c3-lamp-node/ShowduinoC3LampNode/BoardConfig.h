@@ -19,7 +19,7 @@
  * used on ESP32-C3 Super Mini, and a pin HUNT leaves unused.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.2.0"
+#define SHOWDUINO_LAMP_NODE_FW             "0.2.1"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-C3 Super Mini OLED (HUNT)"
 #define SHOWDUINO_LAMP_OLED_CONTROLLER     "SSD1306"
 

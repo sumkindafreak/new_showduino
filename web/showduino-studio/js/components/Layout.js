@@ -68,7 +68,7 @@ export function Layout() {
             el('span', { text: 'SHOWDUINO' })
           ]),
           el('span', { className: 'brand-role', text: 'Communications Engine' }),
-          el('span', { className: 'brand-sub', text: 'LOCAL SYSTEM CONSOLE' })
+          el('span', { className: 'brand-sub', text: '1.0.0-rc.1 · LOCAL SYSTEM CONSOLE' })
         ]),
         Nav()
       ]),

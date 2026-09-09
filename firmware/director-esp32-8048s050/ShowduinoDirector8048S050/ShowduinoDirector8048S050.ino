@@ -353,6 +353,10 @@ void handleStageLine(String line) {
     return;
   }
 
+  if (ui.applyGatewayWire(line.c_str()) || ui.applyUpdateWire(line.c_str())) {
+    return;
+  }
+
   if (line == SHOWDUINO_WIRE_SNAPSHOT_BEGIN) {
     ui.beginSnapshot();
     return;
@@ -1545,6 +1549,9 @@ void loop() {
   readEspNowReplies();
   readStageSerial();
   recoverEspNowIfNeeded();
+#if SHOWDUINO_USE_ESPNOW
+  if (espNowReady) espNowTransport.service(linkState == LINK_READY);
+#endif
   sendHeartbeatIfDue();
   sendHelloIfNeeded();
   checkLinkWatchdog();

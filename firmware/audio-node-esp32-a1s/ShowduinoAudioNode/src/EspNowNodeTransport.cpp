@@ -4,6 +4,8 @@
 #include "../../../protocol/showduino_validation.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_radio_follow.h"
+#include "../../shared-node/NodeSoftAp.h"
 
 #include <WiFi.h>
 #include <esp_now.h>
@@ -23,6 +25,7 @@ static uint32_t sLastRx = 0;
 static uint32_t sSendFail = 0;
 static uint32_t sLastService = 0;
 static AudioNodeRxFn sHandler = nullptr;
+static ShowduinoRadioFollow sFollow;
 static const uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 static bool addPeer(const uint8_t *mac) {
@@ -43,11 +46,7 @@ static bool addPeer(const uint8_t *mac) {
 }
 
 static void lockChannel() {
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(false);
-  esp_wifi_set_ps(WIFI_PS_NONE);
-  (void)esp_wifi_scan_stop();
-  (void)esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  sFollow.lock(sFollow.channel());
 }
 
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -119,15 +118,10 @@ void audioEspNowService() {
   const uint32_t now = millis();
   if ((now - sLastService) < 400UL) return;
   sLastService = now;
-  (void)esp_wifi_scan_stop();
-  uint8_t ch = 0;
-  wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
-  esp_wifi_get_channel(&ch, &second);
-  if (ch != SHOWDUINO_ESPNOW_CHANNEL) {
-    SD_LOGW("ESPNOW", "radio left ch%u — locking ch%u",
-            (unsigned)ch, (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
-    audioEspNowReassert();
-  }
+  const bool haveLink = sHaveComms && sLastRx &&
+      (now - sLastRx) < SHOWDUINO_RADIO_LINK_FRESH_MS;
+  sFollow.tick(haveLink);
+  if (nodeSoftApStarted()) nodeSoftApFollowChannel(sFollow.channel());
 }
 
 bool audioEspNowBegin() {
@@ -138,7 +132,8 @@ bool audioEspNowBegin() {
   WiFi.disconnect(false, false);
   esp_wifi_set_ps(WIFI_PS_NONE);
   delay(80);
-  lockChannel();
+  sFollow.begin(SHOWDUINO_RADIO_HOME_CHANNEL);
+  sFollow.lock(SHOWDUINO_RADIO_HOME_CHANNEL);
   memset(sSelfMac, 0, 6);
   esp_read_mac(sSelfMac, ESP_MAC_WIFI_STA);
   if (!initEspNow()) return false;

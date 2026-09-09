@@ -22,6 +22,7 @@
 #include "src/CommsConsole.h"
 #include "src/web/CommsWebServer.h"
 #include "src/status/CommsStatusRgb.h"
+#include "src/network/CommsGateway.h"
 
 static void commsLogFlush(const char *line) {
   Serial.println(line);
@@ -48,7 +49,8 @@ void setup() {
   Serial.println("============================================================");
   Serial.println(" SHOWDUINO ESP32-S3 COMMS CONTROLLER");
   Serial.println("============================================================");
-  Serial.printf("[COMMS] Firmware: %s\n", SHOWDUINO_COMMS_FIRMWARE_VERSION);
+  Serial.printf("[COMMS] Firmware: %s  product=%s\n",
+                SHOWDUINO_COMMS_FIRMWARE_VERSION, SHOWDUINO_PLATFORM_VERSION);
 #ifdef ESP_ARDUINO_VERSION_STR
   Serial.printf("[COMMS] Arduino: %s\n", ESP_ARDUINO_VERSION_STR);
 #else
@@ -102,6 +104,7 @@ void setup() {
   commsStatusRgbLoop();
   commsWebBegin();
 #endif
+  commsGatewayBegin();
 
   Serial.println("[COMMS] Waiting for Director");
   Serial.println("[COMMS] Waiting for P4");
@@ -116,6 +119,7 @@ void loop() {
 #if SHOWDUINO_WEBUI_ENABLED
   commsWebLoop();
 #endif
+  commsGatewayLoop();
   commsStatusRgbLoop();
   delay(2);
 }

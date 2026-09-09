@@ -2,6 +2,7 @@
 #define SHOWDUINO_UI_H
 
 #include <Arduino.h>
+#include <stdlib.h>
 #include <lvgl.h>
 #include "BoardConfig.h"
 #include "backlight.h"
@@ -9,6 +10,9 @@
 #include "src/ShowThumb.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
+#include "../../../protocol/showduino_version.h"
+#include "../../../protocol/showduino_gateway_wire.h"
+#include "src/StorageConfig.h"
 #include "DirectorStatusBar.h"
 #include "DirectorAudioModel.h"
 #include "ShowduinoOsUi.h"
@@ -956,6 +960,40 @@ public:
   /** SUE TimeService wire (TIME:...) - display only, no local clock. */
   bool applySueTimeWire(const char *line) { return statusBar_.applyTimeWire(line); }
 
+  bool applyGatewayWire(const char *line) {
+    if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_GATEWAY_PREFIX,
+                         strlen(SHOWDUINO_WIRE_STATE_GATEWAY_PREFIX)) != 0) {
+      return false;
+    }
+    const char *p = line + strlen(SHOWDUINO_WIRE_STATE_GATEWAY_PREFIX);
+    gwAp_ = strstr(p, "AP=ON") != nullptr;
+    gwSta_ = strstr(p, "STA=ON") != nullptr;
+    gwInet_ = strstr(p, "INET=ON") != nullptr;
+    const char *ch = strstr(p, "CH=");
+    if (ch) gwCh_ = (uint8_t)atoi(ch + 3);
+    statusBar_.setHomeWifi(gwSta_);
+    return true;
+  }
+
+  bool applyUpdateWire(const char *line) {
+    if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_UPDATE_PREFIX,
+                         strlen(SHOWDUINO_WIRE_STATE_UPDATE_PREFIX)) != 0) {
+      return false;
+    }
+    const char *p = line + strlen(SHOWDUINO_WIRE_STATE_UPDATE_PREFIX);
+    strncpy(updateStatus_, p, sizeof(updateStatus_) - 1);
+    updateStatus_[sizeof(updateStatus_) - 1] = '\0';
+    updateLatest_[0] = '\0';
+    char *colon = strchr(updateStatus_, ':');
+    if (colon) {
+      *colon = '\0';
+      strncpy(updateLatest_, colon + 1, sizeof(updateLatest_) - 1);
+    }
+    const bool avail = strcmp(updateStatus_, SHOWDUINO_UPDATE_AVAILABLE) == 0;
+    statusBar_.setUpdateHint(avail, updateLatest_);
+    return true;
+  }
+
   /** Derive OS status-bar health from existing desk state (no new protocol). */
   void syncStatusBarHealth() {
     using SB = DirectorStatusBar;
@@ -1039,6 +1077,7 @@ public:
           displayPageIsSystemModal(displayManager_.currentPage()) ||
           (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) ||
           (aboutRoot_ && !lv_obj_has_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN)) ||
+          (networkRoot_ && !lv_obj_has_flag(networkRoot_, LV_OBJ_FLAG_HIDDEN)) ||
           (completeOverlayRoot && !lv_obj_has_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN));
       if (cover) {
         lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
@@ -1221,7 +1260,7 @@ private:
         page_01_home_set_link_text("OFFLINE");
       }
       page_01_home_set_clock_text(snap.clock[0] ? snap.clock : "--:--");
-      page_01_home_set_footer_sue(snap.runtimeState[0] ? snap.runtimeState : "-");
+      page_01_home_set_footer_sue(snap.linkState[0] ? snap.linkState : "-");
       page_01_home_set_footer_notify(snap.notification[0] ? snap.notification : "-");
     }
   }
@@ -1417,6 +1456,15 @@ private:
   lv_obj_t *completeOverlayRoot = nullptr;
   lv_obj_t *completeDetailLabel = nullptr;
   lv_obj_t *aboutRoot_ = nullptr;
+  lv_obj_t *aboutBody_ = nullptr;
+  lv_obj_t *networkRoot_ = nullptr;
+  lv_obj_t *networkBody_ = nullptr;
+  bool gwAp_ = true;
+  bool gwSta_ = false;
+  bool gwInet_ = false;
+  uint8_t gwCh_ = 1;
+  char updateStatus_[20] = "NONE";
+  char updateLatest_[32] = "";
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
   bool emergencyVisitingDiag = false;
@@ -1886,12 +1934,20 @@ private:
       sendAudioNodeCmd("AUDIO:NODE:SOUND:TRIGGER:TEST");
       return;
     }
-    if (command == "SETTINGS:ABOUT") {
+    if (command == "SETTINGS:ABOUT" || command == "SETTINGS:SOFTWARE") {
       showAboutDialog();
+      return;
+    }
+    if (command == "SETTINGS:NETWORK") {
+      showNetworkDialog();
       return;
     }
     if (command == "UI:ABOUT:CLOSE") {
       hideAboutDialog();
+      return;
+    }
+    if (command == "UI:NETWORK:CLOSE") {
+      hideNetworkDialog();
       return;
     }
     if (command == "SCREEN:SETTINGS") {
@@ -2460,6 +2516,9 @@ private:
     makeButton(settings, "Backup", 8, 364, 140, 44, "STORAGE:BACKUP");
     makeButton(settings, "Export", 156, 364, 120, 44, "STORAGE:EXPORT");
     makeButton(settings, "About", 284, 364, 120, 44, "SETTINGS:ABOUT");
+    makeButton(settings, "Network", 8, 416, 140, 44, "SETTINGS:NETWORK");
+    makeButton(settings, "Software", 156, 416, 140, 44, "SETTINGS:SOFTWARE");
+    os_.makeCaption(settings, "Network is Comms home Wi-Fi. Software is Showduino 1.0.0-rc.1.", 8, 468);
 
     refreshTimeoutLabel();
     refreshAtmosphereLabel();
@@ -2748,41 +2807,92 @@ private:
     if (aboutRoot_) lv_obj_add_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN);
   }
 
+  void hideNetworkDialog() {
+    if (networkRoot_) lv_obj_add_flag(networkRoot_, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  void fillAboutText(char *text, size_t n) {
+    snprintf(text, n,
+             "Showduino  %s\n"
+             "Director   %s\n"
+             "Board      %s\n"
+             "Protocol   %d.%d\n"
+             "Update     %s%s%s\n"
+             "Role       control surface\n"
+             "P4 is the show authority.",
+             SHOWDUINO_PLATFORM_VERSION,
+             STORAGE_FW_VERSION,
+             SHOWDUINO_BOARD_NAME,
+             SHOWDUINO_PROTOCOL_VERSION_MAJOR,
+             SHOWDUINO_PROTOCOL_VERSION_MINOR,
+             updateStatus_,
+             updateLatest_[0] ? " " : "",
+             updateLatest_);
+  }
+
   void showAboutDialog() {
     if (!aboutRoot_) {
       aboutRoot_ = os_.makeDialogScrim(lv_layer_top());
-      lv_obj_t *box = os_.makeDialogBox(aboutRoot_, 520, 280, false);
+      lv_obj_t *box = os_.makeDialogBox(aboutRoot_, 520, 320, false);
 
       lv_obj_t *title = lv_label_create(box);
-      lv_label_set_text(title, "ABOUT");
+      lv_label_set_text(title, "SOFTWARE");
       lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
       lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
       lv_obj_set_pos(title, 24, 20);
 
-      lv_obj_t *body = lv_label_create(box);
-      char text[280];
-      snprintf(text, sizeof(text),
-               "Showduino Director\n"
-               "Firmware  %s\n"
-               "Board     %s\n"
-               "Protocol  %d.%d\n"
-               "Role      control surface\n"
-               "Stage is the show authority.",
-               STORAGE_FW_VERSION,
-               SHOWDUINO_BOARD_NAME,
-               SHOWDUINO_PROTOCOL_VERSION_MAJOR,
-               SHOWDUINO_PROTOCOL_VERSION_MINOR);
-      lv_label_set_text(body, text);
-      lv_obj_set_style_text_font(body, &lv_font_montserrat_14, 0);
-      lv_obj_set_style_text_color(body, lv_color_hex(ShowduinoPalette::Muted), 0);
-      lv_obj_set_pos(body, 24, 64);
-      lv_obj_set_width(body, 470);
-      lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
+      aboutBody_ = lv_label_create(box);
+      lv_obj_set_style_text_font(aboutBody_, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(aboutBody_, lv_color_hex(ShowduinoPalette::Muted), 0);
+      lv_obj_set_pos(aboutBody_, 24, 64);
+      lv_obj_set_width(aboutBody_, 470);
+      lv_label_set_long_mode(aboutBody_, LV_LABEL_LONG_WRAP);
 
-      makeButton(box, "CLOSE", 180, 210, 160, OS_BTN_H, "UI:ABOUT:CLOSE");
+      makeButton(box, "CLOSE", 180, 250, 160, OS_BTN_H, "UI:ABOUT:CLOSE");
+    }
+    if (aboutBody_) {
+      char text[360];
+      fillAboutText(text, sizeof(text));
+      lv_label_set_text(aboutBody_, text);
     }
     lv_obj_clear_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(aboutRoot_);
+  }
+
+  void showNetworkDialog() {
+    if (!networkRoot_) {
+      networkRoot_ = os_.makeDialogScrim(lv_layer_top());
+      lv_obj_t *box = os_.makeDialogBox(networkRoot_, 520, 300, false);
+      lv_obj_t *title = lv_label_create(box);
+      lv_label_set_text(title, "NETWORK");
+      lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+      lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
+      lv_obj_set_pos(title, 24, 20);
+      networkBody_ = lv_label_create(box);
+      lv_obj_set_style_text_font(networkBody_, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(networkBody_, lv_color_hex(ShowduinoPalette::Muted), 0);
+      lv_obj_set_pos(networkBody_, 24, 64);
+      lv_obj_set_width(networkBody_, 470);
+      lv_label_set_long_mode(networkBody_, LV_LABEL_LONG_WRAP);
+      makeButton(box, "CLOSE", 180, 230, 160, OS_BTN_H, "UI:NETWORK:CLOSE");
+    }
+    if (networkBody_) {
+      char text[280];
+      snprintf(text, sizeof(text),
+               "Showduino AP     %s\n"
+               "Home / venue     %s\n"
+               "Internet         %s\n"
+               "ESP-NOW channel  %u\n"
+               "Director link is not home Wi-Fi.\n"
+               "Internet loss is not SHOWDUINO lost.",
+               gwAp_ ? "ON" : "OFF",
+               gwSta_ ? "ON" : "OFF",
+               gwInet_ ? "ON" : "OFF",
+               (unsigned)gwCh_);
+      lv_label_set_text(networkBody_, text);
+    }
+    lv_obj_clear_flag(networkRoot_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(networkRoot_);
   }
 
   void restoreAfterLinkLost() {

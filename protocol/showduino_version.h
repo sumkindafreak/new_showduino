@@ -1,6 +1,7 @@
 #ifndef SHOWDUINO_VERSION_H
 #define SHOWDUINO_VERSION_H
 
+#include <string.h>
 #include "showduino_protocol_version.h"
 
 /*
@@ -31,9 +32,93 @@
 #define SHOWDUINO_COMPONENT_LAMP "Lamp Node"
 #define SHOWDUINO_COMPONENT_STUDIO "Studio V4"
 
+#define SHOWDUINO_GITHUB_OWNER "sumkindafreak"
+#define SHOWDUINO_GITHUB_REPO "new_showduino"
+#define SHOWDUINO_GITHUB_RELEASES_API \
+  "https://api.github.com/repos/sumkindafreak/new_showduino/releases?per_page=8"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct ShowduinoVersionParts {
+  int major;
+  int minor;
+  int patch;
+  int preKind; /* 0 = final release, 1 = rc, 2 = other prerelease */
+  int preNum;
+} ShowduinoVersionParts;
+
+static inline const char *showduino_version_skip_v(const char *s) {
+  if (!s) return "";
+  if (s[0] == 'v' || s[0] == 'V') return s + 1;
+  return s;
+}
+
+static inline int showduino_parse_version(const char *s, ShowduinoVersionParts *out) {
+  if (!out) return 0;
+  memset(out, 0, sizeof(*out));
+  s = showduino_version_skip_v(s);
+  if (!s || *s < '0' || *s > '9') return 0;
+  int major = 0, minor = 0, patch = 0;
+  while (*s >= '0' && *s <= '9') {
+    major = major * 10 + (*s - '0');
+    if (major > 9999) return 0;
+    ++s;
+  }
+  if (*s != '.') return 0;
+  ++s;
+  while (*s >= '0' && *s <= '9') {
+    minor = minor * 10 + (*s - '0');
+    if (minor > 9999) return 0;
+    ++s;
+  }
+  if (*s != '.') return 0;
+  ++s;
+  while (*s >= '0' && *s <= '9') {
+    patch = patch * 10 + (*s - '0');
+    if (patch > 9999) return 0;
+    ++s;
+  }
+  out->major = major;
+  out->minor = minor;
+  out->patch = patch;
+  if (*s == '-' || *s == '_') {
+    ++s;
+    if ((s[0] == 'r' || s[0] == 'R') && (s[1] == 'c' || s[1] == 'C')) {
+      out->preKind = 1;
+      s += 2;
+      if (*s == '.' || *s == '-') ++s;
+      int n = 0;
+      while (*s >= '0' && *s <= '9') {
+        n = n * 10 + (*s - '0');
+        ++s;
+      }
+      out->preNum = n;
+    } else if (*s) {
+      out->preKind = 2;
+    }
+  }
+  return 1;
+}
+
+/* <0 if a < b, 0 if equal, >0 if a > b. Unparseable versions compare as equal-low. */
+static inline int showduino_version_compare(const char *a, const char *b) {
+  ShowduinoVersionParts pa, pb;
+  const int oka = showduino_parse_version(a, &pa);
+  const int okb = showduino_parse_version(b, &pb);
+  if (!oka && !okb) return 0;
+  if (!oka) return -1;
+  if (!okb) return 1;
+  if (pa.major != pb.major) return pa.major - pb.major;
+  if (pa.minor != pb.minor) return pa.minor - pb.minor;
+  if (pa.patch != pb.patch) return pa.patch - pb.patch;
+  if (pa.preKind == 0 && pb.preKind == 0) return 0;
+  if (pa.preKind == 0) return 1;
+  if (pb.preKind == 0) return -1;
+  if (pa.preKind != pb.preKind) return pb.preKind - pa.preKind;
+  return pa.preNum - pb.preNum;
+}
 
 static inline int showduino_protocol_compatible(int peer_major) {
   return peer_major == SHOWDUINO_PROTOCOL_VERSION_MAJOR;

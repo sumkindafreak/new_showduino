@@ -6,6 +6,7 @@
 void commsUartBegin();
 bool commsUartReady();
 void commsUartWriteLine(const char *line);
+void commsUartWriteBytes(const uint8_t *data, size_t len);
 bool commsUartReadLine(char *out, size_t outSize);
 int commsUartAvailable();
 int commsUartRead();

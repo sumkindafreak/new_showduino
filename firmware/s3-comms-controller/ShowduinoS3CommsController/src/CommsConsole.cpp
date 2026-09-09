@@ -4,6 +4,7 @@
 #include "ProtocolBridge.h"
 #include "web/CommsWebServer.h"
 #include "status/CommsStatusRgb.h"
+#include "network/CommsGateway.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_log.h"
 
@@ -33,7 +34,8 @@ static void printMacLine() {
 
 static void printStatus() {
   Serial.println("--- Showduino S3 Comms Controller ---");
-  Serial.printf("Firmware: %s\n", SHOWDUINO_COMMS_FIRMWARE_VERSION);
+  Serial.printf("Firmware: %s  product=%s\n",
+                SHOWDUINO_COMMS_FIRMWARE_VERSION, SHOWDUINO_PLATFORM_VERSION);
 #ifdef ESP_ARDUINO_VERSION_STR
   Serial.printf("Arduino: %s\n", ESP_ARDUINO_VERSION_STR);
 #endif
@@ -80,6 +82,7 @@ static void printStatus() {
                 commsStatusRgbStateName(),
                 commsStatusRgbColourName(),
                 (unsigned)commsStatusRgbPin());
+  commsGatewayLogRadio("usb_status");
 }
 
 static void handleUsbLine(String line) {

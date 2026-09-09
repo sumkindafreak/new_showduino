@@ -305,6 +305,89 @@ ProductionStoreResult ProductionStore::load(const char *productionId,
   return ProductionStoreResult::Ok;
 }
 
+bool ProductionStore::ensureDir(const char *path) {
+  if (!fs_ || !path) return false;
+  if (fs_->exists(path)) return true;
+  return fs_->mkdir(path);
+}
+
+bool ProductionStore::writeText(const char *path, const char *data, size_t len) {
+  if (!fs_ || !path || !data) return false;
+  File file = fs_->open(path, FILE_WRITE);
+  if (!file || file.isDirectory()) {
+    if (file) file.close();
+    return false;
+  }
+  size_t written = file.write((const uint8_t *)data, len);
+  file.close();
+  return written == len;
+}
+
+ProductionStoreResult ProductionStore::persistRuntimeFiles(const char *productionId,
+                                                           const char *manifestJson,
+                                                           size_t manifestLen,
+                                                           const char *timelineJson,
+                                                           size_t timelineLen) {
+  if (!fs_) {
+    setError("STORAGE_UNAVAILABLE");
+    return ProductionStoreResult::StorageUnavailable;
+  }
+  if (!productionIdIsValid(productionId) || !manifestJson || !timelineJson ||
+      manifestLen == 0 || timelineLen == 0) {
+    setError("invalid persist payload");
+    return ProductionStoreResult::InvalidManifest;
+  }
+  if (manifestLen > SHOWDUINO_MANIFEST_MAX_BYTES) {
+    setError("manifest exceeds size limit");
+    return ProductionStoreResult::TooLarge;
+  }
+  if (timelineLen > SHOWDUINO_TIMELINE_MAX_BYTES) {
+    setError("FILE_TOO_LARGE");
+    return ProductionStoreResult::TooLarge;
+  }
+  if (!ensureDir(SHOWDUINO_PRODUCTIONS_ROOT)) {
+    setError("productions directory unavailable");
+    return ProductionStoreResult::IoError;
+  }
+
+  char folder[160];
+  char staging[176];
+  char liveMan[192];
+  char liveTl[192];
+  char stageMan[200];
+  char stageTl[200];
+  snprintf(folder, sizeof(folder), "%s/%s", SHOWDUINO_PRODUCTIONS_ROOT, productionId);
+  snprintf(staging, sizeof(staging), "%s/.staging", folder);
+  snprintf(liveMan, sizeof(liveMan), "%s/manifest.json", folder);
+  snprintf(liveTl, sizeof(liveTl), "%s/timeline.json", folder);
+  snprintf(stageMan, sizeof(stageMan), "%s/manifest.json", staging);
+  snprintf(stageTl, sizeof(stageTl), "%s/timeline.json", staging);
+
+  if (!ensureDir(folder) || !ensureDir(staging)) {
+    setError("production folder create failed");
+    return ProductionStoreResult::IoError;
+  }
+  if (!writeText(stageMan, manifestJson, manifestLen) ||
+      !writeText(stageTl, timelineJson, timelineLen)) {
+    setError("staging write failed");
+    return ProductionStoreResult::IoError;
+  }
+  if (!writeText(liveMan, manifestJson, manifestLen) ||
+      !writeText(liveTl, timelineJson, timelineLen)) {
+    setError("commit write failed");
+    return ProductionStoreResult::IoError;
+  }
+  fs_->remove(stageMan);
+  fs_->remove(stageTl);
+  Serial.printf("[PRODUCTION] Persisted %s (not loaded)\n", productionId);
+  if (!scan()) {
+    setError("scan after persist failed");
+    return ProductionStoreResult::IoError;
+  }
+  setError("OK");
+  return ProductionStoreResult::Ok;
+}
+
 void ProductionStore::release(ProductionPackage *package) {
   if (!package) return;
   if (package->cues) heap_caps_free(package->cues);

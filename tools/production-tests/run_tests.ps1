@@ -7,6 +7,10 @@ $out = Join-Path $here "production_format_tests.exe"
 $runtimeOut = Join-Path $here "timeline_runtime_tests.exe"
 $storeOut = Join-Path $here "production_store_tests.exe"
 $webTimelineOut = Join-Path $here "web_timeline_upload_policy_tests.exe"
+$versionOut = Join-Path $here "version_tests.exe"
+$shdoOut = Join-Path $here "shdo_tests.exe"
+$webBodyOut = Join-Path $here "web_body_tests.exe"
+$protocol = Join-Path $here "..\..\protocol"
 $sketch = Join-Path $here "..\..\firmware\stage-engine-p4\ShowduinoStageEngineP4"
 $stubs = Join-Path $here "stubs"
 
@@ -45,4 +49,25 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Running..."
 & $webTimelineOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Compiling version compare tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $versionOut (Join-Path $here "test_version.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $versionOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Compiling SHDO compiler tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $shdoOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Compiling WEB/BODY framing tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $webBodyOut (Join-Path $here "test_web_body.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $webBodyOut
 exit $LASTEXITCODE

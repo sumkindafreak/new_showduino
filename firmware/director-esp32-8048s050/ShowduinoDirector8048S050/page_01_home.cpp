@@ -504,7 +504,7 @@ static void build_footer(lv_obj_t *parent) {
   showduino_theme_register(s_footer, SHOWDUINO_THEME_ROLE_BORDER);
 
   static const char *titles[7] = {
-    "SUE", "P4", "Lamp", "MOSFET", "NeoPixel", "Audio", "DMX"
+    "COMMS", "P4", "Lamp", "MOSFET", "NeoPixel", "Audio", "DMX"
   };
   static bool (*cap_fns[7])(const ShowduinoCapabilities *) = {
     cap_always, cap_always, cap_lamp, cap_mosfet, cap_neopixel, cap_audio, cap_dmx

@@ -5,7 +5,10 @@
 #include "../ProtocolBridge.h"
 #include "../CommsUart.h"
 #include "../status/CommsStatusRgb.h"
+#include "../network/CommsGateway.h"
 #include "../../BoardConfig.h"
+#include "../../../protocol/showduino_version.h"
+#include "../../../protocol/showduino_radio.h"
 
 #if SHOWDUINO_WEBUI_ENABLED
 
@@ -67,6 +70,8 @@ static void handleApiComms() {
 
   String json = "{\n";
   json += "  \"firmwareVersion\": \"" SHOWDUINO_COMMS_FIRMWARE_VERSION "\",\n";
+  json += "  \"productName\": \"" SHOWDUINO_PRODUCT_NAME "\",\n";
+  json += "  \"productVersion\": \"" SHOWDUINO_PLATFORM_VERSION "\",\n";
   json += "  \"role\": \"communications\",\n";
   json += "  \"webui\": \"LOCAL\",\n";
   json += "  \"webuiBuild\": \"" SHOWDUINO_WEBUI_BUILD_HASH "\",\n";
@@ -79,8 +84,8 @@ static void handleApiComms() {
   json += "  \"ip\": \"" + String(sIp) + "\",\n";
   json += "  \"mdnsHost\": \"" SHOWDUINO_WEBUI_MDNS "\",\n";
   json += "  \"wifiMode\": \"" + String(wifiModeWord(WiFi.getMode())) + "\",\n";
-  json += "  \"espnowChannel\": " + String(SHOWDUINO_ESPNOW_CHANNEL) + ",\n";
-  json += "  \"radioChannel\": " + String((unsigned)sChannel) + ",\n";
+  json += "  \"espnowChannel\": " + String((unsigned)commsGatewayRadioChannel()) + ",\n";
+  json += "  \"radioChannel\": " + String((unsigned)commsGatewayRadioChannel()) + ",\n";
   json += "  \"directorOnline\": " + String(protocolBridgeDirectorOnline() ? "true" : "false") + ",\n";
   json += "  \"directorSeen\": " + String(espNowTransportHaveDirector() ? "true" : "false") + ",\n";
   json += "  \"p4Online\": " + String(protocolBridgeP4Alive() ? "true" : "false") + ",\n";
@@ -90,13 +95,15 @@ static void handleApiComms() {
   json += "  \"espnowRx\": " + String(espNowTransportRxCount()) + ",\n";
   json += "  \"espnowTx\": " + String(espNowTransportTxCount()) + ",\n";
   json += "  \"audioNodeSeen\": " + String(espNowTransportHaveAudioNode() ? "true" : "false") + ",\n";
+  json += "  \"lampNodeSeen\": " + String(espNowTransportHaveLampNode() ? "true" : "false") + ",\n";
   json += "  \"statusRgb\": {\n";
   json += "    \"state\": \"" + String(commsStatusRgbStateName()) + "\",\n";
   json += "    \"colour\": \"" + String(commsStatusRgbColourName()) + "\",\n";
   json += "    \"pin\": " + String((unsigned)commsStatusRgbPin()) + ",\n";
   json += "    \"brightness\": " + String((unsigned)commsStatusRgbBrightness()) + "\n";
-  json += "  }\n";
-  json += "}\n";
+  json += "  },\n";
+  commsGatewayAppendStatusJson(json);
+  json += "\n}\n";
   sendJson(200, json);
 }
 
@@ -328,7 +335,9 @@ static bool startSoftAp() {
   WiFi.setSleep(false);
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(false);
-  WiFi.disconnect(false, false);
+  if (!commsGatewayStaAssociated()) {
+    WiFi.disconnect(false, false);
+  }
   esp_wifi_set_ps(WIFI_PS_NONE);
 
   (void)esp_wifi_set_protocol(WIFI_IF_AP,
@@ -345,7 +354,8 @@ static bool startSoftAp() {
   (void)esp_wifi_set_country(&country);
 
   delay(20);
-  (void)esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  const uint8_t chWant = commsGatewayTargetChannel();
+  (void)esp_wifi_set_channel(chWant, WIFI_SECOND_CHAN_NONE);
 
   IPAddress apIP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
@@ -353,14 +363,14 @@ static bool startSoftAp() {
   WiFi.softAPConfig(apIP, gateway, subnet);
 
   const bool ok = WiFi.softAP(SHOWDUINO_WEBUI_AP_SSID, SHOWDUINO_WEBUI_AP_PASSWORD,
-                              SHOWDUINO_ESPNOW_CHANNEL, false, 4);
+                              chWant, false, 4);
   WiFi.setHostname(SHOWDUINO_WEBUI_MDNS);
   strncpy(sIp, WiFi.softAPIP().toString().c_str(), sizeof(sIp) - 1);
   sIp[sizeof(sIp) - 1] = '\0';
 
   wifi_config_t conf = {};
   if (esp_wifi_get_config(WIFI_IF_AP, &conf) == ESP_OK) {
-    conf.ap.channel = SHOWDUINO_ESPNOW_CHANNEL;
+    conf.ap.channel = chWant;
     conf.ap.authmode = WIFI_AUTH_WPA2_PSK;
     conf.ap.max_connection = 4;
     conf.ap.beacon_interval = 100;
@@ -372,21 +382,20 @@ static bool startSoftAp() {
   esp_wifi_get_channel(&ch, &second);
   sChannel = ch;
   sFault = !ok;
-  Serial.printf("[WEBUI] SoftAP %s SSID=%s password=%s IP=%s\n",
+  Serial.printf("[WEBUI] SoftAP %s SSID=%s IP=%s (password not logged)\n",
                 ok ? "OK" : "FAILED",
                 SHOWDUINO_WEBUI_AP_SSID,
-                SHOWDUINO_WEBUI_AP_PASSWORD,
                 sIp);
   Serial.println("[WEBUI] CANONICAL SHOWDUINO WEBUI HOST");
   Serial.printf("[WEBUI] SSID: %s\n", SHOWDUINO_WEBUI_AP_SSID);
   Serial.printf("[WEBUI] AP MAC: %s\n", WiFi.softAPmacAddress().c_str());
-  Serial.printf("[WEBUI] CHANNEL: %u\n", (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
+  Serial.printf("[WEBUI] CHANNEL: %u\n", (unsigned)chWant);
   logRadio("after start");
-  if (ch != SHOWDUINO_ESPNOW_CHANNEL) {
-    Serial.printf("[WEBUI] WARNING: radio channel %u != ESP-NOW %u\n",
-                  (unsigned)ch, (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
+  if (ch != chWant) {
+    Serial.printf("[WEBUI] WARNING: radio channel %u != target %u\n",
+                  (unsigned)ch, (unsigned)chWant);
   } else {
-    Serial.printf("[WEBUI] ESP-NOW channel preserved: %u\n", (unsigned)ch);
+    Serial.printf("[WEBUI] ESP-NOW channel: %u\n", (unsigned)ch);
   }
   return ok;
 }
@@ -399,11 +408,17 @@ static void reassertAp() {
   esp_wifi_get_channel(&ch, &second);
   sChannel = ch;
   const bool apOn = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
-  if (apOn && ch == SHOWDUINO_ESPNOW_CHANNEL) return;
-  if (apOn && ch != SHOWDUINO_ESPNOW_CHANNEL) {
+  const uint8_t target = commsGatewayTargetChannel();
+  if (apOn && commsGatewayStaAssociated()) {
+    /* Follow venue AP. Never yank back to home channel 1. */
+    return;
+  }
+  if (apOn && ch == target) return;
+  if (apOn && ch != target) {
     Serial.printf("[WEBUI] radio left ch%u — locking ch%u without AP restart\n",
-                  (unsigned)ch, (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
-    (void)esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+                  (unsigned)ch, (unsigned)target);
+    (void)esp_wifi_set_channel(target, WIFI_SECOND_CHAN_NONE);
+    sChannel = target;
     return;
   }
   Serial.println("[WEBUI] SoftAP missing — restarting");
@@ -468,9 +483,9 @@ void commsWebBegin() {
   sReady = true;
 
   Serial.println("[WEBUI] HTTP server on port 80");
-  Serial.println("[WEBUI] Join Wi-Fi: " SHOWDUINO_WEBUI_AP_SSID " / " SHOWDUINO_WEBUI_AP_PASSWORD);
+  Serial.println("[WEBUI] Join Wi-Fi: " SHOWDUINO_WEBUI_AP_SSID);
   Serial.println("[WEBUI] Open http://192.168.4.1/");
-  Serial.println("[WEBUI] Default SoftAP password is a documented bench secret — change before a public venue.");
+  Serial.println("[WEBUI] Default SoftAP password is a documented bench secret — not printed here.");
 }
 
 void commsWebLoop() {

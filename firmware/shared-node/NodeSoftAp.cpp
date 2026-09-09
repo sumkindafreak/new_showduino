@@ -94,13 +94,27 @@ bool nodeSoftApBegin(const char *typeToken, const uint8_t mac[6],
   return startAp();
 }
 
+void nodeSoftApFollowChannel(uint8_t channel) {
+  if (channel < 1 || channel > 13) return;
+  if (channel == sChannel && sStarted) return;
+  sChannel = channel;
+  if (!sStarted) return;
+  (void)esp_wifi_set_channel(sChannel, WIFI_SECOND_CHAN_NONE);
+  wifi_config_t conf = {};
+  if (esp_wifi_get_config(WIFI_IF_AP, &conf) == ESP_OK) {
+    conf.ap.channel = sChannel;
+    (void)esp_wifi_set_config(WIFI_IF_AP, &conf);
+  }
+  Serial.printf("[NODE-AP] follow ch%u (no AP restart)\n", (unsigned)sChannel);
+}
+
 void nodeSoftApService() {
   if (!sStarted) return;
+  if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
   const uint32_t now = millis();
   if ((now - sLastCheck) < 2000UL) return;
   sLastCheck = now;
 
-  stopStaScan();
   uint8_t ch = 0;
   wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
   esp_wifi_get_channel(&ch, &second);
