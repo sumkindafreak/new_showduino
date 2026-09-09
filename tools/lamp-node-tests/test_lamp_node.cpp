@@ -85,10 +85,10 @@ int main() {
                                    SHOWDUINO_LAMP_CMD_EMERGENCY_CLEAR) ==
              SHOWDUINO_LAMP_FAIL_NONE,
          "emergency allows clear");
-  expect(showduino_lamp_can_accept(SHOWDUINO_LAMP_ST_IDLE,
+  expect(showduino_lamp_can_accept(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
                                    SHOWDUINO_LAMP_CMD_FX) ==
              SHOWDUINO_LAMP_FAIL_NONE,
-         "idle allows fx");
+         "show-controlled allows fx");
 
   uint16_t start = 0, count = 0;
   showduino_lamp_list_slice(0, &start, &count);

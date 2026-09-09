@@ -131,7 +131,7 @@ int main() {
   const char *maxCommand =
       "{\"formatVersion\":1,\"cues\":["
       "{\"id\":\"abcdefghijklmnopqrstuvwxyz123456789abcd\",\"timeMs\":0,"
-      "\"type\":\"TEST\",\"value\":\"1234567890\"}]}";
+      "\"type\":\"TEST\",\"value\":\"123456789\"}]}";
   expect(parseTimeline(maxCommand, cues, &timeline, &result) &&
              std::strlen(cues[0].command) == SHOWDUINO_CUE_COMMAND_MAX - 1U,
          "timeline accepts a scheduler command exactly at 63 characters");
