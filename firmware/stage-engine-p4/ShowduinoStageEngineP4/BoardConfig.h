@@ -2,6 +2,11 @@
 #define SHOWDUINO_STAGE_BOARD_CONFIG_H
 
 #include <Arduino.h>
+#include "../../../protocol/showduino_log.h"
+
+#ifndef SHOWDUINO_P4_FIRMWARE_VERSION
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.5.0"
+#endif
 
 /*
  * Showduino Stage Engine (ESP32-P4) — Waveshare ESP32-P4-Module-DEV-KIT

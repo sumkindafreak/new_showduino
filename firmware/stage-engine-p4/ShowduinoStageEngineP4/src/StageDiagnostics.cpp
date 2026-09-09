@@ -432,7 +432,7 @@ static void printFinalReport() {
   reportApp("============================================================\n");
   reportApp(" SHOWDUINO P4 — COMMISSIONING REPORT\n");
   reportApp("============================================================\n");
-  reportAppf("Firmware                    0.2.0\n");
+  reportAppf("Firmware                    %s\n", SHOWDUINO_P4_FIRMWARE_VERSION);
   reportAppf("Uptime ms                   %lu\n", (unsigned long)millis());
   reportAppf("Mode                        %s\n", sReadOnly ? "read-only" : "full");
 #ifdef ESP_ARDUINO_VERSION_STR

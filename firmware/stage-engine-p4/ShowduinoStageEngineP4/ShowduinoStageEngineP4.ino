@@ -39,8 +39,10 @@
 #include "src/storage/StageLog.h"
 #include "src/storage/StageConfig.h"
 #include "src/nodes/AudioNodeLink.h"
+#include "src/nodes/LampNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_log.h"
 
 // -----------------------------
 // Serial configuration
@@ -147,6 +149,37 @@ static bool isKnownCommsCommand(const String &c) {
   if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
+  if (c.startsWith(SHOWDUINO_LEGACY_ROUTE_PREFIX) || c.startsWith("STATE:") ||
+      c.startsWith("SNAPSHOT:") || c.startsWith("BOOT:") || c.startsWith("FW:") ||
+      c.startsWith(SHOWDUINO_LEGACY_ACK_PREFIX) || c.startsWith("OK:") ||
+      c.startsWith(SHOWDUINO_LEGACY_ERR_PREFIX)) {
+    return true;
+  }
+  return false;
+}
+
+/* UART echo / Comms-only envelopes must never be executed or answered with
+ * ERR:UNKNOWN_COMMAND. A reply storm freezes the Director LVGL desk. */
+static bool isInboundTelemetryOrEcho(const String &c) {
+  if (c.startsWith(SHOWDUINO_LEGACY_ROUTE_PREFIX)) return true;
+  if (c.startsWith("STATE:") || c.startsWith("SNAPSHOT:") || c.startsWith("BOOT:") ||
+      c.startsWith("FW:")) {
+    return true;
+  }
+  if (c.startsWith(SHOWDUINO_LEGACY_ACK_PREFIX) || c.startsWith("OK:") ||
+      c.startsWith(SHOWDUINO_LEGACY_ERR_PREFIX) || c.startsWith("REJECTED:") ||
+      c.startsWith("UNSUPPORTED:")) {
+    return true;
+  }
+  if (c == "READY" || c == SHOWDUINO_LEGACY_SHOWDUINO_STAGE) return true;
+  if (c.startsWith("PIXELS:") || c.startsWith("ETHERNET:") || c.startsWith("INPUTS:") ||
+      c.startsWith("SD:") || c.startsWith("ANNOUNCE:")) {
+    return true;
+  }
+  if (c == "AUDIO:READY" || c == "AUDIO:FAULT") return true;
+  if (c.startsWith(SHOWDUINO_LEGACY_STATUS_PREFIX) && c != SHOWDUINO_LEGACY_STATUS_REQUEST) {
+    return true;
+  }
   return false;
 }
 
@@ -189,26 +222,34 @@ static void noteCommsValidRx(const String &command) {
   if (!command.startsWith("DIAG:") && !command.startsWith("NODE:")) sCommsSawDirector = true;
   if (!sCommsLinkUp) {
     sCommsLinkUp = true;
-    Serial.println(sCommsEverUp ? "[COMMS] Link restored" : "[COMMS] Link established");
+    SD_LOGI("COMMS", sCommsEverUp ? "Link restored" : "Link established");
     sCommsEverUp = true;
-    if (command == "HEARTBEAT") {
-      Serial.println("[COMMS] Heartbeat received");
-    } else {
-      Serial.print("[COMMS] RX: ");
-      Serial.println(command);
-    }
+    SD_LOGT("COMMS", "RX: %s", command.c_str());
     return;
   }
-  if (command == "HEARTBEAT") return;
-  Serial.print("[COMMS] RX: ");
-  Serial.println(command);
+  if (command == "HEARTBEAT" || command == "DIAG:PING" || command == "DIAG:PONG") {
+    SD_LOGT("COMMS", "RX: %s", command.c_str());
+    return;
+  }
+  if (command.startsWith("NODE:")) {
+    /* AudioNodeLink / LampNodeLink print change-only INFO; raw packet is TRACE. */
+    SD_LOGT("COMMS", "RX: %s", command.c_str());
+    return;
+  }
+  SD_LOGT("COMMS", "RX: %s", command.c_str());
+  if (!(command.startsWith("STATUS:") || command.startsWith("TIME:") ||
+        command.startsWith("STATE:") || command.startsWith("SNAPSHOT:") ||
+        command.startsWith("OK:") || command.startsWith("ACK:") ||
+        command == "HELLO")) {
+    SD_LOGD("COMMS", "RX cmd: %s", command.c_str());
+  }
 }
 
 void serviceCommsLink() {
   if (!sCommsUartReady || !sCommsLinkUp) return;
   if ((millis() - sCommsLastRxMs) < SHOWDUINO_COMMS_LINK_TIMEOUT_MS) return;
   sCommsLinkUp = false;
-  Serial.println("[COMMS] Link lost");
+  SD_LOGW("COMMS", "Link lost");
 }
 
 bool sendToDirector(const String &message) {
@@ -216,11 +257,28 @@ bool sendToDirector(const String &message) {
     return false;
   }
   Serial1.println(message);
-  const bool quietTime = message.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX) &&
-                         message != SHOWDUINO_LEGACY_TIME_REQUEST;
-  if (!quietTime) {
-    Serial.print("[COMMS] TX: ");
-    Serial.println(message);
+  const bool quiet =
+      message == "OK:HEARTBEAT" ||
+      message.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX) ||
+      message.startsWith("STATE:") ||
+      message.startsWith("SNAPSHOT:") ||
+      message.startsWith("FW:") ||
+      message == "READY" ||
+      message == SHOWDUINO_LEGACY_SHOWDUINO_STAGE;
+  if (quiet) {
+    SD_LOGT("COMMS", "TX: %s", message.c_str());
+  } else {
+    SD_LOGT("COMMS", "TX: %s", message.c_str());
+    if (message.startsWith("ERR:") || message.startsWith("REJECTED:") ||
+        message.startsWith("UNSUPPORTED:")) {
+      SD_LOGW("P4", "%s", message.c_str());
+    } else if (!(message.startsWith("ACK:") || message.startsWith("OK:") ||
+                 message.startsWith("PIXELS:") || message.startsWith("AUDIO:") ||
+                 message.startsWith("ETHERNET:") || message.startsWith("SD:") ||
+                 message.startsWith("INPUTS:") || message.startsWith("DMX:") ||
+                 message.startsWith("E131:"))) {
+      SD_LOGD("COMMS", "TX event: %s", message.c_str());
+    }
   }
   return true;
 }
@@ -318,6 +376,7 @@ void triggerEmergency(EmergencySource source) {
   showEngineBump(gEngine);
 
   Serial.println("[ESTOP] EMERGENCY ACTIVE");
+  showduino_log_emergency(true);
   Serial.printf("[ESTOP] source_id=%u emergency_pixels=%s show_pixels=%s audio_wav=%s\n",
                 (unsigned)gEmergencySourceId,
                 emergencyPixelsReady() ? "ready" : "not-ready",
@@ -326,6 +385,7 @@ void triggerEmergency(EmergencySource source) {
 
   stageAudioStopShow();
   audioNodeLinkOnEmergency(true);
+  lampNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
   /* Hard Showduino rule: every pixel-capable local output goes bright white. */
@@ -378,8 +438,10 @@ static void applyEmergencyClear() {
   }
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_CLEAR);
   audioNodeLinkOnEmergency(false);
+  lampNodeLinkOnEmergency(false);
   gRuntime.onEmergencyCleared(millis(), &gEngine);
   Serial.println("[ESTOP] Emergency cleared");
+  showduino_log_emergency(false);
   Serial.println("[SHOW] Returning to safe idle state");
   stageLogEmergency("CLEAR_SUCCESS", "latch released");
 }
@@ -448,7 +510,7 @@ static void handleEmergencyClearCancel() {
 
 void sendCapabilities() {
   sendCommandReply("SHOWDUINO_STAGE_ENGINE");
-  sendCommandReply("FW:0.5.0");
+  sendCommandReply(String("FW:") + SHOWDUINO_P4_FIRMWARE_VERSION);
   sendCommandReply("DMX:PLANNED");
   sendCommandReply(showPixelsReady() ? "PIXELS:READY" : "PIXELS:FAULT");
   sendCommandReply(showNetworkLive().hasIp ? "ETHERNET:ONLINE" : "ETHERNET:OFFLINE");
@@ -503,6 +565,7 @@ void sendStatus() {
   sendCommandReply(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + showRuntimeWire(gEngine.show));
   sendCommandReply(SHOWDUINO_WIRE_SNAPSHOT_END);
   audioNodeLinkPublishToDirector();
+  lampNodeLinkPublishToDirector();
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -658,7 +721,7 @@ void handleShowCommand(const String &command) {
       return;
     }
     if (gRuntime.handleRun(now, &gEngine)) {
-      Serial.println("[SHOW] START");
+      SD_LOGI("P4", "Show START");
       sendCommandReply("SHOW:START:OK");
     }
     return;
@@ -679,7 +742,10 @@ void handleShowCommand(const String &command) {
       sendCommandReply("SHOW:PAUSE:REJECTED:EMERGENCY");
       return;
     }
-    if (gRuntime.handlePause(now, &gEngine)) sendCommandReply("SHOW:PAUSE:OK");
+    if (gRuntime.handlePause(now, &gEngine)) {
+      SD_LOGI("P4", "Show PAUSE");
+      sendCommandReply("SHOW:PAUSE:OK");
+    }
     return;
   }
 
@@ -688,7 +754,10 @@ void handleShowCommand(const String &command) {
       sendCommandReply("SHOW:RESUME:REJECTED:EMERGENCY");
       return;
     }
-    if (gRuntime.handleResume(now, &gEngine)) sendCommandReply("SHOW:RESUME:OK");
+    if (gRuntime.handleResume(now, &gEngine)) {
+      SD_LOGI("P4", "Show RESUME");
+      sendCommandReply("SHOW:RESUME:OK");
+    }
     return;
   }
 
@@ -698,7 +767,10 @@ void handleShowCommand(const String &command) {
       stageAudioStopShow();
       showPixelsBlackout();
     }
-    if (stopped) sendCommandReply("SHOW:STOP:OK");
+    if (stopped) {
+      SD_LOGI("P4", "Show STOP");
+      sendCommandReply("SHOW:STOP:OK");
+    }
     return;
   }
 
@@ -818,6 +890,7 @@ static void printUsbHelp() {
   Serial.println("  RUN:TEST:ABORT");
   Serial.println("  CONFIRM:PIXELS:YES | CONFIRM:PIXELS:NO");
   Serial.println("  CONFIRM:AUDIO:YES | CONFIRM:AUDIO:NO");
+  Serial.println("  LOG:LEVEL | LOG:LEVEL:ERROR|WARN|INFO|DEBUG|TRACE");
   Serial.println("  HELP");
 }
 
@@ -845,14 +918,24 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (sCmdSource == CommandSource::LocalUsb &&
+      showduino_log_handle_command(command.c_str())) {
+    return;
+  }
+
   if (command.startsWith("WEB/")) {
     webApiHandleTunnelRequest(command);
+    return;
+  }
+
+  if (isInboundTelemetryOrEcho(command)) {
     return;
   }
 
   if (command == "HELLO") {
     sendCapabilities();
     audioNodeLinkPublishToDirector();
+    lampNodeLinkPublishToDirector();
     if (sCmdSource == CommandSource::Comms) {
       const bool welcome = !sDirectorPresent;
       noteDirectorDeskSeen();
@@ -869,7 +952,6 @@ static void dispatchCommand(const String &command) {
       noteDirectorDeskSeen();
     }
     sendCommandReply("OK:HEARTBEAT");
-    audioNodeLinkPublishToDirector();
     return;
   }
 
@@ -973,8 +1055,29 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("NODE:LAMP:")) {
+    lampNodeLinkHandleReport(command.c_str());
+    return;
+  }
+
+  if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
+    static uint32_t sLastUnhandledNodeMs = 0;
+    if ((int32_t)(millis() - sLastUnhandledNodeMs) >= 5000) {
+      sLastUnhandledNodeMs = millis();
+      Serial.printf("[COMMS] node report ignored (no handler yet): %s\n", command.c_str());
+    }
+    return;
+  }
+
   if (command.startsWith("AUDIO:")) {
     handleAudioCommand(command);
+    return;
+  }
+
+  if (command.startsWith("LAMP:")) {
+    char reply[80];
+    lampNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply));
+    if (reply[0]) sendCommandReply(reply);
     return;
   }
 
@@ -1048,7 +1151,11 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
-  sendCommandReply("ERR:UNKNOWN_COMMAND");
+  Serial.printf("[CMD] UNKNOWN command=%s\n", command.c_str());
+  String reply = "ERR:UNKNOWN_COMMAND:";
+  reply += command;
+  if (reply.length() > 80) reply = reply.substring(0, 80);
+  sendCommandReply(reply);
 }
 
 void handleCommand(String command, CommandSource source) {
@@ -1067,6 +1174,7 @@ void handleCommand(String command, CommandSource source) {
     }
     const bool localOnly = (command == "HELP" || command == "STATUS:REQUEST" ||
                             command == "HELLO" || command == "HEARTBEAT" ||
+                            command.startsWith("LOG:LEVEL") ||
                             command.startsWith("TIME:") ||
                             command.startsWith("PIXEL:") ||
                             command.startsWith("PLUGIN:") ||
@@ -1075,7 +1183,7 @@ void handleCommand(String command, CommandSource source) {
                             command.startsWith("RUN:TEST") ||
                             command.startsWith("CONFIRM:"));
     gRuntime.sendFn = localOnly ? emitConsoleLine : emitRuntimeToUsbAndDirector;
-    if (command != "HEARTBEAT") {
+    if (command != "HEARTBEAT" && !command.startsWith("LOG:LEVEL")) {
       Serial.printf("[CMD] source=%s command=%s\n",
                     source == CommandSource::LocalUsb ? "USB" : "COMMS",
                     command.c_str());
@@ -1345,6 +1453,7 @@ void setup() {
   }
   Serial.println("[AUDIO] BOOT waits for Director HELLO (screen power-on)");
   audioNodeLinkBegin();
+  lampNodeLinkBegin();
 
   stageStoreBegin();
   webApiBegin(bootMs);
@@ -1375,6 +1484,7 @@ void loop() {
   }
   stageAudioLoop();
   audioNodeLinkLoop();
+  lampNodeLinkLoop();
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);

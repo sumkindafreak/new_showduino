@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <algorithm>
 #include "../BoardConfig.h"
-#include "../../../../protocol/showduino_pixel_fx.h"
+#include "../../../protocol/showduino_pixel_fx.h"
 
 /* Arduino's legacy min/max macros do not expand for explicit template calls
  * such as min<uint32_t>(). Make the standard templates visible as well. */

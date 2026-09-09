@@ -4,6 +4,7 @@
 #include "../../../protocol/showduino_protocol_version.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_sound_input.h"
+#include "../../../protocol/showduino_log.h"
 
 extern bool emergencyLocked;
 bool sendToDirector(const String &message);
@@ -20,6 +21,8 @@ static char sLastInv[96] = "";
 static char sLastCaps[96] = "";
 static char sLastMeta[96] = "";
 static char sLastSound[96] = "";
+static char sLastSoundKey[48] = "";
+static uint32_t sLastSoundForceMs = 0;
 
 static const char *shortState(const char *state, bool online) {
   if (!online) return "OFF";
@@ -134,9 +137,22 @@ static void publishExtra(bool force) {
            sSt.soundArmed ? 1 : 0, (unsigned)sSt.soundCooldown,
            sSt.soundLastType[0] ? sSt.soundLastType : "NONE",
            sSt.soundCalibrated ? 1 : 0);
-  if (force || strcmp(sLastSound, line) != 0) {
+  char key[48];
+  snprintf(key, sizeof(key), "%s:%u:%u:%u:%s:%u",
+           sSt.soundReadyTok[0] ? sSt.soundReadyTok : "OFF",
+           sSt.soundArmed ? 1 : 0,
+           (unsigned)sSt.soundThreshold,
+           sSt.soundCalibrated ? 1 : 0,
+           sSt.soundLastType[0] ? sSt.soundLastType : "NONE",
+           (unsigned)sSt.soundFloor);
+  const bool discreteChange = strcmp(sLastSoundKey, key) != 0;
+  const bool dueForce = force && (sLastSoundForceMs == 0 ||
+                                  (millis() - sLastSoundForceMs) >= 5000UL);
+  if (discreteChange || dueForce) {
     if (sendToDirector(String(line))) {
       strncpy(sLastSound, line, sizeof(sLastSound) - 1);
+      strncpy(sLastSoundKey, key, sizeof(sLastSoundKey) - 1);
+      if (dueForce) sLastSoundForceMs = millis();
     }
   }
 }
@@ -194,6 +210,8 @@ void audioNodeLinkBegin() {
   sLastCaps[0] = '\0';
   sLastMeta[0] = '\0';
   sLastSound[0] = '\0';
+  sLastSoundKey[0] = '\0';
+  sLastSoundForceMs = 0;
 }
 
 void audioNodeLinkLoop() {
@@ -205,10 +223,12 @@ void audioNodeLinkLoop() {
     sSt.logicalInput[0] = '\0';
     sSt.logicalSubtype[0] = '\0';
     sSt.soundArmed = false;
+    SD_LOGW("AUDIO", "Audio Node offline");
     publishState();
   }
   if (sSt.online && (millis() - sKeepaliveMs) >= 2000UL) {
     sKeepaliveMs = millis();
+    route(sSeq++, "AUDIO:NODE:OWN:GRANT");
     route(sSeq++, "AUDIO:NODE:STATUS");
   }
   if (sSt.online && (millis() - sInvMs) >= 15000UL) {
@@ -223,8 +243,9 @@ void audioNodeLinkLoop() {
 bool audioNodeLinkHandleReport(const char *line) {
   if (!line || strncmp(line, "NODE:AUDIO:", 11) != 0) return false;
   const char *p = line + 11;
+  const bool wasOnline = sSt.online;
   markRx();
-  Serial.printf("[AUDIO] node RX %s\n", p);
+  SD_LOGT("AUDIO", "node RX %s", p);
 
   if (!strncmp(p, "ANNOUNCE:", 9)) {
     p += 9;
@@ -242,6 +263,12 @@ bool audioNodeLinkHandleReport(const char *line) {
         strncpy(sSt.state, colon + 1, sizeof(sSt.state) - 1);
       }
     }
+    if (!wasOnline) {
+      SD_LOGI("AUDIO", "Audio Node online FW=%s MAC=%s",
+              sSt.firmware[0] ? sSt.firmware : "-",
+              sSt.mac[0] ? sSt.mac : "-");
+    }
+    route(sSeq++, "AUDIO:NODE:OWN:GRANT");
     if (sInvMs == 0) {
       sInvMs = millis();
       route(sSeq++, "AUDIO:NODE:INVENTORY");
@@ -259,6 +286,9 @@ bool audioNodeLinkHandleReport(const char *line) {
     char *vol = strtok_r(nullptr, ":", &save);
     char *asset = strtok_r(nullptr, ":", &save);
     char *fault = strtok_r(nullptr, ":", &save);
+    char prevState[24];
+    strncpy(prevState, sSt.state, sizeof(prevState) - 1);
+    prevState[sizeof(prevState) - 1] = '\0';
     if (st) strncpy(sSt.state, st, sizeof(sSt.state) - 1);
     if (vol && vol[0] == 'V') sSt.volume = (uint8_t)atoi(vol + 1);
     if (asset && strcmp(asset, "-") != 0) strncpy(sSt.asset, asset, sizeof(sSt.asset) - 1);
@@ -268,12 +298,18 @@ bool audioNodeLinkHandleReport(const char *line) {
     } else {
       sSt.lastError[0] = '\0';
     }
+    if (st && strcmp(prevState, sSt.state) != 0) {
+      SD_LOGI("AUDIO", "State -> %s", sSt.state);
+    }
     publishState();
     return true;
   }
 
   if (!strncmp(p, "AUDIO:CAPS:", 11)) {
-    strncpy(sSt.capabilities, p + 11, sizeof(sSt.capabilities) - 1);
+    if (strcmp(sSt.capabilities, p + 11) != 0) {
+      strncpy(sSt.capabilities, p + 11, sizeof(sSt.capabilities) - 1);
+      SD_LOGD("AUDIO", "Caps: %s", sSt.capabilities);
+    }
     return true;
   }
   if (!strncmp(p, "AUDIO:META:", 11)) {
@@ -284,9 +320,23 @@ bool audioNodeLinkHandleReport(const char *line) {
     char *codec = strtok_r(buf, ":", &save);
     char *storage = strtok_r(nullptr, ":", &save);
     char *output = strtok_r(nullptr, ":", &save);
+    const bool changed =
+        (codec && strcmp(sSt.codec, codec) != 0) ||
+        (storage && strcmp(sSt.storage, storage) != 0) ||
+        (output && strcmp(sSt.output, output) != 0);
     if (codec) strncpy(sSt.codec, codec, sizeof(sSt.codec) - 1);
     if (storage) strncpy(sSt.storage, storage, sizeof(sSt.storage) - 1);
     if (output) strncpy(sSt.output, output, sizeof(sSt.output) - 1);
+    if (changed) {
+      SD_LOGI("AUDIO", "%s %s | %s",
+              sSt.codec[0] ? sSt.codec : "-",
+              sSt.storage[0] ? sSt.storage : "-",
+              sSt.output[0] ? sSt.output : "-");
+    }
+    return true;
+  }
+  if (!strncmp(p, "AUDIO:OWNED:", 12) || !strncmp(p, "AUDIO:OWNER:", 12)) {
+    SD_LOGT("AUDIO", "%s", p);
     return true;
   }
   if (!strncmp(p, "AUDIO:INVENTORY:", 16)) {
@@ -329,6 +379,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     strncpy(sSt.state, "PLAYING", sizeof(sSt.state) - 1);
     strncpy(sSt.lastLife, "STARTED", sizeof(sSt.lastLife) - 1);
     sSt.pending = false;
+    SD_LOGI("AUDIO", "Playing: %s", sSt.asset[0] ? sSt.asset : "-");
     publishState();
     return true;
   }
@@ -338,6 +389,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     strncpy(sSt.state, "IDLE", sizeof(sSt.state) - 1);
     strncpy(sSt.lastLife, "COMPLETED", sizeof(sSt.lastLife) - 1);
     sSt.pending = false;
+    SD_LOGI("AUDIO", "Stopped");
     publishState();
     return true;
   }
@@ -352,6 +404,7 @@ bool audioNodeLinkHandleReport(const char *line) {
       strncpy(sSt.state, "IDLE", sizeof(sSt.state) - 1);
     }
     sSt.pending = false;
+    SD_LOGW("AUDIO", "Failed: %s", sSt.lastError[0] ? sSt.lastError : "-");
     publishState();
     return true;
   }
@@ -388,6 +441,9 @@ bool audioNodeLinkHandleReport(const char *line) {
 
   if (!strncmp(p, "SOUND:STATUS:", 13)) {
     const char *q = p + 13;
+    char prevTok[12];
+    strncpy(prevTok, sSt.soundReadyTok, sizeof(prevTok) - 1);
+    prevTok[sizeof(prevTok) - 1] = '\0';
     const char *comma = strchr(q, ',');
     size_t n = comma ? (size_t)(comma - q) : strlen(q);
     if (n >= sizeof(sSt.soundReadyTok)) n = sizeof(sSt.soundReadyTok) - 1;
@@ -412,6 +468,13 @@ bool audioNodeLinkHandleReport(const char *line) {
       if (n >= sizeof(sSt.soundLastType)) n = sizeof(sSt.soundLastType) - 1;
       memcpy(sSt.soundLastType, e, n);
       sSt.soundLastType[n] = '\0';
+    }
+    if (strcmp(prevTok, sSt.soundReadyTok) != 0) {
+      if (!strcmp(sSt.soundReadyTok, "FLT") || !strcmp(sSt.soundReadyTok, "FAULT")) {
+        SD_LOGW("AUDIO", "Sound input FAULT");
+      } else {
+        SD_LOGI("AUDIO", "Sound input %s", sSt.soundReadyTok);
+      }
     }
     publishExtra(false);
     return true;
@@ -445,7 +508,9 @@ bool audioNodeLinkHandleReport(const char *line) {
              type[0] ? type : "EVENT",
              (unsigned)sSt.soundLevel, (unsigned)sSt.soundFloor);
     stageLogWrite(StageLogChannel::System, "INFO", log);
-    Serial.println(log);
+    SD_LOGI("AUDIO", "Sound trigger %s L=%u F=%u",
+            type[0] ? type : "EVENT",
+            (unsigned)sSt.soundLevel, (unsigned)sSt.soundFloor);
     publishExtra(true);
     return true;
   }
