@@ -218,6 +218,25 @@ export async function SystemPage(container) {
     }
     host.append(audioNode);
 
+    const ln = (s && s.lampNode) || {};
+    const lampNode = el('div', { className: 'card' });
+    lampNode.append(el('h2', { text: 'C3 Lamp Node' }));
+    if (lastSnap.p4Online && (ln.seen || ln.online)) {
+      lampNode.append(statRow('Presence', ln.online ? 'ONLINE' : 'OFFLINE'));
+      lampNode.append(statRow('State', ln.state || '—'));
+      lampNode.append(statRow('MAC', ln.mac || '—'));
+      lampNode.append(statRow('Firmware', ln.firmware || '—'));
+      lampNode.append(statRow('FX', ln.fx || '—'));
+      lampNode.append(statRow('Brightness', ln.brightness != null ? String(ln.brightness) : '—'));
+      lampNode.append(statRow('Last error', ln.lastError || '—'));
+      lampNode.append(el('p', { className: 'sub', text: 'Specialist lamp/FX node. Emergency forces lamp pixels bright white. Not SUE/C3 communications.' }));
+    } else {
+      lampNode.append(el('p', { className: 'sub', text: lastSnap.p4Online
+        ? 'Not discovered. The Lamp Node announces over ESP-NOW through the Communications S3.'
+        : 'Lamp Node diagnostics withheld while P4 is offline.' }));
+    }
+    host.append(lampNode);
+
     const caps = el('div', { className: 'card' });
     caps.append(el('h2', { text: 'Engine capabilities' }));
     const chips = el('div', { className: 'cap-chips' });
@@ -229,10 +248,11 @@ export async function SystemPage(container) {
       ['plugin-bus', (cset.pluginBus || (s && s.pluginBus && s.pluginBus.ready)) ? 'READY' : 'PLANNED'],
       ['emergency', lastSnap.p4Online ? 'READY' : 'OFFLINE'],
       ['rtc', lastSnap.p4Online ? ((s && s.timeSynced) ? 'READY' : 'UNSYNCED') : 'OFFLINE'],
-      ['show-pixels', 'PLANNED'],
-      ['dmx', 'PLANNED'],
+      ['show-pixels', lastSnap.p4Online ? ((cset.pixels || 'searching').toString().toUpperCase()) : 'OFFLINE'],
+      ['dmx', 'PARKED'],
       ['audio-node', lastSnap.p4Online ? ((an && an.online) ? 'READY' : 'SEARCHING') : 'OFFLINE'],
-      ['espnow-nodes', lastSnap.p4Online ? ((an && an.seen) ? 'AUDIO READY' : 'SEARCHING') : 'OFFLINE']
+      ['lamp-node', lastSnap.p4Online ? ((ln && ln.online) ? 'READY' : 'SEARCHING') : 'OFFLINE'],
+      ['espnow-nodes', lastSnap.p4Online ? (((an && an.seen) || (ln && ln.seen)) ? 'READY' : 'SEARCHING') : 'OFFLINE']
     ];
     for (const [name, state] of rows) {
       chips.append(el('span', { className: 'cap-chip', text: `${name}: ${state}` }));

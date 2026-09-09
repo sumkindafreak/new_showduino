@@ -6,13 +6,8 @@ import {
 } from '../status.js';
 
 const FUTURE_NODES = [
-  'Relay Node',
-  'MOSFET Node',
-  'LED Node',
-  'DMX Node',
-  'Input Node',
-  'Sensor Node',
-  'Servo Node'
+  'C3 Pixel Node',
+  'MOSFET Node'
 ];
 
 export async function DevicesPage(container) {
@@ -98,39 +93,61 @@ export async function DevicesPage(container) {
     const nodes = el('div', { className: 'card' });
     nodes.append(el('h2', { text: 'Showduino Nodes' }));
     const an = (lastSnap.system && lastSnap.system.audioNode) || {};
+    const ln = (lastSnap.system && lastSnap.system.lampNode) || {};
+    const audioSeen = an.seen || an.online;
+    const lampSeen = ln.seen || ln.online;
     if (!lastSnap.p4Online) {
       nodes.append(emptyState('P4 OFFLINE', 'Node presence is owned by the Show Engine.'));
-    } else if (an.seen || an.online) {
-      nodes.append(statRow('Audio Node', an.online ? 'ONLINE' : 'OFFLINE'));
-      nodes.append(statRow('State', an.state || '—'));
-      nodes.append(statRow('Current asset', an.asset || '—'));
-      nodes.append(statRow('Volume', an.volume != null ? String(an.volume) : '—'));
-      if (an.lastError) nodes.append(statRow('Fault', an.lastError));
-      const details = el('details', {});
-      details.append(el('summary', { text: 'Audio Node commissioning' }));
-      details.append(statRow('MAC', an.mac || '—'));
-      details.append(statRow('Firmware', an.firmware || '—'));
-      details.append(statRow('Protocol', an.protocol || '1.1'));
-      details.append(statRow('Codec', an.codec || 'ES8388'));
-      details.append(statRow('Storage', an.storage || '—'));
-      details.append(statRow('Output', an.output || '—'));
-      details.append(statRow('Last contact', an.lastContactMs != null ? (an.lastContactMs + ' ms') : '—'));
-      details.append(statRow('Lifecycle', an.pending ? 'PENDING' : (an.lastLife || '—')));
-      details.append(statRow('Capabilities', an.capabilities || '—'));
-      const si = an.soundInput || {};
-      details.append(statRow('Input', si.state || (si.ready ? 'READY' : '—')));
-      details.append(statRow('Input level', si.level != null ? String(si.level) : '—'));
-      details.append(statRow('Noise floor', si.noiseFloor != null ? String(si.noiseFloor) : '—'));
-      details.append(statRow('Last sound event', si.lastEvent || 'NONE'));
-      details.append(el('p', {
-        className: 'sub',
-        text: 'Programme audio only. P4 ES8311 remains system/safety audio.'
-      }));
-      nodes.append(details);
+    } else if (!audioSeen && !lampSeen) {
+      nodes.append(emptyState('No Showduino Nodes detected', 'Audio Node and C3 Lamp Node appear here after ESP-NOW announce.'));
     } else {
-      nodes.append(emptyState('No Showduino Nodes detected', 'Audio Node is implemented. It appears here after ESP-NOW announce.'));
+      if (audioSeen) {
+        nodes.append(statRow('Audio Node', an.online ? 'ONLINE' : 'OFFLINE'));
+        nodes.append(statRow('State', an.state || '—'));
+        nodes.append(statRow('Current asset', an.asset || '—'));
+        nodes.append(statRow('Volume', an.volume != null ? String(an.volume) : '—'));
+        if (an.lastError) nodes.append(statRow('Fault', an.lastError));
+        const details = el('details', {});
+        details.append(el('summary', { text: 'Audio Node commissioning' }));
+        details.append(statRow('MAC', an.mac || '—'));
+        details.append(statRow('Firmware', an.firmware || '—'));
+        details.append(statRow('Protocol', an.protocol || '1.1'));
+        details.append(statRow('Codec', an.codec || 'ES8388'));
+        details.append(statRow('Storage', an.storage || '—'));
+        details.append(statRow('Output', an.output || '—'));
+        details.append(statRow('Last contact', an.lastContactMs != null ? (an.lastContactMs + ' ms') : '—'));
+        details.append(statRow('Lifecycle', an.pending ? 'PENDING' : (an.lastLife || '—')));
+        details.append(statRow('Capabilities', an.capabilities || '—'));
+        const si = an.soundInput || {};
+        details.append(statRow('Input', si.state || (si.ready ? 'READY' : '—')));
+        details.append(statRow('Input level', si.level != null ? String(si.level) : '—'));
+        details.append(statRow('Noise floor', si.noiseFloor != null ? String(si.noiseFloor) : '—'));
+        details.append(statRow('Last sound event', si.lastEvent || 'NONE'));
+        details.append(el('p', {
+          className: 'sub',
+          text: 'Programme audio only. P4 ES8311 remains system/safety audio.'
+        }));
+        nodes.append(details);
+      }
+      if (lampSeen) {
+        nodes.append(statRow('Lamp Node', ln.online ? 'ONLINE' : 'OFFLINE'));
+        nodes.append(statRow('Lamp state', ln.state || '—'));
+        nodes.append(statRow('FX', ln.fx || '—'));
+        if (ln.lastError) nodes.append(statRow('Lamp fault', ln.lastError));
+        const lampDetails = el('details', {});
+        lampDetails.append(el('summary', { text: 'C3 Lamp Node commissioning' }));
+        lampDetails.append(statRow('MAC', ln.mac || '—'));
+        lampDetails.append(statRow('Firmware', ln.firmware || '—'));
+        lampDetails.append(statRow('Brightness', ln.brightness != null ? String(ln.brightness) : '—'));
+        lampDetails.append(statRow('Last contact', ln.lastContactMs != null ? (ln.lastContactMs + ' ms') : '—'));
+        lampDetails.append(el('p', {
+          className: 'sub',
+          text: 'Specialist lamp/FX node. Not the superseded C3/SUE Communications Engine.'
+        }));
+        nodes.append(lampDetails);
+      }
     }
-    nodes.append(plannedNote('Future node types: ' + FUTURE_NODES.join(', ') + '.'));
+    nodes.append(plannedNote('Planned next: ' + FUTURE_NODES.join(', ') + '. Relay Node is retired. DMX is parked.'));
     host.append(nodes);
   }
 

@@ -135,14 +135,20 @@ export async function HomePage(container) {
     const nodes = el('div', { className: 'card' });
     nodes.append(el('h2', { text: 'Specialist Nodes' }));
     const an = (sys && sys.audioNode) || {};
+    const ln = (sys && sys.lampNode) || {};
     if (snap.p4Online && (an.seen || an.online)) {
       nodes.append(statRow('Audio Node', an.online ? (an.state || 'ONLINE') : 'OFFLINE'));
     } else {
       nodes.append(statRow('Audio Node', 'NOT DETECTED'));
     }
+    if (snap.p4Online && (ln.seen || ln.online)) {
+      nodes.append(statRow('Lamp Node', ln.online ? (ln.state || 'ONLINE') : 'OFFLINE'));
+    } else {
+      nodes.append(statRow('Lamp Node', 'NOT DETECTED'));
+    }
     nodes.append(el('p', {
       className: 'sub',
-      text: 'Current rollout: Audio Node → C3 Lantern Node → C3 Pixel Node → MOSFET Node.'
+      text: 'Current rollout: Audio Node → C3 Lamp Node → C3 Pixel Node → MOSFET Node. Relay is retired. DMX is parked.'
     }));
     hardwareGrid.append(nodes);
 

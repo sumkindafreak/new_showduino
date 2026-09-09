@@ -37,7 +37,7 @@ function numberField(label, value, min, max, onChange) {
 export async function OutputsPage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'P4 GPIO23 is the local segmented Show Pixel Line. GPIO24 is safety-owned emergency signage. Programme audio is the Audio Node. Next specialist-node order: C3 Lantern → C3 Pixel → MOSFET.'
+    text: 'P4 GPIO23 is the local segmented Show Pixel Line. GPIO24 is safety-owned emergency signage. Programme audio is the Audio Node. Current specialist-node order: Audio → C3 Lamp → C3 Pixel → MOSFET.'
   }));
 
   const host = el('div', { className: 'page-stack' });
@@ -493,7 +493,7 @@ export async function OutputsPage(container) {
 
     const future = el('div', { className: 'card' });
     future.append(el('h2', { text: 'Specialist-node roadmap' }));
-    future.append(plannedNote('Audio Node first; C3 Lantern next; C3 Pixel after Lantern; MOSFET Node after C3 Pixel. The old Relay Node concept is superseded. DMX remains parked/out of scope until explicitly revisited.'));
+    future.append(plannedNote('Audio Node and C3 Lamp Node are implemented. Next: C3 Pixel Node, then MOSFET Node. The old Relay Node concept is retired. DMX remains parked/out of scope until explicitly revisited.'));
     host.append(future);
   }
 

@@ -15,7 +15,8 @@ Browser
 
 | Copy | Location |
 |------|----------|
-| **Canonical editable source** | `web/showduino-studio/` |
+| **Canonical editable source (system console)** | `web/showduino-studio/` |
+| **Embedded authoring Studio V4 snapshot** | served at `/studio/` from `sumkindafreak/showduino.com` at embed time |
 | **Generated S3 runtime bundle** | `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` |
 
 Regenerate the S3 bundle after frontend source changes:
@@ -39,6 +40,20 @@ The embedder inlines the ES-module graph into the S3-served bundle. The source t
 
 The WebUI may display S3-local transport data (`GET /api/comms`) and P4-authoritative API data. It must not invent show, emergency, node, output or production state.
 
+## What this UI is (and is not)
+
+This tree is the **Showduino system console / commissioning WebUI**.
+
+It is hosted by the Communications S3. It is **not** a complete SHDO authoring Studio and it is **not** required for a loaded P4 show to keep running.
+
+| Claim | Reality in this repo |
+|-------|----------------------|
+| Create / edit full `.shdo` on device | **Not implemented** in this WebUI. SHDO v2 is the authoring contract in `docs/studio/production-format.md` |
+| Upload `.shdo` to P4 SD as native format | **Not implemented.** P4 persistent store is format v1 TEST/LOG only |
+| RAM timeline deploy | **Implemented** as `/api/studio-timeline` — PIXEL and AUDIO:NODE cues only; P4 remains authority; `autoStart` is false |
+| Commission GPIO23 segments + Audio Node | **Implemented** on the Outputs page |
+| C3 Lamp Node | **Status/diagnostics exposed**; full FX editor is not in this UI yet |
+
 ## Current audio/pixel model
 
 ```text
@@ -46,14 +61,14 @@ SYSTEM AUDIO       P4 onboard ES8311 — Showduino system/safety sounds
 SHOW AUDIO         specialist Audio Node — attraction/programme audio
 SHOW PIXELS        P4 GPIO23 — one segmented theatrical line
 EMERGENCY SIGNAGE  P4 GPIO24 — safety-owned 10-pixel sign groups
-FUTURE PIXELS      C3 Pixel Node, after the C3 Lantern Node
+FUTURE PIXELS      C3 Pixel Node, after the C3 Lamp Node
 ```
 
 The current specialist-node order is:
 
 ```text
 Audio Node
-→ C3 Lantern Node
+→ C3 Lamp Node
 → C3 Pixel Node
 → MOSFET Node
 ```
@@ -117,7 +132,7 @@ Persistent named segments and production `PIXEL` timeline cues are **not** produ
 | `#/productions` | Productions | IMPLEMENTED FOUNDATION | P4 SD production inventory/load/unload |
 | `#/live` | Live | IMPLEMENTED FOUNDATION | Authoritative runtime/playhead/cues/emergency |
 | `#/outputs` | Outputs | ACTIVE / EXPANDING | Audio Node + GPIO23 segmented pixel commissioning + GPIO24 signage state |
-| `#/devices` | Devices | IMPLEMENTED FOUNDATION | Plug-in Bus and Audio Node surfaces |
+| `#/devices` | Devices | IMPLEMENTED FOUNDATION | Plug-in Bus, Audio Node and Lamp Node surfaces |
 | `#/network` | Network | IMPLEMENTED / TEST | S3 SoftAP, P4 Ethernet and isolated E1.31 test monitor |
 | `#/system` | System | IMPLEMENTED FOUNDATION | S3/P4/Director diagnostics, P4 system audio, SD/logs |
 | `#/settings` | Settings | PARTIAL | Local preferences/config surfaces |
@@ -129,7 +144,7 @@ Aliases such as `#/audio` and `#/lighting` redirect to Outputs.
 - persistent production AUDIO/PIXEL cue schemas;
 - named pixel-segment project persistence;
 - reusable FX preset persistence;
-- C3 Lantern/C3 Pixel/MOSFET Node commissioning;
+- C3 Lamp FX editor / C3 Pixel / MOSFET Node commissioning;
 - logical device-ID routing end to end;
 - generic completion-driven node faults/state;
 - DMX/E1.31 production control.
@@ -188,6 +203,7 @@ The Director does not host the canonical browser UI. P4 static-SD frontend servi
 | `GET /api/network` | P4 | UART/Ethernet diagnostics |
 | `GET /api/logs` | P4 | Web API log ring |
 | `POST /api/command` | P4 via S3 | P4-whitelisted commands only |
+| `GET/POST /api/studio-timeline` | S3 envelope check, then P4 | RAM timeline deploy (PIXEL + AUDIO:NODE only) |
 
 USB-only emergency maintenance clear is deliberately not exposed through the browser.
 
