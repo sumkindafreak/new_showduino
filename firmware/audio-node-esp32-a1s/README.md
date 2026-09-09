@@ -3,7 +3,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.3.1
+Firmware: 0.4.1
 ```
 
 ```text
@@ -50,8 +50,9 @@ Status language:
 | Pixel | Meaning |
 |---|---|
 | Blue slow blink | Booting |
-| Amber blink | Searching for Communications S3 |
-| Green steady | Communications connected / idle |
+| Amber blink | Searching for P4 GRANT |
+| Slow violet | Standalone (local SoftAP WebUI) |
+| Green steady | P4-owned / idle |
 | Bright-green kick | Fresh ESP-NOW traffic received |
 | Cyan | Playing / looping |
 | Cyan blink | Loading / stopping |
@@ -75,7 +76,7 @@ Arduino-ESP32 3.3.11 has no `dout` option — use `dio`:
 esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
 ```
 
-Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, plus **Adafruit NeoPixel**. WAV only. MP3 is PLANNED.
+Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, plus **Adafruit NeoPixel**. WAV only. MP3 is PLANNED. SoftAP SSID `Showduino-Audio-XXXX` stays on ESP-NOW channel 1 at **http://192.168.5.1**. ESP-NOW keeps running while the AP is up.
 
 ## Test WAV
 
@@ -83,6 +84,6 @@ Create `/showduino/audio/system-test.wav` as **16-bit PCM WAV**, mono or stereo,
 
 ## Bench
 
-See [`docs/audio-node.md`](../../docs/audio-node.md) for the A161 pin map, KEY1–KEY6, emergency / comms-loss policy, and hardware tests. The firmware source and this README are authoritative for the GPIO22 external status-pixel change introduced in firmware 0.3.1.
+See [`docs/audio-node.md`](../../docs/audio-node.md) and [`docs/standalone-node-architecture.md`](../../docs/standalone-node-architecture.md). The firmware source and this README are authoritative for the GPIO22 external status-pixel and the 0.4.0 standalone SoftAP.
 
 Do not flash from this document unless you intend a hardware bring-up session.

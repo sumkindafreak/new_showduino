@@ -17,4 +17,13 @@ uint32_t audioNodeStateLastCommsMs();
 bool audioNodeStateAuthorityFresh(uint32_t timeoutMs);
 const char *audioNodeStateName();
 
+void audioOwnerTick();
+void audioOwnerApplyEvent(ShowduinoOwnerEvent ev);
+ShowduinoNodeOwnerMode audioOwnerMode();
+const char *audioOwnerModeName();
+bool audioOwnerGranted();
+bool audioOwnerLostAuthority();
+bool audioOwnerEnteredStandalone();
+bool audioOwnerEnteredShow();
+
 #endif

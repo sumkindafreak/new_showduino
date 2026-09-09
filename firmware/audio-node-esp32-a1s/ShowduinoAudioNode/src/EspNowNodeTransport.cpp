@@ -3,20 +3,26 @@
 #include "../../../protocol/showduino_node_packet.h"
 #include "../../../protocol/showduino_validation.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_log.h"
 
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <esp_mac.h>
+#include <string.h>
 
 static bool sReady = false;
 static bool sHaveComms = false;
+static bool sLoggedComms = false;
 static uint8_t sCommsMac[6] = {0};
 static uint8_t sSelfMac[6] = {0};
 static uint32_t sRx = 0;
 static uint32_t sTx = 0;
 static uint32_t sRej = 0;
 static uint32_t sLastRx = 0;
+static uint32_t sLastRecover = 0;
+static uint32_t sSendFail = 0;
+static uint32_t sLastService = 0;
 static AudioNodeRxFn sHandler = nullptr;
 static const uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -30,6 +36,14 @@ static bool addPeer(const uint8_t *mac) {
   peer.ifidx = WIFI_IF_STA;
   const esp_err_t err = esp_now_add_peer(&peer);
   return err == ESP_OK || err == ESP_ERR_ESPNOW_EXIST;
+}
+
+static void lockChannel() {
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  (void)esp_wifi_scan_stop();
+  (void)esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
 }
 
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -55,36 +69,86 @@ static void onRx(const uint8_t *macAddr, const uint8_t *data, int len) {
   const uint8_t *src = (info && info->src_addr) ? info->src_addr : nullptr;
 #endif
   if (src) {
+    const bool first = !sHaveComms;
     memcpy(sCommsMac, src, 6);
     sHaveComms = true;
     addPeer(sCommsMac);
+    if (first || !sLoggedComms) {
+      sLoggedComms = true;
+      SD_LOGI("AUDIO", "Comms connected");
+    }
   }
   sRx++;
   sLastRx = millis();
+  SD_LOGT("AUDIO", "RX seq=%lu cmd=%s", (unsigned long)pkt.sequence, pkt.command);
   if (sHandler) sHandler(pkt.command, pkt.sequence);
+}
+
+static bool initEspNow() {
+  if (esp_now_init() != ESP_OK) {
+    SD_LOGE("ESPNOW", "init failed");
+    sReady = false;
+    return false;
+  }
+  esp_now_register_recv_cb(onRx);
+  addPeer(kBroadcast);
+  if (sHaveComms) addPeer(sCommsMac);
+  sReady = true;
+  return true;
+}
+
+void audioEspNowReassert() {
+  lockChannel();
+  if (!sReady) return;
+  addPeer(kBroadcast);
+  if (sHaveComms) addPeer(sCommsMac);
+}
+
+void audioEspNowRecover() {
+  const uint32_t now = millis();
+  if (sLastRecover && (now - sLastRecover) < 1500UL) {
+    audioEspNowReassert();
+    return;
+  }
+  sLastRecover = now;
+  lockChannel();
+  if (sReady) {
+    esp_now_deinit();
+    sReady = false;
+    delay(20);
+  }
+  if (!initEspNow()) return;
+  SD_LOGI("ESPNOW", "rebound — still listening for Showduino");
+}
+
+void audioEspNowService() {
+  const uint32_t now = millis();
+  if ((now - sLastService) < 400UL) return;
+  sLastService = now;
+  (void)esp_wifi_scan_stop();
+  uint8_t ch = 0;
+  wifi_second_chan_t second = WIFI_SECOND_CHAN_NONE;
+  esp_wifi_get_channel(&ch, &second);
+  if (ch != SHOWDUINO_ESPNOW_CHANNEL) {
+    SD_LOGW("ESPNOW", "radio left ch%u — locking ch%u",
+            (unsigned)ch, (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
+    audioEspNowReassert();
+  }
 }
 
 bool audioEspNowBegin() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(false);
   WiFi.disconnect(false, false);
   esp_wifi_set_ps(WIFI_PS_NONE);
   delay(80);
-  if (esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
-    Serial.println("[ESPNOW] channel set failed");
-  }
+  lockChannel();
   memset(sSelfMac, 0, 6);
   esp_read_mac(sSelfMac, ESP_MAC_WIFI_STA);
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("[ESPNOW] init failed");
-    sReady = false;
-    return false;
-  }
-  addPeer(kBroadcast);
-  esp_now_register_recv_cb(onRx);
-  sReady = true;
-  Serial.println("[ESPNOW] ready");
+  if (!initEspNow()) return false;
+  SD_LOGI("ESPNOW", "ready (STA, channel locked)");
   return true;
 }
 
@@ -101,7 +165,18 @@ bool audioEspNowSend(const char *command, uint32_t sequence) {
   }
   const uint8_t *dest = sHaveComms ? sCommsMac : kBroadcast;
   if (!addPeer(dest)) return false;
-  if (esp_now_send(dest, (const uint8_t *)&pkt, sizeof(pkt)) != ESP_OK) return false;
+  if (esp_now_send(dest, (const uint8_t *)&pkt, sizeof(pkt)) != ESP_OK) {
+    sSendFail++;
+    addPeer(kBroadcast);
+    if (esp_now_send(kBroadcast, (const uint8_t *)&pkt, sizeof(pkt)) != ESP_OK) {
+      if (sSendFail >= 3) {
+        sSendFail = 0;
+        audioEspNowRecover();
+      }
+      return false;
+    }
+  }
+  sSendFail = 0;
   sTx++;
   return true;
 }
@@ -110,6 +185,11 @@ void audioEspNowMacString(char *out, size_t n) {
   if (!out || n < 18) return;
   snprintf(out, n, "%02X:%02X:%02X:%02X:%02X:%02X",
            sSelfMac[0], sSelfMac[1], sSelfMac[2], sSelfMac[3], sSelfMac[4], sSelfMac[5]);
+}
+
+void audioEspNowMacBytes(uint8_t out[6]) {
+  if (!out) return;
+  memcpy(out, sSelfMac, 6);
 }
 
 uint32_t audioEspNowRxCount() { return sRx; }

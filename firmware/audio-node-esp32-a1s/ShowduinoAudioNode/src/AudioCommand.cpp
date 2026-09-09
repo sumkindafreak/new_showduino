@@ -4,17 +4,22 @@
 #include "AudioStorage.h"
 #include "AudioNodeState.h"
 #include "AudioProtocol.h"
+#include "AudioWeb.h"
 #include "EspNowNodeTransport.h"
 #include "input/AudioInput.h"
 #include "input/AudioInputConfig.h"
 #include "input/SoundTriggerEngine.h"
 #include "../BoardConfig.h"
+#include "../../shared-node/NodeConfig.h"
+#include "../../shared-node/NodeSoftAp.h"
 #include "../../../protocol/showduino_audio_node.h"
 #include "../../../protocol/showduino_protocol_version.h"
+#include "../../../protocol/showduino_log.h"
 
 static uint32_t sActiveSeq = 0;
 static char sActiveRel[SHOWDUINO_AUDIO_REL_MAX + 1] = "";
 static uint32_t sLastAnnounce = 0;
+static uint32_t sApDueMs = 0;
 static uint32_t sVolume = SHOWDUINO_AUDIO_DEFAULT_VOLUME;
 static ShowduinoAudioPriority sPri = SHOWDUINO_AUDIO_PRI_AMBIENCE;
 static uint32_t sStartLatencyMs = 0;
@@ -29,10 +34,41 @@ static bool sFadeStop = false;
 static bool sDuck = false;
 static int16_t sLocalIndex = 0;
 
+static bool isRoutineWireReport(const char *line) {
+  if (!line) return true;
+  if (!strncmp(line, "ANNOUNCE:", 9)) return true;
+  if (!strncmp(line, "SOUND:STATUS", 12)) return true;
+  if (!strncmp(line, "AUDIO:OWNED:", 12)) return true;
+  if (!strncmp(line, "AUDIO:OWNER:", 12)) return true;
+  if (!strncmp(line, "AUDIO:CAPS:", 11)) return true;
+  if (!strncmp(line, "AUDIO:META:", 11)) return true;
+  if (!strncmp(line, "AUDIO:INVENTORY:", 16)) return true;
+  if (!strncmp(line, "STATUS:", 7)) return true;
+  if (!strncmp(line, "AUDIO:ACCEPTED:", 15)) return true;
+  return false;
+}
+
 static void report(const char *line, uint32_t seq) {
   if (!line || !line[0]) return;
-  Serial.print("[AUDIO] ");
-  Serial.println(line);
+  if (isRoutineWireReport(line)) {
+    SD_LOGT("AUDIO", "%s", line);
+  } else if (!strncmp(line, "AUDIO:EMERGENCY:", 16)) {
+    showduino_log_emergency(true);
+  } else if (!strncmp(line, "AUDIO:FAILED:", 13)) {
+    SD_LOGE("AUDIO", "%s", line);
+  } else if (!strncmp(line, "AUDIO:VOLUME:", 13)) {
+    SD_LOGI("AUDIO", "Volume -> %s", line + 13);
+  } else if (!strncmp(line, "AUDIO:STARTED:", 14)) {
+    const char *asset = strchr(line + 14, ':');
+    SD_LOGI("AUDIO", "Playing: %s", asset ? asset + 1 : "-");
+  } else if (!strncmp(line, "AUDIO:COMPLETED:", 16) ||
+             !strncmp(line, "AUDIO:IDLE:", 11)) {
+    SD_LOGI("AUDIO", "Stopped");
+  } else if (!strncmp(line, "AUDIO:PAUSED:", 13)) {
+    SD_LOGI("AUDIO", "Pause");
+  } else {
+    SD_LOGD("AUDIO", "%s", line);
+  }
   audioEspNowSend(line, seq);
 }
 
@@ -68,6 +104,8 @@ static void applyMaster(uint8_t v, bool persist) {
 }
 
 void audioCommandBegin(uint8_t volume) {
+  nodeConfigBegin("audio");
+  nodeSoftApSetRadioHook(audioEspNowRecover);
   applyMaster((uint8_t)showduino_audio_clamp_volume(volume), false);
   audioCodecApplyOutput(audioStorageConfig().output);
 }
@@ -78,7 +116,43 @@ static void stopPlaybackClear() {
   audioPlaybackStop();
   audioInputOnPlaybackStop();
   sActiveRel[0] = '\0';
-  audioNodeStateSetShowControlled(false);
+}
+
+static void failSafeStopMute(const char *why) {
+  SD_LOGI("AUDIO", "Fail-safe stop/mute: %s", why ? why : "");
+  stopPlaybackClear();
+  audioCodecMute(true);
+  audioCodecMute(false);
+  applyMaster((uint8_t)sVolume, false);
+  if (audioNodeState() != SHOWDUINO_AUDIO_ST_FAULT &&
+      audioNodeState() != SHOWDUINO_AUDIO_ST_EMERGENCY &&
+      audioNodeState() != SHOWDUINO_AUDIO_ST_NO_STORAGE) {
+    audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
+  }
+}
+
+static void requestSoftAp() {
+  if (nodeSoftApStarted()) {
+    audioWebEnsure();
+    return;
+  }
+  if (!sApDueMs) sApDueMs = millis() + 400UL;
+}
+
+static void onOwnerEdges() {
+  if (audioOwnerEnteredShow()) {
+    SD_LOGI("AUDIO", "Control -> P4");
+    failSafeStopMute("P4 GRANT — autonomous audio cleared");
+    requestSoftAp();
+  }
+  if (audioOwnerLostAuthority()) {
+    SD_LOGW("AUDIO", "P4 ownership lost");
+    failSafeStopMute("P4 authority lost");
+    requestSoftAp();
+  } else if (audioOwnerEnteredStandalone()) {
+    SD_LOGI("AUDIO", "Control -> STANDALONE");
+    requestSoftAp();
+  }
 }
 
 static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
@@ -158,18 +232,33 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   return true;
 }
 
-static bool handleSoundCommand(const char *command, uint32_t sequence, bool fromShow) {
+static bool handleSoundCommand(const char *command, uint32_t sequence,
+                               ShowduinoCmdOrigin origin) {
   const char *cmd = command;
   if (!strncmp(cmd, "AUDIO:NODE:SOUND:", 17)) cmd += 17;
   else if (!strncmp(cmd, "AUDIO:SOUND:", 12)) cmd += 12;
   else if (!strncmp(cmd, "SOUND:", 6)) cmd += 6;
   else return false;
 
+  const bool diagnostic = !strcmp(cmd, "STATUS") || !strcmp(cmd, "LEVEL") ||
+                          !strcmp(cmd, "CONFIG");
+  if (!diagnostic) {
+    if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) {
+      if (audioOwnerMode() != SHOWDUINO_OWNER_SHOW_CONTROLLED) {
+        audioEspNowSend("SOUND:REJECTED:NOT_OWNER", sequence);
+        return true;
+      }
+    } else if (audioOwnerMode() == SHOWDUINO_OWNER_SHOW_CONTROLLED) {
+      SD_LOGI("SOUND", "Rejected: SHOW_CONTROLLED");
+      return true;
+    }
+  }
+
+  const bool fromShow = origin == SHOWDUINO_CMD_ORIGIN_SHOW;
   if (fromShow && !strcmp(cmd, "LOCAL_TEST_TRIGGER")) {
     char line[64];
     snprintf(line, sizeof(line), "SOUND:REJECTED:SHOW_MODE");
-    Serial.print("[SOUND] ");
-    Serial.println(line);
+    SD_LOGI("SOUND", "%s", line);
     audioEspNowSend(line, sequence);
     return true;
   }
@@ -290,9 +379,14 @@ static bool handleSoundCommand(const char *command, uint32_t sequence, bool from
 }
 
 void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
+  audioCommandApply(command, sequence,
+                    fromShow ? SHOWDUINO_CMD_ORIGIN_SHOW : SHOWDUINO_CMD_ORIGIN_LOCAL);
+}
+
+void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigin origin) {
   if (!command || !command[0]) return;
-  if (fromShow) audioNodeStateNoteComms();
-  if (handleSoundCommand(command, sequence, fromShow)) return;
+  if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) audioNodeStateNoteComms();
+  if (handleSoundCommand(command, sequence, origin)) return;
 
   char arg[SHOWDUINO_AUDIO_REL_MAX + 1];
   int volume = -1;
@@ -300,6 +394,28 @@ void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
   int pri = -1;
   const ShowduinoAudioCmd cmd =
       showduino_audio_parse_command_ex(command, arg, sizeof(arg), &volume, &fadeMs, &pri);
+  const ShowduinoAudioFail ownerGate =
+      showduino_audio_owner_can_accept(audioOwnerMode(), cmd, origin);
+  if (ownerGate != SHOWDUINO_AUDIO_FAIL_NONE) {
+    char line[96];
+    audioProtocolFormatRejected(line, sizeof(line), sequence, ownerGate);
+    report(line, sequence);
+    return;
+  }
+  if (cmd == SHOWDUINO_AUDIO_CMD_OWN_GRANT) {
+    audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_GRANT);
+    onOwnerEdges();
+    char line[48];
+    snprintf(line, sizeof(line), "AUDIO:OWNED:%lu", (unsigned long)sequence);
+    report(line, sequence);
+    return;
+  }
+  if (origin == SHOWDUINO_CMD_ORIGIN_SHOW && audioOwnerGranted() &&
+      (cmd == SHOWDUINO_AUDIO_CMD_STATUS || cmd == SHOWDUINO_AUDIO_CMD_INVENTORY ||
+       showduino_audio_cmd_theatrical(cmd))) {
+    audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_KEEP);
+  }
+
   const ShowduinoAudioFail gate = showduino_audio_can_accept(audioNodeState(), cmd);
   if (gate != SHOWDUINO_AUDIO_FAIL_NONE) {
     char line[96];
@@ -309,6 +425,7 @@ void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
   }
 
   if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP) {
+    audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_STOP);
     stopPlaybackClear();
     audioCodecMute(true);
     audioInputSetEmergency(true);
@@ -319,6 +436,8 @@ void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
     return;
   }
   if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR) {
+    audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_CLEAR);
+    onOwnerEdges();
     audioCodecMute(false);
     audioInputSetEmergency(false);
     applyMaster((uint8_t)sVolume, false);
@@ -425,6 +544,9 @@ void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
     audioProtocolFormatStatus(line, sizeof(line), audioNodeStateName(),
                               (uint8_t)sVolume, sActiveRel, fault);
     report(line, sequence);
+    char owner[48];
+    snprintf(owner, sizeof(owner), "AUDIO:OWNER:%s", audioOwnerModeName());
+    report(owner, sequence);
     char caps[SHOWDUINO_NODE_COMMAND_MAX];
     snprintf(caps, sizeof(caps), "AUDIO:CAPS:%s", SHOWDUINO_AUDIO_CAPS);
     report(caps, sequence);
@@ -438,14 +560,18 @@ void audioCommandApply(const char *command, uint32_t sequence, bool fromShow) {
   if (cmd == SHOWDUINO_AUDIO_CMD_PLAY || cmd == SHOWDUINO_AUDIO_CMD_LOOP ||
       cmd == SHOWDUINO_AUDIO_CMD_TEST) {
     const char *rel = arg[0] ? arg : SHOWDUINO_AUDIO_TEST_FILE;
-    audioNodeStateSetShowControlled(fromShow);
     startAsset(rel,
                cmd == SHOWDUINO_AUDIO_CMD_LOOP ? AudioPlayMode::Loop : AudioPlayMode::Once,
-               sequence, fromShow, fadeMs, pri);
+               sequence, origin == SHOWDUINO_CMD_ORIGIN_SHOW, fadeMs, pri);
   }
 }
 
 void audioCommandLocalTestToggle() {
+  if (audioNodeStateShowControlled() ||
+      audioOwnerMode() == SHOWDUINO_OWNER_EMERGENCY) {
+    Serial.println("[AUDIO] Local test blocked — P4 owns this node");
+    return;
+  }
   if (audioPlaybackActive() || audioPlaybackPaused()) {
     Serial.println("[AUDIO] Local test: stop");
     audioCommandApply("AUDIO:NODE:STOP", 0, false);
@@ -528,7 +654,6 @@ void audioCommandService() {
     audioProtocolFormatCompleted(line, sizeof(line), sActiveSeq, sActiveRel);
     report(line, sActiveSeq);
     audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
-    audioNodeStateSetShowControlled(false);
     sActiveRel[0] = '\0';
   }
   if (audioPlaybackJustFailed()) {
@@ -538,7 +663,6 @@ void audioCommandService() {
     audioProtocolFormatFailed(line, sizeof(line), sActiveSeq, SHOWDUINO_AUDIO_FAIL_UNSUPPORTED);
     report(line, sActiveSeq);
     audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
-    audioNodeStateSetShowControlled(false);
   }
 
   if (audioStorageJustRemoved()) {
@@ -555,23 +679,20 @@ void audioCommandService() {
     }
   }
 
-  const uint32_t timeoutMs = audioStorageConfig().commsTimeoutMs;
-  if (audioNodeStateShowControlled() &&
-      !audioNodeStateAuthorityFresh(timeoutMs)) {
-    const ShowduinoAudioNodeState next = showduino_audio_on_comms_timeout(audioNodeState());
-    if (next != audioNodeState()) {
-      Serial.println("[AUDIO] Comms timeout — stopping show playback");
-      stopPlaybackClear();
-      audioCodecMute(true);
-      audioNodeStateSet(next);
-      char line[64];
-      audioProtocolFormatFailed(line, sizeof(line), sActiveSeq,
-                                SHOWDUINO_AUDIO_FAIL_COMMS_TIMEOUT);
-      report(line, sActiveSeq);
-    }
+  audioOwnerTick();
+  onOwnerEdges();
+  audioEspNowService();
+  if (sApDueMs && (int32_t)(millis() - sApDueMs) >= 0) {
+    sApDueMs = 0;
+    audioWebEnsure();
   }
+  audioWebService();
 
-  if ((millis() - sLastAnnounce) >= SHOWDUINO_AUDIO_ANNOUNCE_MS) {
+  const uint32_t announceMs =
+      (audioOwnerMode() == SHOWDUINO_OWNER_SHOW_CONTROLLED)
+          ? SHOWDUINO_AUDIO_ANNOUNCE_MS
+          : SHOWDUINO_AUDIO_ANNOUNCE_SEARCH_MS;
+  if ((millis() - sLastAnnounce) >= announceMs) {
     sLastAnnounce = millis();
     audioCommandAnnounce();
   }

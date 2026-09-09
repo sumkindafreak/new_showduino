@@ -21,15 +21,15 @@
 static String sUsbLine;
 
 static void onEspNowCommand(const char *command, uint32_t sequence) {
-  Serial.printf("[ESPNOW] RX seq=%lu cmd=%s\n", (unsigned long)sequence,
-                command ? command : "");
-  audioCommandApply(command, sequence, true);
+  SD_LOGT("ESPNOW", "RX seq=%lu cmd=%s", (unsigned long)sequence,
+          command ? command : "");
+  audioCommandApply(command, sequence, SHOWDUINO_CMD_ORIGIN_SHOW);
 }
 
 static void handleUsbLine(const String &line) {
   if (!line.length()) return;
   if (nodeDiagHandleLine(line.c_str())) return;
-  audioCommandApply(line.c_str(), 0, false);
+  audioCommandApply(line.c_str(), 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
 }
 
 static void pollUsb() {

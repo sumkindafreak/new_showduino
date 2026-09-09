@@ -1,6 +1,8 @@
 #ifndef SHOWDUINO_AUDIO_NODE_BOARD_CONFIG_H
 #define SHOWDUINO_AUDIO_NODE_BOARD_CONFIG_H
 
+#include "../../../protocol/showduino_log.h"
+
 /*
  * Ai-Thinker ESP32-Audio-Kit V2.2 A161 — ESP32-A1S + ES8388
  *
@@ -18,12 +20,13 @@
  *   esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
  */
 
-#define SHOWDUINO_AUDIO_NODE_FW            "0.3.1"
+#define SHOWDUINO_AUDIO_NODE_FW            "0.4.1"
 #define SHOWDUINO_AUDIO_NODE_BOARD         "ESP32-A1S Audio Kit V2.2 A161"
 #define SHOWDUINO_AUDIO_NODE_CODEC         "ES8388"
 
 #define SHOWDUINO_ESPNOW_CHANNEL           1
 #define SHOWDUINO_AUDIO_ANNOUNCE_MS        2000UL
+#define SHOWDUINO_AUDIO_ANNOUNCE_SEARCH_MS 800UL
 #define SHOWDUINO_AUDIO_VOLUME_DEBOUNCE_MS 1500UL
 #define SHOWDUINO_AUDIO_KEY_LONG_MS        700UL
 
@@ -128,5 +131,6 @@
 
 #define SHOWDUINO_AUDIO_DEFAULT_VOLUME     80
 #define SHOWDUINO_AUDIO_DEFAULT_OUTPUT     "SPEAKER"
+#define SHOWDUINO_AUDIO_AP_PASSWORD        "showduino"
 
 #endif

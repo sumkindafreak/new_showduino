@@ -119,8 +119,14 @@ static void writeWavHeader(File &f) {
 
 static void reportLine(const char *line) {
   if (!line || !line[0]) return;
-  Serial.print("[SOUND] ");
-  Serial.println(line);
+  if (!strncmp(line, "SOUND:STATUS", 12) ||
+      !strncmp(line, "SOUND:CALIBRATE:PROGRESS", 24)) {
+    SD_LOGT("SOUND", "%s", line);
+  } else if (!strncmp(line, "SOUND:TRIGGER:", 14)) {
+    SD_LOGI("SOUND", "%s", line);
+  } else {
+    SD_LOGD("SOUND", "%s", line);
+  }
   audioEspNowSend(line, 0);
 }
 

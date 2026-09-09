@@ -5,11 +5,14 @@
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
 #include "AudioNodeState.h"
+#include "AudioWeb.h"
 #include "EspNowNodeTransport.h"
 #include "LocalButtons.h"
 #include "input/AudioInput.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_audio_node.h"
+#include "../../../protocol/showduino_log.h"
+#include "../../shared-node/NodeSoftAp.h"
 
 static uint32_t sPixelTestUntil = 0;
 static uint32_t sLoopUs = 0;
@@ -39,14 +42,14 @@ static uint32_t statusPixelColor(uint32_t now) {
   }
 
   const ShowduinoAudioNodeState st = audioNodeState();
-  const bool haveComms = audioEspNowHaveComms();
+  const ShowduinoNodeOwnerMode owner = audioOwnerMode();
 
   /* Every pixel-capable output goes unmistakably white in emergency. */
-  if (st == SHOWDUINO_AUDIO_ST_EMERGENCY) {
+  if (st == SHOWDUINO_AUDIO_ST_EMERGENCY || owner == SHOWDUINO_OWNER_EMERGENCY) {
     return pixelRgb(255, 255, 255);
   }
 
-  if (st == SHOWDUINO_AUDIO_ST_FAULT) {
+  if (st == SHOWDUINO_AUDIO_ST_FAULT || owner == SHOWDUINO_OWNER_FAULT) {
     return ((now / 110UL) & 1UL) ? pixelRgb(120, 0, 0) : 0;
   }
 
@@ -58,12 +61,16 @@ static uint32_t statusPixelColor(uint32_t now) {
     return flash ? pixelRgb(110, 32, 0) : 0;
   }
 
-  if (st == SHOWDUINO_AUDIO_ST_BOOTING) {
+  if (st == SHOWDUINO_AUDIO_ST_BOOTING || owner == SHOWDUINO_OWNER_BOOTING) {
     return ((now / 700UL) & 1UL) ? pixelRgb(0, 0, 48) : 0;
   }
 
-  if (!haveComms) {
+  if (owner == SHOWDUINO_OWNER_SEARCHING) {
     return ((now / 350UL) & 1UL) ? pixelRgb(90, 42, 0) : 0;
+  }
+
+  if (owner == SHOWDUINO_OWNER_STANDALONE) {
+    return ((now / 900UL) & 1UL) ? pixelRgb(72, 0, 110) : pixelRgb(28, 0, 48);
   }
 
   /* Brief bright-green kick on real ESP-NOW traffic from Comms. */
@@ -84,7 +91,7 @@ static uint32_t statusPixelColor(uint32_t now) {
     return pixelRgb(0, 54, 72);
   }
 
-  /* Healthy, connected and idle. */
+  /* P4-owned, healthy and idle. */
   return pixelRgb(0, 72, 0);
 }
 #endif
@@ -139,9 +146,9 @@ void nodeDiagPrintBootBanner() {
   Serial.printf("ESP-NOW: %s ch=%u\n",
                 audioEspNowReady() ? "ready" : "FAULT",
                 (unsigned)SHOWDUINO_ESPNOW_CHANNEL);
-  Serial.printf("State: %s\n", audioNodeStateName());
+  Serial.printf("State: %s  Owner: %s\n", audioNodeStateName(), audioOwnerModeName());
   if (audioStorageConfigFault()) Serial.println("CONFIG_FAULT — defaults in use");
-  Serial.println("Waiting for Showduino.");
+  Serial.println("Waiting for P4 OWN:GRANT. ESP-NOW stays up if SoftAP starts.");
 }
 
 void nodeDiagPrintHelp() {
@@ -166,6 +173,8 @@ void nodeDiagPrintHelp() {
   Serial.println("  SOUND:STATUS | ENABLE | DISABLE | CALIBRATE | LEVEL");
   Serial.println("  SOUND:TRIGGER:TEST | CONFIG | MONITOR | MONITOR:STOP");
   Serial.println("  SOUND:RECORD:TEST | SOUND:LOCAL_TEST_TRIGGER");
+  Serial.println("  LOG:LEVEL | LOG:LEVEL:ERROR|WARN|INFO|DEBUG|TRACE");
+  Serial.println("Local SoftAP WebUI http://192.168.5.1 after search timeout or GRANT.");
   Serial.println("RUN:TEST is silent. Audible speaker test is AUDIO:TEST at current volume.");
 }
 
@@ -173,11 +182,13 @@ void nodeDiagPrintStatus() {
   char mac[24];
   audioEspNowMacString(mac, sizeof(mac));
   Serial.printf("STATE %s\n", audioNodeStateName());
+  Serial.printf("OWNER %s granted=%s\n", audioOwnerModeName(),
+                audioOwnerGranted() ? "YES" : "NO");
   Serial.printf("FAULT %s\n", showduino_audio_fail_name(audioNodeStateFault()));
   Serial.printf("CONFIG %s\n", audioStorageConfigFault() ? "CONFIG_FAULT" : "OK");
   Serial.printf("SHOW_CONTROLLED %s\n", audioNodeStateShowControlled() ? "YES" : "NO");
   Serial.printf("AUTHORITY %s\n",
-                audioNodeStateAuthorityFresh(audioStorageConfig().commsTimeoutMs)
+                audioNodeStateAuthorityFresh(SHOWDUINO_OWNER_KEEPALIVE_MS)
                     ? "FRESH" : "STALE");
   Serial.printf("MAC %s\n", mac);
   Serial.printf("VOLUME %u duck=%s\n",
@@ -185,10 +196,14 @@ void nodeDiagPrintStatus() {
                 audioCommandDucking() ? "YES" : "NO");
   Serial.printf("OUTPUT %s\n", audioCodecOutputName());
   Serial.printf("FILE %s\n", audioPlaybackRel()[0] ? audioPlaybackRel() : "-");
-  Serial.printf("STATUS_PIXEL WS2812 GPIO%d count=%u comms=%s\n",
+  Serial.printf("SOFTAP %s ssid=%s ip=%s\n",
+                audioWebReady() ? "UP" : "DOWN",
+                nodeSoftApStarted() ? nodeSoftApSsid() : "-",
+                nodeSoftApStarted() ? nodeSoftApIp() : "-");
+  Serial.printf("STATUS_PIXEL WS2812 GPIO%d count=%u owner=%s\n",
                 SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
                 (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
-                audioEspNowHaveComms() ? "CONNECTED" : "SEARCHING");
+                audioOwnerModeName());
   Serial.printf("CAPS %s\n", SHOWDUINO_AUDIO_CAPS);
 }
 
@@ -309,6 +324,7 @@ void nodeDiagServiceLed() {
 
 bool nodeDiagHandleLine(const char *line) {
   if (!line || !line[0]) return false;
+  if (showduino_log_handle_command(line)) return true;
   if (!strcmp(line, "HELP")) {
     nodeDiagPrintHelp();
     return true;
