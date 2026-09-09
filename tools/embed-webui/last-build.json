@@ -1,11 +1,11 @@
 {
-  "buildHash": "b74e71c5e63f",
-  "buildUtc": "2026-09-07T11:58:14Z",
-  "source": "web/showduino-studio",
+  "buildHash": "a6c48211fce8",
+  "buildUtc": "2026-09-09T17:16:20Z",
+  "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
-  "assetCount": 3,
-  "rawBytes": 105659,
-  "embeddedBytes": 24357,
+  "assetCount": 37,
+  "rawBytes": 655237,
+  "embeddedBytes": 163142,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -25,12 +25,58 @@
     "/js/pages/Settings.js",
     "/js/app.js"
   ],
+  "authoringStudio": {
+    "repo": "sumkindafreak/showduino.com",
+    "ref": "main",
+    "commit": "b79759725aec65ee62b9a8ce41000a805857e036",
+    "route": "/studio/",
+    "assetCount": 34,
+    "rawBytes": 537554,
+    "embeddedBytes": 135485,
+    "sourceFiles": [
+      "style.css",
+      "css/studio-daw.css",
+      "css/studio-inspector.css",
+      "css/studio-timeline-mixer.css",
+      "css/studio-3.css",
+      "css/timeline-drop-zones.css",
+      "css/studio-inspector-drawer.css",
+      "css/studio-v4.css",
+      "config/runtime-config.js",
+      "js/cloud/supabase-service.js",
+      "js/api.js",
+      "js/shdo_model.js",
+      "js/connection_detector.js",
+      "js/timeline.js",
+      "js/timeline-fx-daw.js",
+      "js/timeline-drop-zones.js",
+      "js/timeline-professional-inspector.js",
+      "js/studio-inspector-drawer.js",
+      "js/timeline-mixer.js",
+      "js/audio_browser.js",
+      "js/dmx_editor.js",
+      "js/led_studio.js",
+      "js/panels.js",
+      "app.js",
+      "js/studio-package.js",
+      "js/studio-creator-mode.js",
+      "js/studio-projects.js",
+      "js/studio-deploy.js",
+      "js/studio-creator-bootstrap.js",
+      "js/studio-mobile.js",
+      "js/current-system-ui.js",
+      "js/studio-v4.js",
+      "css/studio-mobile-v4.css"
+    ],
+    "cloudEnabled": false,
+    "externalCdnDependencies": false
+  },
   "assets": [
     {
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 1593,
-      "embedded": 874,
+      "raw": 10661,
+      "embedded": 3464,
       "gzip": true
     },
     {
@@ -43,8 +89,246 @@
     {
       "path": "/js/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 91975,
-      "embedded": 20585,
+      "raw": 94931,
+      "embedded": 21295,
+      "gzip": true
+    },
+    {
+      "path": "/studio/index.html",
+      "mime": "text/html; charset=utf-8",
+      "raw": 10413,
+      "embedded": 2916,
+      "gzip": true
+    },
+    {
+      "path": "/studio/style.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 15816,
+      "embedded": 2994,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-daw.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 3215,
+      "embedded": 1151,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-inspector.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 2264,
+      "embedded": 870,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-timeline-mixer.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 1179,
+      "embedded": 469,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-3.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 13128,
+      "embedded": 3258,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/timeline-drop-zones.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 5885,
+      "embedded": 1652,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-inspector-drawer.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 3589,
+      "embedded": 1299,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-v4.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 26256,
+      "embedded": 5816,
+      "gzip": true
+    },
+    {
+      "path": "/studio/config/runtime-config.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 360,
+      "embedded": 248,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/cloud/supabase-service.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 6142,
+      "embedded": 1731,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/api.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 4821,
+      "embedded": 1574,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/shdo_model.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 8181,
+      "embedded": 2401,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/connection_detector.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 2935,
+      "embedded": 1000,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/timeline.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 63515,
+      "embedded": 13848,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/timeline-fx-daw.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 14845,
+      "embedded": 4358,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/timeline-drop-zones.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 4693,
+      "embedded": 1568,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/timeline-professional-inspector.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 16017,
+      "embedded": 4123,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-inspector-drawer.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 5178,
+      "embedded": 1660,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/timeline-mixer.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 11904,
+      "embedded": 2662,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/audio_browser.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 8759,
+      "embedded": 2518,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/dmx_editor.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 12416,
+      "embedded": 3473,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/led_studio.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 19782,
+      "embedded": 5042,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/panels.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 46948,
+      "embedded": 10025,
+      "gzip": true
+    },
+    {
+      "path": "/studio/app.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 46975,
+      "embedded": 9193,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-package.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 18533,
+      "embedded": 4883,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-creator-mode.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 4101,
+      "embedded": 1489,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-projects.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 12007,
+      "embedded": 3281,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-deploy.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 14502,
+      "embedded": 4652,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-creator-bootstrap.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 15586,
+      "embedded": 4402,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-mobile.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 45661,
+      "embedded": 11758,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/current-system-ui.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 9181,
+      "embedded": 3025,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-v4.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 50181,
+      "embedded": 12928,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-mobile-v4.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 12586,
+      "embedded": 3218,
       "gzip": true
     }
   ]

@@ -6,6 +6,7 @@ $include = Join-Path $here "..\..\firmware\stage-engine-p4\ShowduinoStageEngineP
 $out = Join-Path $here "production_format_tests.exe"
 $runtimeOut = Join-Path $here "timeline_runtime_tests.exe"
 $storeOut = Join-Path $here "production_store_tests.exe"
+$webTimelineOut = Join-Path $here "web_timeline_upload_policy_tests.exe"
 $sketch = Join-Path $here "..\..\firmware\stage-engine-p4\ShowduinoStageEngineP4"
 $stubs = Join-Path $here "stubs"
 
@@ -35,4 +36,13 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Running..."
 & $runtimeOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Compiling Studio web timeline upload policy tests..."
+& g++ -std=c++17 -Wall -Wextra -o $webTimelineOut `
+  (Join-Path $here "test_web_timeline_upload_policy.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Write-Host "Running..."
+& $webTimelineOut
 exit $LASTEXITCODE

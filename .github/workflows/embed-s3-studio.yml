@@ -8,6 +8,15 @@ on:
       - "web/showduino-studio/**"
       - "tools/embed-webui/embed_webui.py"
       - ".github/workflows/embed-s3-studio.yml"
+  pull_request:
+    paths:
+      - "web/showduino-studio/**"
+      - "tools/embed-webui/embed_webui.py"
+      - "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.h"
+      - ".github/workflows/embed-s3-studio.yml"
+  schedule:
+    # Pull the current canonical website Studio V4 into the offline S3 bundle.
+    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -19,21 +28,43 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: main
+
+      - name: Refresh latest main for non-PR runs
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
-      - name: Regenerate S3 Studio assets
+      - name: Regenerate commissioning + authoring assets
         run: python tools/embed-webui/embed_webui.py
 
       - name: Verify generated diff
         run: git diff --check
 
+      - name: Verify canonical website Studio is embedded
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('tools/embed-webui/last-build.json').read_text())
+          studio = report.get('authoringStudio') or {}
+          assert studio.get('repo') == 'sumkindafreak/showduino.com', studio
+          assert studio.get('route') == '/studio/', studio
+          assert studio.get('assetCount', 0) > 10, studio
+          assert studio.get('embeddedBytes', 0) > 0, studio
+          assert studio.get('cloudEnabled') is False, studio
+          assert studio.get('externalCdnDependencies') is False, studio
+          print('Embedded canonical Studio:', studio.get('commit', '')[:12], studio.get('assetCount'), 'assets')
+          PY
+
       - name: Commit regenerated bundle
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           if git diff --quiet -- \

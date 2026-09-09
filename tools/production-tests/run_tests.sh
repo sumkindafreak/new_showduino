@@ -17,3 +17,8 @@ g++ -std=c++17 -Wall -Wextra -I"$HERE/stubs" \
   -I"$HERE/../../firmware/stage-engine-p4/ShowduinoStageEngineP4" \
   -o "$HERE/timeline_runtime_tests" "$HERE/test_timeline_runtime.cpp"
 "$HERE/timeline_runtime_tests"
+
+g++ -std=c++17 -Wall -Wextra \
+  -o "$HERE/web_timeline_upload_policy_tests" \
+  "$HERE/test_web_timeline_upload_policy.cpp"
+"$HERE/web_timeline_upload_policy_tests"
