@@ -1,6 +1,7 @@
 #include "EspNowTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_log.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -12,14 +13,18 @@
 static bool sReady = false;
 static bool sHaveDirector = false;
 static bool sHaveAudioNode = false;
+static bool sHaveLampNode = false;
 static uint8_t sDirectorMac[6] = {0};
 static uint8_t sAudioNodeMac[6] = {0};
+static uint8_t sLampNodeMac[6] = {0};
 static uint16_t sTxSequence = 1;
 static uint32_t sRxCount = 0;
 static uint32_t sTxCount = 0;
 static uint32_t sRejected = 0;
 static uint32_t sLastDirectorMs = 0;
 static uint32_t sLastAudioNodeMs = 0;
+static uint32_t sLastLampNodeMs = 0;
+static uint32_t sRejectLogMs = 0;
 static ShowduinoDeskCommandFn sHandler = nullptr;
 static ShowduinoNodeCommandFn sNodeHandler = nullptr;
 
@@ -75,7 +80,11 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
     ShowduinoValidateResult nvr = showduino_validate_node_rx(incomingData, (size_t)len);
     if (nvr != SHOWDUINO_VALID) {
       sRejected++;
-      Serial.printf("[COMMS] ESP-NOW node rejected (%d) len=%d\n", (int)nvr, len);
+      if (showduino_log_rate_ok(&sRejectLogMs, millis(), SHOWDUINO_LOG_WARN_INTERVAL_MS)) {
+        SD_LOGW("COMMS", "ESP-NOW node rejected (%d) len=%d", (int)nvr, len);
+      } else {
+        SD_LOGT("COMMS", "ESP-NOW node rejected (%d) len=%d", (int)nvr, len);
+      }
       return;
     }
     ShowduinoNodePacket np = {};
@@ -84,24 +93,28 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
     np.command[SHOWDUINO_NODE_COMMAND_MAX - 1] = '\0';
     sRxCount++;
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-    if (recvInfo && recvInfo->src_addr &&
-        strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO) == 0) {
-      memcpy(sAudioNodeMac, recvInfo->src_addr, 6);
-      sHaveAudioNode = true;
-      sLastAudioNodeMs = millis();
-      addPeer(sAudioNodeMac);
+    if (recvInfo && recvInfo->src_addr) {
+      if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO) == 0) {
+        memcpy(sAudioNodeMac, recvInfo->src_addr, 6);
+        sHaveAudioNode = true;
+        sLastAudioNodeMs = millis();
+        addPeer(sAudioNodeMac);
+      } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_LAMP) == 0) {
+        memcpy(sLampNodeMac, recvInfo->src_addr, 6);
+        sHaveLampNode = true;
+        sLastLampNodeMs = millis();
+        addPeer(sLampNodeMac);
+      }
     }
 #else
     if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO) == 0) {
       sLastAudioNodeMs = millis();
+    } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_LAMP) == 0) {
+      sLastLampNodeMs = millis();
     }
 #endif
-    Serial.print("[COMMS] RX <- Node ");
-    Serial.print(np.nodeType);
-    Serial.print(" seq=");
-    Serial.print(np.sequence);
-    Serial.print(" cmd=");
-    Serial.println(np.command);
+    SD_LOGT("COMMS", "RX <- Node %s seq=%lu cmd=%s",
+            np.nodeType, (unsigned long)np.sequence, np.command);
     if (sNodeHandler) sNodeHandler(np.nodeType, np.command, np.sequence);
     return;
   }
@@ -109,7 +122,11 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
   ShowduinoValidateResult vr = showduino_validate_desk_rx(incomingData, (size_t)len);
   if (vr != SHOWDUINO_VALID) {
     sRejected++;
-    Serial.printf("[COMMS] ESP-NOW rejected packet (%d) len=%d\n", (int)vr, len);
+    if (showduino_log_rate_ok(&sRejectLogMs, millis(), SHOWDUINO_LOG_WARN_INTERVAL_MS)) {
+      SD_LOGW("COMMS", "ESP-NOW desk rejected (%d) len=%d", (int)vr, len);
+    } else {
+      SD_LOGT("COMMS", "ESP-NOW desk rejected (%d) len=%d", (int)vr, len);
+    }
     return;
   }
 
@@ -128,16 +145,8 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
   }
 #endif
 
-  Serial.print("[COMMS] RX <- Director ");
-#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-  if (recvInfo && recvInfo->src_addr) espNowTransportPrintMac(recvInfo->src_addr);
-#else
-  Serial.print("(peer)");
-#endif
-  Serial.print(" seq=");
-  Serial.print(packet.sequence);
-  Serial.print(" cmd=");
-  Serial.println(packet.command);
+  SD_LOGT("COMMS", "RX <- Director seq=%u cmd=%s",
+          (unsigned)packet.sequence, packet.command);
 
   if (sHandler) sHandler(packet.command);
 }
@@ -153,13 +162,13 @@ bool espNowTransportBegin() {
   esp_wifi_set_ps(WIFI_PS_NONE);
   delay(150);
   if (esp_wifi_set_channel(SHOWDUINO_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
-    Serial.println("[COMMS] ESP-NOW channel set failed");
+    SD_LOGE("COMMS", "ESP-NOW channel set failed");
     Serial.flush();
   }
   delay(50);
 
   if (esp_now_init() != ESP_OK) {
-    Serial.println("[COMMS] ESP-NOW init failed");
+    SD_LOGE("COMMS", "ESP-NOW init failed");
     Serial.flush();
     sReady = false;
     return false;
@@ -189,7 +198,7 @@ bool espNowTransportSendToDirector(const char *command) {
   showduino_desk_packet_init(&packet, sTxSequence++, millis());
   if (showduino_desk_set_command(&packet, command) != 0) {
     sRejected++;
-    Serial.println("[COMMS] P4 line too long for ESP-NOW desk packet; dropped");
+    SD_LOGW("COMMS", "P4 line too long for ESP-NOW desk packet; dropped");
     return false;
   }
 
@@ -230,8 +239,30 @@ void espNowTransportAudioNodeMac(uint8_t out[6]) {
   memcpy(out, sAudioNodeMac, 6);
 }
 
+bool espNowTransportSendToLampNode(const char *command, uint32_t sequence) {
+  if (!sReady || !sHaveLampNode || !command || !command[0]) return false;
+  ShowduinoNodePacket packet = {};
+  showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_LAMP, sequence);
+  if (showduino_node_set_command(&packet, command) != 0) {
+    sRejected++;
+    return false;
+  }
+  if (!addPeer(sLampNodeMac)) return false;
+  if (esp_now_send(sLampNodeMac, (uint8_t *)&packet, sizeof(packet)) != ESP_OK) return false;
+  sTxCount++;
+  return true;
+}
+
+bool espNowTransportHaveLampNode() { return sHaveLampNode; }
+
+void espNowTransportLampNodeMac(uint8_t out[6]) {
+  if (!out) return;
+  memcpy(out, sLampNodeMac, 6);
+}
+
 uint32_t espNowTransportRxCount() { return sRxCount; }
 uint32_t espNowTransportTxCount() { return sTxCount; }
 uint32_t espNowTransportRejectedCount() { return sRejected; }
 uint32_t espNowTransportLastDirectorMs() { return sLastDirectorMs; }
 uint32_t espNowTransportLastAudioNodeMs() { return sLastAudioNodeMs; }
+uint32_t espNowTransportLastLampNodeMs() { return sLastLampNodeMs; }

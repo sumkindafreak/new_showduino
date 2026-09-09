@@ -2,6 +2,7 @@
 #define SHOWDUINO_S3_COMMS_BOARD_CONFIG_H
 
 #include <Arduino.h>
+#include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_protocol_version.h"
 #include "../../../protocol/showduino_desk_packet.h"
 #include "../../../protocol/showduino_node_packet.h"

@@ -5,6 +5,7 @@
 #include "web/CommsWebServer.h"
 #include "status/CommsStatusRgb.h"
 #include "../BoardConfig.h"
+#include "../../../protocol/showduino_log.h"
 
 #ifdef ESP_ARDUINO_VERSION_STR
 #include <esp_arduino_version.h>
@@ -14,6 +15,7 @@ static String sUsb;
 
 static void printHelp() {
   Serial.println("Commands: HELP  STATUS  MAC  PING:P4  RGB:STATUS  RGB:TEST");
+  Serial.println("  LOG:LEVEL  LOG:LEVEL:ERROR|WARN|INFO|DEBUG|TRACE");
   Serial.println("USB does not inject Stage Engine commands.");
   Serial.println("WebUI SoftAP SSID " SHOWDUINO_WEBUI_AP_SSID "  http://192.168.4.1/");
 }
@@ -88,6 +90,7 @@ static void handleUsbLine(String line) {
     printHelp();
     return;
   }
+  if (showduino_log_handle_command(line.c_str())) return;
   if (line == "STATUS") {
     printStatus();
     return;

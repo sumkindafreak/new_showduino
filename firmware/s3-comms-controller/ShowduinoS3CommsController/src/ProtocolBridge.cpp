@@ -6,6 +6,7 @@
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -17,60 +18,210 @@ static bool sPingPending = false;
 static bool sLastPingOk = false;
 static uint32_t sPingDeadline = 0;
 
+static bool sHadDirector = false;
+static bool sHadP4 = false;
+static bool sHadAudio = false;
+static bool sHadLamp = false;
+static uint32_t sLastAudioSeenMs = 0;
+static uint32_t sLastLampSeenMs = 0;
+static char sLastAudioAnnounce[96] = "";
+static char sLastLampAnnounce[96] = "";
+
 static bool isLocalDiag(const char *line) {
   return line && (!strcmp(line, "DIAG:PING") || !strcmp(line, "DIAG:PONG"));
+}
+
+static bool isQuietDeskCmd(const char *command) {
+  if (!command) return true;
+  if (!strcmp(command, "HEARTBEAT") || !strcmp(command, "OK:HEARTBEAT") ||
+      !strcmp(command, "HELLO") || !strcmp(command, "DIAG:PING") ||
+      !strcmp(command, "DIAG:PONG")) {
+    return true;
+  }
+  if (!strncmp(command, "TIME:", 5) && strcmp(command, "TIME:REQUEST") != 0) return true;
+  if (!strncmp(command, "STATE:", 6) || !strncmp(command, "SNAPSHOT:", 9)) return true;
+  return false;
+}
+
+static bool isRoutineNodeCmd(const char *command) {
+  if (!command) return true;
+  if (!strncmp(command, "ANNOUNCE:", 9)) return true;
+  if (!strncmp(command, "SOUND:STATUS", 12)) return true;
+  if (!strncmp(command, "AUDIO:OWNED:", 12)) return true;
+  if (!strncmp(command, "AUDIO:OWNER:", 12)) return true;
+  if (!strncmp(command, "AUDIO:CAPS:", 11)) return true;
+  if (!strncmp(command, "AUDIO:META:", 11)) return true;
+  if (!strncmp(command, "AUDIO:INVENTORY:", 16)) return true;
+  if (!strncmp(command, "LAMP:OWNED:", 11)) return true;
+  if (!strncmp(command, "OWNED:", 6)) return true;
+  if (!strncmp(command, "STATUS:", 7)) return true;
+  return false;
+}
+
+static void parseAnnounceMeta(const char *command, char *mac, size_t macLen,
+                              char *fw, size_t fwLen) {
+  if (mac && macLen) {
+    strncpy(mac, "-", macLen - 1);
+    mac[macLen - 1] = '\0';
+  }
+  if (fw && fwLen) {
+    strncpy(fw, "-", fwLen - 1);
+    fw[fwLen - 1] = '\0';
+  }
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  const char *p = command + 9;
+  if (strlen(p) >= 17 && mac && macLen > 17) {
+    memcpy(mac, p, 17);
+    mac[17] = '\0';
+    p += 17;
+    if (*p == ':') p++;
+    const char *colon = strchr(p, ':');
+    size_t n = colon ? (size_t)(colon - p) : strlen(p);
+    if (fw && fwLen) {
+      if (n >= fwLen) n = fwLen - 1;
+      memcpy(fw, p, n);
+      fw[n] = '\0';
+    }
+  }
+}
+
+static void noteAudioDiscovery(const char *command) {
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  if (!showduino_log_changed(sLastAudioAnnounce, sizeof(sLastAudioAnnounce), command)) {
+    return;
+  }
+  char mac[24];
+  char fw[16];
+  parseAnnounceMeta(command, mac, sizeof(mac), fw, sizeof(fw));
+  SD_LOGI("COMMS", "Audio Node discovered");
+  SD_LOGI("COMMS", "  FW: %s", fw);
+  SD_LOGI("COMMS", "  MAC: %s", mac);
+}
+
+static void noteLampDiscovery(const char *command) {
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  if (!showduino_log_changed(sLastLampAnnounce, sizeof(sLastLampAnnounce), command)) {
+    return;
+  }
+  char mac[24];
+  char fw[16];
+  parseAnnounceMeta(command, mac, sizeof(mac), fw, sizeof(fw));
+  SD_LOGI("COMMS", "Lamp Node discovered");
+  SD_LOGI("COMMS", "  FW: %s", fw);
+  SD_LOGI("COMMS", "  MAC: %s", mac);
 }
 
 static void forwardToAudioNode(const char *command, uint32_t sequence) {
   if (!command || !command[0]) return;
   if (espNowTransportSendToAudioNode(command, sequence)) {
-    Serial.printf("[COMMS] TX -> Audio Node seq=%lu cmd=%s\n",
-                  (unsigned long)sequence, command);
+    SD_LOGT("COMMS", "TX -> Audio seq=%lu cmd=%s", (unsigned long)sequence, command);
+    if (!isRoutineNodeCmd(command) &&
+        strncmp(command, "AUDIO:NODE:STATUS", 17) != 0 &&
+        strncmp(command, "AUDIO:NODE:OWN:GRANT", 20) != 0) {
+      SD_LOGD("COMMS", "P4 -> Audio: %s", command);
+    }
   } else {
-    Serial.println("[COMMS] Audio Node route held — no peer yet");
+    static uint32_t sHoldMs = 0;
+    if (showduino_log_rate_ok(&sHoldMs, millis(), 5000UL)) {
+      SD_LOGW("COMMS", "Audio Node route held — no peer yet");
+    }
+  }
+}
+
+static void forwardToLampNode(const char *command, uint32_t sequence) {
+  if (!command || !command[0]) return;
+  if (espNowTransportSendToLampNode(command, sequence)) {
+    SD_LOGT("COMMS", "TX -> Lamp seq=%lu cmd=%s", (unsigned long)sequence, command);
+    if (!isRoutineNodeCmd(command) &&
+        strncmp(command, "LAMP:STATUS", 11) != 0 &&
+        strncmp(command, "LAMP:NODE:OWN:GRANT", 19) != 0 &&
+        strncmp(command, "LAMP:OWN:GRANT", 14) != 0) {
+      SD_LOGD("COMMS", "P4 -> Lamp: %s", command);
+    }
+  } else {
+    static uint32_t sHoldMs = 0;
+    if (showduino_log_rate_ok(&sHoldMs, millis(), 5000UL)) {
+      SD_LOGW("COMMS", "Lamp Node route held — no peer yet");
+    }
   }
 }
 
 static void onNodeCommand(const char *nodeType, const char *command, uint32_t sequence) {
   if (!nodeType || !command) return;
+  if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO)) {
+    sLastAudioSeenMs = millis();
+    if (!sHadAudio) sHadAudio = true;
+    noteAudioDiscovery(command);
+  } else if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_LAMP)) {
+    sLastLampSeenMs = millis();
+    if (!sHadLamp) sHadLamp = true;
+    noteLampDiscovery(command);
+  }
   char line[SHOWDUINO_COMMS_LINE_MAX + 1];
   snprintf(line, sizeof(line), "NODE:%s:%s", nodeType, command);
   commsUartWriteLine(line);
-  Serial.printf("[COMMS] TX -> P4: %s seq=%lu\n", line, (unsigned long)sequence);
+  SD_LOGT("COMMS", "TX -> P4: %s seq=%lu", line, (unsigned long)sequence);
 }
 
 static bool handleP4Route(const char *line) {
-  if (!line || strncmp(line, SHOWDUINO_LEGACY_ROUTE_AUDIO,
-                       strlen(SHOWDUINO_LEGACY_ROUTE_AUDIO)) != 0) {
-    return false;
+  if (!line) return false;
+
+  if (!strncmp(line, SHOWDUINO_LEGACY_ROUTE_AUDIO,
+               strlen(SHOWDUINO_LEGACY_ROUTE_AUDIO))) {
+    const char *rest = line + strlen(SHOWDUINO_LEGACY_ROUTE_AUDIO);
+    uint32_t seq = 0;
+    const char *cmd = rest;
+    if (rest[0] >= '0' && rest[0] <= '9') {
+      char *end = nullptr;
+      seq = (uint32_t)strtoul(rest, &end, 10);
+      if (end && *end == ':') cmd = end + 1;
+    }
+    forwardToAudioNode(cmd, seq);
+    return true;
   }
-  const char *rest = line + strlen(SHOWDUINO_LEGACY_ROUTE_AUDIO);
-  uint32_t seq = 0;
-  const char *cmd = rest;
-  if (rest[0] >= '0' && rest[0] <= '9') {
-    char *end = nullptr;
-    seq = (uint32_t)strtoul(rest, &end, 10);
-    if (end && *end == ':') cmd = end + 1;
+
+  if (!strncmp(line, SHOWDUINO_LEGACY_ROUTE_LAMP,
+               strlen(SHOWDUINO_LEGACY_ROUTE_LAMP))) {
+    const char *rest = line + strlen(SHOWDUINO_LEGACY_ROUTE_LAMP);
+    uint32_t seq = 0;
+    const char *cmd = rest;
+    if (rest[0] >= '0' && rest[0] <= '9') {
+      char *end = nullptr;
+      seq = (uint32_t)strtoul(rest, &end, 10);
+      if (end && *end == ':') cmd = end + 1;
+    }
+    forwardToLampNode(cmd, seq);
+    return true;
   }
-  forwardToAudioNode(cmd, seq);
-  return true;
+
+  return false;
 }
 
 static void fanoutEmergency() {
   if (sEmergencyActive == sEmergencyWasActive) return;
   sEmergencyWasActive = sEmergencyActive;
+  SD_LOG_EMERGENCY("COMMS", sEmergencyActive);
   forwardToAudioNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
+  forwardToLampNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
 }
 
 static void onDirectorCommand(const char *command) {
   if (!command || !command[0]) return;
   if (isLocalDiag(command)) {
-    Serial.println("[COMMS] DIAG from Director ignored (local UART only)");
+    SD_LOGD("COMMS", "DIAG from Director ignored (local UART only)");
     return;
   }
+  if (!sHadDirector) {
+    sHadDirector = true;
+    SD_LOGI("COMMS", "Director online");
+  }
   commsUartWriteLine(command);
-  Serial.print("[COMMS] TX -> P4: ");
-  Serial.println(command);
+  if (isQuietDeskCmd(command)) {
+    SD_LOGT("COMMS", "TX -> P4: %s", command);
+  } else {
+    SD_LOGD("COMMS", "Director -> P4: %s", command);
+    SD_LOGT("COMMS", "TX -> P4: %s", command);
+  }
 }
 
 static void observeP4Emergency(const char *line) {
@@ -116,6 +267,14 @@ void protocolBridgeBegin() {
   espNowTransportSetNodeHandler(onNodeCommand);
   sEmergencyActive = false;
   sEmergencyWasActive = false;
+  sHadDirector = false;
+  sHadP4 = false;
+  sHadAudio = false;
+  sHadLamp = false;
+  sLastAudioSeenMs = 0;
+  sLastLampSeenMs = 0;
+  sLastAudioAnnounce[0] = '\0';
+  sLastLampAnnounce[0] = '\0';
 }
 
 static void consumeWebTunnelBody() {
@@ -126,7 +285,47 @@ static void consumeWebTunnelBody() {
   }
 }
 
+static void servicePresence() {
+  const uint32_t now = millis();
+  const bool p4 = protocolBridgeP4Alive();
+  if (p4 && !sHadP4) {
+    sHadP4 = true;
+    SD_LOGI("COMMS", "P4 connected");
+  } else if (!p4 && sHadP4) {
+    sHadP4 = false;
+    SD_LOGW("COMMS", "P4 lost");
+  }
+
+  const bool director = protocolBridgeDirectorOnline();
+  if (director && !sHadDirector) {
+    sHadDirector = true;
+    SD_LOGI("COMMS", "Director online");
+  } else if (!director && sHadDirector && espNowTransportHaveDirector()) {
+    /* Keep "seen" peer; only warn on stale after timeout via Online check */
+    static uint32_t sDirWarnMs = 0;
+    if (showduino_log_rate_ok(&sDirWarnMs, now, 10000UL)) {
+      SD_LOGW("COMMS", "Director offline");
+    }
+    sHadDirector = false;
+  }
+
+  if (sHadAudio && sLastAudioSeenMs &&
+      (now - sLastAudioSeenMs) > SHOWDUINO_COMMS_LINK_TIMEOUT_MS) {
+    sHadAudio = false;
+    sLastAudioAnnounce[0] = '\0';
+    SD_LOGW("COMMS", "Audio Node lost");
+  }
+  if (sHadLamp && sLastLampSeenMs &&
+      (now - sLastLampSeenMs) > SHOWDUINO_COMMS_LINK_TIMEOUT_MS) {
+    sHadLamp = false;
+    sLastLampAnnounce[0] = '\0';
+    SD_LOGW("COMMS", "Lamp Node lost");
+  }
+}
+
 void protocolBridgeLoop() {
+  servicePresence();
+
   if (commsWebTunnelConsumingBytes()) {
     consumeWebTunnelBody();
     return;
@@ -143,23 +342,22 @@ void protocolBridgeLoop() {
       continue;
     }
     if (!strcmp(line, "DIAG:PING")) {
-      Serial.println("[COMMS] UART RX: DIAG:PING");
+      SD_LOGT("COMMS", "UART RX: DIAG:PING");
       commsUartWriteLine("DIAG:PONG");
-      Serial.println("[COMMS] UART TX: DIAG:PONG");
+      SD_LOGT("COMMS", "UART TX: DIAG:PONG");
       continue;
     }
     if (!strcmp(line, "DIAG:PONG")) {
-      Serial.println("[COMMS] UART RX: DIAG:PONG");
+      SD_LOGT("COMMS", "UART RX: DIAG:PONG");
       if (sPingPending) {
         sPingPending = false;
         sLastPingOk = true;
-        Serial.println("[COMMS] PING:P4 OK");
+        SD_LOGI("COMMS", "PING:P4 OK");
       }
       continue;
     }
 
-    Serial.print("[COMMS] UART RX: ");
-    Serial.println(line);
+    SD_LOGT("COMMS", "UART RX: %s", line);
     observeP4Emergency(line);
     fanoutEmergency();
     if (handleP4Route(line)) {
@@ -167,31 +365,37 @@ void protocolBridgeLoop() {
     }
     if (espNowTransportHaveDirector()) {
       if (espNowTransportSendToDirector(line)) {
-        Serial.print("[COMMS] TX -> Director: ");
-        Serial.println(line);
+        if (isQuietDeskCmd(line)) {
+          SD_LOGT("COMMS", "TX -> Director: %s", line);
+        } else {
+          SD_LOGT("COMMS", "TX -> Director: %s", line);
+        }
       }
     } else {
-      Serial.println("[COMMS] P4 line held — no Director peer yet");
+      static uint32_t sHoldDirMs = 0;
+      if (showduino_log_rate_ok(&sHoldDirMs, millis(), 5000UL)) {
+        SD_LOGW("COMMS", "P4 line held — no Director peer yet");
+      }
     }
   }
 
   if (sPingPending && (int32_t)(millis() - sPingDeadline) >= 0) {
     sPingPending = false;
     sLastPingOk = false;
-    Serial.println("[COMMS] PING:P4 timeout — no DIAG:PONG");
+    SD_LOGW("COMMS", "PING:P4 timeout — no DIAG:PONG");
   }
 }
 
 bool protocolBridgePingP4() {
   if (!commsUartReady()) {
-    Serial.println("[COMMS] PING:P4 failed — UART not ready");
+    SD_LOGE("COMMS", "PING:P4 failed — UART not ready");
     return false;
   }
   sPingPending = true;
   sLastPingOk = false;
   sPingDeadline = millis() + SHOWDUINO_COMMS_PING_TIMEOUT_MS;
   commsUartWriteLine("DIAG:PING");
-  Serial.println("[COMMS] UART TX: DIAG:PING");
+  SD_LOGT("COMMS", "UART TX: DIAG:PING");
   return true;
 }
 
