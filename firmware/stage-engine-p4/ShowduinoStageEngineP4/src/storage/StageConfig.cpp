@@ -143,7 +143,9 @@ static bool parseE131(const String &json, StageE131Persist &out) {
 static String pixelsToJson(const StagePixelsConfig &c) {
   String j;
   j.reserve(240);
-  j += "{\n  \"formatVersion\": 1,\n  \"enabled\": false,\n  \"gpio\": ";
+  j += "{\n  \"formatVersion\": 1,\n  \"enabled\": ";
+  j += c.enabled ? "true" : "false";
+  j += ",\n  \"gpio\": ";
   j += String((int)SHOWDUINO_SHOW_PIXEL_PIN);
   j += ",\n  \"pixelCount\": ";
   j += String((unsigned)c.pixelCount);
@@ -167,7 +169,7 @@ static bool parsePixels(const String &json, StagePixelsConfig &out) {
   if ((int)gpio != SHOWDUINO_SHOW_PIXEL_PIN) return false;
   tmp.gpio = (int16_t)SHOWDUINO_SHOW_PIXEL_PIN;
   uint32_t count = 0;
-  if (jsonU32(json, "pixelCount", &count) && count > 1024) return false;
+  if (jsonU32(json, "pixelCount", &count) && count > SHOWDUINO_SHOW_PIXEL_MAX) return false;
   tmp.pixelCount = (uint16_t)count;
   jsonStr(json, "colourOrder", tmp.colourOrder, sizeof(tmp.colourOrder));
   uint32_t bri = tmp.brightnessLimit;
@@ -177,7 +179,6 @@ static bool parsePixels(const String &json, StagePixelsConfig &out) {
   if (strcmp(tmp.defaultState, "off") != 0 && strcmp(tmp.defaultState, "black") != 0) {
     copyField(tmp.defaultState, sizeof(tmp.defaultState), "off");
   }
-  tmp.enabled = false; /* engine not implemented; file may request later */
   out = tmp;
   return true;
 }
@@ -323,6 +324,23 @@ bool stageConfigSaveE131() {
   if (!stageStoreAtomicWrite(PATH_E131_CONFIG, json.c_str(), json.length())) return false;
   stageLogWrite(StageLogChannel::Network, "INFO", "e131.json saved");
   return true;
+}
+
+bool stageConfigSavePixels() {
+  const String json = pixelsToJson(sPixels);
+  if (!stageStoreAtomicWrite(PATH_PIXELS_CONFIG, json.c_str(), json.length())) return false;
+  stageLogWrite(StageLogChannel::System, "INFO", "pixels.json saved");
+  return true;
+}
+
+void stageConfigSetPixelCount(uint16_t count) {
+  sPixels.pixelCount = count;
+  (void)stageConfigSavePixels();
+}
+
+void stageConfigSetPixelsEnabled(bool enabled) {
+  sPixels.enabled = enabled;
+  (void)stageConfigSavePixels();
 }
 
 void stageConfigSetLastProduction(const char *id) {

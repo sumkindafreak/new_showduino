@@ -40,6 +40,7 @@
 #include "src/storage/StageConfig.h"
 #include "src/nodes/AudioNodeLink.h"
 #include "src/nodes/LampNodeLink.h"
+#include "src/nodes/PixelNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
@@ -388,6 +389,7 @@ void triggerEmergency(EmergencySource source) {
   stageAudioStopShow();
   audioNodeLinkOnEmergency(true);
   lampNodeLinkOnEmergency(true);
+  pixelNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
   /* Hard Showduino rule: every pixel-capable local output goes bright white. */
@@ -441,6 +443,7 @@ static void applyEmergencyClear() {
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_CLEAR);
   audioNodeLinkOnEmergency(false);
   lampNodeLinkOnEmergency(false);
+  pixelNodeLinkOnEmergency(false);
   gRuntime.onEmergencyCleared(millis(), &gEngine);
   Serial.println("[ESTOP] Emergency cleared");
   showduino_log_emergency(false);
@@ -568,6 +571,7 @@ void sendStatus() {
   sendCommandReply(SHOWDUINO_WIRE_SNAPSHOT_END);
   audioNodeLinkPublishToDirector();
   lampNodeLinkPublishToDirector();
+  pixelNodeLinkPublishToDirector();
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -848,6 +852,8 @@ static void printUsbHelp() {
   Serial.println("  EMERGENCY:CLEAR_CONFIRM    (dual-action; requires pending request)");
   Serial.println("  EMERGENCY:CLEAR_CANCEL");
   Serial.println("  PIXEL:STATUS");
+  Serial.println("  PIXEL:COUNT:<1-1024>   (set length, do not init)");
+  Serial.println("  PIXEL:INIT             (initialise GPIO23 with that length)");
   Serial.println("  PIXEL:TEST | PIXEL:TEST:STOP");
   Serial.println("  PIXEL:OFF | PIXEL:BLACKOUT");
   Serial.println("  PIXEL:SOLID:<r>:<g>:<b>");
@@ -860,6 +866,8 @@ static void printUsbHelp() {
   Serial.println("  PIXEL:SEGMENT:<id>:DURATION:<ms>");
   Serial.println("  PIXEL:SEGMENT:<id>:REVERSE:<0|1>");
   Serial.println("  PIXEL:SEGMENT:<id>:START | STOP | STATUS");
+  Serial.println("  PIXEL:NODE:<LED-01>:COUNT|INIT|STATUS|LOCATE|SEGMENT:...");
+  Serial.println("  PIXEL:NODE:<LED-01>:ID:<new> | NAME:<friendly>");
   Serial.println("  PLUGIN:SCAN");
   Serial.println("  PLUGIN:LIST");
   Serial.println("  PLUGIN:STATUS");
@@ -938,6 +946,7 @@ static void dispatchCommand(const String &command) {
     sendCapabilities();
     audioNodeLinkPublishToDirector();
     lampNodeLinkPublishToDirector();
+    pixelNodeLinkPublishToDirector();
     if (sCmdSource == CommandSource::Comms) {
       const bool welcome = !sDirectorPresent;
       noteDirectorDeskSeen();
@@ -1062,6 +1071,11 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("NODE:PIXEL:")) {
+    pixelNodeLinkHandleReport(command.c_str());
+    return;
+  }
+
   if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
     static uint32_t sLastUnhandledNodeMs = 0;
     if ((int32_t)(millis() - sLastUnhandledNodeMs) >= 5000) {
@@ -1085,6 +1099,13 @@ static void dispatchCommand(const String &command) {
 
   if (command.startsWith("DMX:")) {
     sendCommandReply("UNSUPPORTED:DMX");
+    return;
+  }
+
+  if (command.startsWith("PIXEL:NODE:")) {
+    char reply[180];
+    pixelNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply));
+    if (reply[0]) sendCommandReply(reply);
     return;
   }
 
@@ -1449,7 +1470,6 @@ void setup() {
 #endif
 
   emergencyPixelsBegin();
-  showPixelsBegin();
 
   stageStorageSetLinkPump(pumpLocalServices);
   Serial.println("[SD] Mounting SD card...");
@@ -1463,6 +1483,8 @@ void setup() {
     Serial.println("[SD] ERROR: SD card unavailable");
     Serial.println("[WEB] WebUI unavailable - SD not mounted");
   }
+
+  showPixelsApplyPersisted();
 
   gRuntime.begin(sendToDirectorC);
   gRuntime.setDispatch(timelineDispatchCommand);
@@ -1494,6 +1516,7 @@ void setup() {
   Serial.println("[AUDIO] BOOT waits for Director HELLO (screen power-on)");
   audioNodeLinkBegin();
   lampNodeLinkBegin();
+  pixelNodeLinkBegin();
 
   stageStoreBegin();
   webApiBegin(bootMs);
@@ -1525,6 +1548,7 @@ void loop() {
   stageAudioLoop();
   audioNodeLinkLoop();
   lampNodeLinkLoop();
+  pixelNodeLinkLoop();
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);

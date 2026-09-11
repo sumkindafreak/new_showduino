@@ -24,6 +24,7 @@
 #include "storage/StageStore.h"
 #include "nodes/AudioNodeLink.h"
 #include "nodes/LampNodeLink.h"
+#include "nodes/PixelNodeLink.h"
 
 #ifndef SHOWDUINO_P4_STATIC_WEBUI
 #define SHOWDUINO_P4_STATIC_WEBUI 0
@@ -201,11 +202,13 @@ static bool webCommandAllowed(const String &cmd) {
   }
   if (cmd == "PIXEL:STATUS" || cmd == "PIXEL:TEST" ||
       cmd == "PIXEL:TEST:STOP" || cmd == "PIXEL:OFF" ||
-      cmd == "PIXEL:BLACKOUT") {
+      cmd == "PIXEL:BLACKOUT" || cmd == "PIXEL:INIT" ||
+      cmd == "PIXEL:LOCATE") {
     return true;
   }
-  if (cmd.startsWith("PIXEL:SOLID:") || cmd.startsWith("PIXEL:BRIGHTNESS:") ||
-      cmd.startsWith("PIXEL:SEGMENT:")) {
+  if (cmd.startsWith("PIXEL:COUNT:") || cmd.startsWith("PIXEL:SOLID:") ||
+      cmd.startsWith("PIXEL:BRIGHTNESS:") || cmd.startsWith("PIXEL:SEGMENT:") ||
+      cmd.startsWith("PIXEL:NODE:")) {
     return cmd.length() <= SHOWDUINO_COMMS_CMD_MAX;
   }
   if (cmd == "LAMP:STATUS" || cmd == "LAMP:OFF" || cmd == "LAMP:STOP" ||
@@ -378,15 +381,16 @@ static void handleApiSystem() {
   json += "\n  },\n";
   json += "  \"capabilities\": {\n";
   json += "    \"dmx\": \"parked\",\n";
-  json += "    \"pixels\": \"" + String(showPixelsReady() ? "ready" : "fault") + "\",\n";
+  json += "    \"pixels\": \"" + String(showPixelsReady() ? "ready" : "uninit") + "\",\n";
   json += "    \"ethernet\": \"" + String(showNetworkLive().hardwareInit ? "ready" : "optional") + "\",\n";
   json += "    \"e131\": \"test\",\n";
   json += "    \"audio\": \"" + String(au.codecReady ? "ready" : "fault") + "\",\n";
   json += "    \"inputs\": \"planned\",\n";
   json += "    \"sd\": \"" + String(stageStoreStateName()) + "\",\n";
   json += "    \"pluginBus\": " + String(pluginBusReady() ? "true" : "false") + ",\n";
-  json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
-  json += "    \"lampNode\": \"" + String(lampNodeLinkStatus().online ? "ready" : "searching") + "\"\n";
+    json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
+    json += "    \"lampNode\": \"" + String(lampNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
+    json += "    \"pixelNodes\": \"" + String(pixelNodeLinkOnlineCount() ? "ready" : "searching") + "\"\n";
   json += "  },\n";
   json += "  \"ethernet\": {\n";
   json += "    \"link\": \"" + String(showNetworkLive().hasIp ? "UP" : (showNetworkLive().linkUp ? "UP" : "DOWN")) + "\",\n";
@@ -416,6 +420,8 @@ static void handleApiSystem() {
   audioNodeLinkAppendJson(json);
   json += ",\n  \"lampNode\": ";
   lampNodeLinkAppendJson(json);
+  json += ",\n  \"pixelNodes\": ";
+  pixelNodeLinkAppendJsonArray(json);
   json += "\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
@@ -506,6 +512,10 @@ static void handleApiDevices() {
     json += "\",\n      \"state\": \"";
     json += ln.state;
     json += "\"\n    }";
+  }
+  {
+    bool more = true;
+    pixelNodeLinkAppendDevicesJson(json, more);
   }
   json += "\n  ]\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
@@ -674,7 +684,7 @@ static void handleApiCapabilities() {
          String(showNetworkLive().hardwareInit ? "ready" : "optional") + "\"},\n";
   json += "    {\"name\":\"e131-test\",\"state\":\"ready\"},\n";
   json += "    {\"name\":\"dmx\",\"state\":\"parked\"},\n";
-  json += "    {\"name\":\"pixels\",\"state\":\"" + String(showPixelsReady() ? "ready" : "fault") + "\"},\n";
+  json += "    {\"name\":\"pixels\",\"state\":\"" + String(showPixelsReady() ? "ready" : "uninit") + "\"},\n";
   json += "    {\"name\":\"espnow-nodes\",\"state\":\"planned\"}\n";
   json += "  ],\n";
   json += "  \"devices\": ";
@@ -810,12 +820,16 @@ static void handleApiLighting() {
   gWebApiLogger.logHttpRequest("GET", "/api/lighting");
   String json = "{\n";
   json += "  \"dmx\": \"parked\",\n";
-  json += "  \"pixelNodes\": \"planned\",\n";
+  json += "  \"pixelNodes\": ";
+  pixelNodeLinkAppendJsonArray(json);
+  json += ",\n";
   json += "  \"emergencyPixelsReady\": " + String(emergencyPixelsReady() ? "true" : "false") + ",\n";
   json += "  \"emergencyPixelsWhite\": " + String(emergencyPixelsWhiteActive() ? "true" : "false") + ",\n";
   json += "  \"emergencyActive\": " + String(emergencyLocked ? "true" : "false") + ",\n";
   json += "  \"showPixelsReady\": " + String(showPixelsReady() ? "true" : "false") + ",\n";
   json += "  \"showPixelsCount\": " + String((unsigned)showPixelsCount()) + ",\n";
+  json += "  \"showPixelsConfiguredCount\": " + String((unsigned)showPixelsConfiguredCount()) + ",\n";
+  json += "  \"showPixelsMax\": " + String((unsigned)showPixelsMax()) + ",\n";
   json += "  \"showPixelsBrightness\": " + String((unsigned)showPixelsGlobalBrightness()) + ",\n";
   json += "  \"showPixelsEmergencyWhite\": " + String(showPixelsEmergencyOverride() ? "true" : "false") + ",\n";
   json += "  \"showPixelPin\": " + String((unsigned)SHOWDUINO_SHOW_PIXEL_PIN) + ",\n";

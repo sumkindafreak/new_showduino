@@ -7,6 +7,7 @@
 #if SOC_RMT_SUPPORTED
 #include "esp32-hal-rmt.h"
 #endif
+#include "storage/StageConfig.h"
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -15,6 +16,8 @@ static uint32_t sTestStartedMs = 0;
 static uint32_t sLastFrameMs = 0;
 static uint32_t sLastEmergencyRefreshMs = 0;
 static uint8_t sGlobalBrightness = SHOWDUINO_SHOW_PIXEL_BRIGHTNESS;
+static uint16_t sConfiguredCount = 0;
+static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr; /* RGB triplets */
 #if SOC_RMT_SUPPORTED
@@ -31,11 +34,11 @@ static uint8_t effectScale(uint8_t value, uint8_t factor) {
 }
 
 static void clearFrame() {
-  if (sFrame) memset(sFrame, 0, (size_t)SHOWDUINO_SHOW_PIXEL_COUNT * 3U);
+  if (sFrame) memset(sFrame, 0, (size_t)sCount * 3U);
 }
 
 static void setPixelRaw(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
-  if (!sFrame || index >= SHOWDUINO_SHOW_PIXEL_COUNT) return;
+  if (!sFrame || index >= sCount) return;
   const size_t base = (size_t)index * 3U;
   sFrame[base + 0] = r;
   sFrame[base + 1] = g;
@@ -54,7 +57,7 @@ static void setPixelScaled(uint16_t index, const ShowduinoPixelSegmentState &seg
 static void fillSegment(const ShowduinoPixelSegmentState &seg,
                         ShowduinoPixelColor color, uint8_t fxScale = 255) {
   const uint16_t end = min<uint32_t>((uint32_t)seg.start + seg.count,
-                                     SHOWDUINO_SHOW_PIXEL_COUNT);
+                                     sCount);
   for (uint16_t i = seg.start; i < end; ++i) setPixelScaled(i, seg, color, fxScale);
 }
 
@@ -87,7 +90,7 @@ static ShowduinoPixelColor hsv(uint16_t hue, uint8_t sat, uint8_t val) {
 static void buildSymbolsFromFrame() {
   if (!sFrame || !sItems) return;
   size_t item = 0;
-  for (uint16_t led = 0; led < SHOWDUINO_SHOW_PIXEL_COUNT; ++led) {
+  for (uint16_t led = 0; led < sCount; ++led) {
     const size_t base = (size_t)led * 3U;
     const uint8_t bytes[3] = {sFrame[base + 1], sFrame[base + 0], sFrame[base + 2]}; /* GRB */
     for (uint8_t bi = 0; bi < 3; ++bi) {
@@ -150,7 +153,7 @@ static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
 
   const uint32_t elapsed = now - seg.startedMs;
   const uint16_t end = min<uint32_t>((uint32_t)seg.start + seg.count,
-                                     SHOWDUINO_SHOW_PIXEL_COUNT);
+                                     sCount);
   const uint16_t actualCount = (end > seg.start) ? (end - seg.start) : 0;
   if (!actualCount) return;
 
@@ -381,7 +384,7 @@ static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
 static void renderEmergencyWhite() {
   if (!sFrame) return;
   const uint8_t v = sGlobalBrightness;
-  for (uint16_t i = 0; i < SHOWDUINO_SHOW_PIXEL_COUNT; ++i) setPixelRaw(i, v, v, v);
+  for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, v, v, v);
 }
 
 static void renderCommissioningTest(uint32_t now) {
@@ -389,16 +392,16 @@ static void renderCommissioningTest(uint32_t now) {
   const uint32_t block = 700UL;
   clearFrame();
   if (elapsed < block) {
-    for (uint16_t i = 0; i < SHOWDUINO_SHOW_PIXEL_COUNT; ++i) setPixelRaw(i, sGlobalBrightness, 0, 0);
+    for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, sGlobalBrightness, 0, 0);
   } else if (elapsed < block * 2UL) {
-    for (uint16_t i = 0; i < SHOWDUINO_SHOW_PIXEL_COUNT; ++i) setPixelRaw(i, 0, sGlobalBrightness, 0);
+    for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 0, sGlobalBrightness, 0);
   } else if (elapsed < block * 3UL) {
-    for (uint16_t i = 0; i < SHOWDUINO_SHOW_PIXEL_COUNT; ++i) setPixelRaw(i, 0, 0, sGlobalBrightness);
+    for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 0, 0, sGlobalBrightness);
   } else if (elapsed < block * 4UL) {
-    for (uint16_t i = 0; i < SHOWDUINO_SHOW_PIXEL_COUNT; ++i) setPixelRaw(i, sGlobalBrightness, sGlobalBrightness, sGlobalBrightness);
+    for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, sGlobalBrightness, sGlobalBrightness, sGlobalBrightness);
   } else {
     const uint32_t chaseElapsed = elapsed - block * 4UL;
-    const uint32_t chaseLength = (uint32_t)SHOWDUINO_SHOW_PIXEL_COUNT * 30UL;
+    const uint32_t chaseLength = (uint32_t)sCount * 30UL;
     if (chaseElapsed >= chaseLength) {
       sTestActive = false;
       clearFrame();
@@ -406,25 +409,54 @@ static void renderCommissioningTest(uint32_t now) {
       return;
     }
     uint16_t pos = (uint16_t)(chaseElapsed / 30UL);
-    if (pos < SHOWDUINO_SHOW_PIXEL_COUNT) setPixelRaw(pos, sGlobalBrightness, sGlobalBrightness, sGlobalBrightness);
+    if (pos < sCount) setPixelRaw(pos, sGlobalBrightness, sGlobalBrightness, sGlobalBrightness);
   }
 }
 
+static void showPixelsShutdown() {
+  if (sReady && sFrame) {
+    clearFrame();
+    writeFrame();
+  }
+#if SOC_RMT_SUPPORTED
+  if (sReady) {
+    rmtDeinit(SHOWDUINO_SHOW_PIXEL_PIN);
+  }
+#endif
+  sReady = false;
+  sTestActive = false;
+  sCount = 0;
+  sSymbolCount = 0;
+  free(sFrame);
+  sFrame = nullptr;
+#if SOC_RMT_SUPPORTED
+  free(sItems);
+  sItems = nullptr;
+#endif
+}
+
 bool showPixelsBegin() {
-  if (sReady) return true;
+  if (sReady && sCount == sConfiguredCount && sConfiguredCount > 0) return true;
+  if (sConfiguredCount == 0 || sConfiguredCount > SHOWDUINO_SHOW_PIXEL_MAX) {
+    Serial.printf("[PIXEL] GPIO23 waiting for PIXEL:COUNT:<1-%u> then PIXEL:INIT\n",
+                  (unsigned)SHOWDUINO_SHOW_PIXEL_MAX);
+    return false;
+  }
 #if !SOC_RMT_SUPPORTED
   Serial.println("[PIXEL] RMT not supported — P4 show pixel line disabled");
   return false;
 #else
+  if (sReady) showPixelsShutdown();
+
   for (uint8_t i = 0; i < SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS; ++i) sSegments[i] = showduinoPixelDefaultSegment();
 
-  sFrame = (uint8_t *)calloc((size_t)SHOWDUINO_SHOW_PIXEL_COUNT * 3U, 1);
-  const size_t bits = (size_t)SHOWDUINO_SHOW_PIXEL_COUNT * 24U;
+  sCount = sConfiguredCount;
+  sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
+  const size_t bits = (size_t)sCount * 24U;
   sItems = (rmt_data_t *)malloc(bits * sizeof(rmt_data_t));
   if (!sFrame || !sItems) {
     Serial.println("[PIXEL] Show line allocation failed");
-    free(sFrame); sFrame = nullptr;
-    free(sItems); sItems = nullptr;
+    showPixelsShutdown();
     return false;
   }
 
@@ -434,21 +466,36 @@ bool showPixelsBegin() {
   if (!inited) inited = rmtInit(SHOWDUINO_SHOW_PIXEL_PIN, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, 10000000);
   if (!inited) {
     Serial.printf("[PIXEL] Show line RMT init failed on GPIO %d\n", SHOWDUINO_SHOW_PIXEL_PIN);
-    free(sFrame); sFrame = nullptr;
-    free(sItems); sItems = nullptr;
+    rmtDeinit(SHOWDUINO_SHOW_PIXEL_PIN);
+    showPixelsShutdown();
     return false;
   }
   rmtSetEOT(SHOWDUINO_SHOW_PIXEL_PIN, 0);
   sReady = true;
   clearFrame();
   writeFrame();
+  stageConfigSetPixelsEnabled(true);
   Serial.printf("[PIXEL] Show line ready GPIO=%d count=%u segments=%u data-resistor=%uR\n",
                 SHOWDUINO_SHOW_PIXEL_PIN,
-                (unsigned)SHOWDUINO_SHOW_PIXEL_COUNT,
+                (unsigned)sCount,
                 (unsigned)SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS,
                 (unsigned)SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS);
   return true;
 #endif
+}
+
+void showPixelsApplyPersisted() {
+  const uint16_t n = stageConfigPixels().pixelCount;
+  if (n > 0 && n <= SHOWDUINO_SHOW_PIXEL_MAX) {
+    sConfiguredCount = n;
+  }
+  if (sConfiguredCount == 0) {
+    Serial.printf("[PIXEL] GPIO23 not initialised — set line length then PIXEL:INIT (1-%u, default %u)\n",
+                  (unsigned)SHOWDUINO_SHOW_PIXEL_MAX,
+                  (unsigned)SHOWDUINO_SHOW_PIXEL_DEFAULT);
+    return;
+  }
+  (void)showPixelsBegin();
 }
 
 void showPixelsBlackout() {
@@ -457,13 +504,16 @@ void showPixelsBlackout() {
     sSegments[i].active = false;
     sSegments[i].effect = ShowduinoPixelFx::Off;
   }
-  if (!sReady && !showPixelsBegin()) return;
+  if (!sReady) return;
   clearFrame();
   writeFrame();
 }
 
 void showPixelsOnEmergency(bool active) {
-  if (!sReady && !showPixelsBegin()) return;
+  if (!sReady) {
+    if (sConfiguredCount == 0) return;
+    if (!showPixelsBegin()) return;
+  }
   sEmergency = active;
   sTestActive = false;
   if (active) {
@@ -508,13 +558,16 @@ void showPixelsService() {
 
 bool showPixelsReady() { return sReady; }
 bool showPixelsEmergencyOverride() { return sEmergency; }
-uint16_t showPixelsCount() { return SHOWDUINO_SHOW_PIXEL_COUNT; }
+uint16_t showPixelsCount() { return sCount; }
+uint16_t showPixelsConfiguredCount() { return sConfiguredCount; }
+uint16_t showPixelsMax() { return SHOWDUINO_SHOW_PIXEL_MAX; }
 uint8_t showPixelsGlobalBrightness() { return sGlobalBrightness; }
 
 void showPixelsPrintStatus() {
-  Serial.printf("[PIXEL] SHOW GPIO=%d count=%u ready=%s brightness=%u emergency=%s\n",
+  Serial.printf("[PIXEL] SHOW GPIO=%d configured=%u active=%u ready=%s brightness=%u emergency=%s\n",
                 SHOWDUINO_SHOW_PIXEL_PIN,
-                (unsigned)SHOWDUINO_SHOW_PIXEL_COUNT,
+                (unsigned)sConfiguredCount,
+                (unsigned)sCount,
                 sReady ? "YES" : "NO",
                 (unsigned)sGlobalBrightness,
                 sEmergency ? "WHITE_OVERRIDE" : "CLEAR");
@@ -575,10 +628,6 @@ static void setReply(char *reply, size_t len, const String &value) {
 bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) {
   if (reply && replyLen) reply[0] = '\0';
   if (!command || strncmp(command, "PIXEL:", 6) != 0) return false;
-  if (!sReady && !showPixelsBegin()) {
-    setReply(reply, replyLen, "PIXEL:ERROR:NOT_READY");
-    return true;
-  }
 
   String cmd(command);
   String p[12];
@@ -586,12 +635,53 @@ bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) 
 
   if (cmd == "PIXEL:STATUS") {
     showPixelsPrintStatus();
-    char line[128];
-    snprintf(line, sizeof(line), "PIXEL:STATUS:%s:GPIO=%d:COUNT=%u:BRIGHTNESS=%u:EMERGENCY=%u",
-             sReady ? "READY" : "FAULT", SHOWDUINO_SHOW_PIXEL_PIN,
-             (unsigned)SHOWDUINO_SHOW_PIXEL_COUNT, (unsigned)sGlobalBrightness,
-             sEmergency ? 1U : 0U);
+    char line[160];
+    snprintf(line, sizeof(line),
+             "PIXEL:STATUS:%s:GPIO=%d:CONFIGURED=%u:COUNT=%u:MAX=%u:BRIGHTNESS=%u:EMERGENCY=%u",
+             sReady ? "READY" : "UNINIT", SHOWDUINO_SHOW_PIXEL_PIN,
+             (unsigned)sConfiguredCount, (unsigned)sCount,
+             (unsigned)SHOWDUINO_SHOW_PIXEL_MAX,
+             (unsigned)sGlobalBrightness, sEmergency ? 1U : 0U);
     setReply(reply, replyLen, line);
+    return true;
+  }
+
+  if (n == 3 && p[1] == "COUNT") {
+    if (sEmergency) {
+      setReply(reply, replyLen, "PIXEL:REJECTED:EMERGENCY_ACTIVE");
+      return true;
+    }
+    uint16_t count = 0;
+    if (!parseU16(p[2], &count) || count == 0 || count > SHOWDUINO_SHOW_PIXEL_MAX) {
+      setReply(reply, replyLen, "PIXEL:ERROR:COUNT");
+      return true;
+    }
+    sConfiguredCount = count;
+    stageConfigSetPixelCount(count);
+    char line[80];
+    snprintf(line, sizeof(line), "PIXEL:COUNT:OK:%u", (unsigned)count);
+    setReply(reply, replyLen, line);
+    Serial.printf("[PIXEL] Line length set to %u — PIXEL:INIT to apply\n", (unsigned)count);
+    return true;
+  }
+
+  if (cmd == "PIXEL:INIT") {
+    if (sEmergency) {
+      setReply(reply, replyLen, "PIXEL:REJECTED:EMERGENCY_ACTIVE");
+      return true;
+    }
+    if (showPixelsBegin()) {
+      char line[80];
+      snprintf(line, sizeof(line), "PIXEL:INIT:OK:%u", (unsigned)sCount);
+      setReply(reply, replyLen, line);
+    } else {
+      setReply(reply, replyLen, "PIXEL:ERROR:INIT");
+    }
+    return true;
+  }
+
+  if (!sReady) {
+    setReply(reply, replyLen, "PIXEL:ERROR:NOT_INITIALISED");
     return true;
   }
 
@@ -637,7 +727,7 @@ bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) 
     }
     ShowduinoPixelSegmentState &seg = sSegments[0];
     seg = showduinoPixelDefaultSegment();
-    seg.configured = true; seg.active = true; seg.start = 0; seg.count = SHOWDUINO_SHOW_PIXEL_COUNT;
+    seg.configured = true; seg.active = true; seg.start = 0; seg.count = sCount;
     seg.effect = ShowduinoPixelFx::Solid; seg.primary = {r, g, b}; seg.startedMs = millis();
     setReply(reply, replyLen, "PIXEL:SOLID:OK");
     return true;
@@ -668,7 +758,7 @@ bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) 
   if (op == "RANGE" && n == 6) {
     uint16_t start, count;
     if (!parseU16(p[4], &start) || !parseU16(p[5], &count) || count == 0 ||
-        start >= SHOWDUINO_SHOW_PIXEL_COUNT || (uint32_t)start + count > SHOWDUINO_SHOW_PIXEL_COUNT) {
+        start >= sCount || (uint32_t)start + count > sCount) {
       setReply(reply, replyLen, "PIXEL:ERROR:RANGE");
       return true;
     }
