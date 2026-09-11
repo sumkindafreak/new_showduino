@@ -1,11 +1,11 @@
 {
-  "buildHash": "a9f66d97fab7",
-  "buildUtc": "2026-09-11T20:03:02Z",
+  "buildHash": "c1ea09fcc1b3",
+  "buildUtc": "2026-09-11T20:30:27Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
-  "assetCount": 37,
-  "rawBytes": 698531,
-  "embeddedBytes": 172113,
+  "assetCount": 39,
+  "rawBytes": 756848,
+  "embeddedBytes": 185078,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -30,9 +30,9 @@
     "ref": "main",
     "commit": "31efc676cb6f70a77d0353db6d0961aed7f7e59a",
     "route": "/studio/",
-    "assetCount": 34,
-    "rawBytes": 554809,
-    "embeddedBytes": 138976,
+    "assetCount": 36,
+    "rawBytes": 612656,
+    "embeddedBytes": 151915,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -46,6 +46,7 @@
       "js/cloud/supabase-service.js",
       "js/api.js",
       "js/shdo_model.js",
+      "js/showduino-pixel-authoring.js",
       "js/connection_detector.js",
       "js/timeline.js",
       "js/timeline-fx-daw.js",
@@ -66,7 +67,21 @@
       "js/studio-mobile.js",
       "js/current-system-ui.js",
       "js/studio-v4.js",
-      "css/studio-mobile-v4.css"
+      "css/studio-mobile-v4.css",
+      "css/studio-mobile-simple.css"
+    ],
+    "overlayDir": "web/studio-v4-overlay",
+    "overlayFiles": [
+      "css/studio-mobile-simple.css",
+      "css/studio-v4.css",
+      "js/shdo_model.js",
+      "js/showduino-pixel-authoring.js",
+      "js/studio-deploy.js",
+      "js/studio-mobile.js",
+      "js/studio-package.js",
+      "js/studio-v4.js",
+      "js/timeline.js",
+      "studio.html"
     ],
     "cloudEnabled": false,
     "externalCdnDependencies": false
@@ -75,15 +90,15 @@
     {
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 10661,
-      "embedded": 3465,
+      "raw": 10720,
+      "embedded": 3470,
       "gzip": true
     },
     {
       "path": "/css/studio.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 12091,
-      "embedded": 2898,
+      "raw": 12502,
+      "embedded": 2919,
       "gzip": true
     },
     {
@@ -96,8 +111,8 @@
     {
       "path": "/studio/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 11272,
-      "embedded": 3170,
+      "raw": 11563,
+      "embedded": 3190,
       "gzip": true
     },
     {
@@ -152,8 +167,8 @@
     {
       "path": "/studio/css/studio-v4.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 26256,
-      "embedded": 5816,
+      "raw": 27338,
+      "embedded": 5957,
       "gzip": true
     },
     {
@@ -180,8 +195,15 @@
     {
       "path": "/studio/js/shdo_model.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 8181,
-      "embedded": 2401,
+      "raw": 9033,
+      "embedded": 2510,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/showduino-pixel-authoring.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 27976,
+      "embedded": 6810,
       "gzip": true
     },
     {
@@ -194,8 +216,8 @@
     {
       "path": "/studio/js/timeline.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 63515,
-      "embedded": 13848,
+      "raw": 65227,
+      "embedded": 13989,
       "gzip": true
     },
     {
@@ -271,8 +293,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 18533,
-      "embedded": 4883,
+      "raw": 20741,
+      "embedded": 5266,
       "gzip": true
     },
     {
@@ -292,8 +314,8 @@
     {
       "path": "/studio/js/studio-deploy.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 14502,
-      "embedded": 4652,
+      "raw": 15966,
+      "embedded": 4975,
       "gzip": true
     },
     {
@@ -306,8 +328,8 @@
     {
       "path": "/studio/js/studio-mobile.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 48404,
-      "embedded": 11617,
+      "raw": 53731,
+      "embedded": 12503,
       "gzip": true
     },
     {
@@ -320,8 +342,8 @@
     {
       "path": "/studio/js/studio-v4.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 50181,
-      "embedded": 12928,
+      "raw": 52074,
+      "embedded": 13395,
       "gzip": true
     },
     {
@@ -329,6 +351,13 @@
       "mime": "text/css; charset=utf-8",
       "raw": 12586,
       "embedded": 3218,
+      "gzip": true
+    },
+    {
+      "path": "/studio/css/studio-mobile-simple.css",
+      "mime": "text/css; charset=utf-8",
+      "raw": 15042,
+      "embedded": 3659,
       "gzip": true
     }
   ]
