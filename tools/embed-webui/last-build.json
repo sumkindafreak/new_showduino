@@ -1,11 +1,11 @@
 {
-  "buildHash": "c403218f02f9",
-  "buildUtc": "2026-09-11T19:40:57Z",
+  "buildHash": "a9f66d97fab7",
+  "buildUtc": "2026-09-11T20:03:02Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 37,
-  "rawBytes": 699001,
-  "embeddedBytes": 172139,
+  "rawBytes": 698531,
+  "embeddedBytes": 172113,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -75,15 +75,15 @@
     {
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 10720,
-      "embedded": 3470,
+      "raw": 10661,
+      "embedded": 3465,
       "gzip": true
     },
     {
       "path": "/css/studio.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 12502,
-      "embedded": 2919,
+      "raw": 12091,
+      "embedded": 2898,
       "gzip": true
     },
     {
