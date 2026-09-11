@@ -1,0 +1,149 @@
+{
+  "schema": "showduino-production-v2",
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "project": {
+    "id": "first-audio-test",
+    "name": "First Audio Test",
+    "description": "Audio Node Hello World. Plays test.wav once, then stops.",
+    "author": "Showduino",
+    "version": "2.0.0",
+    "revision": 1,
+    "duration": 30000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-hand-authored",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "productionCannotDisable": true,
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "devices": [
+    {
+      "id": "audio-1",
+      "name": "Audio Node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "AUDIO-01"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-audio",
+      "name": "Audio Node",
+      "type": "audio",
+      "enabled": true,
+      "order": 0,
+      "targetDeviceId": "audio-1"
+    }
+  ],
+  "clips": [
+    {
+      "id": "play-test",
+      "trackId": "track-audio",
+      "sceneId": "scene-main",
+      "cueId": "cue-play",
+      "name": "Play test.wav",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 3000,
+      "durationMs": 22000,
+      "enabled": true,
+      "params": {
+        "file": "test.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Play test.wav",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 22000,
+        "value": "test.wav",
+        "params": {
+          "file": "test.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "show-end",
+      "trackId": "track-audio",
+      "sceneId": "scene-main",
+      "cueId": "cue-end",
+      "name": "complete",
+      "type": "log",
+      "startMs": 30000,
+      "durationMs": 0,
+      "enabled": true
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main",
+      "name": "First Audio Test",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-play",
+          "name": "Play test.wav",
+          "trigger": "Timeline",
+          "clipIds": ["play-test"]
+        },
+        {
+          "id": "cue-end",
+          "name": "Show end",
+          "trigger": "Timeline",
+          "clipIds": ["show-end"]
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-test-wav",
+      "name": "test.wav",
+      "type": "audio",
+      "path": "test.wav"
+    }
+  ],
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-hand-authored-hello-world"
+  }
+}

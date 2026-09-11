@@ -1,7 +1,33 @@
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <string>
 
 #include "../../protocol/showduino_shdo.h"
+
+static bool loadFile(const char *path, std::string *out) {
+  if (!path || !out) return false;
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return false;
+  out->assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  return !out->empty();
+}
+
+static bool loadFirstAudioExample(std::string *out, std::string *usedPath) {
+  static const char *kCandidates[] = {
+      "../../examples/productions/first-audio-test.shdo",
+      "../examples/productions/first-audio-test.shdo",
+      "examples/productions/first-audio-test.shdo",
+      "first-audio-test.shdo",
+      nullptr};
+  for (int i = 0; kCandidates[i]; ++i) {
+    if (loadFile(kCandidates[i], out)) {
+      if (usedPath) *usedPath = kCandidates[i];
+      return true;
+    }
+  }
+  return false;
+}
 
 static int failures = 0;
 
@@ -199,6 +225,66 @@ int main() {
   expect(sawLed01, "mixed production keeps LED-01 PIXEL:NODE commands");
   expect(sawLed02, "mixed production keeps LED-02 PIXEL:NODE commands");
   expect(sawAudio, "mixed production keeps Audio Node commands");
+
+  std::string example;
+  std::string examplePath;
+  expect(loadFirstAudioExample(&example, &examplePath),
+         "canonical first-audio-test.shdo is loadable");
+  if (!example.empty()) {
+    ShdoManifest hello{};
+    ShdoCue helloCues[16]{};
+    uint16_t helloCount = 0;
+    const ShdoStatus helloOk = shdoCompile(example.c_str(), example.size(), &hello,
+                                           helloCues, 16, &helloCount, err, sizeof(err));
+    expect(helloOk == SHDO_OK, "first-audio-test.shdo compiles");
+    expect(std::strcmp(hello.productionId, "first-audio-test") == 0,
+           "first-audio-test keeps production id");
+    expect(std::strcmp(hello.name, "First Audio Test") == 0,
+           "first-audio-test keeps production name");
+    expect(helloCount == 4, "first-audio-test compiles four runtime cues");
+
+    bool sawVol = false, sawPlay = false, sawStop = false, sawEnd = false;
+    bool sawPixel = false, sawLamp = false, sawGpio = false, sawEmerg = false;
+    uint32_t lastMs = 0;
+    std::printf("first-audio-test compiled from %s\n", examplePath.c_str());
+    for (uint16_t i = 0; i < helloCount; ++i) {
+      std::printf("  %lu ms -> %s\n",
+                  (unsigned long)helloCues[i].timeMs, helloCues[i].command);
+      if (helloCues[i].timeMs == 3000 &&
+          std::strcmp(helloCues[i].command, "AUDIO:NODE:VOLUME:80") == 0) {
+        sawVol = true;
+      }
+      if (helloCues[i].timeMs == 3000 &&
+          std::strcmp(helloCues[i].command, "AUDIO:NODE:PLAY:test.wav") == 0) {
+        sawPlay = true;
+      }
+      if (helloCues[i].timeMs == 25000 &&
+          std::strcmp(helloCues[i].command, "AUDIO:NODE:STOP") == 0) {
+        sawStop = true;
+      }
+      if (helloCues[i].timeMs == 30000 &&
+          std::strstr(helloCues[i].command, "INTERNAL:LOG:") != nullptr) {
+        sawEnd = true;
+      }
+      if (std::strstr(helloCues[i].command, "PIXEL:") != nullptr) sawPixel = true;
+      if (std::strstr(helloCues[i].command, "LAMP:") != nullptr) sawLamp = true;
+      if (std::strstr(helloCues[i].command, "GPIO") != nullptr) sawGpio = true;
+      if (std::strstr(helloCues[i].command, "EMERGENCY") != nullptr) sawEmerg = true;
+      if (helloCues[i].timeMs > lastMs) lastMs = helloCues[i].timeMs;
+    }
+    expect(sawVol, "first-audio-test emits VOLUME:80 at 3000 ms");
+    expect(sawPlay, "first-audio-test emits PLAY:test.wav at 3000 ms");
+    expect(sawStop, "first-audio-test emits STOP at 25000 ms");
+    expect(sawEnd, "first-audio-test ends at 30000 ms");
+    expect(lastMs == 30000, "first-audio-test duration is last cue at 30000 ms");
+    expect(!sawPixel && !sawLamp && !sawGpio && !sawEmerg,
+           "first-audio-test has no pixel, lamp, GPIO, or emergency cues");
+    expect(example.find("pixel-node") == std::string::npos &&
+               example.find("lamp-node") == std::string::npos &&
+               example.find("\"type\": \"pixel\"") == std::string::npos &&
+               example.find("\"type\": \"lamp\"") == std::string::npos,
+           "first-audio-test authoring binds only the Audio Node");
+  }
 
   return failures ? 1 : 0;
 }
