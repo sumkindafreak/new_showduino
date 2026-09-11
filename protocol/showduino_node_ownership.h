@@ -99,6 +99,7 @@ static inline int showduino_owner_is_grant_cmd(const char *cmd) {
   if (strcmp(cmd, "AUDIO:OWN:GRANT") == 0) return 1;
   if (strcmp(cmd, "AUDIO:NODE:OWN:GRANT") == 0) return 1;
   if (strcmp(cmd, "PIXEL:OWN:GRANT") == 0) return 1;
+  if (strcmp(cmd, "PIXEL:NODE:OWN:GRANT") == 0) return 1;
   if (strcmp(cmd, "MOSFET:OWN:GRANT") == 0) return 1;
   return 0;
 }

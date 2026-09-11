@@ -182,6 +182,8 @@ inline bool showduino_log_is_routine_wire(const char *s) {
   if (!strncmp(s, "NODE:AUDIO:STATUS:", 18)) return true;
   if (!strncmp(s, "NODE:LAMP:ANNOUNCE:", 19)) return true;
   if (!strncmp(s, "NODE:LAMP:STATUS:", 17)) return true;
+  if (!strncmp(s, "NODE:PIXEL:ANNOUNCE:", 20)) return true;
+  if (!strncmp(s, "NODE:PIXEL:STATUS:", 18)) return true;
   if (!strncmp(s, "STATE:", 6)) return true;
   if (!strncmp(s, "SHOW:STATE:", 11)) return true;
   if (!strcmp(s, "STATUS:READY") || !strcmp(s, "STATUS:REQUEST") ||

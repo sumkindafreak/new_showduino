@@ -21,6 +21,7 @@ extern "C" {
 #define SHOWDUINO_WIRE_STATE_NODE_RELAY_PREFIX "STATE:NODE:RELAY:"
 #define SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX "STATE:NODE:AUDIO:"
 #define SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX  "STATE:NODE:LAMP:"
+#define SHOWDUINO_WIRE_STATE_NODE_PIXEL_PREFIX "STATE:NODE:PIXEL:"
 #define SHOWDUINO_WIRE_STATE_RELAY_PREFIX "STATE:RELAY:"
 /* Reserved for a future Director Ethernet / E1.31 status page. Not published yet. */
 #define SHOWDUINO_WIRE_STATE_ETHERNET_PREFIX "STATE:ETHERNET:"
@@ -185,6 +186,68 @@ static inline ShowduinoNodeAvailWire showduino_lamp_wire_to_avail(ShowduinoLampN
   }
   if (w == SHOWDUINO_LAMP_NODE_WIRE_OFFLINE) return SHOWDUINO_NODE_WIRE_OFFLINE;
   return SHOWDUINO_NODE_WIRE_INVALID;
+}
+
+#define SHOWDUINO_WIRE_STATE_NODE_PIXEL_DETAIL_PREFIX "STATE:NODE:PIXEL:D:"
+
+typedef enum ShowduinoPixelNodeWire {
+  SHOWDUINO_PIXEL_NODE_WIRE_OFFLINE = 0,
+  SHOWDUINO_PIXEL_NODE_WIRE_ONLINE,
+  SHOWDUINO_PIXEL_NODE_WIRE_FAULT,
+  SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY,
+  SHOWDUINO_PIXEL_NODE_WIRE_INVALID = -1
+} ShowduinoPixelNodeWire;
+
+typedef struct ShowduinoPixelDetailWire {
+  uint8_t online;
+  uint8_t seen;
+  char firstId[16];
+  char firstState[20];
+} ShowduinoPixelDetailWire;
+
+static inline ShowduinoPixelNodeWire showduino_parse_state_node_pixel(const char *line) {
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_PIXEL_PREFIX) - 1;
+  if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_PIXEL_PREFIX, prefixLen) != 0) {
+    return SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
+  }
+  const char *v = line + prefixLen;
+  if (v[0] && v[1] == ':' && v[0] == 'D') return SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
+  if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_PIXEL_NODE_WIRE_OFFLINE;
+  if (strcmp(v, "ONLINE") == 0 || strcmp(v, "ACTIVE") == 0) return SHOWDUINO_PIXEL_NODE_WIRE_ONLINE;
+  if (strcmp(v, "FAULT") == 0) return SHOWDUINO_PIXEL_NODE_WIRE_FAULT;
+  if (strcmp(v, "EMERGENCY") == 0) return SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY;
+  return SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
+}
+
+static inline ShowduinoNodeAvailWire showduino_pixel_wire_to_avail(ShowduinoPixelNodeWire w) {
+  if (w == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE) return SHOWDUINO_NODE_WIRE_ONLINE;
+  if (w == SHOWDUINO_PIXEL_NODE_WIRE_FAULT || w == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
+    return SHOWDUINO_NODE_WIRE_FAULT;
+  }
+  if (w == SHOWDUINO_PIXEL_NODE_WIRE_OFFLINE) return SHOWDUINO_NODE_WIRE_OFFLINE;
+  return SHOWDUINO_NODE_WIRE_INVALID;
+}
+
+static inline int showduino_parse_state_node_pixel_detail(const char *line,
+                                                         ShowduinoPixelDetailWire *out) {
+  if (!line || !out) return 0;
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_PIXEL_DETAIL_PREFIX) - 1;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_PIXEL_DETAIL_PREFIX, prefixLen) != 0) return 0;
+  memset(out, 0, sizeof(*out));
+  const char *p = line + prefixLen;
+  out->online = (uint8_t)strtoul(p, NULL, 10);
+  const char *c1 = strchr(p, ':');
+  if (!c1) return 1;
+  out->seen = (uint8_t)strtoul(c1 + 1, NULL, 10);
+  const char *c2 = strchr(c1 + 1, ':');
+  if (!c2) return 1;
+  const char *c3 = strchr(c2 + 1, ':');
+  size_t n = c3 ? (size_t)(c3 - (c2 + 1)) : strlen(c2 + 1);
+  if (n >= sizeof(out->firstId)) n = sizeof(out->firstId) - 1;
+  memcpy(out->firstId, c2 + 1, n);
+  out->firstId[n] = '\0';
+  if (c3) strncpy(out->firstState, c3 + 1, sizeof(out->firstState) - 1);
+  return 1;
 }
 
 static inline int showduino_parse_state_node_lamp_detail(const char *line,

@@ -10,6 +10,7 @@
 
 #include "showduino_version.h"
 #include "showduino_lamp_node.h"
+#include "showduino_pixel_node.h"
 
 /*
  * SHDO v2 authoring-document validator and P4 runtime projector.
@@ -267,6 +268,7 @@ struct ShdoDevice {
   char id[SHOWDUINO_SHDO_ID_MAX];
   char type[24];
   char route[32];
+  char nodeId[16];
   uint32_t pixelStart;
   uint32_t pixelCount;
 };
@@ -566,6 +568,8 @@ static bool shdoParseDevice(ShdoJson &r, ShdoDevice *device) {
             if (!r.u32(&device->pixelStart)) return false;
           } else if (strcmp(bkey, "pixelCount") == 0) {
             if (!r.u32(&device->pixelCount)) return false;
+          } else if (strcmp(bkey, "nodeId") == 0) {
+            if (!r.string(device->nodeId, sizeof(device->nodeId))) return false;
           } else if (!r.skipValue()) {
             return false;
           }
@@ -596,7 +600,18 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
     *status = SHDO_MISSING_DEVICE;
     return false;
   }
-  if (strcmp(device->route, "p4-show-pixels") != 0) {
+  char prefix[40];
+  prefix[0] = '\0';
+  if (strcmp(device->route, "p4-show-pixels") == 0) {
+    strncpy(prefix, "PIXEL:", sizeof(prefix) - 1);
+  } else if (strcmp(device->route, "pixel-node") == 0) {
+    const char *nid = device->nodeId[0] ? device->nodeId : device->id;
+    if (!nid[0] || strlen(nid) > SHOWDUINO_PIXEL_ID_MAX) {
+      *status = SHDO_UNSUPPORTED_DEVICE;
+      return false;
+    }
+    snprintf(prefix, sizeof(prefix), "PIXEL:NODE:%s:", nid);
+  } else {
     *status = SHDO_UNSUPPORTED_DEVICE;
     return false;
   }
@@ -629,41 +644,42 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   auto add = [&](const char *line) -> bool {
     return shdoAddCue(cues, count, clip.startMs, "PIXEL", line, status);
   };
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:RANGE:%lu:%lu",
-           (unsigned)slot, (unsigned long)start, (unsigned long)pixCount);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:RANGE:%lu:%lu",
+           prefix, (unsigned)slot, (unsigned long)start, (unsigned long)pixCount);
+  if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:FX:%s", (unsigned)slot, fx);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:FX:%s", prefix, (unsigned)slot, fx);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:COLOR:%lu:%lu:%lu",
-           (unsigned)slot, (unsigned long)r, (unsigned long)g, (unsigned long)b);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR:%lu:%lu:%lu",
+           prefix, (unsigned)slot, (unsigned long)r, (unsigned long)g, (unsigned long)b);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:COLOR2:%lu:%lu:%lu",
-           (unsigned)slot, (unsigned long)r2, (unsigned long)g2, (unsigned long)b2);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR2:%lu:%lu:%lu",
+           prefix, (unsigned)slot, (unsigned long)r2, (unsigned long)g2, (unsigned long)b2);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:BRIGHTNESS:%lu",
-           (unsigned)slot, (unsigned long)brightness);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:BRIGHTNESS:%lu",
+           prefix, (unsigned)slot, (unsigned long)brightness);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:SPEED:%lu",
-           (unsigned)slot, (unsigned long)speed);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:SPEED:%lu",
+           prefix, (unsigned)slot, (unsigned long)speed);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:INTENSITY:%lu",
-           (unsigned)slot, (unsigned long)intensity);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:INTENSITY:%lu",
+           prefix, (unsigned)slot, (unsigned long)intensity);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:RANDOMNESS:%lu",
-           (unsigned)slot, (unsigned long)randomness);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:RANDOMNESS:%lu",
+           prefix, (unsigned)slot, (unsigned long)randomness);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:REVERSE:%u",
-           (unsigned)slot, clip.params.reverse ? 1u : 0u);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:REVERSE:%u",
+           prefix, (unsigned)slot, clip.params.reverse ? 1u : 0u);
   if (!add(cmd)) return false;
   if (clip.durationMs > 0) {
-    snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:DURATION:%lu",
-             (unsigned)slot, (unsigned long)clip.durationMs);
+    snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:DURATION:%lu",
+             prefix, (unsigned)slot, (unsigned long)clip.durationMs);
     if (!add(cmd)) return false;
   }
-  snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:START", (unsigned)slot);
+  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:START", prefix, (unsigned)slot);
   if (!add(cmd)) return false;
   if (clip.durationMs > 0 && clip.params.blackoutAtEnd) {
-    snprintf(cmd, sizeof(cmd), "PIXEL:SEGMENT:%u:STOP", (unsigned)slot);
+    snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:STOP", prefix, (unsigned)slot);
     if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "PIXEL", cmd, status)) {
       return false;
     }
@@ -1041,7 +1057,8 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
 
   qsort(clips, clipCount, sizeof(ShdoClip), shdoClipOrder);
   uint16_t compiled = 0;
-  uint8_t pixelSlot = 0;
+  uint8_t pixelSlots[SHOWDUINO_SHDO_MAX_DEVICES];
+  memset(pixelSlots, 0, sizeof(pixelSlots));
   ShdoStatus status = SHDO_OK;
   for (uint16_t i = 0; i < clipCount; ++i) {
     const ShdoClip &clip = clips[i];
@@ -1070,7 +1087,13 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
       return fail(SHDO_UNSUPPORTED_ACTION, "action is not implemented in Showduino V1");
     }
     if (strcmp(type, "pixel") == 0) {
-      if (!shdoCompilePixel(clip, device, pixelSlot++, cueBuf, &compiled, &status)) {
+      uint8_t di = 0;
+      for (; di < deviceCount; ++di) {
+        if (strcmp(devices[di].id, clip.targetDeviceId) == 0) break;
+      }
+      if (di >= deviceCount) di = 0;
+      uint8_t slot = pixelSlots[di]++;
+      if (!shdoCompilePixel(clip, device, slot, cueBuf, &compiled, &status)) {
         return fail(status, status == SHDO_MISSING_DEVICE
                                 ? "pixel clip is missing a bound show-pixel device"
                                 : shdoStatusName(status));

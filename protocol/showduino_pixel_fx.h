@@ -9,7 +9,7 @@
  * Shared Showduino pixel-effect vocabulary.
  *
  * This header deliberately contains no hardware driver. The P4 local pixel
- * line and later C3 Pixel Nodes can share the exact same effect IDs and segment
+ * line and C3 Pixel Nodes share the exact same effect IDs and segment
  * state while using their own NeoPixel transport implementation.
  */
 
