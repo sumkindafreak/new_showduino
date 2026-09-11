@@ -161,7 +161,7 @@ The current P4 configuration provides up to 16 simultaneous segment slots on the
 
 ### Shared 25-FX vocabulary
 
-Canonical enum/names are defined in `protocol/showduino_pixel_fx.h` so the future C3 Pixel Node can use the same language.
+Canonical enum/names are defined in `protocol/showduino_pixel_fx.h`. P4 GPIO23 and the C3 Pixel Node use the same language.
 
 ```text
 OFF / BLACKOUT
@@ -361,7 +361,20 @@ The Relay Node is **not** the current product roadmap. The future MOSFET Node su
 
 Do **not** document all `PIXEL:*` as unsupported: P4-local GPIO23 segment commands are implemented.
 
-Distributed C3 Pixel Node routing is not implemented yet.
+Distributed C3 Pixel Node routing is implemented:
+
+```text
+PIXEL:NODE:<LED-01>:COUNT:<n>
+PIXEL:NODE:<LED-01>:INIT
+PIXEL:NODE:<LED-01>:STATUS
+PIXEL:NODE:<LED-01>:LOCATE
+PIXEL:NODE:<LED-01>:SEGMENT:<slot>:...
+ROUTE:PIXEL:<LED-01>:<seq>:<inner PIXEL command>
+```
+
+P4 addresses logical IDs. Comms holds up to eight Pixel Node ESP-NOW peers. A missing node returns `REJECTED:PIXEL:OFFLINE:<id>` / `NODE_UNAVAILABLE:PIXEL:<id>` and does **not** freeze the timeline.
+
+GPIO24 remains the dedicated emergency-signage line and is not part of this Pixel Node model.
 
 DMX production work is explicitly parked/out of scope. E1.31 remains an isolated P4 test/observation foundation and must not silently become a production pixel/lighting input.
 
@@ -383,7 +396,8 @@ P4 pixel commands are further validated by the P4 pixel engine, including segmen
 - end-to-end logical device-ID routing;
 - generic completion-driven state/fault handling for every specialist Node;
 - stronger node framing / future structured binary protocol;
-- C3 Pixel, then MOSFET Node protocols as those milestones begin.
+- C3 Pixel Node protocol (this tree; hardware test required);
+- MOSFET Node protocols as that milestone begins.
 
 DMX is deliberately excluded from this roadmap until explicitly unparked.
 

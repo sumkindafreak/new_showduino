@@ -41,21 +41,17 @@ P4 links via `ROUTE:LAMP:` / `LampNodeLink` (Audio Node parity).
 
 ### 3. C3 Pixel Node
 
-Follows the Lamp Node.
+**Classification:** firmware implemented / hardware test required.
 
-It should reuse the common Showduino pixel-effect vocabulary in:
+Firmware lives in `firmware/c3-pixel-node/`. See [`c3-pixel-node.md`](c3-pixel-node.md).
 
-```text
-protocol/showduino_pixel_fx.h
-```
+It reuses the common Showduino pixel-effect vocabulary in `protocol/showduino_pixel_fx.h`. `LIGHTNING`, `FIRE`, `FLICKER`, etc. mean the same thing on the P4 local line and the C3 Pixel Node.
 
-The aim is for `LIGHTNING`, `FIRE`, `FLICKER`, etc. to mean the same thing on the P4 local line and the C3 Pixel Node.
+Every pixel-capable node implements the global Showduino emergency rule:
 
-Every pixel-capable node must implement the global Showduino emergency rule:
+> EMERGENCY = ALL CONFIGURED PIXELS BRIGHT WHITE.
 
-> EMERGENCY = ALL PIXELS BRIGHT WHITE.
-
-No local FX or segment may override it.
+No local FX, segment, Locate, or WebUI test may override it.
 
 ### 4. MOSFET Node
 

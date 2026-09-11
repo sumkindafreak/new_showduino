@@ -130,7 +130,9 @@ Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inve
 
 ### C3 Pixel Node
 
-Follows Lamp. It should reuse the common Showduino 25-effect vocabulary and implement the same hard emergency rule: **all connected pixels bright white**.
+**Classification:** implemented / hardware test required.
+
+Remote equivalent of P4 GPIO23. Same firmware binary on every C3; commission `LED-01` / friendly name / line length after flash. P4 `PixelNodeLink` / Comms `ROUTE:PIXEL:<id>:`. Max 512 pixels on C3 (P4 local line remains 1–1024). See [`c3-pixel-node.md`](c3-pixel-node.md).
 
 ### MOSFET Node
 
@@ -155,10 +157,10 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 
 | Maturity | Current repository scope |
 |----------|--------------------------|
-| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO:NODE ingest |
-| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
-| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; logical target routing; SHDO v2 authoring vs P4 format-v1 store |
-| **PLANNED** | C3 Pixel Node; MOSFET Node; production AUDIO/PIXEL cue dispatch; native `.shdo` ingest on the P4 |
+| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; C3 Pixel Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO:NODE ingest |
+| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; C3 Pixel Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
+| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; website Studio V4 Pixel Node device picker; SHDO v2 authoring vs P4 format-v1 store |
+| **PLANNED** | MOSFET Node; production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |
 | **PARKED** | DMX work until explicitly reopened |
 | **LEGACY** | Relay Node product concept, C3/SUE Comms, onboard-C6 Comms attempt, CYD/Mega generation, GoreFX dashboard tree |
 

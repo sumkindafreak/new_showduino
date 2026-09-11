@@ -227,22 +227,23 @@ Emergency clear does not auto-resume interrupted show FX.
 
 Implemented now:
 
-- P4 GPIO23 segmented engine;
+- GPIO23 segmented engine;
+- C3 Pixel Node commissioning/editor cards (same model);
 - up to 16 live segment slots;
 - direct segment commands;
 - shared 25-FX vocabulary;
-- hard global emergency-white override on P4 local pixels;
+- hard global emergency-white override on P4 local pixels and Pixel Nodes;
 - GPIO24 grouped green-locator / synchronized-white signage behavior;
 - Studio Outputs-page commissioning/editor controls in source.
 
 Still required for a complete production authoring workflow:
 
-- P4 Web API whitelist/state exposure for the new browser PIXEL controls where not yet wired;
 - regeneration of the S3 PROGMEM bundle after Studio source changes;
 - persistent named segment definitions in production/project data;
 - reusable FX preset persistence/UI;
-- production `PIXEL` cue parsing;
+- website Studio V4 Pixel Node device picker parity;
 - logical segment-target resolution;
+- reuse of additional Pixel Nodes in the field.
 - authoritative cue/result state surfaces for production playback;
 - reuse of the same segment/FX model on the future C3 Pixel Node.
 

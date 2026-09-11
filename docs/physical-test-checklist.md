@@ -11,7 +11,8 @@ Pass/fail must come from hardware. Source inspection is not a pass.
 3. Director ESP32-S3.
 4. Audio Node (if present).
 5. Lamp Node (if present).
-6. Phone/laptop on SoftAP `Showduino` → `http://192.168.4.1/` and `/studio/`.
+6. Pixel Node (if present) — ESP32-C3 Super Mini OLED, DATA GPIO2, OLED GPIO5/6.
+7. Phone/laptop on SoftAP `Showduino` → `http://192.168.4.1/` and `/studio/`. Pixel Node AP is `Showduino-Pixel-XXXX` at `http://192.168.5.1/` (commissioning only).
 
 ## Radio / power-cycle (release-blocking)
 
@@ -32,8 +33,17 @@ Pass/fail must come from hardware. Source inspection is not a pass.
 
 - [ ] Physical E-stop GPIO25 latches; outputs safe; auto-resume does not happen.
 - [ ] Director dual-action clear only after P4 clear request.
-- [ ] GPIO23 emergency pixels all white; GPIO24 groups of 10; Lamp emergency white.
+- [ ] GPIO23 emergency pixels all white; GPIO24 groups of 10; Lamp emergency white; Pixel Node entire configured line bright white.
 - [ ] SHDO persist commit during emergency aborts; running show stops.
+
+## Pixel Node (NEEDS HARDWARE TEST)
+
+- [ ] Flash identical C3 firmware. Boot dark / `NOT INITIALISED`. OLED visible crop/orientation correct.
+- [ ] Commission Node ID + friendly name. Save Count does not light. Initialise Line matches configured length.
+- [ ] Segments persist across reboot. Independent simultaneous FX. Same vocabulary as P4 GPIO23.
+- [ ] Locate is time-limited and loses to emergency. Webpage cannot clear emergency.
+- [ ] P4 / Director / Studio see the node. Disconnect: timeline continues. Reconnect: rediscovery.
+- [ ] Two nodes (`LED-01`, `LED-02`) independent. Pixel join does not drop Director/Audio/Lamp (10× power-cycle).
 
 ## Studio / persist
 

@@ -131,7 +131,7 @@ Development order after the current P4 pixel work is:
 
 1. **Audio Node** — implemented firmware; hardware commissioning required.
 2. **C3 Lamp Node** — second specialist; replaces the retired Relay Node product role (Director fabric slot).
-3. **C3 Pixel Node** — follows Lamp; will reuse the shared pixel FX vocabulary.
+3. **C3 Pixel Node** — firmware implemented; remote GPIO23-equivalent Show Pixel Line. Hardware test required.
 4. **MOSFET Node** — digital/PWM specialist (not a Relay revival).
 
 `firmware/relay-node-esp32/` remains historical/experimental source only. It must not be presented as a production Node.
@@ -167,7 +167,7 @@ pixels 30-49  PULSE RED
 pixels 50-79  CANDLE / warm flicker
 ```
 
-The shared FX vocabulary lives in `protocol/showduino_pixel_fx.h` so the P4 and future C3 Pixel Node can use the same Showduino effect names and parameters.
+The shared FX vocabulary lives in `protocol/showduino_pixel_fx.h` so the P4 GPIO23 line and C3 Pixel Nodes use the same Showduino effect names and parameters.
 
 Current FX vocabulary contains 25 entries:
 
@@ -241,7 +241,7 @@ When the emergency latch becomes active:
 
 - GPIO24 emergency/signage pixels become bright white;
 - GPIO23 main Show Pixel Line becomes bright white;
-- C3 Pixel Nodes must become bright white when implemented;
+- C3 Pixel Nodes become bright white on the entire configured line;
 - Lantern pixels must become bright white where applicable;
 - every future pixel-capable Showduino output must implement the same override.
 
@@ -278,7 +278,7 @@ Segments are the preferred Studio authoring primitive.
 
 The browser UI should present users with named lighting areas/segments rather than forcing them to manipulate individual LED addresses for every cue. A future production can therefore refer to logical targets such as `doorway`, `altar`, or `corridor_left`, while the P4 resolves those names to physical pixel ranges.
 
-The current Outputs page now provides a live GPIO23 segment commissioning/editor surface using the shared FX vocabulary. Persistent named segment definitions, reusable FX presets and production timeline PIXEL cues remain planned schema work.
+The current Outputs page provides GPIO23 **and** C3 Pixel Node commissioning/editor surfaces using the shared FX vocabulary. Persistent named segment definitions, reusable FX presets and website Studio V4 Pixel Node pickers remain planned schema/UI work.
 
 See [`studio-pixel-authoring.md`](studio-pixel-authoring.md).
 
@@ -331,18 +331,17 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 - specialist Audio Node firmware and P4 routing/lifecycle tracking; hardware commissioning still required.
 - GPIO24 grouped emergency/signage pixel behavior.
 - GPIO23 segmented non-blocking Show Pixel Engine with shared 25-FX vocabulary; hardware commissioning still required.
-- S3-hosted Studio source includes a GPIO23 segment commissioning/editor surface.
+- C3 Pixel Node firmware, P4/Comms/Director/Studio integration, SHDO `pixel-node` compile; hardware commissioning still required.
+- S3-hosted Studio source includes GPIO23 and Pixel Node commissioning/editor surfaces.
 
 ### Still to complete
 
 - browser WebUI bundle regeneration after source changes before the updated UI is present in an S3 firmware image;
-- persistent production PIXEL/AUDIO cue types and timeline dispatch;
+- persistent production PIXEL/AUDIO cue types and timeline dispatch polish;
 - named logical pixel-segment persistence and binding;
-- logical device-ID addressing end to end;
 - completion-driven state/fault handling for all future Nodes;
-- Audio Node and P4 pixel physical bench commissioning;
-- C3 Lamp Node hardware commissioning;
-- C3 Pixel, then MOSFET Node milestones.
+- Audio Node, Lamp Node, Pixel Node and P4 pixel physical bench commissioning;
+- MOSFET Node milestone.
 
 ### Explicitly parked
 

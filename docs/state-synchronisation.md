@@ -70,7 +70,7 @@ Segments support independent range/effect/colour/brightness/speed/intensity/rand
 
 Persistent production `PIXEL` cue parsing and named logical segment persistence are **not** implemented in production-format v1 yet. Direct `PIXEL:*` control should therefore be described as commissioning/runtime control, not completed production authoring.
 
-Distributed C3 Pixel Node routing is also still future.
+Distributed C3 Pixel Node routing is implemented (`PIXEL:NODE:<id>:…` / `ROUTE:PIXEL:<id>:`). A missing node does not freeze the P4 timeline.
 
 ## Emergency/signage line state
 

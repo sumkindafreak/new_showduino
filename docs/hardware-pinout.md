@@ -244,7 +244,21 @@ HP detect       GPIO39
 Status LED      GPIO22
 ```
 
-## 15. Related documents
+## 15. C3 Pixel Node — CURRENT / HARDWARE TEST REQUIRED
+
+ESP32-C3 Super Mini OLED. Same board family as the Lamp Node.
+
+```text
+OLED SDA      GPIO5
+OLED SCL      GPIO6
+OLED addr     0x3C
+Pixel DATA    GPIO2
+Buttons       GPIO9 (A / BOOT), GPIO0 (B)
+```
+
+Do not move OLED pins. Do not power the strip from the C3. See [`c3-pixel-node.md`](c3-pixel-node.md) and [`firmware/c3-pixel-node/README.md`](../firmware/c3-pixel-node/README.md).
+
+## 16. Related documents
 
 - [`final-hardware-architecture.md`](final-hardware-architecture.md)
 - [`audio-pixel-engine.md`](audio-pixel-engine.md)
