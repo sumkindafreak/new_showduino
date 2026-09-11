@@ -108,8 +108,16 @@ static char s_production_name[64] = "";
 static char s_link_text[32] = "OFFLINE";
 static char s_readiness_text[24] = "NO PRODUCTION";
 
-static void set_label_safe(lv_obj_t *lab, const char *text) {
+static bool label_text_differs(lv_obj_t *lab, const char *text) {
   if (lab == nullptr || text == nullptr) {
+    return false;
+  }
+  const char *cur = lv_label_get_text(lab);
+  return cur == nullptr || strcmp(cur, text) != 0;
+}
+
+static void set_label_safe(lv_obj_t *lab, const char *text) {
+  if (!label_text_differs(lab, text)) {
     return;
   }
   lv_label_set_text(lab, text);
@@ -222,7 +230,7 @@ static void recompute_readiness(void) {
                   s_readiness_text, s_link_text, (int)s_has_production);
   }
   if (s_readiness) {
-    lv_label_set_text(s_readiness, s_readiness_text);
+    set_label_safe(s_readiness, s_readiness_text);
     lv_color_t col = lv_color_hex(ShowduinoPalette::Muted);
     if (strcmp(s_readiness_text, "READY") == 0) {
       col = lv_color_hex(ShowduinoPalette::Accent);
@@ -240,6 +248,9 @@ static void set_tile_enabled(Page01Control *c, bool enabled) {
   if (c == nullptr || c->btn == nullptr) {
     return;
   }
+  const bool disabled = lv_obj_has_state(c->btn, LV_STATE_DISABLED);
+  if (enabled && !disabled) return;
+  if (!enabled && disabled) return;
   if (enabled) {
     lv_obj_clear_state(c->btn, LV_STATE_DISABLED);
     lv_obj_add_flag(c->btn, LV_OBJ_FLAG_CLICKABLE);
@@ -261,33 +272,33 @@ static void refresh_hero(void) {
     hero->command = PAGE01_CMD_PRODUCTIONS;
     lv_obj_set_user_data(hero->btn, (void *)PAGE01_CMD_PRODUCTIONS);
     if (hero->label) {
-      lv_label_set_text(hero->label, "SELECT A PRODUCTION");
+      set_label_safe(hero->label, "SELECT A PRODUCTION");
     }
     if (hero->sublabel) {
-      lv_label_set_text(hero->sublabel, "No production loaded | Tap to open Productions");
+      set_label_safe(hero->sublabel, "No production loaded | Tap to open Productions");
       lv_obj_set_style_text_color(hero->sublabel,
                                   lv_color_hex(ShowduinoPalette::Muted), 0);
     }
     if (hero->icon) {
-      lv_label_set_text(hero->icon, LV_SYMBOL_DIRECTORY);
+      set_label_safe(hero->icon, LV_SYMBOL_DIRECTORY);
     }
   } else {
     hero->command = PAGE01_CMD_RUN_SHOW;
     lv_obj_set_user_data(hero->btn, (void *)PAGE01_CMD_RUN_SHOW);
     if (hero->label) {
-      lv_label_set_text(hero->label, "RUN SHOW");
+      set_label_safe(hero->label, "RUN SHOW");
     }
     if (hero->sublabel) {
       char shown[64];
       char sub[96];
       director_ui_sanitize_copy(shown, sizeof(shown), s_production_name);
       snprintf(sub, sizeof(sub), "%s | %s", shown, s_readiness_text);
-      lv_label_set_text(hero->sublabel, sub);
+      set_label_safe(hero->sublabel, sub);
       lv_obj_set_style_text_color(hero->sublabel,
                                   lv_color_hex(ShowduinoPalette::Text), 0);
     }
     if (hero->icon) {
-      lv_label_set_text(hero->icon, LV_SYMBOL_PLAY);
+      set_label_safe(hero->icon, LV_SYMBOL_PLAY);
     }
     const bool canRun = (strcmp(s_link_text, "LINK OK") == 0);
     set_tile_enabled(hero, canRun);
@@ -297,7 +308,7 @@ static void refresh_hero(void) {
       director_ui_sanitize_copy(shown, sizeof(shown), s_production_name);
       snprintf(sub, sizeof(sub), "%s | %s - cannot run until Stage is linked",
                shown, s_readiness_text);
-      lv_label_set_text(hero->sublabel, sub);
+      set_label_safe(hero->sublabel, sub);
     }
     return;
   }
@@ -641,6 +652,12 @@ void page_01_home_set_production(const char *name) {
   }
 
   const bool empty = production_name_is_empty(name);
+  if (empty && !s_has_production) {
+    return;
+  }
+  if (!empty && s_has_production && strcmp(s_production_name, name) == 0) {
+    return;
+  }
   char prev_name[64];
   strncpy(prev_name, s_production_name, sizeof(prev_name) - 1);
   prev_name[sizeof(prev_name) - 1] = '\0';
@@ -672,11 +689,12 @@ void page_01_home_set_link_text(const char *text) {
   if (text == nullptr) {
     return;
   }
-  if (strcmp(s_link_text, text) != 0) {
-    strncpy(s_link_text, text, sizeof(s_link_text) - 1);
-    s_link_text[sizeof(s_link_text) - 1] = '\0';
-    Serial.printf("[Page01] link -> %s\n", s_link_text);
+  if (strcmp(s_link_text, text) == 0) {
+    return;
   }
+  strncpy(s_link_text, text, sizeof(s_link_text) - 1);
+  s_link_text[sizeof(s_link_text) - 1] = '\0';
+  Serial.printf("[Page01] link -> %s\n", s_link_text);
   set_label_safe(s_link, text);
   recompute_readiness();
   refresh_hero();
@@ -692,7 +710,7 @@ static void set_footer_slot(uint8_t index, const char *text) {
   }
   char buf[32];
   snprintf(buf, sizeof(buf), "%s %s", s_footer_slots[index].title, text);
-  lv_label_set_text(s_footer_slots[index].label, buf);
+  set_label_safe(s_footer_slots[index].label, buf);
 }
 
 void page_01_home_set_footer_sue(const char *text) { set_footer_slot(0, text); }
@@ -709,7 +727,7 @@ void page_01_home_set_footer_notify(const char *text) {
   }
   char shown[64];
   director_ui_sanitize_copy(shown, sizeof(shown), text);
-  lv_label_set_text(s_notify, shown);
+  set_label_safe(s_notify, shown);
 }
 
 void page_01_home_apply_theme(void) {

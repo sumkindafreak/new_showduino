@@ -91,25 +91,34 @@ inline DirectorUiAnimMode directorUiMotionNextMode(DirectorUiAnimMode cur) {
 }
 
 /**
- * Load an application screen. When leaving the boot screen, use a short
- * fade; otherwise load immediately. auto_del deletes the previous screen
- * (the boot screen) after a fade.
+ * Load an application screen.
+ *
+ * Boot exit MUST be an immediate swap. A fade starts with the desk
+ * transparent while LVGL still reports the boot screen as active.
+ * Deleting that object (or flushing the half-switched RGB frame)
+ * freezes the last READY pixels on this panel. Do not put the fade
+ * back without a physical retest of the READY hand-off.
  */
 inline void directorUiMotionLoadScreen(lv_obj_t *screen, bool leavingBoot) {
   if (!screen) return;
   lv_obj_t *prev = lv_screen_active();
   if (prev == screen) return;
 
-  const uint16_t ms = leavingBoot ? directorUiMotionBootExitMs() : directorUiMotionPageMs();
+  if (leavingBoot) {
+    lv_screen_load(screen);
+    if (prev && prev != screen && lv_obj_is_valid(prev)) {
+      lv_obj_delete(prev);
+    }
+    return;
+  }
+
+  const uint16_t ms = directorUiMotionPageMs();
   if (ms > 0) {
-    lv_screen_load_anim(screen, LV_SCR_LOAD_ANIM_FADE_ON, ms, 0, leavingBoot);
+    lv_screen_load_anim(screen, LV_SCR_LOAD_ANIM_FADE_ON, ms, 0, false);
     return;
   }
 
   lv_screen_load(screen);
-  if (leavingBoot && prev && prev != screen) {
-    lv_obj_delete(prev);
-  }
 }
 
 #endif

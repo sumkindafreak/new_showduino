@@ -84,6 +84,7 @@ void DirectorUnlockScreen::begin(uint32_t nowMs) {
   startedMs_ = nowMs;
   currentStep_ = 0;
   readySinceMs_ = 0;
+  lastAnimMs_ = 0;
   finalStateApplied_ = false;
   exiting_ = false;
   finished_ = false;
@@ -350,13 +351,26 @@ void DirectorUnlockScreen::applyFinalState(bool stageLinked, bool emergencyLocke
     lv_label_set_text(title_, "READY");
     lv_label_set_text(status_, "BOOT COMPLETE");
     lv_label_set_text(infoPrimary_, "Showduino Director is ready.");
-    lv_label_set_text(infoSecondary_, "Comms and the P4 Show Engine are responding.");
+    lv_label_set_text(infoSecondary_, "Tap to continue, or wait a moment.");
   } else {
     lv_label_set_text(title_, "LOCAL MODE");
     lv_label_set_text(status_, "STAGE CONNECTION PENDING");
     lv_obj_set_style_text_color(status_, lv_color_hex(COL_WARN), 0);
     lv_label_set_text(infoPrimary_, "Director is ready while stage discovery continues.");
-    lv_label_set_text(infoSecondary_, "Controls will update automatically when Comms responds.");
+    lv_label_set_text(infoSecondary_, "Tap to continue. Controls update when Comms responds.");
+  }
+
+  if (!continueCatcher_ && root_) {
+    continueCatcher_ = lv_obj_create(root_);
+    lv_obj_remove_style_all(continueCatcher_);
+    lv_obj_set_pos(continueCatcher_, 0, 0);
+    lv_obj_set_size(continueCatcher_, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_style_bg_opa(continueCatcher_, LV_OPA_TRANSP, 0);
+    lv_obj_add_flag(continueCatcher_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(continueCatcher_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(continueCatcher_, &DirectorUnlockScreen::onRootClicked,
+                        LV_EVENT_CLICKED, nullptr);
+    lv_obj_move_foreground(continueCatcher_);
   }
 }
 
@@ -381,15 +395,20 @@ void DirectorUnlockScreen::tick(uint32_t nowMs, bool espNowReady,
 
   const uint32_t elapsed = nowMs - startedMs_;
 
-  /* Scanner motion is updated manually: predictable and inexpensive on ESP32-S3. */
-  lv_arc_set_rotation(scannerOuter_, (uint16_t)((elapsed / 9UL) % 360UL));
-  lv_arc_set_rotation(scannerMiddle_, (uint16_t)(360UL - ((elapsed / 13UL) % 360UL)));
-  lv_arc_set_rotation(scannerInner_, (uint16_t)((elapsed / 6UL) % 360UL));
+  /* Scanner motion is cheap on paper and expensive on this RGB panel.
+   * Cap it at ~25 fps and freeze it once READY / LOCAL MODE is showing. */
+  if (!finalStateApplied_ && scannerOuter_ && scannerMiddle_ && scannerInner_ &&
+      lockBody_ && lockShackle_ && (nowMs - lastAnimMs_) >= 40UL) {
+    lastAnimMs_ = nowMs;
+    lv_arc_set_rotation(scannerOuter_, (uint16_t)((elapsed / 9UL) % 360UL));
+    lv_arc_set_rotation(scannerMiddle_, (uint16_t)(360UL - ((elapsed / 13UL) % 360UL)));
+    lv_arc_set_rotation(scannerInner_, (uint16_t)((elapsed / 6UL) % 360UL));
 
-  const lv_opa_t pulse = ((elapsed / 320UL) % 2UL) ? LV_OPA_COVER : LV_OPA_70;
-  lv_obj_set_style_bg_opa(lockBody_, pulse, 0);
-  lv_obj_set_style_arc_opa(lockShackle_, pulse, LV_PART_MAIN);
-  lv_obj_set_style_arc_opa(lockShackle_, pulse, LV_PART_INDICATOR);
+    const lv_opa_t pulse = ((elapsed / 320UL) % 2UL) ? LV_OPA_COVER : LV_OPA_70;
+    lv_obj_set_style_bg_opa(lockBody_, pulse, 0);
+    lv_obj_set_style_arc_opa(lockShackle_, pulse, LV_PART_MAIN);
+    lv_obj_set_style_arc_opa(lockShackle_, pulse, LV_PART_INDICATOR);
+  }
 
   uint8_t timedStep = (uint8_t)(elapsed / STEP_INTERVAL_MS);
   if (timedStep >= STEP_COUNT) timedStep = STEP_COUNT - 1;
@@ -412,6 +431,18 @@ void DirectorUnlockScreen::tick(uint32_t nowMs, bool espNowReady,
   }
 }
 
+void DirectorUnlockScreen::onRootClicked(lv_event_t *event) {
+  (void)event;
+  /* Tap after READY / LOCAL MODE / SAFETY LOCK continues immediately. */
+  if (!gDirectorUnlockScreen.finalStateApplied_ ||
+      gDirectorUnlockScreen.finished_ ||
+      gDirectorUnlockScreen.exiting_) {
+    return;
+  }
+  Serial.println("[BootUI] operator continue from boot screen");
+  gDirectorUnlockScreen.finish(false);
+}
+
 void DirectorUnlockScreen::finish(bool emergency) {
   if (finished_ || exiting_) return;
   exiting_ = true;
@@ -426,6 +457,7 @@ void DirectorUnlockScreen::finish(bool emergency) {
   status_ = nullptr;
   infoPrimary_ = nullptr;
   infoSecondary_ = nullptr;
+  continueCatcher_ = nullptr;
   for (uint8_t i = 0; i < STEP_COUNT; ++i) dots_[i] = nullptr;
 
   lv_obj_t *boot = root_;
@@ -433,11 +465,11 @@ void DirectorUnlockScreen::finish(bool emergency) {
   Serial.println(emergency ? "[BootUI] Boot screen aborted"
                            : "[BootUI] Boot screen complete");
   if (finishedFn_) finishedFn_();
-  /* Non-emergency exit uses lv_screen_load_anim auto_del on the boot screen.
-   * Only delete here if it is still the active screen, or on emergency. */
-  if (boot && lv_obj_is_valid(boot)) {
-    if (emergency || lv_screen_active() == boot) {
-      lv_obj_delete(boot);
-    }
+  /* Do not delete `boot` here. lv_screen_load_anim does not change
+   * lv_screen_active() until the next timer tick, so a delete at this
+   * point destroyed the outgoing screen and froze the last READY frame
+   * on the RGB panel. The desk load owns the object (immediate swap). */
+  if (boot && lv_obj_is_valid(boot) && lv_screen_active() == boot) {
+    Serial.println("[BootUI] WARN: desk did not replace boot screen");
   }
 }

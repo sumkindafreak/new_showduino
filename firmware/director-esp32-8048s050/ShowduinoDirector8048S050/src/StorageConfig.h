@@ -12,7 +12,7 @@
 #define STORAGE_ROOT                "/showduino"
 #define STORAGE_SPI_HZ              10000000
 #define STORAGE_SCHEMA_VERSION      1
-#define STORAGE_FW_VERSION          "0.9.2-director"
+#define STORAGE_FW_VERSION          "0.9.3-director"
 
 #define STORAGE_AUTOSAVE_DEFAULT_MS 15000UL
 #define STORAGE_AUTOSAVE_MIN_MS     5000UL

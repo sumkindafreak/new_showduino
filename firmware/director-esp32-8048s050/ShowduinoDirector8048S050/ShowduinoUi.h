@@ -1106,14 +1106,20 @@ public:
           (aboutRoot_ && !lv_obj_has_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN)) ||
           (networkRoot_ && !lv_obj_has_flag(networkRoot_, LV_OBJ_FLAG_HIDDEN)) ||
           (completeOverlayRoot && !lv_obj_has_flag(completeOverlayRoot, LV_OBJ_FLAG_HIDDEN));
-      if (cover) {
-        lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
-      } else {
-        lv_obj_clear_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(statusBar_.root());
+      /* Hide/show once. move_foreground every loop invalidates layer_top
+       * and tears the RGB panel. */
+      if (cover != statusBarCovered_) {
+        statusBarCovered_ = cover;
+        if (cover) {
+          lv_obj_add_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+        } else {
+          lv_obj_clear_flag(statusBar_.root(), LV_OBJ_FLAG_HIDDEN);
+          lv_obj_move_foreground(statusBar_.root());
+        }
       }
     }
-    if (displayManager_.isPhase2PageActive()) {
+    if (displayManager_.isPhase2PageActive() &&
+        (statusDirty || refreshTrafficAndUptime)) {
       pushDisplaySnapshot();
       if (displayManager_.currentPage() == PAGE_LIVE) {
         refreshLiveStatusPanel();
@@ -1644,6 +1650,7 @@ private:
   uint8_t lastHealthNodes_ = 0xFF;
   bool lastHealthSync_ = true;
   bool lastHealthStage_ = false;
+  bool statusBarCovered_ = true;
   bool emergencyActivating = false;
   bool statusDirty = true;
   bool trafficDirty = true;

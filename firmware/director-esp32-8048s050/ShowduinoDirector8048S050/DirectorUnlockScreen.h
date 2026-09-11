@@ -48,11 +48,13 @@ private:
   lv_obj_t *status_ = nullptr;
   lv_obj_t *infoPrimary_ = nullptr;
   lv_obj_t *infoSecondary_ = nullptr;
+  lv_obj_t *continueCatcher_ = nullptr;
   lv_obj_t *dots_[STEP_COUNT] = {};
 
   FinishedFn finishedFn_ = nullptr;
   uint32_t startedMs_ = 0;
   uint32_t readySinceMs_ = 0;
+  uint32_t lastAnimMs_ = 0;
   uint8_t currentStep_ = 0;
   bool visible_ = false;
   bool finished_ = false;
@@ -66,6 +68,7 @@ private:
   void setStep(uint8_t step, const char *status, const char *primary, const char *secondary);
   void applyFinalState(bool stageLinked, bool emergencyLocked, uint32_t nowMs);
   void finish(bool emergency);
+  static void onRootClicked(lv_event_t *event);
 
   static void styleTransparent(lv_obj_t *obj);
   static lv_obj_t *makeLine(lv_obj_t *parent, int32_t x, int32_t y,
