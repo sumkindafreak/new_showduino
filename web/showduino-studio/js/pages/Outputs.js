@@ -15,6 +15,23 @@ function hexRgb(value) {
   return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) || 0);
 }
 
+function defaultSegEditor() {
+  return {
+    id: 0,
+    start: 0,
+    count: 10,
+    fx: 'SOLID',
+    color: '#ffffff',
+    color2: '#000000',
+    brightness: 255,
+    speed: 50,
+    intensity: 80,
+    randomness: 70,
+    duration: 0,
+    reverse: false
+  };
+}
+
 function numberField(label, value, min, max, onChange) {
   const wrap = el('label', { className: 'sub' });
   wrap.append(document.createTextNode(label + ' '));
@@ -24,6 +41,10 @@ function numberField(label, value, min, max, onChange) {
     value: String(value),
     min: String(min),
     max: String(max)
+  });
+  input.addEventListener('input', () => {
+    const n = parseInt(input.value, 10);
+    if (Number.isFinite(n)) onChange(n);
   });
   input.addEventListener('change', () => {
     const n = Math.max(min, Math.min(max, Number(input.value) || 0));
@@ -37,7 +58,7 @@ function numberField(label, value, min, max, onChange) {
 export async function OutputsPage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'P4 GPIO23 is the local segmented Show Pixel Line. GPIO24 is safety-owned emergency signage. Programme audio is the Audio Node. Current specialist-node order: Audio → C3 Lamp → C3 Pixel → MOSFET.'
+    text: 'P4 GPIO23 is the local segmented Show Pixel Line. Remote C3 Pixel Nodes use the same PIXEL LINE → SEGMENTS → FX model. GPIO24 is safety-owned emergency signage. Programme audio is the Audio Node.'
   }));
 
   const host = el('div', { className: 'page-stack' });
@@ -48,6 +69,10 @@ export async function OutputsPage(container) {
   let lastResult = '';
   let lastSnap = { p4Online: false, system: null };
   let assetPath = 'system-test.wav';
+  let lineCount = 100;
+  let lineCountSeeded = false;
+  const nodeLineCounts = {};
+  const nodeEditors = {};
   const px = {
     id: 0,
     start: 0,
@@ -69,6 +94,12 @@ export async function OutputsPage(container) {
     try {
       const data = await postCommand(cmd);
       lastResult = isP4Offline(data) ? 'P4 OFFLINE' : (data.replies || JSON.stringify(data));
+      if (String(cmd).startsWith('PIXEL:')) {
+        try {
+          const light = await fetchLighting();
+          lighting = isP4Offline(light) ? null : light;
+        } catch (_) {}
+      }
     } catch (err) {
       lastResult = err.message;
     }
@@ -143,15 +174,45 @@ export async function OutputsPage(container) {
     }
     host.append(pixels);
 
+    if (lighting && !lineCountSeeded) {
+      const seeded = Number(lighting.showPixelsConfiguredCount || lighting.showPixelsCount || 0);
+      if (seeded > 0) lineCount = seeded;
+      lineCountSeeded = true;
+    }
+
     const showPx = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
     showPx.append(el('h2', { text: 'P4 Show Pixel Line — GPIO23' }));
     if (lastSnap.p4Online && lighting) {
-      showPx.append(statRow('Engine', lighting.showPixelsReady ? 'READY' : 'FAULT'));
-      showPx.append(statRow('Pixels', lighting.showPixelsCount != null ? String(lighting.showPixelsCount) : '—'));
+      const engine = lighting.showPixelsReady ? 'READY' : 'NOT INITIALISED';
+      const maxPx = lighting.showPixelsMax != null ? lighting.showPixelsMax : 1024;
+      showPx.append(statRow('Engine', engine));
+      showPx.append(statRow('Configured length', lighting.showPixelsConfiguredCount != null ? String(lighting.showPixelsConfiguredCount) : '—'));
+      showPx.append(statRow('Active pixels', lighting.showPixelsReady ? String(lighting.showPixelsCount) : '—'));
       showPx.append(statRow('Global brightness', lighting.showPixelsBrightness != null ? String(lighting.showPixelsBrightness) : '—'));
       showPx.append(statRow('Emergency override', lighting.showPixelsEmergencyWhite ? 'ALL WHITE' : 'CLEAR'));
       showPx.append(statRow('Segment slots', lighting.showPixelMaxSegments != null ? String(lighting.showPixelMaxSegments) : '16'));
       showPx.append(statRow('FX library', lighting.showPixelFxCount != null ? String(lighting.showPixelFxCount) : '25'));
+      showPx.append(el('p', {
+        className: 'sub',
+        text: 'Set the physical line length, then Initialise. The driver does not start until that count is applied. Max ' + maxPx + ' pixels. Default suggestion is 100.'
+      }));
+      const clampedCount = () => Math.max(1, Math.min(maxPx, Number(lineCount) || 0));
+      const countRow = el('div', { className: 'filter-row' });
+      countRow.append(numberField('Line pixels', lineCount, 1, maxPx, (v) => { lineCount = v; }));
+      const countBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY';
+      countRow.append(el('button', {
+        className: 'btn-cancel',
+        text: String(pending || '').startsWith('PIXEL:COUNT') ? 'SAVING…' : 'SAVE COUNT',
+        disabled: countBusy,
+        onClick: () => send('PIXEL:COUNT:' + clampedCount())
+      }));
+      countRow.append(el('button', {
+        className: 'btn-primary',
+        text: pending === 'PIXEL:INIT' ? 'INITIALISING…' : 'INITIALISE LINE',
+        disabled: countBusy,
+        onClick: () => sendMany(['PIXEL:COUNT:' + clampedCount(), 'PIXEL:INIT'], 'PIXEL:INIT')
+      }));
+      showPx.append(countRow);
     } else {
       showPx.append(el('p', { className: 'sub', text: lastSnap.p4Online ? 'Waiting for P4 pixel status…' : 'Unavailable while P4 is offline.' }));
     }
@@ -161,7 +222,7 @@ export async function OutputsPage(container) {
     }));
 
     const globalRow = el('div', { className: 'filter-row' });
-    const pixelBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY';
+    const pixelBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY' || !lighting || !lighting.showPixelsReady;
     globalRow.append(el('button', {
       className: 'btn-primary',
       text: pending === 'PIXEL:TEST' ? 'TEST…' : 'RUN PIXEL TEST',
@@ -216,7 +277,7 @@ export async function OutputsPage(container) {
 
     const rangeRow = el('div', { className: 'filter-row' });
     rangeRow.append(numberField('Start', px.start, 0, 999, (v) => { px.start = v; }));
-    rangeRow.append(numberField('Count', px.count, 1, 1000, (v) => { px.count = v; }));
+    rangeRow.append(numberField('Segment length', px.count, 1, lighting && lighting.showPixelsMax != null ? lighting.showPixelsMax : 1024, (v) => { px.count = v; }));
     rangeRow.append(numberField('Brightness', px.brightness, 0, 255, (v) => { px.brightness = v; }));
     rangeRow.append(numberField('Speed', px.speed, 1, 100, (v) => { px.speed = v; }));
     showPx.append(rangeRow);
@@ -290,6 +351,154 @@ export async function OutputsPage(container) {
       showPx.append(el('p', { className: 'sub', text: lastResult }));
     }
     host.append(showPx);
+
+    const remoteNodes = (lighting && Array.isArray(lighting.pixelNodes)) ? lighting.pixelNodes : [];
+    if (!remoteNodes.length) {
+      const waiting = el('div', { className: 'card' });
+      waiting.append(el('h2', { text: 'Pixel Nodes' }));
+      waiting.append(el('p', {
+        className: 'sub',
+        text: lastSnap.p4Online
+          ? 'No C3 Pixel Nodes discovered yet. Flash the same firmware, then commission LED-01 / LED-02… on the node webpage.'
+          : 'Unavailable while P4 is offline.'
+      }));
+      host.append(waiting);
+    }
+    for (const node of remoteNodes) {
+      const nid = String(node.id || '').trim();
+      if (!nid) continue;
+      const prefix = `PIXEL:NODE:${nid}:`;
+      if (nodeLineCounts[nid] == null) {
+        const seeded = Number(node.pixelCount || 0);
+        nodeLineCounts[nid] = seeded > 0 ? seeded : 100;
+      }
+      if (!nodeEditors[nid]) nodeEditors[nid] = defaultSegEditor();
+      const npx = nodeEditors[nid];
+      const maxPx = node.maxPixels != null ? Number(node.maxPixels) : 512;
+      const ready = !!node.initialised && !!node.online;
+      const card = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
+      card.append(el('h2', { text: `Pixel Node — ${nid}${node.name && node.name !== nid ? ' — ' + node.name : ''}` }));
+      card.append(statRow('Presence', node.online ? 'ONLINE' : 'OFFLINE'));
+      card.append(statRow('Engine', ready ? 'READY' : 'NOT INITIALISED'));
+      card.append(statRow('Configured length', node.pixelCount != null ? String(node.pixelCount) : '—'));
+      card.append(statRow('Segments', node.segments != null ? String(node.segments) : '—'));
+      card.append(statRow('State', node.state || '—'));
+      card.append(statRow('Firmware', node.firmware || '—'));
+      if (node.lastError) card.append(statRow('Fault', node.lastError));
+      card.append(el('p', {
+        className: 'sub',
+        text: 'Same commissioning model as P4 GPIO23: Save Count (does not light) → Initialise Line. Max ' + maxPx + ' pixels on C3. Locate is time-limited and below emergency.'
+      }));
+      const nodeBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY' || !node.online;
+      const clamped = () => Math.max(1, Math.min(maxPx, Number(nodeLineCounts[nid]) || 0));
+      const countRow = el('div', { className: 'filter-row' });
+      countRow.append(numberField('Line pixels', nodeLineCounts[nid], 1, maxPx, (v) => { nodeLineCounts[nid] = v; }));
+      countRow.append(el('button', {
+        className: 'btn-cancel',
+        text: String(pending || '') === prefix + 'COUNT:' + clamped() ? 'SAVING…' : 'SAVE COUNT',
+        disabled: nodeBusy,
+        onClick: () => send(prefix + 'COUNT:' + clamped())
+      }));
+      countRow.append(el('button', {
+        className: 'btn-primary',
+        text: pending === prefix + 'INIT' ? 'INITIALISING…' : 'INITIALISE LINE',
+        disabled: nodeBusy,
+        onClick: () => sendMany([prefix + 'COUNT:' + clamped(), prefix + 'INIT'], prefix + 'INIT')
+      }));
+      countRow.append(el('button', {
+        className: 'btn-cancel',
+        text: 'LOCATE',
+        disabled: nodeBusy || !ready,
+        onClick: () => send(prefix + 'LOCATE')
+      }));
+      card.append(countRow);
+
+      const fxBusy = nodeBusy || !ready;
+      const globalRow = el('div', { className: 'filter-row' });
+      globalRow.append(el('button', {
+        className: 'btn-primary',
+        text: 'RUN PIXEL TEST',
+        disabled: fxBusy,
+        onClick: () => send(prefix + 'TEST')
+      }));
+      globalRow.append(el('button', {
+        className: 'btn-cancel',
+        text: 'BLACKOUT',
+        disabled: fxBusy,
+        onClick: () => send(prefix + 'BLACKOUT')
+      }));
+      card.append(globalRow);
+
+      const pickRow = el('div', { className: 'filter-row' });
+      const segSelect = el('select', { className: 'text-input' });
+      for (let i = 0; i < 16; i++) {
+        const opt = el('option', { value: String(i), text: `Segment ${i}` });
+        if (i === npx.id) opt.selected = true;
+        segSelect.append(opt);
+      }
+      segSelect.addEventListener('change', () => { npx.id = Number(segSelect.value); });
+      pickRow.append(segSelect);
+      const fxSelect = el('select', { className: 'text-input' });
+      for (const name of PIXEL_FX) {
+        const opt = el('option', { value: name, text: name });
+        if (name === npx.fx) opt.selected = true;
+        fxSelect.append(opt);
+      }
+      fxSelect.addEventListener('change', () => { npx.fx = fxSelect.value; });
+      pickRow.append(fxSelect);
+      card.append(pickRow);
+
+      const rangeRow = el('div', { className: 'filter-row' });
+      rangeRow.append(numberField('Start', npx.start, 0, Math.max(0, maxPx - 1), (v) => { npx.start = v; }));
+      rangeRow.append(numberField('Count', npx.count, 1, maxPx, (v) => { npx.count = v; }));
+      rangeRow.append(numberField('Brightness', npx.brightness, 0, 255, (v) => { npx.brightness = v; }));
+      rangeRow.append(numberField('Speed', npx.speed, 1, 100, (v) => { npx.speed = v; }));
+      card.append(rangeRow);
+
+      const colorRow = el('div', { className: 'filter-row' });
+      const c1Wrap = el('label', { className: 'sub' });
+      c1Wrap.append(document.createTextNode('Primary '));
+      const c1 = el('input', { type: 'color', value: npx.color });
+      c1.addEventListener('change', () => { npx.color = c1.value; });
+      c1Wrap.append(c1);
+      colorRow.append(c1Wrap);
+      card.append(colorRow);
+
+      const nodeSegCommands = (includeStart) => {
+        const rgb = hexRgb(npx.color);
+        const base = `${prefix}SEGMENT:${npx.id}`;
+        const commands = [
+          `${base}:RANGE:${npx.start}:${npx.count}`,
+          `${base}:FX:${npx.fx}`,
+          `${base}:COLOR:${rgb[0]}:${rgb[1]}:${rgb[2]}`,
+          `${base}:BRIGHTNESS:${npx.brightness}`,
+          `${base}:SPEED:${npx.speed}`
+        ];
+        if (includeStart) commands.push(`${base}:START`);
+        return commands;
+      };
+      const segRow = el('div', { className: 'filter-row' });
+      segRow.append(el('button', {
+        className: 'btn-primary',
+        text: 'APPLY + START',
+        disabled: fxBusy,
+        onClick: () => sendMany(nodeSegCommands(true), prefix + 'SEGMENT:APPLY_START')
+      }));
+      segRow.append(el('button', {
+        className: 'btn-cancel',
+        text: 'STOP',
+        disabled: fxBusy,
+        onClick: () => send(`${prefix}SEGMENT:${npx.id}:STOP`)
+      }));
+      card.append(segRow);
+      if (emergency === 'EMERGENCY') {
+        card.append(el('p', {
+          className: 'sub',
+          text: 'EMERGENCY ACTIVE — this Pixel Node line is forced bright white. Studio cannot clear emergency from here.'
+        }));
+      }
+      host.append(card);
+    }
 
     const audio = el('div', { className: 'card' });
     audio.append(el('h2', { text: 'P4 speaker is not a show output' }));
@@ -493,7 +702,7 @@ export async function OutputsPage(container) {
 
     const future = el('div', { className: 'card' });
     future.append(el('h2', { text: 'Specialist-node roadmap' }));
-    future.append(plannedNote('Audio Node and C3 Lamp Node are implemented. Next: C3 Pixel Node, then MOSFET Node. The old Relay Node concept is retired. DMX remains parked/out of scope until explicitly revisited.'));
+    future.append(plannedNote('Audio Node, C3 Lamp Node and C3 Pixel Node are implemented. Next: MOSFET Node. The old Relay Node concept is retired. DMX remains parked/out of scope until explicitly revisited.'));
     host.append(future);
   }
 

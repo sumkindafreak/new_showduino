@@ -6,7 +6,6 @@ import {
 } from '../status.js';
 
 const FUTURE_NODES = [
-  'C3 Pixel Node',
   'MOSFET Node'
 ];
 
@@ -94,12 +93,15 @@ export async function DevicesPage(container) {
     nodes.append(el('h2', { text: 'Showduino Nodes' }));
     const an = (lastSnap.system && lastSnap.system.audioNode) || {};
     const ln = (lastSnap.system && lastSnap.system.lampNode) || {};
+    const pns = (lastSnap.system && Array.isArray(lastSnap.system.pixelNodes))
+      ? lastSnap.system.pixelNodes : [];
     const audioSeen = an.seen || an.online;
     const lampSeen = ln.seen || ln.online;
+    const pixelSeen = pns.length > 0;
     if (!lastSnap.p4Online) {
       nodes.append(emptyState('P4 OFFLINE', 'Node presence is owned by the Show Engine.'));
-    } else if (!audioSeen && !lampSeen) {
-      nodes.append(emptyState('No Showduino Nodes detected', 'Audio Node and C3 Lamp Node appear here after ESP-NOW announce.'));
+    } else if (!audioSeen && !lampSeen && !pixelSeen) {
+      nodes.append(emptyState('No Showduino Nodes detected', 'Audio, Lamp and Pixel Nodes appear here after ESP-NOW announce.'));
     } else {
       if (audioSeen) {
         nodes.append(statRow('Audio Node', an.online ? 'ONLINE' : 'OFFLINE'));
@@ -145,6 +147,28 @@ export async function DevicesPage(container) {
           text: 'Specialist lamp/FX node. Not the superseded C3/SUE Communications Engine.'
         }));
         nodes.append(lampDetails);
+      }
+      if (pixelSeen) {
+        nodes.append(el('h3', { text: 'Pixel Nodes' }));
+        for (const pn of pns) {
+          nodes.append(statRow(pn.id || 'PIXEL', pn.online ? (pn.state || 'ONLINE') : 'OFFLINE'));
+          nodes.append(statRow('Name', pn.name || '—'));
+          nodes.append(statRow('Line', pn.initialised
+            ? `${pn.pixelCount || 0} px / ${pn.segments || 0} seg`
+            : 'NOT INITIALISED'));
+          const pixDetails = el('details', {});
+          pixDetails.append(el('summary', { text: (pn.id || 'PIXEL') + ' commissioning' }));
+          pixDetails.append(statRow('MAC', pn.mac || '—'));
+          pixDetails.append(statRow('Firmware', pn.firmware || '—'));
+          pixDetails.append(statRow('Initialised', pn.initialised ? 'YES' : 'NO'));
+          pixDetails.append(statRow('Last contact', pn.lastContactMs != null ? (pn.lastContactMs + ' ms') : '—'));
+          if (pn.lastError) pixDetails.append(statRow('Fault', pn.lastError));
+          pixDetails.append(el('p', {
+            className: 'sub',
+            text: 'Remote equivalent of P4 GPIO23. Same segment/FX model. Commission on the node SoftAP, then address by logical ID.'
+          }));
+          nodes.append(pixDetails);
+        }
       }
     }
     nodes.append(plannedNote('Planned next: ' + FUTURE_NODES.join(', ') + '. Relay Node is retired. DMX is parked.'));

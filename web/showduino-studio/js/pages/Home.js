@@ -151,6 +151,7 @@ export async function HomePage(container) {
     nodes.append(el('h2', { text: 'Specialist Nodes' }));
     const an = (sys && sys.audioNode) || {};
     const ln = (sys && sys.lampNode) || {};
+    const pns = (sys && Array.isArray(sys.pixelNodes)) ? sys.pixelNodes : [];
     if (snap.p4Online && (an.seen || an.online)) {
       nodes.append(statRow('Audio Node', an.online ? (an.state || 'ONLINE') : 'OFFLINE'));
     } else {
@@ -160,6 +161,17 @@ export async function HomePage(container) {
       nodes.append(statRow('Lamp Node', ln.online ? (ln.state || 'ONLINE') : 'OFFLINE'));
     } else {
       nodes.append(statRow('Lamp Node', 'NOT DETECTED'));
+    }
+    if (snap.p4Online && pns.length) {
+      const online = pns.filter((n) => n.online).length;
+      nodes.append(statRow('Pixel Nodes', `${online} of ${pns.length} online`));
+      for (const pn of pns) {
+        nodes.append(statRow(pn.id || 'PIXEL', pn.online
+          ? ((pn.initialised ? '' : 'NOT INITIALISED / ') + (pn.state || 'ONLINE'))
+          : 'OFFLINE'));
+      }
+    } else {
+      nodes.append(statRow('Pixel Nodes', 'NOT DETECTED'));
     }
     nodes.append(el('p', {
       className: 'sub',
