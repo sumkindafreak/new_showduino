@@ -4,6 +4,8 @@ Product: **1.0.0-rc.1**. Do not tag `v1.0.0` until this list is signed off.
 
 Pass/fail must come from hardware. Source inspection is not a pass.
 
+Dated gate record: [physical-acceptance-1.0.0-rc.1-2026-09-11.md](release/physical-acceptance-1.0.0-rc.1-2026-09-11.md). That pass found **no attached Showduino hardware** on the validation host. Every physical item remains **BLOCKED** / **NOT RUN**.
+
 ## Bench setup
 
 1. P4 with SD containing at least `system_test`.
