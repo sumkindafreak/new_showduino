@@ -448,6 +448,21 @@ void handleStageLine(String line) {
 #endif
   }
 
+  ShowduinoPixelNodeWire pixW = showduino_parse_state_node_pixel(line.c_str());
+  if (pixW != SHOWDUINO_PIXEL_NODE_WIRE_INVALID) {
+    ui.setPixelNodeAvail(pixW);
+    gNodesOnline = ui.getNodeCount();
+#if SHOWDUINO_OS2_SHELL
+    publishOs2Services();
+#endif
+  }
+  {
+    ShowduinoPixelDetailWire pdet{};
+    if (showduino_parse_state_node_pixel_detail(line.c_str(), &pdet)) {
+      ui.setPixelNodeDetail(pdet);
+    }
+  }
+
   ShowduinoAudioNodeWire audioW = showduino_parse_state_node_audio(line.c_str());
   if (audioW != SHOWDUINO_AUDIO_NODE_WIRE_INVALID) {
     static char sLastAudioWire[48] = "";

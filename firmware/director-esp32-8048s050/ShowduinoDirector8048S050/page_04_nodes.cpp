@@ -233,8 +233,8 @@ void page_04_nodes_create(lv_obj_t *parent, page04_command_fn command_cb) {
   s_cards[PAGE04_ROLE_LAMP].idle_detail = "No compatible node detected.\nCarbide / theatrical lamp FX.";
   s_cards[PAGE04_ROLE_MOSFET].name = "MOSFET NODE";
   s_cards[PAGE04_ROLE_MOSFET].idle_detail = "No compatible node detected.\nPWM / dimming outputs.";
-  s_cards[PAGE04_ROLE_NEOPIXEL].name = "NEOPIXEL NODE";
-  s_cards[PAGE04_ROLE_NEOPIXEL].idle_detail = "No compatible node detected.\nAddressable LED zones.";
+  s_cards[PAGE04_ROLE_NEOPIXEL].name = "PIXEL NODE";
+  s_cards[PAGE04_ROLE_NEOPIXEL].idle_detail = "No compatible node detected.\nRemote Show Pixel Line (same model as P4 GPIO23).";
   s_cards[PAGE04_ROLE_DMX].name = "DMX NODE";
   s_cards[PAGE04_ROLE_DMX].idle_detail = "No compatible node detected.\nDedicated universe output.";
   s_cards[PAGE04_ROLE_STAGE].name = "STAGE / COMMS";

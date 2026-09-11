@@ -274,6 +274,33 @@ public:
     statusDirty = true;
   }
 
+  void setPixelNodeAvail(ShowduinoPixelNodeWire wire) {
+    if (pixelNodeRaw_ == wire) return;
+    pixelNodeRaw_ = wire;
+    pixelNodeWire_ = showduino_pixel_wire_to_avail(wire);
+    const bool present = (wire == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE ||
+                          wire == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
+                          wire == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY);
+    ShowduinoCapabilities caps = page_01_home_get_capabilities();
+    if (caps.neopixel != present) {
+      caps.neopixel = present;
+      page_01_home_set_capabilities(&caps);
+    }
+    const char *footer = "-";
+    if (wire == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) footer = "EMERG";
+    else if (wire == SHOWDUINO_PIXEL_NODE_WIRE_FAULT) footer = "FAULT";
+    else if (wire == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE) footer = "ONLINE";
+    page_01_home_set_footer_neopixel(present ? footer : "-");
+    recountSpecialistNodes();
+    refreshNodesPage();
+    statusDirty = true;
+  }
+
+  void setPixelNodeDetail(const ShowduinoPixelDetailWire &d) {
+    pixelDetail_ = d;
+    refreshNodesPage();
+  }
+
   void setAudioNodeWire(ShowduinoAudioNodeWire wire) {
     if (audioNodeWire_ == wire) return;
     audioNodeWire_ = wire;
@@ -1309,6 +1336,11 @@ private:
         audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_LOOPING ||
         audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_FAULT ||
         audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_EMERGENCY) n++;
+    if (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE ||
+        pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
+        pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
+      n = (uint8_t)(n + (pixelDetail_.online ? pixelDetail_.online : 1));
+    }
     setNodeCount(n);
   }
 
@@ -1376,9 +1408,40 @@ private:
     page_04_nodes_set_card(PAGE04_ROLE_MOSFET, false, "NOT DETECTED",
                            "No compatible node detected.\nPWM / dimming outputs.",
                            ShowduinoPalette::Disabled);
-    page_04_nodes_set_card(PAGE04_ROLE_NEOPIXEL, false, "NOT DETECTED",
-                           "No compatible node detected.\nAddressable LED zones.",
-                           ShowduinoPalette::Disabled);
+    {
+      const bool pixOn = (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE ||
+                          pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
+                          pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY);
+      uint32_t pixCol = ShowduinoPalette::Disabled;
+      const char *pixSt = "NOT DETECTED";
+      char pixDet[96];
+      snprintf(pixDet, sizeof(pixDet),
+               "No compatible node detected.\nRemote Show Pixel Line.");
+      if (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE) {
+        pixCol = ShowduinoPalette::Accent;
+        pixSt = "ONLINE";
+        snprintf(pixDet, sizeof(pixDet), "%u of %u online\n%s %s",
+                 (unsigned)pixelDetail_.online,
+                 (unsigned)(pixelDetail_.seen ? pixelDetail_.seen : pixelDetail_.online),
+                 pixelDetail_.firstId[0] ? pixelDetail_.firstId : "PIXEL",
+                 pixelDetail_.firstState[0] ? pixelDetail_.firstState : "");
+      } else if (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
+        pixCol = ShowduinoPalette::Danger;
+        pixSt = "EMERGENCY";
+        snprintf(pixDet, sizeof(pixDet), "Showduino emergency.\n%s all-white",
+                 pixelDetail_.firstId[0] ? pixelDetail_.firstId : "PIXEL");
+      } else if (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT) {
+        pixCol = ShowduinoPalette::Danger;
+        pixSt = "FAULT";
+        snprintf(pixDet, sizeof(pixDet), "Pixel Node fault reported.\n%s",
+                 pixelDetail_.firstId[0] ? pixelDetail_.firstId : "");
+      } else if (pixelDetail_.seen) {
+        pixSt = "OFFLINE";
+        snprintf(pixDet, sizeof(pixDet), "%u seen, none online.",
+                 (unsigned)pixelDetail_.seen);
+      }
+      page_04_nodes_set_card(PAGE04_ROLE_NEOPIXEL, pixOn, pixSt, pixDet, pixCol);
+    }
     page_04_nodes_set_card(PAGE04_ROLE_DMX, false, "NOT DETECTED",
                            "No compatible node detected.\nDedicated universe output.",
                            ShowduinoPalette::Disabled);
@@ -1496,6 +1559,9 @@ private:
   char liveStateName[24] = "IDLE";
   uint8_t nodeCount = 0;
   ShowduinoNodeAvailWire lampNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  ShowduinoNodeAvailWire pixelNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  ShowduinoPixelNodeWire pixelNodeRaw_ = SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
+  ShowduinoPixelDetailWire pixelDetail_{};
   ShowduinoAudioNodeWire audioNodeWire_ = SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
   DirectorAudioNodeControl audioNodeCtrl_;
   uint16_t sessionEmergencyCount = 0;
