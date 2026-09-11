@@ -5,7 +5,9 @@
 (`web/showduino-studio/` Productions page) via Comms `/api/productions/deploy/*`
 and P4 `WEB/BODY` compile-to-SD. The embedded website Studio V4 at `/studio/`
 still uses the **RAM timeline** endpoint (`/api/studio-timeline`) unless that
-authoring repo is patched. Persist never auto-starts. Emergency aborts commit.
+authoring repo is patched. This firmware tree now overlays Pixel Node device
+selection onto that Studio V4 snapshot via `web/studio-v4-overlay/` before
+embedding `/studio/`. Persist never auto-starts. Emergency aborts commit.
 
 ---
 

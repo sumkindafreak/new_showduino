@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+  <meta name="description" content="Showduino Studio is the local-first creator environment for building ESP32-P4 Show Engine productions, node routing, audio cues and segmented pixel effects.">
+  <meta name="theme-color" content="#070a0e">
+  <title>Showduino Studio | Production Creator</title>
+
+  <!-- Existing Studio engine styles. Studio v4 is loaded last and supplies the new shell. -->
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/studio-daw.css">
+  <link rel="stylesheet" href="css/studio-inspector.css">
+  <link rel="stylesheet" href="css/studio-timeline-mixer.css">
+  <link rel="stylesheet" href="css/studio-3.css">
+  <link rel="stylesheet" href="css/timeline-drop-zones.css">
+  <link rel="stylesheet" href="css/studio-inspector-drawer.css">
+  <link rel="stylesheet" href="css/studio-v4.css">
+</head>
+<body class="studio-v4">
+  <div class="app-container">
+    <aside class="sidebar" aria-label="Showduino Studio navigation">
+      <div class="sidebar-header">
+        <a class="studio-brand" href="index.html" aria-label="Showduino website">
+          <span class="studio-brand-dot"></span>
+          <span><strong>SHOWDUINO</strong><small>STUDIO</small></span>
+        </a>
+        <p class="studio-brand-rule">CREATE HERE · RUN ON P4</p>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Studio workspace">
+        <span class="studio-nav-heading">WORKSPACE</span>
+        <ul>
+          <li class="active" data-panel="introduction" tabindex="0"><span class="nav-code">01</span><span>Dashboard</span></li>
+          <li data-panel="timeline-editor" tabindex="0"><span class="nav-code">02</span><span>Timeline</span></li>
+          <li data-panel="playback" tabindex="0"><span class="nav-code">03</span><span>Pixel FX Lab</span></li>
+          <li data-panel="audio-manager" tabindex="0"><span class="nav-code">04</span><span>Audio</span></li>
+          <li data-panel="hauntsync" tabindex="0"><span class="nav-code">05</span><span>Projects</span></li>
+          <li data-panel="connect" tabindex="0"><span class="nav-code">06</span><span>Deploy</span></li>
+        </ul>
+
+        <span class="studio-nav-heading">SYSTEM</span>
+        <ul>
+          <li data-panel="devices" tabindex="0"><span class="nav-code">N</span><span>Nodes</span></li>
+          <li data-panel="diagnostics" tabindex="0"><span class="nav-code">D</span><span>Diagnostics</span></li>
+          <li data-panel="settings" tabindex="0"><span class="nav-code">S</span><span>Settings</span></li>
+          <li data-panel="help" tabindex="0"><span class="nav-code">?</span><span>Help</span></li>
+        </ul>
+      </nav>
+
+      <div class="studio-architecture-mini" aria-label="Current Showduino architecture">
+        <div><span>DIRECTOR</span><i></i><span>COMMS</span><i></i><strong>P4</strong></div>
+        <small>P4 = runtime authority</small>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-bar">
+        <div class="studio-top-left">
+          <button id="studio-mobile-menu" class="studio-icon-button studio-mobile-only" type="button" aria-label="Open Studio menu">☰</button>
+          <div class="connection-status offline" role="status">CREATOR MODE</div>
+          <span class="runtime-authority-chip" title="The browser creates the production. The ESP32-P4 owns live runtime.">P4 RUNTIME AUTHORITY</span>
+        </div>
+
+        <div class="show-info">
+          <span class="show-label">PRODUCTION</span>
+          <span class="show-name" role="button" tabindex="0" aria-label="Rename show">Untitled Show</span>
+          <span id="studio-save-state" class="studio-save-state">LOCAL</span>
+        </div>
+
+        <div class="studio-project-actions" aria-label="Project actions">
+          <button id="studio-save-button" class="studio-action-btn studio-primary-action" type="button">Save</button>
+          <button id="studio-import-button" class="studio-action-btn" type="button">Import</button>
+          <button id="studio-export-button" class="studio-action-btn" type="button">Export .shdo</button>
+          <input id="studio-import-file" type="file" accept=".shdo,.json,application/json" hidden>
+        </div>
+
+        <div class="transport-controls" aria-label="Studio preview controls">
+          <button type="button" aria-label="Play Studio preview" title="Play browser preview">▶</button>
+          <button type="button" aria-label="Stop Studio preview" title="Stop browser preview">■</button>
+          <button type="button" aria-label="Open Timeline" title="Open Timeline" onclick="window.loadPanel?.('timeline-editor')">TL</button>
+          <button type="button" class="panic" title="Reset browser preview only">RESET PREVIEW</button>
+        </div>
+
+        <div class="system-info"><span class="clock">--:--:--</span><span class="latency">CREATOR</span></div>
+      </header>
+
+      <div class="studio-context-strip" aria-label="Studio context">
+        <span><i class="context-dot"></i> Studio creates and previews production data</span>
+        <span>Emergency state is not authored here</span>
+        <span>Running shows stay independent of browser / Wi-Fi / Director</span>
+      </div>
+
+      <div class="workspace"><!-- Panels are loaded by app.js. --></div>
+    </main>
+
+    <footer class="bottom-dock collapsed">
+      <div class="terminal">
+        <div class="terminal-header">
+          <span>STUDIO LOG</span>
+          <div class="terminal-controls">
+            <div class="filters">
+              <button class="active" type="button">ALL</button><button type="button">INFO</button><button type="button">WARN</button><button type="button">ERR</button><button type="button">NET</button><button type="button">FX</button>
+            </div>
+            <button class="toggle-terminal" type="button" onclick="window.toggleTerminal()" aria-label="Toggle Studio log">▲</button>
+          </div>
+        </div>
+        <div class="terminal-output" aria-live="polite"></div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="config/runtime-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/dist/umd/supabase.min.js"></script>
+  <script src="js/cloud/supabase-service.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/shdo_model.js"></script>
+  <script src="js/showduino-pixel-authoring.js"></script>
+  <script src="js/connection_detector.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/timeline-fx-daw.js"></script>
+  <script src="js/timeline-drop-zones.js"></script>
+  <script src="js/timeline-professional-inspector.js"></script>
+  <script src="js/studio-inspector-drawer.js"></script>
+  <script src="js/timeline-mixer.js"></script>
+  <script src="js/audio_browser.js"></script>
+  <!-- Legacy DMX code remains import-compatible but Studio v4 never exposes DMX authoring. -->
+  <script src="js/dmx_editor.js"></script>
+  <script src="js/led_studio.js"></script>
+  <script src="js/panels.js"></script>
+  <script src="app.js"></script>
+
+  <script src="js/studio-package.js"></script>
+  <script src="js/studio-creator-mode.js"></script>
+  <script src="js/studio-projects.js"></script>
+  <script src="js/studio-deploy.js"></script>
+  <script src="js/studio-creator-bootstrap.js"></script>
+
+  <!-- Android keyboards resize the visual viewport. Protect an open mobile cue
+       editor from resize/autosave redraws so focused inputs are not replaced. -->
+  <script>
+    (() => {
+      const mobileCueEditorOpen = () => Boolean(
+        document.body.classList.contains('studio-mobile-native') &&
+        document.querySelector('#studio-mobile-app .sm-editor:not([hidden])')
+      );
+
+      const protectOpenCueEditor = (event) => {
+        if (mobileCueEditorOpen()) event.stopImmediatePropagation();
+      };
+
+      window.addEventListener('resize', protectOpenCueEditor, true);
+      window.addEventListener('orientationchange', protectOpenCueEditor, true);
+      window.addEventListener('showduino:project-saved', protectOpenCueEditor, true);
+      window.addEventListener('showduino:v4-saved', protectOpenCueEditor, true);
+    })();
+  </script>
+
+  <script src="js/studio-mobile.js"></script>
+  <script src="js/current-system-ui.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <script src="js/studio-v4.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      window.connectionDetector = window.connectionDetector || new window.ConnectionDetector();
+      try {
+        await window.connectionDetector.detectMode();
+        window.connectionDetector.startMonitoring();
+      } catch (_) {}
+
+      const status = document.querySelector('.connection-status');
+      const refreshCloudStatus = async () => {
+        if (!status) return;
+        const user = await window.ShowduinoSupabase?.getCurrentUser?.();
+        if (window.connectionDetector?.isAPMode?.()) {
+          status.className = 'connection-status ap';
+          status.textContent = 'LOCAL SHOWDUINO FOUND';
+        } else if (user) {
+          status.className = 'connection-status lan';
+          status.textContent = 'CREATOR + CLOUD';
+        } else if (navigator.onLine) {
+          status.className = 'connection-status lan';
+          status.textContent = 'CREATOR ONLINE';
+        } else {
+          status.className = 'connection-status offline';
+          status.textContent = 'CREATOR OFFLINE';
+        }
+      };
+
+      refreshCloudStatus();
+      window.addEventListener('showduino:auth-changed', refreshCloudStatus);
+      window.setInterval(refreshCloudStatus, 5000);
+
+      const saveButton = document.getElementById('studio-save-button');
+      const importButton = document.getElementById('studio-import-button');
+      const exportButton = document.getElementById('studio-export-button');
+      const importFile = document.getElementById('studio-import-file');
+      const saveState = document.getElementById('studio-save-state');
+
+      saveButton?.addEventListener('click', async () => {
+        try {
+          saveButton.disabled = true;
+          saveButton.textContent = 'Saving…';
+          const project = await window.ShowduinoProjects.saveCurrentProject();
+          saveState.textContent = window.ShowduinoProjects.getCurrentUser?.() ? 'LOCAL + CLOUD' : 'LOCAL';
+          window.ShowduinoStudioV4?.refreshProjectStats?.();
+          window.dispatchEvent(new CustomEvent('showduino:v4-saved', { detail: { project } }));
+        } catch (error) {
+          window.alert(error.message);
+        } finally {
+          saveButton.disabled = false;
+          saveButton.textContent = 'Save';
+        }
+      });
+
+      importButton?.addEventListener('click', () => importFile?.click());
+      exportButton?.addEventListener('click', () => {
+        try { window.ShowduinoProjects.exportCurrentProject(); }
+        catch (error) { window.alert(error.message); }
+      });
+      importFile?.addEventListener('change', async () => {
+        try {
+          await window.ShowduinoProjects.importProject(importFile.files[0]);
+          window.ShowduinoStudioV4?.refreshProjectStats?.();
+        } catch (error) {
+          window.alert(error.message);
+        } finally {
+          importFile.value = '';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -234,17 +234,14 @@ Implemented now:
 - shared 25-FX vocabulary;
 - hard global emergency-white override on P4 local pixels and Pixel Nodes;
 - GPIO24 grouped green-locator / synchronized-white signage behavior;
-- Studio Outputs-page commissioning/editor controls in source.
+- Studio Outputs-page commissioning/editor controls in source;
+- Studio V4 production authoring device picker for P4 GPIO23 and Pixel Nodes (`web/studio-v4-overlay/`), generating existing SHDO v2 `p4-show-pixels` and `pixel-node` bindings.
 
 Still required for a complete production authoring workflow:
 
-- regeneration of the S3 PROGMEM bundle after Studio source changes;
+- public showduino.com deploy of the Studio V4 overlay (this repository snapshots/embeds it);
 - persistent named segment definitions in production/project data;
 - reusable FX preset persistence/UI;
-- website Studio V4 Pixel Node device picker parity;
-- logical segment-target resolution;
-- reuse of additional Pixel Nodes in the field.
-- authoritative cue/result state surfaces for production playback;
-- reuse of the same segment/FX model on the future C3 Pixel Node.
+- authoritative cue/result state surfaces for production playback.
 
-Until production PIXEL cues are implemented, direct `PIXEL:SEGMENT:...` commands remain the commissioning/runtime-control interface.
+Until a production is compiled to the P4, direct `PIXEL:SEGMENT:...` / `PIXEL:NODE:<id>:SEGMENT:...` commands remain the commissioning/runtime-control interface.

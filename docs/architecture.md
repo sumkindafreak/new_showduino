@@ -278,7 +278,7 @@ Segments are the preferred Studio authoring primitive.
 
 The browser UI should present users with named lighting areas/segments rather than forcing them to manipulate individual LED addresses for every cue. A future production can therefore refer to logical targets such as `doorway`, `altar`, or `corridor_left`, while the P4 resolves those names to physical pixel ranges.
 
-The current Outputs page provides GPIO23 **and** C3 Pixel Node commissioning/editor surfaces using the shared FX vocabulary. Persistent named segment definitions, reusable FX presets and website Studio V4 Pixel Node pickers remain planned schema/UI work.
+The current Outputs page provides GPIO23 **and** C3 Pixel Node commissioning/editor surfaces using the shared FX vocabulary. Studio V4 production authoring now uses the same pixel-output picker for P4 GPIO23 and discovered/saved Pixel Nodes. Persistent named segment libraries and reusable FX presets remain planned schema work.
 
 See [`studio-pixel-authoring.md`](studio-pixel-authoring.md).
 

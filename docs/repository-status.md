@@ -159,7 +159,7 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 |----------|--------------------------|
 | **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; C3 Pixel Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO:NODE ingest |
 | **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; C3 Pixel Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
-| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; website Studio V4 Pixel Node device picker; SHDO v2 authoring vs P4 format-v1 store |
+| **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; SHDO v2 authoring vs P4 format-v1 store; public showduino.com deploy of the Studio V4 picker (source/overlay updated in this tree) |
 | **PLANNED** | MOSFET Node; production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |
 | **PARKED** | DMX work until explicitly reopened |
 | **LEGACY** | Relay Node product concept, C3/SUE Comms, onboard-C6 Comms attempt, CYD/Mega generation, GoreFX dashboard tree |

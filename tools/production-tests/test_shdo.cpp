@@ -141,5 +141,64 @@ int main() {
                                          pixelCues, 32, &pixelCount, err, sizeof(err));
   expect(missing == SHDO_MISSING_DEVICE, "pixel clip without bound device is SHDO_MISSING_DEVICE");
 
+  static const char *kMixedPixels =
+      "{\n"
+      "  \"schema\": \"showduino-production-v2\",\n"
+      "  \"package\": { \"version\": 2 },\n"
+      "  \"project\": { \"id\": \"mixed_pixels\", \"name\": \"Mixed Pixels\" },\n"
+      "  \"architecture\": {\n"
+      "    \"runtimeAuthority\": \"esp32-p4-show-engine\",\n"
+      "    \"transport\": \"esp32-s3-comms-controller\"\n"
+      "  },\n"
+      "  \"safety\": {\n"
+      "    \"policy\": \"firmware-authoritative\",\n"
+      "    \"productionCannotDisable\": true,\n"
+      "    \"emergency\": {\n"
+      "      \"autoResume\": false,\n"
+      "      \"requiresManualClear\": true,\n"
+      "      \"stopTimeline\": true,\n"
+      "      \"pixelOverride\": \"all-white\"\n"
+      "    }\n"
+      "  },\n"
+      "  \"devices\": [\n"
+      "    { \"id\": \"p4-show-pixels\", \"type\": \"p4-pixel-line\",\n"
+      "      \"binding\": { \"route\": \"p4-show-pixels\", \"nodeId\": \"p4\", \"pixelStart\": 0, \"pixelCount\": 80 } },\n"
+      "    { \"id\": \"LED-01\", \"type\": \"pixel-node\",\n"
+      "      \"binding\": { \"route\": \"pixel-node\", \"nodeId\": \"LED-01\", \"pixelStart\": 0, \"pixelCount\": 100 } },\n"
+      "    { \"id\": \"LED-02\", \"type\": \"pixel-node\",\n"
+      "      \"binding\": { \"route\": \"pixel-node\", \"nodeId\": \"LED-02\", \"pixelStart\": 0, \"pixelCount\": 80 } },\n"
+      "    { \"id\": \"audio-1\", \"type\": \"audio-node\",\n"
+      "      \"binding\": { \"route\": \"audio-node\" } }\n"
+      "  ],\n"
+      "  \"clips\": [\n"
+      "    { \"id\": \"p4-fire\", \"type\": \"pixel\", \"targetDeviceId\": \"p4-show-pixels\",\n"
+      "      \"startMs\": 0, \"params\": { \"effect\": \"FIRE\", \"startPixel\": 0, \"count\": 10 } },\n"
+      "    { \"id\": \"led1-flicker\", \"type\": \"pixel\", \"targetDeviceId\": \"LED-01\",\n"
+      "      \"startMs\": 2500, \"params\": { \"effect\": \"FLICKER\", \"startPixel\": 0, \"count\": 20 } },\n"
+      "    { \"id\": \"led2-warn\", \"type\": \"pixel\", \"targetDeviceId\": \"LED-02\",\n"
+      "      \"startMs\": 4000, \"params\": { \"effect\": \"WARNING\", \"startPixel\": 0, \"count\": 8 } },\n"
+      "    { \"id\": \"boom\", \"type\": \"audio\", \"targetDeviceId\": \"audio-1\",\n"
+      "      \"startMs\": 1000, \"params\": { \"file\": \"door_slam.wav\", \"volume\": 80 } }\n"
+      "  ]\n"
+      "}\n";
+
+  ShdoCue mixedCues[64]{};
+  uint16_t mixedCount = 0;
+  const ShdoStatus mixedOk = shdoCompile(kMixedPixels, std::strlen(kMixedPixels), &manifest,
+                                         mixedCues, 64, &mixedCount, err, sizeof(err));
+  expect(mixedOk == SHDO_OK, "mixed P4 + Pixel Node + audio SHDO compiles");
+  bool sawP4 = false, sawLed01 = false, sawLed02 = false, sawAudio = false;
+  for (uint16_t i = 0; i < mixedCount; ++i) {
+    if (std::strstr(mixedCues[i].command, "PIXEL:SEGMENT:") != nullptr &&
+        std::strstr(mixedCues[i].command, "PIXEL:NODE:") == nullptr) sawP4 = true;
+    if (std::strstr(mixedCues[i].command, "PIXEL:NODE:LED-01:") != nullptr) sawLed01 = true;
+    if (std::strstr(mixedCues[i].command, "PIXEL:NODE:LED-02:") != nullptr) sawLed02 = true;
+    if (std::strstr(mixedCues[i].command, "AUDIO:NODE:PLAY:door_slam.wav") != nullptr) sawAudio = true;
+  }
+  expect(sawP4, "mixed production keeps P4 PIXEL:SEGMENT commands");
+  expect(sawLed01, "mixed production keeps LED-01 PIXEL:NODE commands");
+  expect(sawLed02, "mixed production keeps LED-02 PIXEL:NODE commands");
+  expect(sawAudio, "mixed production keeps Audio Node commands");
+
   return failures ? 1 : 0;
 }

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Showduino pixel picker fixture</title>
+  <link rel="stylesheet" href="../../web/studio-v4-overlay/css/studio-mobile-simple.css">
+  <link rel="stylesheet" href="../../web/studio-v4-overlay/css/studio-v4.css">
+  <style>
+    body { margin: 0; background: #05080b; color: #edf4f6; font-family: Inter, system-ui, sans-serif; }
+    .wrap { padding: 16px; max-width: 430px; }
+    h1 { font-size: 1.1rem; }
+    .sm-form-section { margin-bottom: .65rem; padding: .72rem; border: 1px solid #22343e; border-radius: 12px; background: #0a1217; }
+  </style>
+</head>
+<body class="studio-v4">
+  <div class="wrap">
+    <h1>Pixel cue editor fixture</h1>
+    <section class="sm-form-section">
+      <div class="sm-field sm-pixel-device" id="picker"></div>
+      <div class="sm-grid">
+        <div class="sm-field"><label>SEGMENT</label><select class="sm-select"><option>2</option></select></div>
+        <div class="sm-field"><label>EFFECT</label><select class="sm-select"><option>Flicker</option></select></div>
+      </div>
+      <div class="sm-field"><label>COLOUR</label><input class="sm-input" type="color" value="#ff0000"></div>
+      <div class="sm-field"><label>BRIGHTNESS</label><input class="sm-input" type="range" min="0" max="255" value="166"></div>
+      <button class="sm-btn primary" type="button">Save cue</button>
+    </section>
+  </div>
+  <script src="../../web/studio-v4-overlay/js/showduino-pixel-authoring.js"></script>
+  <script>
+    ShowduinoPixelAuthoring.ingestLivePayloads([{
+      showPixelsReady: true, showPixelsMax: 1024, p4Online: true,
+      pixelNodes: [
+        { id: 'LED-01', name: 'Entrance', online: true, initialised: true, pixelCount: 100 },
+        { id: 'LED-02', name: 'Corridor', online: false, initialised: false, pixelCount: 0 },
+        { id: 'LED-03', name: 'Haunted Corridor Ceiling', online: true, initialised: false, pixelCount: 180 }
+      ]
+    }]);
+    document.getElementById('picker').innerHTML =
+      '<label>PIXEL OUTPUT</label>' +
+      ShowduinoPixelAuthoring.selectHtml({
+        id: 'sm-edit-node',
+        selectClass: 'sm-select sm-pixel-select',
+        selectedId: 'LED-03',
+        project: { clips: [{ type: 'pixel', routing: { nodeId: 'LED-07' } }] }
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Showduino pixel authoring tests</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<script src="../../web/studio-v4-overlay/js/showduino-pixel-authoring.js"></script>
+<script src="../../web/studio-v4-overlay/js/studio-package.js"></script>
+<script src="../../web/studio-v4-overlay/js/studio-deploy.js"></script>
+<script>
+(function () {
+  const out = [];
+  let failures = 0;
+  function check(name, fn) {
+    try { fn(); out.push('PASS  ' + name); }
+    catch (error) { failures += 1; out.push('FAIL  ' + name + ' — ' + error.message); }
+  }
+  function assert(cond, message) { if (!cond) throw new Error(message || 'assert failed'); }
+  function eq(a, b, message) {
+    if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((message || 'not equal') + ' ' + JSON.stringify(a) + ' !== ' + JSON.stringify(b));
+  }
+
+  const authoring = window.ShowduinoPixelAuthoring;
+  authoring.resetLiveSnapshot();
+
+  check('P4 is always listed first', () => {
+    const list = authoring.listPixelOutputs({ project: { clips: [] } });
+    eq(list[0].logicalId, 'p4');
+    eq(list[0].route, 'p4-show-pixels');
+    eq(list[0].deviceId, 'p4-show-pixels');
+    eq(list[0].online, true);
+    eq(list[0].initialised, true);
+    assert(authoring.optionLabel(list[0]).indexOf('OFFLINE') < 0);
+  });
+
+  check('multiple Pixel Nodes use logical IDs not array indexes', () => {
+    authoring.ingestLivePayloads([{
+      showPixelsReady: true, showPixelsMax: 1024, p4Online: true,
+      pixelNodes: [
+        { id: 'LED-02', name: 'Corridor', online: true, initialised: true, pixelCount: 80, maxPixels: 512 },
+        { id: 'LED-01', name: 'Entrance', online: true, initialised: true, pixelCount: 100, maxPixels: 512 },
+        { id: 'LED-03', name: 'Crypt', online: false, initialised: false, pixelCount: 0, maxPixels: 512 }
+      ]
+    }]);
+    const list = authoring.listPixelOutputs({});
+    eq(list.map((item) => item.logicalId), ['p4', 'LED-02', 'LED-01', 'LED-03']);
+    eq(authoring.findOutput('LED-01').friendlyName, 'Entrance');
+    eq(authoring.findOutput('LED-03').online, false);
+  });
+
+  check('friendly name is presentation; logical ID is identity', () => {
+    const led = authoring.findOutput('LED-01');
+    eq(led.logicalId, 'LED-01');
+    assert(authoring.optionLabel(led).indexOf('LED-01 — Entrance') === 0);
+    eq(authoring.packageDeviceId('LED-01'), 'LED-01');
+    eq(authoring.routeForNodeId('LED-01'), 'pixel-node');
+  });
+
+  check('offline and missing targets are preserved', () => {
+    const project = {
+      clips: [
+        { id: 'a', type: 'pixel', routing: { nodeId: 'LED-03' }, params: { effect: 'FLICKER', segment: 4 } },
+        { id: 'b', type: 'pixel', routing: { nodeId: 'LED-07' }, params: { effect: 'FIRE', segment: 1 } }
+      ]
+    };
+    const list = authoring.listPixelOutputs({ project, selectedId: 'LED-07' });
+    const crypt = list.find((item) => item.logicalId === 'LED-03');
+    const missing = list.find((item) => item.logicalId === 'LED-07');
+    assert(crypt.logicalId === 'LED-03');
+    assert(authoring.optionLabel(crypt).indexOf('OFFLINE') >= 0);
+    assert(missing.missing);
+    assert(authoring.optionLabel(missing).indexOf('Missing / Offline') >= 0);
+  });
+
+  check('P4 aliases never retarget a Pixel Node', () => {
+    eq(authoring.canonicalNodeId('p4-show-pixels'), 'p4');
+    eq(authoring.canonicalNodeId('LED-01'), 'LED-01');
+    assert(!authoring.isP4Id('LED-01'));
+  });
+
+  check('offline is a hardware warning not an authoring error', () => {
+    const uninit = authoring.validatePixelTarget('LED-03');
+    eq(uninit.ok, true);
+    assert(uninit.warnings.some((item) => item.code === 'OFFLINE' || item.code === 'NOT_INITIALISED'));
+  });
+
+  check('missing device is a warning; empty device is an authoring error', () => {
+    const missing = authoring.validatePixelClip({
+      name: 'Crypt fire', type: 'pixel', routing: { nodeId: 'LED-07' },
+      params: { effect: 'FIRE', segment: 2, startPixel: 0, length: 10 }
+    });
+    eq(missing.ok, true);
+    assert(missing.warnings.some((item) => item.code === 'MISSING'));
+    const none = authoring.validatePixelTarget('');
+    eq(none.ok, false);
+    assert(none.errors.some((item) => item.code === 'NO_DEVICE'));
+  });
+
+  check('malformed Pixel Node IDs are authoring errors', () => {
+    const bad = authoring.validatePixelTarget('99-LED');
+    eq(bad.ok, false);
+    assert(authoring.pixelNodeIdOk('LED-01'));
+    assert(!authoring.pixelNodeIdOk('x'));
+  });
+
+  check('shared 25-effect vocabulary', () => {
+    eq(authoring.EFFECTS.length, 25);
+    eq(authoring.canonicalizeEffect('flicker'), 'FLICKER');
+    eq(authoring.canonicalizeEffect('blackout'), 'OFF');
+    eq(authoring.canonicalizeEffect('ember'), 'CANDLE');
+    eq(authoring.canonicalizeEffect('nope'), '');
+  });
+
+  check('effect parameters are not invented', () => {
+    assert(authoring.effectSupports('FIRE', 'secondary'));
+    assert(!authoring.effectSupports('SOLID', 'reverse'));
+    assert(!authoring.effectSupports('RAINBOW', 'colour'));
+    assert(authoring.effectSupports('CHASE', 'reverse'));
+  });
+
+  check('SHDO devices use logical IDs and existing routes', () => {
+    const p4 = authoring.shdoDeviceForNode('p4');
+    const led = authoring.shdoDeviceForNode('LED-03', { name: 'Crypt' });
+    eq(p4.binding.route, 'p4-show-pixels');
+    eq(led.binding.route, 'pixel-node');
+    eq(led.binding.nodeId, 'LED-03');
+    eq(authoring.commandPrefix(p4), 'PIXEL:');
+    eq(authoring.commandPrefix(led), 'PIXEL:NODE:LED-03:');
+  });
+
+  check('device switch keeps segment/effect/params', () => {
+    const params = authoring.migratePixelParams({
+      segment: 2, effect: 'FLICKER', r: 255, g: 0, b: 0, brightness: 160, speed: 40, startPixel: 8, length: 12
+    });
+    eq(params.segment, 2);
+    eq(params.effect, 'FLICKER');
+    eq(params.speed, 40);
+  });
+
+  check('duplicate cue identity is a deep routing copy contract', () => {
+    const src = { routing: { nodeId: 'LED-01', output: 'Entrance' }, params: { effect: 'FIRE', segment: 2 } };
+    const duplicate = { routing: { ...src.routing }, params: { ...src.params } };
+    duplicate.routing.nodeId = 'LED-02';
+    eq(src.routing.nodeId, 'LED-01');
+    eq(duplicate.routing.nodeId, 'LED-02');
+  });
+
+  check('save/reload preserves exact logical targets', () => {
+    const project = {
+      clips: [
+        { id: 'p4', type: 'pixel', routing: { nodeId: 'p4' }, params: { effect: 'FIRE', segment: 1 } },
+        { id: 'a', type: 'pixel', routing: { nodeId: 'LED-01' }, params: { effect: 'FLICKER', segment: 2 } },
+        { id: 'b', type: 'pixel', routing: { nodeId: 'LED-02' }, params: { effect: 'WARNING', segment: 4 } }
+      ]
+    };
+    const reloaded = JSON.parse(JSON.stringify(project));
+    eq(reloaded.clips[1].routing.nodeId, 'LED-01');
+    eq(reloaded.clips[2].routing.nodeId, 'LED-02');
+  });
+
+  check('audio and lamp devices are not pixel outputs', () => {
+    authoring.ingestLivePayloads([{
+      devices: [
+        { id: 'audio-node', role: 'AUDIO', name: 'Audio Node', online: true },
+        { id: 'lamp-node', role: 'LAMP', name: 'Lamp Node', online: true },
+        { id: 'LED-04', role: 'PIXEL', friendlyName: 'Finale', online: true, initialised: true, pixelCount: 40 }
+      ]
+    }]);
+    const ids = authoring.listPixelOutputs({}).map((item) => item.logicalId);
+    assert(!ids.includes('audio-node'));
+    assert(!ids.includes('lamp-node'));
+    assert(ids.includes('LED-04'));
+  });
+
+  check('mixed P4 + Pixel Node SHDO compile keeps both routes', () => {
+    const project = {
+      project: { id: 'mixed-pixel', name: 'Mixed Pixel', duration: 60000 },
+      tracks: [{ id: 't-pixel', name: 'Pixels', type: 'pixel' }],
+      clips: [
+        { id: 'c-p4', trackId: 't-pixel', type: 'pixel', label: 'P4 fire', startMs: 0, durationMs: 4500, routing: { nodeId: 'p4' }, params: { effect: 'FIRE', segment: 1, startPixel: 0, length: 10, r: 255, g: 80, b: 0 } },
+        { id: 'c-led01', trackId: 't-pixel', type: 'pixel', label: 'Entrance flicker', startMs: 1000, durationMs: 4500, routing: { nodeId: 'LED-01' }, params: { effect: 'FLICKER', segment: 2, startPixel: 0, length: 12, r: 255, g: 0, b: 0, brightness: 166, speed: 40 } },
+        { id: 'c-led02', trackId: 't-pixel', type: 'pixel', label: 'Corridor warning', startMs: 2000, durationMs: 4500, routing: { nodeId: 'LED-02' }, params: { effect: 'WARNING', segment: 4, startPixel: 0, length: 8, r: 255, g: 40, b: 0 } }
+      ]
+    };
+    const shdo = window.ShowduinoPackage.toShdo(project);
+    const p4 = shdo.devices.find((device) => device.binding && device.binding.route === 'p4-show-pixels');
+    const led01 = shdo.devices.find((device) => device.binding && device.binding.nodeId === 'LED-01');
+    const led02 = shdo.devices.find((device) => device.binding && device.binding.nodeId === 'LED-02');
+    assert(p4 && p4.id === 'p4-show-pixels');
+    assert(led01 && led01.binding.route === 'pixel-node');
+    assert(led02 && led02.binding.route === 'pixel-node');
+    eq(shdo.clips.find((clip) => clip.id === 'c-led01').targetDeviceId, 'LED-01');
+    const plan = window.ShowduinoDeploy.compileShdoForStage(shdo);
+    assert(plan.ok, (plan.errors || []).join('; ') || 'compile failed');
+    const cmds = (plan.commands || []).map((item) => item.command).join('\n');
+    assert(cmds.indexOf('PIXEL:SEGMENT:1:FX:FIRE') >= 0);
+    assert(cmds.indexOf('PIXEL:NODE:') < 0 || cmds.indexOf('PIXEL:SEGMENT:1:FX:FIRE') >= 0);
+    assert(cmds.indexOf('PIXEL:NODE:LED-01:SEGMENT:2:FX:FLICKER') >= 0);
+    assert(cmds.indexOf('PIXEL:NODE:LED-02:SEGMENT:4:FX:WARNING') >= 0);
+    assert(!/\nPIXEL:NODE:[^\n]*PIXEL:SEGMENT:/.test('\n' + cmds));
+  });
+
+  const summary = (failures ? failures + ' FAILED' : 'ALL PASSED') + '\n' + out.join('\n');
+  document.getElementById('out').textContent = summary;
+  document.title = failures ? 'PIXEL AUTHORING TESTS FAILED' : 'PIXEL AUTHORING TESTS PASSED';
+})();
+</script>
+</body>
+</html>

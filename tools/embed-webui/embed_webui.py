@@ -39,6 +39,7 @@ OUT_H = os.path.join(
 )
 OUT_JSON = os.path.join(os.path.dirname(__file__), "last-build.json")
 
+OVERLAY_DIR = os.path.join(ROOT, "web", "studio-v4-overlay")
 AUTHORING_REPO = "sumkindafreak/showduino.com"
 AUTHORING_REF = os.environ.get("SHOWDUINO_AUTHORING_REF", "main")
 AUTHORING_COMMIT_OVERRIDE = os.environ.get("SHOWDUINO_AUTHORING_COMMIT", "").strip()
@@ -169,6 +170,30 @@ def authoring_raw_url(commit: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{AUTHORING_REPO}/{commit}/{path.lstrip('/')}"
 
 
+def list_overlay_files() -> list[str]:
+    out: list[str] = []
+    if not os.path.isdir(OVERLAY_DIR):
+        return out
+    for dirpath, _dirnames, filenames in os.walk(OVERLAY_DIR):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, OVERLAY_DIR).replace("\\", "/")
+            out.append(rel)
+    return sorted(out)
+
+
+def overlay_path(path: str) -> str:
+    return os.path.join(OVERLAY_DIR, path.replace("/", os.sep))
+
+
+def load_authoring_file(commit: str, path: str) -> bytes:
+    local = overlay_path(path)
+    if os.path.isfile(local):
+        with open(local, "rb") as fh:
+            return fh.read()
+    return fetch_authoring_file(commit, path)
+
+
 def fetch_authoring_file(commit: str, path: str) -> bytes:
     try:
         return fetch_bytes(authoring_raw_url(commit, path))
@@ -251,7 +276,7 @@ def discover_css_assets(commit: str, source_path: str, css: bytes) -> list[str]:
 
 def build_authoring_records() -> tuple[list[tuple[str, str, bytes]], str, list[str]]:
     commit = resolve_authoring_commit()
-    raw_html = fetch_authoring_file(commit, "studio.html").decode("utf-8")
+    raw_html = load_authoring_file(commit, "studio.html").decode("utf-8")
     parser = StudioReferenceParser()
     parser.feed(raw_html)
 
@@ -263,6 +288,11 @@ def build_authoring_records() -> tuple[list[tuple[str, str, bytes]], str, list[s
         if clean and clean not in source_paths:
             source_paths.append(clean)
     for path in AUTHORING_DYNAMIC_FILES:
+        if path not in source_paths:
+            source_paths.append(path)
+    for path in list_overlay_files():
+        if path == "studio.html":
+            continue
         if path not in source_paths:
             source_paths.append(path)
 
@@ -279,7 +309,7 @@ def build_authoring_records() -> tuple[list[tuple[str, str, bytes]], str, list[s
         if path == "config/runtime-config.js":
             data = offline_runtime_config()
         else:
-            data = fetch_authoring_file(commit, path)
+            data = load_authoring_file(commit, path)
         fetched[path] = data
 
         ext = os.path.splitext(path)[1].lower()
@@ -426,6 +456,8 @@ def main() -> None:
             "rawBytes": authoring_raw_bytes,
             "embeddedBytes": authoring_embedded_bytes,
             "sourceFiles": authoring_files,
+            "overlayDir": os.path.relpath(OVERLAY_DIR, ROOT).replace("\\", "/"),
+            "overlayFiles": list_overlay_files(),
             "cloudEnabled": False,
             "externalCdnDependencies": False,
         },
