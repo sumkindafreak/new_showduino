@@ -34,7 +34,7 @@
  * Do not initialise Bluetooth libraries here.
  */
 
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.3.0"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.4.0"
 
 #ifndef SHOWDUINO_WEBUI_ENABLED
 #define SHOWDUINO_WEBUI_ENABLED 1

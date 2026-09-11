@@ -2,6 +2,7 @@
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_pixel_node.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,6 +18,14 @@ static bool sHaveLampNode = false;
 static uint8_t sDirectorMac[6] = {0};
 static uint8_t sAudioNodeMac[6] = {0};
 static uint8_t sLampNodeMac[6] = {0};
+
+struct CommsPixelPeer {
+  bool have;
+  uint8_t mac[6];
+  char id[SHOWDUINO_PIXEL_ID_MAX + 1];
+  uint32_t lastMs;
+};
+static CommsPixelPeer sPixel[SHOWDUINO_PIXEL_NODE_MAX_NODES];
 static uint16_t sTxSequence = 1;
 static uint32_t sRxCount = 0;
 static uint32_t sTxCount = 0;
@@ -85,6 +94,47 @@ static bool addPeer(const uint8_t *mac) {
   return false;
 }
 
+static void notePixelPeer(const uint8_t *mac, const char *command) {
+  if (!mac) return;
+  char id[SHOWDUINO_PIXEL_ID_MAX + 1] = "";
+  if (command && !strncmp(command, "ANNOUNCE:", 9)) {
+    ShowduinoPixelAnnounce an{};
+    if (showduino_pixel_parse_announce(command, &an) && an.id[0]) {
+      strncpy(id, an.id, sizeof(id) - 1);
+    }
+  }
+  CommsPixelPeer *slot = nullptr;
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+    if (sPixel[i].have && memcmp(sPixel[i].mac, mac, 6) == 0) {
+      slot = &sPixel[i];
+      break;
+    }
+  }
+  if (!slot && id[0]) {
+    for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+      if (sPixel[i].have && showduino_pixel_id_equal(sPixel[i].id, id)) {
+        slot = &sPixel[i];
+        break;
+      }
+    }
+  }
+  if (!slot) {
+    for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+      if (!sPixel[i].have) {
+        slot = &sPixel[i];
+        break;
+      }
+    }
+  }
+  if (slot) {
+    memcpy(slot->mac, mac, 6);
+    slot->have = true;
+    slot->lastMs = millis();
+    if (id[0]) strncpy(slot->id, id, sizeof(slot->id) - 1);
+  }
+  addPeer(mac);
+}
+
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 static void onEspNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData, int len) {
 #else
@@ -119,6 +169,8 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
         sHaveLampNode = true;
         sLastLampNodeMs = millis();
         addPeer(sLampNodeMac);
+      } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_PIXEL) == 0) {
+        notePixelPeer(recvInfo->src_addr, np.command);
       }
     }
 #else
@@ -126,6 +178,8 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
       sLastAudioNodeMs = millis();
     } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_LAMP) == 0) {
       sLastLampNodeMs = millis();
+    } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_PIXEL) == 0) {
+      notePixelPeer(macAddr, np.command);
     }
 #endif
     SD_LOGT("COMMS", "RX <- Node %s seq=%lu cmd=%s",
@@ -273,6 +327,58 @@ bool espNowTransportHaveLampNode() { return sHaveLampNode; }
 void espNowTransportLampNodeMac(uint8_t out[6]) {
   if (!out) return;
   memcpy(out, sLampNodeMac, 6);
+}
+
+bool espNowTransportSendToPixelNode(const char *id, const char *command, uint32_t sequence) {
+  if (!sReady || !id || !id[0] || !command || !command[0]) return false;
+  CommsPixelPeer *slot = nullptr;
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+    if (sPixel[i].have && showduino_pixel_id_equal(sPixel[i].id, id)) {
+      slot = &sPixel[i];
+      break;
+    }
+  }
+  if (!slot) return false;
+  ShowduinoNodePacket packet = {};
+  showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_PIXEL, sequence);
+  if (showduino_node_set_command(&packet, command) != 0) {
+    sRejected++;
+    return false;
+  }
+  if (!addPeer(slot->mac)) return false;
+  if (esp_now_send(slot->mac, (uint8_t *)&packet, sizeof(packet)) != ESP_OK) return false;
+  sTxCount++;
+  return true;
+}
+
+void espNowTransportSendToAllPixelNodes(const char *command, uint32_t sequence) {
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+    if (!sPixel[i].have) continue;
+    if (sPixel[i].id[0]) {
+      (void)espNowTransportSendToPixelNode(sPixel[i].id, command, sequence);
+    } else {
+      ShowduinoNodePacket packet = {};
+      showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_PIXEL, sequence);
+      if (showduino_node_set_command(&packet, command) != 0) continue;
+      if (!addPeer(sPixel[i].mac)) continue;
+      if (esp_now_send(sPixel[i].mac, (uint8_t *)&packet, sizeof(packet)) == ESP_OK) sTxCount++;
+    }
+  }
+}
+
+bool espNowTransportHavePixelNode() {
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+    if (sPixel[i].have) return true;
+  }
+  return false;
+}
+
+uint8_t espNowTransportPixelNodeCount() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
+    if (sPixel[i].have) n++;
+  }
+  return n;
 }
 
 uint32_t espNowTransportRxCount() { return sRxCount; }

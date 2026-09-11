@@ -96,6 +96,8 @@ static void handleApiComms() {
   json += "  \"espnowTx\": " + String(espNowTransportTxCount()) + ",\n";
   json += "  \"audioNodeSeen\": " + String(espNowTransportHaveAudioNode() ? "true" : "false") + ",\n";
   json += "  \"lampNodeSeen\": " + String(espNowTransportHaveLampNode() ? "true" : "false") + ",\n";
+  json += "  \"pixelNodeSeen\": " + String(espNowTransportHavePixelNode() ? "true" : "false") + ",\n";
+  json += "  \"pixelNodeCount\": " + String((unsigned)espNowTransportPixelNodeCount()) + ",\n";
   json += "  \"statusRgb\": {\n";
   json += "    \"state\": \"" + String(commsStatusRgbStateName()) + "\",\n";
   json += "    \"colour\": \"" + String(commsStatusRgbColourName()) + "\",\n";
@@ -204,6 +206,16 @@ static bool webCommandAllowed(const String &cmd) {
       cmd.startsWith("AUDIO:NODE:VOLUME:") || cmd.startsWith("AUDIO:NODE:STOP:FADE=") ||
       cmd.startsWith("AUDIO:NODE:INVENTORY:") || cmd.startsWith("AUDIO:NODE:SOUND:")) {
     return cmd.length() < 96 && cmd.indexOf("..") < 0;
+  }
+  if (cmd == "PIXEL:STATUS" || cmd == "PIXEL:TEST" || cmd == "PIXEL:TEST:STOP" ||
+      cmd == "PIXEL:OFF" || cmd == "PIXEL:BLACKOUT" || cmd == "PIXEL:INIT" ||
+      cmd == "PIXEL:LOCATE") {
+    return true;
+  }
+  if (cmd.startsWith("PIXEL:COUNT:") || cmd.startsWith("PIXEL:SOLID:") ||
+      cmd.startsWith("PIXEL:BRIGHTNESS:") || cmd.startsWith("PIXEL:SEGMENT:") ||
+      cmd.startsWith("PIXEL:NODE:")) {
+    return cmd.length() <= 180;
   }
   if (cmd.startsWith("PRODUCTION:LOAD:")) {
     String id = cmd.substring(16);

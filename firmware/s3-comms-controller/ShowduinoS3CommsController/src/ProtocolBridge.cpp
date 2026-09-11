@@ -7,6 +7,7 @@
 #include "../../../protocol/showduino_show_runtime.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_pixel_node.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -22,10 +23,13 @@ static bool sHadDirector = false;
 static bool sHadP4 = false;
 static bool sHadAudio = false;
 static bool sHadLamp = false;
+static bool sHadPixel = false;
 static uint32_t sLastAudioSeenMs = 0;
 static uint32_t sLastLampSeenMs = 0;
+static uint32_t sLastPixelSeenMs = 0;
 static char sLastAudioAnnounce[96] = "";
 static char sLastLampAnnounce[96] = "";
+static char sLastPixelAnnounce[96] = "";
 
 static bool isLocalDiag(const char *line) {
   return line && (!strcmp(line, "DIAG:PING") || !strcmp(line, "DIAG:PONG"));
@@ -55,6 +59,7 @@ static bool isRoutineNodeCmd(const char *command) {
   if (!strncmp(command, "AUDIO:META:", 11)) return true;
   if (!strncmp(command, "AUDIO:INVENTORY:", 16)) return true;
   if (!strncmp(command, "LAMP:OWNED:", 11)) return true;
+  if (!strncmp(command, "PIXEL:OWNED:", 12)) return true;
   if (!strncmp(command, "OWNED:", 6)) return true;
   if (!strncmp(command, "STATUS:", 7)) return true;
   return false;
@@ -113,6 +118,19 @@ static void noteLampDiscovery(const char *command) {
   SD_LOGI("COMMS", "  MAC: %s", mac);
 }
 
+static void notePixelDiscovery(const char *command) {
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  if (!showduino_log_changed(sLastPixelAnnounce, sizeof(sLastPixelAnnounce), command)) {
+    return;
+  }
+  ShowduinoPixelAnnounce an{};
+  if (showduino_pixel_parse_announce(command, &an)) {
+    SD_LOGI("COMMS", "Pixel Node discovered ID=%s", an.id[0] ? an.id : "-");
+    SD_LOGI("COMMS", "  FW: %s", an.firmware[0] ? an.firmware : "-");
+    SD_LOGI("COMMS", "  MAC: %s", an.mac[0] ? an.mac : "-");
+  }
+}
+
 static void forwardToAudioNode(const char *command, uint32_t sequence) {
   if (!command || !command[0]) return;
   if (espNowTransportSendToAudioNode(command, sequence)) {
@@ -148,6 +166,23 @@ static void forwardToLampNode(const char *command, uint32_t sequence) {
   }
 }
 
+static void forwardToPixelNode(const char *id, const char *command, uint32_t sequence) {
+  if (!id || !command || !command[0]) return;
+  if (espNowTransportSendToPixelNode(id, command, sequence)) {
+    SD_LOGT("COMMS", "TX -> Pixel %s seq=%lu cmd=%s", id, (unsigned long)sequence, command);
+    if (!isRoutineNodeCmd(command) &&
+        strncmp(command, "PIXEL:STATUS", 12) != 0 &&
+        strncmp(command, "PIXEL:OWN:GRANT", 15) != 0) {
+      SD_LOGD("COMMS", "P4 -> Pixel %s: %s", id, command);
+    }
+  } else {
+    static uint32_t sHoldMs = 0;
+    if (showduino_log_rate_ok(&sHoldMs, millis(), 5000UL)) {
+      SD_LOGW("COMMS", "Pixel Node %s route held — no peer yet", id);
+    }
+  }
+}
+
 static void onNodeCommand(const char *nodeType, const char *command, uint32_t sequence) {
   if (!nodeType || !command) return;
   if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO)) {
@@ -158,6 +193,10 @@ static void onNodeCommand(const char *nodeType, const char *command, uint32_t se
     sLastLampSeenMs = millis();
     if (!sHadLamp) sHadLamp = true;
     noteLampDiscovery(command);
+  } else if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_PIXEL)) {
+    sLastPixelSeenMs = millis();
+    if (!sHadPixel) sHadPixel = true;
+    notePixelDiscovery(command);
   }
   char line[SHOWDUINO_COMMS_LINE_MAX + 1];
   snprintf(line, sizeof(line), "NODE:%s:%s", nodeType, command);
@@ -196,6 +235,15 @@ static bool handleP4Route(const char *line) {
     return true;
   }
 
+  if (!strncmp(line, SHOWDUINO_LEGACY_ROUTE_PIXEL,
+               strlen(SHOWDUINO_LEGACY_ROUTE_PIXEL))) {
+    ShowduinoPixelRoute rt{};
+    if (showduino_pixel_parse_route(line, &rt)) {
+      forwardToPixelNode(rt.id, rt.command, rt.sequence);
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -205,6 +253,7 @@ static void fanoutEmergency() {
   SD_LOG_EMERGENCY("COMMS", sEmergencyActive);
   forwardToAudioNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   forwardToLampNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
+  espNowTransportSendToAllPixelNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
 }
 
 static void onDirectorCommand(const char *command) {
@@ -322,6 +371,12 @@ static void servicePresence() {
     sHadLamp = false;
     sLastLampAnnounce[0] = '\0';
     SD_LOGW("COMMS", "Lamp Node lost");
+  }
+  if (sHadPixel && sLastPixelSeenMs &&
+      (now - sLastPixelSeenMs) > SHOWDUINO_COMMS_LINK_TIMEOUT_MS) {
+    sHadPixel = false;
+    sLastPixelAnnounce[0] = '\0';
+    SD_LOGW("COMMS", "Pixel Node lost");
   }
 }
 
