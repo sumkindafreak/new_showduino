@@ -258,20 +258,21 @@ Buttons       GPIO9 (A / BOOT), GPIO0 (B)
 
 Do not move OLED pins. Do not power the strip from the C3. See [`c3-pixel-node.md`](c3-pixel-node.md) and [`firmware/c3-pixel-node/README.md`](../firmware/c3-pixel-node/README.md).
 
-## 16. S3 Lamp Node — CURRENT / GPIO TRACE REQUIRED
+## 16. S3 Lamp Node — CURRENT / PHYSICAL PINS CONFIRMED
 
-ESP32-S3 development-board family (same as the Communications Controller). Interactive carbide lamp. **Every lamp GPIO is unconfirmed.**
+ESP32-S3 development-board family (same as the Communications Controller). Interactive carbide lamp. Production wiring 2026-09-12:
 
 ```text
-Jewel DATA          PHYSICAL CONFIRMATION REQUIRED
-Ignition button     PHYSICAL CONFIRMATION REQUIRED
-Mic / blow ADC      PHYSICAL CONFIRMATION REQUIRED  (ADC1)
-Light ADC           PHYSICAL CONFIRMATION REQUIRED  (ADC1)
-Voltage ADC         PHYSICAL CONFIRMATION REQUIRED  (ADC1)
-Fermion UART TX/RX  PHYSICAL CONFIRMATION REQUIRED
+GPIO4   microphone / blow sensor analog   ADC1_CH3
+GPIO5   ambient light sensor analog       ADC1_CH4
+GPIO6   voltage sensor analog             ADC1_CH5
+GPIO7   ignition / striker button         switch to GND, INPUT_PULLUP
+GPIO8   7-pixel NeoPixel Jewel DATA
+GPIO17  S3 TX -> Fermion DFPlayer Pro RX
+GPIO18  S3 RX <- Fermion DFPlayer Pro TX
 ```
 
-Do not guess pins. Do not flash until traced. See [`s3-lamp-node.md`](s3-lamp-node.md).
+Jewel and Fermion use the lamp 5V rail with common ground. Voltage millivolts stay UNCALIBRATED until a divider scale is stored. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ## 17. Related documents
 

@@ -28,7 +28,7 @@ void nodeDiagMarkLoop(uint32_t elapsedUs) {
 }
 
 void nodeDiagPrintPins() {
-  Serial.println("[PINS] ESP32-S3 Lamp Node — physical confirmation required");
+  Serial.println("[PINS] ESP32-S3 Lamp Node — production physical map");
   Serial.printf("  source=%s confirmed=%s\n", SHOWDUINO_LAMP_PIN_SOURCE,
                 SHOWDUINO_LAMP_PINS_CONFIRMED ? "YES" : "NO");
   Serial.printf("  Jewel DATA %s (%d)\n", showduino_lamp_gpio_label(SHOWDUINO_LAMP_PIXEL_PIN),
@@ -82,7 +82,11 @@ void nodeDiagPrintBootBanner() {
                 lampEngineEmergency() ? "ACTIVE" : "CLEAR",
                 lampNodeStateFault());
   nodeDiagPrintPins();
-  Serial.println("Do not flash a production lamp until GPIOs are traced.");
+  if (SHOWDUINO_LAMP_BTN_IGNITE >= 0) {
+    Serial.printf("Button idle GPIO%d=%s (%s)\n", SHOWDUINO_LAMP_BTN_IGNITE,
+                  digitalRead(SHOWDUINO_LAMP_BTN_IGNITE) ? "HIGH" : "LOW",
+                  SHOWDUINO_LAMP_BTN_POLARITY_NOTE);
+  }
   Serial.println("Physical lamp is live. SoftAP WebUI is local. Showduino is optional.");
 }
 

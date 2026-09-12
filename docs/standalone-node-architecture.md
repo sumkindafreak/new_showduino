@@ -61,5 +61,5 @@ MOSFET is specified for the shared ownership model but is **not implemented** in
 ## Current firmware
 
 - Audio Node `0.4.1` — ownership + SoftAP WebUI implemented beside playback states (`IDLE` / `PLAYING` / … stay playback-only).
-- S3 Lamp Node `0.3.2` — same GRANT machine; standalone carbide lamp + local WebUI; V1 Fermion four-file library; P4 `LampNodeLink` and ESP-NOW FX implemented. Historical C3 Lamp Node remains reference-only.
+- S3 Lamp Node `0.3.3` — same GRANT machine; standalone carbide lamp + local WebUI; V1 Fermion four-file library; physical GPIOs confirmed. Historical C3 Lamp Node remains reference-only.
 - MOSFET / C3 Pixel — Pixel firmware exists; MOSFET is document only.

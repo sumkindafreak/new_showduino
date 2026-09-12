@@ -11,22 +11,25 @@
  * MCU CONFIRMED FROM PHYSICAL AUDIT: ESP32-S3, same development-board
  * family as the Showduino S3 Communications Controller.
  *
- * GPIOs are NOT confirmed. Do not treat any pin number in this file as
- * production wiring. Flash is forbidden until Toby traces the jewel,
- * button, sensors, and Fermion UART.
+ * Production GPIOs were physically wired 2026-09-12:
+ *   GPIO4  mic / blow ADC      ADC1_CH3
+ *   GPIO5  ambient light ADC   ADC1_CH4
+ *   GPIO6  voltage ADC         ADC1_CH5
+ *   GPIO7  ignition button     GPIO7 -> switch -> GND
+ *   GPIO8  NeoPixel Jewel DATA 7 pixels
+ *   GPIO17 S3 TX -> Fermion RX
+ *   GPIO18 S3 RX <- Fermion TX
  *
- * SHOWDUINO_LAMP_PINS_CONFIRMED must stay 0 until every required GPIO
- * below is physically verified. Compile-only placeholder pins, if ever
- * enabled, are isolated behind SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS and
- * must never be mistaken for confirmed production wiring.
+ * SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS remains for spare-board development
+ * only and must never be combined with the confirmed production map.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.3.2"
+#define SHOWDUINO_LAMP_NODE_FW             "0.3.3"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 
 #ifndef SHOWDUINO_LAMP_PINS_CONFIRMED
-#define SHOWDUINO_LAMP_PINS_CONFIRMED      0
+#define SHOWDUINO_LAMP_PINS_CONFIRMED      1
 #endif
 
 #ifndef SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS
@@ -55,17 +58,14 @@
 /*
  * Fermion DFPlayer Pro DFR0768 — local lamp FX only. UART 115200, no BUSY pin.
  * Powered from the lamp 5V rail with common ground. S3 UART is 3.3V.
- * Proposed physical UART (NOT confirmed — pins stay -1):
- *   S3 GPIO17 TX -> Fermion RX
- *   S3 GPIO18 RX <- Fermion TX
- * Do not treat the numbers above as production wiring.
+ * Playback is fire-and-forget AT commands. flameloop.mp3 uses PLAYMODE=2.
+ * The main loop never waits for a track to finish.
  */
 
 /*
- * ADC note for pin selection (PHYSICAL CONFIRMATION REQUIRED):
- * Mic, light, and voltage need three analog inputs. On ESP32-S3, use ADC1
- * (typically GPIO1–GPIO10). Wi-Fi / ESP-NOW conflicts with ADC2.
- * Avoid USB GPIO19/20, UART0 GPIO43/44, and strapping GPIO0/3/45/46.
+ * ADC1 only for sensors (ESP32-S3 GPIO1–GPIO10). GPIO4/5/6 are ADC1_CH3/4/5.
+ * Wi-Fi / ESP-NOW conflicts with ADC2. Voltage millivolts stay UNCALIBRATED
+ * until a divider scale is stored. Do not invent 5.00 V.
  */
 
 #if SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS
@@ -79,23 +79,43 @@
 #define SHOWDUINO_LAMP_FERMION_TX_PIN      17
 #define SHOWDUINO_LAMP_FERMION_RX_PIN      18
 #define SHOWDUINO_LAMP_PIN_SOURCE          "DEV_PLACEHOLDER"
+#elif SHOWDUINO_LAMP_PINS_CONFIRMED
+#define SHOWDUINO_LAMP_PIXEL_PIN           8
+#define SHOWDUINO_LAMP_BTN_IGNITE          7
+#define SHOWDUINO_LAMP_MIC_PIN             4
+#define SHOWDUINO_LAMP_LIGHT_PIN           5
+#define SHOWDUINO_LAMP_VOLT_PIN            6
+#define SHOWDUINO_LAMP_FERMION_TX_PIN      17
+#define SHOWDUINO_LAMP_FERMION_RX_PIN      18
+#define SHOWDUINO_LAMP_PIN_SOURCE          "PHYSICAL_CONFIRMED"
 #else
-#define SHOWDUINO_LAMP_PIXEL_PIN           (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_BTN_IGNITE          (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_MIC_PIN             (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_LIGHT_PIN           (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_VOLT_PIN            (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_FERMION_TX_PIN      (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
-#define SHOWDUINO_LAMP_FERMION_RX_PIN      (-1)  /* PHYSICAL CONFIRMATION REQUIRED */
+#define SHOWDUINO_LAMP_PIXEL_PIN           (-1)
+#define SHOWDUINO_LAMP_BTN_IGNITE          (-1)
+#define SHOWDUINO_LAMP_MIC_PIN             (-1)
+#define SHOWDUINO_LAMP_LIGHT_PIN           (-1)
+#define SHOWDUINO_LAMP_VOLT_PIN            (-1)
+#define SHOWDUINO_LAMP_FERMION_TX_PIN      (-1)
+#define SHOWDUINO_LAMP_FERMION_RX_PIN      (-1)
 #define SHOWDUINO_LAMP_PIN_SOURCE          "UNCONFIRMED"
 #endif
 
-/* Button polarity is unknown until traced. Firmware assumes active-LOW
- * with internal pull-up, the usual ESP32 momentary-to-GND convention.
- * Confirm before treating a missed press as a firmware bug. */
-#define SHOWDUINO_LAMP_BTN_ACTIVE_LOW      1
+#if SHOWDUINO_LAMP_PINS_CONFIRMED && !SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS
+#if SHOWDUINO_LAMP_MIC_PIN != 4 || SHOWDUINO_LAMP_LIGHT_PIN != 5 || \
+    SHOWDUINO_LAMP_VOLT_PIN != 6 || SHOWDUINO_LAMP_BTN_IGNITE != 7 || \
+    SHOWDUINO_LAMP_PIXEL_PIN != 8 || SHOWDUINO_LAMP_FERMION_TX_PIN != 17 || \
+    SHOWDUINO_LAMP_FERMION_RX_PIN != 18
+#error "Confirmed Lamp Node pin map does not match the physical wiring"
+#endif
+#if SHOWDUINO_LAMP_MIC_PIN < 1 || SHOWDUINO_LAMP_MIC_PIN > 10 || \
+    SHOWDUINO_LAMP_LIGHT_PIN < 1 || SHOWDUINO_LAMP_LIGHT_PIN > 10 || \
+    SHOWDUINO_LAMP_VOLT_PIN < 1 || SHOWDUINO_LAMP_VOLT_PIN > 10
+#error "Lamp analog sensors must stay on ADC1 (GPIO1-10)"
+#endif
+#endif
 
-#define SHOWDUINO_LAMP_BTN_POLARITY_NOTE   "ASSUMED_ACTIVE_LOW_UNTIL_TRACED"
+/* Physical striker: GPIO7 -> momentary switch -> GND. INPUT_PULLUP, pressed=LOW. */
+#define SHOWDUINO_LAMP_BTN_ACTIVE_LOW      1
+#define SHOWDUINO_LAMP_BTN_POLARITY_NOTE   "GPIO7_TO_GND_ACTIVE_LOW"
 
 static inline const char *showduino_lamp_gpio_label(int pin) {
   return pin < 0 ? "UNCONFIRMED" : "ASSIGNED";

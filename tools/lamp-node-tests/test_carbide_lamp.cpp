@@ -168,6 +168,24 @@ int main() {
   expect(!showduino_lamp_v1_file_known("flare.wav"), "old flare.wav not required");
   expect(!showduino_lamp_v1_file_known("fire_out.mp3"), "no fire_out in V1");
   expect(!showduino_lamp_audio_blocks_machine(), "audio failure never blocks carbide");
+  expect(showduino_lamp_audio_transport_nonblocking(),
+         "BURN_LOOP must be non-blocking background audio");
+  expect(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->loop == 1,
+         "flameloop is a loop role, not a blocking wait");
+  {
+    ShowduinoCarbideMachine burn;
+    showduino_carbide_reset(&burn, 0);
+    showduino_carbide_apply(&burn, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+    tick(&burn, &cfg, cfg.strikeMs);
+    tick(&burn, &cfg, cfg.igniteMs);
+    expect(burn.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "entered burn loop");
+    showduino_carbide_apply(&burn, SHOWDUINO_CARBIDE_EV_BLOW, &cfg);
+    expect(burn.sound == SHOWDUINO_LAMP_SND_NONE,
+           "extinguish interrupts BURN_LOOP without waiting for MP3 end");
+    expect(showduino_lamp_effective_sound(SHOWDUINO_LAMP_SND_BURN_LOOP, 1) ==
+               SHOWDUINO_LAMP_SND_EMERGENCY,
+           "emergency interrupts BURN_LOOP immediately");
+  }
 
   showduino_carbide_reset(&m, 0);
   expect(showduino_lamp_effective_sound(m.sound, 1) == SHOWDUINO_LAMP_SND_EMERGENCY,

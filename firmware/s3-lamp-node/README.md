@@ -1,10 +1,10 @@
 # Showduino S3 Lamp Node
 
 ```text
-Status: ACTIVE firmware / GPIOs UNCONFIRMED — do not flash
+Status: ACTIVE firmware / physical GPIOs confirmed
 Role: Interactive carbide-lamp practical
 Hardware: ESP32-S3 development board (same family as the Comms Controller)
-Firmware: 0.3.2
+Firmware: 0.3.3
 ```
 
 This is the **production Lamp Node**.
@@ -38,7 +38,7 @@ Suggested Arduino profile (same board family as Comms; flash/PSRAM still unconfi
 arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-lamp-node/ShowduinoS3LampNode
 ```
 
-Do **not** upload until GPIOs are physically traced. Default firmware compiles with every lamp GPIO set to `-1` (`PHYSICAL CONFIRMATION REQUIRED`).
+Production pins are in `BoardConfig.h` (`SHOWDUINO_LAMP_PINS_CONFIRMED = 1`).
 
 ## Hardware (physical audit)
 
@@ -57,7 +57,7 @@ Removed:
 - PCM / I2S audio board
 - separate amplifier
 
-GPIOs: see [`docs/s3-lamp-node.md`](../../docs/s3-lamp-node.md) and `BoardConfig.h`.
+GPIOs: Jewel GPIO8, button GPIO7 (to GND), mic GPIO4, light GPIO5, voltage GPIO6, Fermion UART GPIO17/18. See [`docs/s3-lamp-node.md`](../../docs/s3-lamp-node.md).
 
 ## Protocol
 

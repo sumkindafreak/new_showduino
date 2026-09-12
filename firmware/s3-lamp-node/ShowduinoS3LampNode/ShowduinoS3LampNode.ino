@@ -3,8 +3,8 @@
 
   Specialist practical-prop controller. Not a Pixel Node. Not an Audio Node.
   Same firmware is a standalone carbide lamp and a managed Showduino node.
-  The P4 is authoritative only after GRANT. GPIOs are unconfirmed — do
-  not flash until Toby traces the jewel, button, sensors, and UART.
+  The P4 is authoritative only after GRANT. Production GPIOs are the
+  2026-09-12 physical pin map in BoardConfig.h.
 */
 
 #include <Arduino.h>

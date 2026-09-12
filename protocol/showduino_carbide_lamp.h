@@ -495,6 +495,12 @@ static inline int showduino_lamp_audio_blocks_machine(void) {
   return 0;
 }
 
+/* Fermion playback is fire-and-forget AT UART. flameloop.mp3 is a background
+ * PLAYMODE=2 state. Firmware must never wait for track completion. */
+static inline int showduino_lamp_audio_transport_nonblocking(void) {
+  return 1;
+}
+
 #ifdef __cplusplus
 }
 #endif

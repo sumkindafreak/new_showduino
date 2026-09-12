@@ -1,10 +1,10 @@
 # Showduino S3 Lamp Node — carbide lamp
 
-Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.2**. Protocol **1.0**. SHDO package **v2**.
+Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.3**. Protocol **1.0**. SHDO package **v2**.
 
 The production Lamp Node is an **ESP32-S3 interactive carbide-lamp simulator**. It is not a Pixel Node and not a second Audio Node.
 
-The **same firmware** is a complete standalone carbide-lamp prop and a managed Showduino node. Do not flash a second image to change roles. Do **not** flash this node until the GPIO checklist at the end of this document is completed.
+The **same firmware** is a complete standalone carbide-lamp prop and a managed Showduino node. Do not flash a second image to change roles. Production GPIOs are confirmed in `BoardConfig.h`.
 
 ## Architecture
 
@@ -93,6 +93,14 @@ Director already shows lamp online/FX via P4 `LampNodeLink`. Future: show `LAMP-
 
 Studio should author `LAMP-01 IGNITE` / `UNSTABLE_FLAME` / `EXTINGUISH`. SHDO v2 already compiles those tokens to `LAMP:NODE:` commands. No v3 schema.
 
-## GPIO checklist
+## GPIO map
 
-See the physical GPIO checklist in the rebuild report and `BoardConfig.h`. Every lamp pin is `-1` until traced.
+| Function | GPIO | Notes |
+|----------|------|-------|
+| Mic / blow | 4 | ADC1_CH3 |
+| Light | 5 | ADC1_CH4 |
+| Voltage | 6 | ADC1_CH5, raw until calibrated |
+| Ignition button | 7 | to GND, active-LOW |
+| Jewel DATA | 8 | 7 pixels |
+| Fermion TX | 17 | S3 TX → Fermion RX |
+| Fermion RX | 18 | S3 RX ← Fermion TX |
