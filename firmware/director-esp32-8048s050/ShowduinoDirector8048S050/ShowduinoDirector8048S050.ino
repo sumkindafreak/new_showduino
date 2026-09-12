@@ -441,11 +441,17 @@ void handleStageLine(String line) {
 
   ShowduinoLampNodeWire lampW = showduino_parse_state_node_lamp(line.c_str());
   if (lampW != SHOWDUINO_LAMP_NODE_WIRE_INVALID) {
-    ui.setLampNodeAvail(showduino_lamp_wire_to_avail(lampW));
+    ui.setLampNodeAvail(lampW);
     gNodesOnline = ui.getNodeCount();
 #if SHOWDUINO_OS2_SHELL
     publishOs2Services();
 #endif
+  }
+  {
+    ShowduinoLampDetailWire ldet{};
+    if (showduino_parse_state_node_lamp_detail(line.c_str(), &ldet)) {
+      ui.setLampNodeDetail(ldet);
+    }
   }
 
   ShowduinoPixelNodeWire pixW = showduino_parse_state_node_pixel(line.c_str());

@@ -213,6 +213,7 @@ public:
     }
     updatePersistentBanner();
     syncStatusBarHealth();
+    if (page_04_nodes_is_active()) refreshNodesPage();
   }
 
   void noteEmergencyTriggeredByDirector() { emergencyTriggeredByDirector_ = true; }
@@ -256,8 +257,10 @@ public:
 
   uint8_t getNodeCount() const { return nodeCount; }
 
-  void setLampNodeAvail(ShowduinoNodeAvailWire wire) {
-    if (lampNodeWire_ == wire) return;
+  void setLampNodeAvail(ShowduinoLampNodeWire raw) {
+    const ShowduinoNodeAvailWire wire = showduino_lamp_wire_to_avail(raw);
+    if (lampNodeRaw_ == raw && lampNodeWire_ == wire) return;
+    lampNodeRaw_ = raw;
     lampNodeWire_ = wire;
     const bool present = (wire == SHOWDUINO_NODE_WIRE_ONLINE ||
                           wire == SHOWDUINO_NODE_WIRE_FAULT);
@@ -272,6 +275,12 @@ public:
     recountSpecialistNodes();
     refreshNodesPage();
     statusDirty = true;
+  }
+
+  void setLampNodeDetail(const ShowduinoLampDetailWire &d) {
+    lampDetail_ = d;
+    lampDetailValid_ = true;
+    refreshNodesPage();
   }
 
   void setPixelNodeAvail(ShowduinoPixelNodeWire wire) {
@@ -1364,6 +1373,29 @@ private:
     }
   }
 
+  void refreshLampSheet() {
+    ShowduinoLampDirectorInput in;
+    ShowduinoLampDirectorSheet sh;
+    memset(&in, 0, sizeof(in));
+    const bool lampOn = (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
+                         lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT);
+    in.present = lampOn ? 1 : 0;
+    in.offline = lampOn ? 0 : 1;
+    in.emergency = (emergencyLocked ||
+                    lampNodeRaw_ == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY) ? 1 : 0;
+    in.detail_valid = lampDetailValid_ ? 1 : 0;
+    strncpy(in.logical_id, lampLogicalId_, sizeof(in.logical_id) - 1);
+    in.detail = lampDetail_;
+    showduino_lamp_director_build_sheet(&in, &sh);
+    page_04_nodes_set_lamp_sheet(&sh);
+  }
+
+  void sendLampDesk(ShowduinoLampDeskVerb verb) {
+    char cmd[48];
+    showduino_lamp_director_format_cmd(lampLogicalId_, verb, cmd, sizeof(cmd));
+    if (commandCallback) commandCallback(cmd);
+  }
+
   void refreshNodesPage() {
     if (!page_04_nodes_is_active()) return;
     char sum[64];
@@ -1393,23 +1425,35 @@ private:
     }
     page_04_nodes_set_card(PAGE04_ROLE_AUDIO, audioOn, audioNodeStatusWord(),
                            audioDetail, audioCol);
+    page_04_nodes_set_lock(emergencyLocked);
     refreshAudioNodePage();
 
     const bool lampOn = (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
                          lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT);
     uint32_t lampCol = ShowduinoPalette::Disabled;
     const char *lampSt = "NOT DETECTED";
-    const char *lampDet = "No compatible node detected.\nCarbide / theatrical lamp FX.";
-    if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE) {
+    char lampDet[96];
+    snprintf(lampDet, sizeof(lampDet),
+             "No compatible node detected.\nCarbide / theatrical lamp FX.");
+    if (lampNodeRaw_ == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY) {
+      lampCol = ShowduinoPalette::Danger;
+      lampSt = "EMERGENCY";
+      snprintf(lampDet, sizeof(lampDet),
+               "%s\nShowduino emergency. Controls locked.",
+               lampLogicalId_);
+    } else if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE) {
       lampCol = ShowduinoPalette::Accent;
       lampSt = "ONLINE";
-      lampDet = "C3 Lamp Node present.";
+      snprintf(lampDet, sizeof(lampDet), "%s present.\nS3 carbide lamp.",
+               lampLogicalId_);
     } else if (lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT) {
       lampCol = ShowduinoPalette::Danger;
       lampSt = "FAULT";
-      lampDet = "Lamp Node fault reported.";
+      snprintf(lampDet, sizeof(lampDet), "%s\nLamp Node fault reported.",
+               lampLogicalId_);
     }
     page_04_nodes_set_card(PAGE04_ROLE_LAMP, lampOn, lampSt, lampDet, lampCol);
+    refreshLampSheet();
 
     page_04_nodes_set_card(PAGE04_ROLE_MOSFET, false, "NOT DETECTED",
                            "No compatible node detected.\nPWM / dimming outputs.",
@@ -1565,6 +1609,10 @@ private:
   char liveStateName[24] = "IDLE";
   uint8_t nodeCount = 0;
   ShowduinoNodeAvailWire lampNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
+  ShowduinoLampNodeWire lampNodeRaw_ = SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+  ShowduinoLampDetailWire lampDetail_{};
+  bool lampDetailValid_ = false;
+  char lampLogicalId_[16] = SHOWDUINO_CARBIDE_LOGICAL_DEFAULT;
   ShowduinoNodeAvailWire pixelNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
   ShowduinoPixelNodeWire pixelNodeRaw_ = SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
   ShowduinoPixelDetailWire pixelDetail_{};
@@ -1919,6 +1967,38 @@ private:
     if (command == PAGE04_CMD_AUDIO) {
       showAudioNode();
       maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE04_CMD_CLOSE) {
+      page_04_nodes_close_sheet();
+      return;
+    }
+    if (command == PAGE04_CMD_STATUS) {
+      if (commandCallback) commandCallback("STATUS:REQUEST");
+      return;
+    }
+    if (command == PAGE04_CMD_AUDIO_TEST) {
+      sendAudioNodeCmd("AUDIO:NODE:TEST");
+      return;
+    }
+    if (command == PAGE04_CMD_AUDIO_STOP) {
+      sendAudioNodeCmd("AUDIO:NODE:STOP");
+      return;
+    }
+    if (command == PAGE04_CMD_LAMP_IGNITE) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_IGNITE);
+      return;
+    }
+    if (command == PAGE04_CMD_LAMP_EXTINGUISH) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH);
+      return;
+    }
+    if (command == PAGE04_CMD_LAMP_FLARE) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_FLARE);
+      return;
+    }
+    if (command == PAGE04_CMD_LAMP_STATUS) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
       return;
     }
     if (command == PAGE05_CMD_BACK) {
