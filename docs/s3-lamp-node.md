@@ -1,6 +1,6 @@
 # Showduino S3 Lamp Node — carbide lamp
 
-Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.1**. Protocol **1.0**. SHDO package **v2**.
+Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.2**. Protocol **1.0**. SHDO package **v2**.
 
 The production Lamp Node is an **ESP32-S3 interactive carbide-lamp simulator**. It is not a Pixel Node and not a second Audio Node.
 
@@ -45,7 +45,7 @@ Without Showduino:
 - Ignition button: OFF → STRIKING → IGNITING → BURNING
 - Short puff: flame reacts / recovers
 - Sustained blow: EXTINGUISHING → OFF
-- Fermion plays the matching local roles
+- Fermion plays `flick.mp3` → `fire_ignite.mp3` → looping `flameloop.mp3`
 
 No browser, Wi-Fi client, or internet is required for the physical lamp.
 
@@ -57,11 +57,20 @@ No browser, Wi-Fi client, or internet is required for the physical lamp.
 
 ## Local audio
 
-DFRobot Fermion DFPlayer Pro (DFR0768) over UART. Semantic roles: `STRIKE`, `IGNITION`, `BURN_LOOP`, `FLARE`, `EXTINGUISH`. Missing hardware must not block the lamp. This is **not** the Showduino Audio Node.
+DFRobot Fermion DFPlayer Pro (DFR0768) over UART, 115200, no BUSY pin. Semantic roles map to the V1 four-file library:
 
-## Emergency (existing product policy — unchanged)
+| Role | File | When |
+|------|------|------|
+| STRIKE | `flick.mp3` | STRIKING, once |
+| IGNITION | `fire_ignite.mp3` | IGNITING, once |
+| BURN_LOOP | `flameloop.mp3` | BURNING / LOW / UNSTABLE / FLARE / DYING, loop |
+| EMERGENCY | `emergency.mp3` | System emergency, loop |
 
-Emergency forces the jewel **bright white**. Clear returns to idle and does **not** resume the previous flame. The node cannot locally clear a system emergency. WebUI cannot clear it either.
+There is no `fire_out.mp3`. Extinguish stops `flameloop.mp3` and goes silent. Missing Fermion or missing files must not block the jewel. File enumeration is **UNSUPPORTED** — firmware does not invent present/missing. This is **not** the Showduino Audio Node.
+
+## Emergency (existing product policy — plus local audio)
+
+Emergency forces the jewel **bright white**, interrupts theatrical audio, and loops `emergency.mp3`. Clear stops emergency audio, returns to idle/OFF, and does **not** resume the previous flame or burn loop. The node cannot locally clear a system emergency. WebUI cannot clear it either. WebUI TEST EMERGENCY is an audio commissioning check only.
 
 ## Comms-loss (existing product policy — unchanged)
 

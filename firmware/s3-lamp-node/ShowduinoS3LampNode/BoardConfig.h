@@ -21,7 +21,7 @@
  * must never be mistaken for confirmed production wiring.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.3.1"
+#define SHOWDUINO_LAMP_NODE_FW             "0.3.2"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 
@@ -51,6 +51,15 @@
 #define SHOWDUINO_LAMP_SENSOR_LIGHT_MS     200UL
 #define SHOWDUINO_LAMP_SENSOR_VOLT_MS      500UL
 #define SHOWDUINO_LAMP_FERMION_BAUD        115200UL
+
+/*
+ * Fermion DFPlayer Pro DFR0768 — local lamp FX only. UART 115200, no BUSY pin.
+ * Powered from the lamp 5V rail with common ground. S3 UART is 3.3V.
+ * Proposed physical UART (NOT confirmed — pins stay -1):
+ *   S3 GPIO17 TX -> Fermion RX
+ *   S3 GPIO18 RX <- Fermion TX
+ * Do not treat the numbers above as production wiring.
+ */
 
 /*
  * ADC note for pin selection (PHYSICAL CONFIRMATION REQUIRED):

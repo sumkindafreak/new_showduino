@@ -118,7 +118,9 @@ void nodeDiagPrintStatus() {
                 (long)lampSensorsLightRaw(), (long)lampSensorsVoltRaw(),
                 (long)lampSensorsVoltMv(), lampSensorsVoltStatus(),
                 lampSensorsVoltWarn());
-  Serial.printf("AUDIO %s role=%s\n", lampAudioStatus(), lampAudioCurrentRole());
+  Serial.printf("AUDIO %s role=%s file=%s query=%s\n", lampAudioStatus(),
+                lampAudioCurrentRole(), lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
+                lampAudioFileQueryStatus());
   Serial.printf("UPTIME %lu ms heap=%lu min=%lu loop_us=%lu max=%lu\n",
                 (unsigned long)millis(),
                 (unsigned long)ESP.getFreeHeap(),
@@ -154,8 +156,11 @@ bool nodeDiagHandleLine(const char *line) {
     return true;
   }
   if (!strcmp(line, "AUDIO:STATUS")) {
-    Serial.printf("AUDIO %s role=%s vol=%u\n", lampAudioStatus(),
-                  lampAudioCurrentRole(), (unsigned)lampAudioVolume());
+    Serial.printf("AUDIO %s role=%s file=%s vol=%u query=%s expected=%s\n",
+                  lampAudioStatus(), lampAudioCurrentRole(),
+                  lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
+                  (unsigned)lampAudioVolume(), lampAudioFileQueryStatus(),
+                  lampAudioExpectedFiles());
     return true;
   }
   if (!strcmp(line, "LAMP:STATUS")) {

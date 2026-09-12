@@ -8,7 +8,8 @@
 /*
  * Local carbide-lamp effect audio via DFRobot Fermion DFPlayer Pro (DFR0768).
  * UART AT-command transport. Not a Showduino Audio Node. No BUSY pin.
- * Visual lamp behaviour must continue if the Fermion is absent.
+ * Visual lamp behaviour must continue if the Fermion is absent or a file
+ * is missing. File enumeration is unsupported on this AT path.
  */
 
 static bool sPinsOk = false;
@@ -54,6 +55,8 @@ void lampAudioBegin() {
   Serial.printf("[LAMP-AUD] Fermion UART TX=%d RX=%d baud=%lu (local FX only)\n",
                 SHOWDUINO_LAMP_FERMION_TX_PIN, SHOWDUINO_LAMP_FERMION_RX_PIN,
                 (unsigned long)SHOWDUINO_LAMP_FERMION_BAUD);
+  Serial.println("[LAMP-AUD] V1 files: flick.mp3 fire_ignite.mp3 flameloop.mp3 emergency.mp3");
+  Serial.println("[LAMP-AUD] File query UNSUPPORTED — not inventing present/missing");
 }
 
 void lampAudioService() {
@@ -67,14 +70,21 @@ void lampAudioPlay(ShowduinoLampSound id) {
     lampAudioStop();
     return;
   }
-  if (!sBegun) return;
   const ShowduinoLampSoundMap *info = showduino_lamp_sound_info(id);
-  if (!info || !info->file[0]) return;
+  if (!info || !info->file[0]) {
+    if (sBegun) sendAt("AT+STOP");
+    return;
+  }
+  if (!sBegun) {
+    strncpy(sErr, sPinsOk ? "NO_UART" : "UNCONFIRMED", sizeof(sErr) - 1);
+    sErr[sizeof(sErr) - 1] = 0;
+    return;
+  }
   sendAt("AT+STOP");
+  sendAt(info->loop ? "AT+PLAYMODE=2" : "AT+PLAYMODE=1");
   char line[48];
   snprintf(line, sizeof(line), "AT+PLAYFILE=%s", info->file);
   sendAt(line);
-  if (info->loop) sendAt("AT+PLAYMODE=2");
 }
 
 void lampAudioStop() {
@@ -93,6 +103,18 @@ const char *lampAudioStatus() {
 
 const char *lampAudioCurrentRole() {
   return showduino_lamp_sound_info(sCurrent)->role;
+}
+
+const char *lampAudioCurrentFile() {
+  return showduino_lamp_sound_info(sCurrent)->file;
+}
+
+const char *lampAudioFileQueryStatus() {
+  return SHOWDUINO_LAMP_FILE_QUERY_STATUS;
+}
+
+const char *lampAudioExpectedFiles() {
+  return "flick.mp3,fire_ignite.mp3,flameloop.mp3,emergency.mp3";
 }
 
 void lampAudioSetVolume(uint8_t vol) {

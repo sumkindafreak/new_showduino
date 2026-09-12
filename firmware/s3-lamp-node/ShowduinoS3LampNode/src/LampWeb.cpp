@@ -86,14 +86,13 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <input id="vol" type="range" min="0" max="30" value="18">
 <div class="row"><button class="act ctrl" id="setvol">SET VOLUME</button></div>
 <div class="row">
-<button class="act ctrl" id="strike">TEST STRIKE</button>
+<button class="act ctrl" id="flick">TEST FLICK</button>
 <button class="act ctrl" id="ignaud">TEST IGNITION</button>
-<button class="act ctrl" id="burn">TEST BURN LOOP</button>
-<button class="act ctrl" id="flareaud">TEST FLARE</button>
-<button class="act ctrl" id="extaud">TEST EXTINGUISH</button>
+<button class="act ctrl" id="burn">TEST FLAME LOOP</button>
+<button class="act ctrl" id="emaud">TEST EMERGENCY</button>
 <button class="act ctrl" id="astop">STOP AUDIO</button>
 </div>
-<p>Fermion is local lamp FX only. It is not the Showduino Audio Node.</p>
+<p>V1 library: flick.mp3, fire_ignite.mp3, flameloop.mp3, emergency.mp3. TEST EMERGENCY plays emergency.mp3 only — it does not assert a Showduino system emergency. Fermion is local lamp FX, not the Audio Node.</p>
 </div></section>
 <section class="tab" id="blow" hidden><div class="card"><div class="kv" id="blowkv"></div>
 <p><span id="blowdot" class="live"></span><span id="blowlive">BLOW IDLE</span></p>
@@ -159,7 +158,12 @@ async function load(){
   kv($('audkv'),[
     ['Fermion',S.audioStatus,S.audioStatus==='OK'?'ok':'warn'],
     ['Connected',S.audioPresent?'YES':'NO',S.audioPresent?'ok':'warn'],
-    ['Role',S.audioRole],['Volume',S.audioVol]
+    ['Semantic role',S.audioRole],
+    ['Current file',S.audioFile||'-'],
+    ['Volume',S.audioVol],
+    ['Expected V1 files',S.audioExpected],
+    ['File query',S.audioFileQuery,S.audioFileQuery==='UNSUPPORTED'?'warn':'ok'],
+    ['Audio diagnostic',S.audioError||'-']
   ]);
   $('vol').value=S.audioVol; $('volv').textContent=S.audioVol;
   kv($('blowkv'),[
@@ -226,11 +230,10 @@ $('low').onclick=()=>send('LAMP:FX:LOW_FLAME');
 $('unst').onclick=()=>send('LAMP:FX:UNSTABLE');
 $('flare').onclick=()=>send('LAMP:FX:FLARE');
 $('dying').onclick=()=>send('LAMP:FX:DYING_FLAME');
-$('strike').onclick=()=>send('LAMP:AUDIO:STRIKE');
+$('flick').onclick=()=>send('LAMP:AUDIO:FLICK');
 $('ignaud').onclick=()=>send('LAMP:AUDIO:IGNITION');
-$('burn').onclick=()=>send('LAMP:AUDIO:BURN_LOOP');
-$('flareaud').onclick=()=>send('LAMP:AUDIO:FLARE');
-$('extaud').onclick=()=>send('LAMP:AUDIO:EXTINGUISH');
+$('burn').onclick=()=>send('LAMP:AUDIO:FLAME_LOOP');
+$('emaud').onclick=()=>send('LAMP:AUDIO:EMERGENCY');
 $('astop').onclick=()=>send('LAMP:AUDIO:STOP');
 $('btntest').onclick=()=>send('LAMP:IGNITE');
 $('reboot').onclick=()=>fetch('/api/reboot',{method:'POST'});
@@ -380,6 +383,14 @@ static void handleStatus() {
   json += lampAudioHardwarePresent() ? "true" : "false";
   json += ",\"audioRole\":\"";
   json += lampAudioCurrentRole();
+  json += "\",\"audioFile\":\"";
+  jsonEsc(lampAudioCurrentFile(), json);
+  json += "\",\"audioExpected\":\"";
+  jsonEsc(lampAudioExpectedFiles(), json);
+  json += "\",\"audioFileQuery\":\"";
+  json += lampAudioFileQueryStatus();
+  json += "\",\"audioError\":\"";
+  jsonEsc(lampAudioLastError(), json);
   json += "\",\"audioVol\":";
   json += String((unsigned)lampAudioVolume());
   json += ",\"buttonStatus\":\"";
@@ -505,13 +516,17 @@ static void handleCommand() {
                    "{\"ok\":false,\"error\":\"SHOW_CONTROLLED\",\"message\":\"CONTROLLED BY SHOWDUINO\"}");
       return;
     }
-    if (!strcmp(cmd + 11, "STRIKE")) lampAudioPlay(SHOWDUINO_LAMP_SND_STRIKE);
-    else if (!strcmp(cmd + 11, "IGNITION")) lampAudioPlay(SHOWDUINO_LAMP_SND_IGNITION);
-    else if (!strcmp(cmd + 11, "BURN_LOOP")) lampAudioPlay(SHOWDUINO_LAMP_SND_BURN_LOOP);
-    else if (!strcmp(cmd + 11, "FLARE")) lampAudioPlay(SHOWDUINO_LAMP_SND_FLARE);
-    else if (!strcmp(cmd + 11, "EXTINGUISH")) lampAudioPlay(SHOWDUINO_LAMP_SND_EXTINGUISH);
-    else if (!strcmp(cmd + 11, "STOP")) lampAudioStop();
-    else {
+    if (!strcmp(cmd + 11, "STRIKE") || !strcmp(cmd + 11, "FLICK")) {
+      lampAudioPlay(SHOWDUINO_LAMP_SND_STRIKE);
+    } else if (!strcmp(cmd + 11, "IGNITION")) {
+      lampAudioPlay(SHOWDUINO_LAMP_SND_IGNITION);
+    } else if (!strcmp(cmd + 11, "BURN_LOOP") || !strcmp(cmd + 11, "FLAME_LOOP")) {
+      lampAudioPlay(SHOWDUINO_LAMP_SND_BURN_LOOP);
+    } else if (!strcmp(cmd + 11, "EMERGENCY")) {
+      lampAudioPlay(SHOWDUINO_LAMP_SND_EMERGENCY);
+    } else if (!strcmp(cmd + 11, "STOP")) {
+      lampAudioStop();
+    } else {
       sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"BAD_COMMAND\"}");
       return;
     }

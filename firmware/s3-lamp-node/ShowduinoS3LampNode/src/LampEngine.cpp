@@ -59,14 +59,11 @@ static void clearScratch() {
 }
 
 static void syncAudio() {
-  if (sEmergency) {
-    lampAudioStop();
-    sLastSound = SHOWDUINO_LAMP_SND_NONE;
-    return;
-  }
-  if (sMach.sound == sLastSound) return;
-  sLastSound = sMach.sound;
-  lampAudioPlay(sMach.sound);
+  const ShowduinoLampSound want =
+      showduino_lamp_effective_sound(sMach.sound, sEmergency ? 1 : 0);
+  if (want == sLastSound) return;
+  sLastSound = want;
+  lampAudioPlay(want);
 }
 
 static void renderFlame(uint32_t now) {
@@ -196,6 +193,8 @@ void lampEngineService() {
   sMach.nowMs = now;
   if (!sEmergency && !sCompat) {
     showduino_carbide_apply(&sMach, SHOWDUINO_CARBIDE_EV_TICK, &sCfg);
+  }
+  if (sEmergency || !sCompat) {
     syncAudio();
   }
   if (now - sLastTick < 20) return;
@@ -322,10 +321,13 @@ void lampEngineOnEmergency(bool active) {
   if (active) {
     sCompat = false;
     showduino_carbide_apply(&sMach, SHOWDUINO_CARBIDE_EV_FORCE_OFF, &sCfg);
-    lampAudioStop();
     sLastSound = SHOWDUINO_LAMP_SND_NONE;
+    lampAudioPlay(SHOWDUINO_LAMP_SND_EMERGENCY);
+    sLastSound = SHOWDUINO_LAMP_SND_EMERGENCY;
     renderEmergency();
   } else {
+    lampAudioStop();
+    sLastSound = SHOWDUINO_LAMP_SND_NONE;
     clearScratch();
   }
 }

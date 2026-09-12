@@ -29,7 +29,7 @@ Legend:
 | Emergency/safety regression | Dual-action clear unchanged | Transport only | Latch, pixels white, no auto-resume; persist abort | PANIC still P4 | Safety cannot weaken in SHDO | Lamp emergency white | **NEEDS HARDWARE TEST** (code not weakened) |
 | Stale C3/SUE/C6/DMX | Footer COMMS not SUE | No C3 path | Transport reject obsolete SHDO | Copy updated | SHDO rejects C3/SUE/C6 | Lamp is a node, not comms | **PARTIAL** (legacy folders remain, not live path) |
 | Host compile/tests | n/a | n/a | Format/store/SHDO/WEB-BODY/version | n/a | Headers host-tested | n/a | **YES** after `run_tests.ps1` |
-| Firmware compile | Director 0.9.2 | Comms 0.4.0 | P4 0.6.0 | Embedded WebUI (regenerated this pass) | n/a | Audio 0.4.2, Lamp 0.3.1, Pixel 0.1.0 | **YES** after this compile pass |
+| Firmware compile | Director 0.9.2 | Comms 0.4.0 | P4 0.6.0 | Embedded WebUI (regenerated this pass) | n/a | Audio 0.4.2, Lamp 0.3.2, Pixel 0.1.0 | **YES** after this compile pass |
 | C3 Pixel Node | Page 04 PIXEL NODE card | Multi-peer `ROUTE:PIXEL:` | `PixelNodeLink` 8 slots | Outputs per-node cards | `showduino_pixel_node.h` / SHDO `pixel-node` | C3 GPIO2 line, OLED 5/6 | **NEEDS HARDWARE TEST** |
 | Physical-test checklist | `docs/physical-test-checklist.md` | same | same | same | same | same | **NEEDS HARDWARE TEST** |
 

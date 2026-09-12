@@ -62,8 +62,7 @@ typedef enum ShowduinoLampSound {
   SHOWDUINO_LAMP_SND_STRIKE,
   SHOWDUINO_LAMP_SND_IGNITION,
   SHOWDUINO_LAMP_SND_BURN_LOOP,
-  SHOWDUINO_LAMP_SND_FLARE,
-  SHOWDUINO_LAMP_SND_EXTINGUISH
+  SHOWDUINO_LAMP_SND_EMERGENCY
 } ShowduinoLampSound;
 
 typedef enum ShowduinoBlowClass {
@@ -122,11 +121,20 @@ typedef struct ShowduinoLampSoundMap {
 
 static const ShowduinoLampSoundMap SHOWDUINO_LAMP_SOUND_TABLE[] = {
   { SHOWDUINO_LAMP_SND_NONE,        "NONE",        "",                 0, 0 },
-  { SHOWDUINO_LAMP_SND_STRIKE,      "STRIKE",      "strike.wav",       1, 0 },
-  { SHOWDUINO_LAMP_SND_IGNITION,    "IGNITION",    "ignition.wav",     2, 0 },
-  { SHOWDUINO_LAMP_SND_BURN_LOOP,   "BURN_LOOP",   "burn_loop.wav",    3, 1 },
-  { SHOWDUINO_LAMP_SND_FLARE,       "FLARE",       "flare.wav",        4, 0 },
-  { SHOWDUINO_LAMP_SND_EXTINGUISH,  "EXTINGUISH",  "extinguish.wav",   5, 0 }
+  { SHOWDUINO_LAMP_SND_STRIKE,      "STRIKE",      "flick.mp3",        1, 0 },
+  { SHOWDUINO_LAMP_SND_IGNITION,    "IGNITION",    "fire_ignite.mp3",  2, 0 },
+  { SHOWDUINO_LAMP_SND_BURN_LOOP,   "BURN_LOOP",   "flameloop.mp3",    3, 1 },
+  { SHOWDUINO_LAMP_SND_EMERGENCY,   "EMERGENCY",   "emergency.mp3",    4, 1 }
+};
+
+#define SHOWDUINO_LAMP_V1_FILE_COUNT 4
+#define SHOWDUINO_LAMP_FILE_QUERY_STATUS "UNSUPPORTED"
+
+static const char * const SHOWDUINO_LAMP_V1_FILES[SHOWDUINO_LAMP_V1_FILE_COUNT] = {
+  "flick.mp3",
+  "fire_ignite.mp3",
+  "flameloop.mp3",
+  "emergency.mp3"
 };
 
 #define SHOWDUINO_LAMP_SOUND_TABLE_LEN \
@@ -182,16 +190,47 @@ static inline void showduino_carbide_reset(ShowduinoCarbideMachine *m, uint32_t 
   m->sound = SHOWDUINO_LAMP_SND_NONE;
 }
 
+static inline ShowduinoLampSound showduino_carbide_sound_for_state(
+    ShowduinoCarbideState st) {
+  switch (st) {
+    case SHOWDUINO_CARBIDE_STRIKING: return SHOWDUINO_LAMP_SND_STRIKE;
+    case SHOWDUINO_CARBIDE_IGNITING: return SHOWDUINO_LAMP_SND_IGNITION;
+    case SHOWDUINO_CARBIDE_BURNING:
+    case SHOWDUINO_CARBIDE_LOW_FLAME:
+    case SHOWDUINO_CARBIDE_UNSTABLE:
+    case SHOWDUINO_CARBIDE_FLARE:
+      return SHOWDUINO_LAMP_SND_BURN_LOOP;
+    default:
+      return SHOWDUINO_LAMP_SND_NONE;
+  }
+}
+
+static inline uint8_t showduino_lamp_sound_loops(ShowduinoLampSound sound) {
+  return sound == SHOWDUINO_LAMP_SND_BURN_LOOP ||
+         sound == SHOWDUINO_LAMP_SND_EMERGENCY;
+}
+
+/* Carbide states use semantic roles only. Filenames live in the table above.
+ * sound/loop arguments are ignored so later reserved roles cannot leak files
+ * into the machine. */
 static inline void showduino_carbide_enter(ShowduinoCarbideMachine *m,
                                            ShowduinoCarbideState st,
                                            uint32_t nowMs,
                                            ShowduinoLampSound sound,
                                            uint8_t loop) {
+  const ShowduinoLampSound actual = showduino_carbide_sound_for_state(st);
+  (void)sound;
+  (void)loop;
   m->state = st;
   m->enteredMs = nowMs;
   m->nowMs = nowMs;
-  m->sound = sound;
-  m->soundLoop = loop;
+  m->sound = actual;
+  m->soundLoop = showduino_lamp_sound_loops(actual);
+}
+
+static inline ShowduinoLampSound showduino_lamp_effective_sound(
+    ShowduinoLampSound theatrical, int emergencyActive) {
+  return emergencyActive ? SHOWDUINO_LAMP_SND_EMERGENCY : theatrical;
 }
 
 static inline ShowduinoCarbideEvent showduino_carbide_event_from_cmd(
@@ -251,7 +290,7 @@ static inline void showduino_carbide_apply(ShowduinoCarbideMachine *m,
     if (m->state != SHOWDUINO_CARBIDE_OFF &&
         m->state != SHOWDUINO_CARBIDE_EXTINGUISHING) {
       showduino_carbide_enter(m, SHOWDUINO_CARBIDE_EXTINGUISHING, now,
-                              SHOWDUINO_LAMP_SND_EXTINGUISH, 0);
+                              SHOWDUINO_LAMP_SND_NONE, 0);
     }
     return;
   }
@@ -260,7 +299,7 @@ static inline void showduino_carbide_apply(ShowduinoCarbideMachine *m,
     if (showduino_carbide_is_flame(m->state) ||
         m->state == SHOWDUINO_CARBIDE_IGNITING) {
       showduino_carbide_enter(m, SHOWDUINO_CARBIDE_EXTINGUISHING, now,
-                              SHOWDUINO_LAMP_SND_EXTINGUISH, 0);
+                              SHOWDUINO_LAMP_SND_NONE, 0);
     }
     return;
   }
@@ -295,7 +334,7 @@ static inline void showduino_carbide_apply(ShowduinoCarbideMachine *m,
   }
   if (ev == SHOWDUINO_CARBIDE_EV_FLARE && showduino_carbide_is_flame(m->state)) {
     showduino_carbide_enter(m, SHOWDUINO_CARBIDE_FLARE, now,
-                            SHOWDUINO_LAMP_SND_FLARE, 0);
+                            SHOWDUINO_LAMP_SND_BURN_LOOP, 0);
     return;
   }
   if (ev == SHOWDUINO_CARBIDE_EV_STEADY && showduino_carbide_is_flame(m->state)) {
@@ -433,12 +472,27 @@ static inline const ShowduinoLampSoundMap *showduino_lamp_sound_info(
 static inline ShowduinoLampSound showduino_lamp_sound_from_role(const char *role) {
   size_t i;
   if (!role) return SHOWDUINO_LAMP_SND_NONE;
+  if (strcmp(role, "FLICK") == 0) return SHOWDUINO_LAMP_SND_STRIKE;
+  if (strcmp(role, "FLAME_LOOP") == 0) return SHOWDUINO_LAMP_SND_BURN_LOOP;
   for (i = 0; i < SHOWDUINO_LAMP_SOUND_TABLE_LEN; ++i) {
     if (strcmp(SHOWDUINO_LAMP_SOUND_TABLE[i].role, role) == 0) {
       return SHOWDUINO_LAMP_SOUND_TABLE[i].id;
     }
   }
   return SHOWDUINO_LAMP_SND_NONE;
+}
+
+static inline int showduino_lamp_v1_file_known(const char *file) {
+  size_t i;
+  if (!file || !file[0]) return 0;
+  for (i = 0; i < SHOWDUINO_LAMP_V1_FILE_COUNT; ++i) {
+    if (strcmp(SHOWDUINO_LAMP_V1_FILES[i], file) == 0) return 1;
+  }
+  return 0;
+}
+
+static inline int showduino_lamp_audio_blocks_machine(void) {
+  return 0;
 }
 
 #ifdef __cplusplus
