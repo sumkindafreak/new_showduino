@@ -1,11 +1,11 @@
 {
-  "buildHash": "c1ea09fcc1b3",
-  "buildUtc": "2026-09-11T22:20:55Z",
+  "buildHash": "869495f9df23",
+  "buildUtc": "2026-09-12T04:32:54Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 39,
-  "rawBytes": 756848,
-  "embeddedBytes": 185078,
+  "rawBytes": 750708,
+  "embeddedBytes": 184776,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -31,8 +31,8 @@
     "commit": "31efc676cb6f70a77d0353db6d0961aed7f7e59a",
     "route": "/studio/",
     "assetCount": 36,
-    "rawBytes": 612656,
-    "embeddedBytes": 151915,
+    "rawBytes": 606986,
+    "embeddedBytes": 151639,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -90,15 +90,15 @@
     {
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 10720,
-      "embedded": 3470,
+      "raw": 10661,
+      "embedded": 3465,
       "gzip": true
     },
     {
       "path": "/css/studio.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 12502,
-      "embedded": 2919,
+      "raw": 12091,
+      "embedded": 2898,
       "gzip": true
     },
     {
@@ -111,8 +111,8 @@
     {
       "path": "/studio/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 11563,
-      "embedded": 3190,
+      "raw": 11330,
+      "embedded": 3174,
       "gzip": true
     },
     {
@@ -167,8 +167,8 @@
     {
       "path": "/studio/css/studio-v4.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 27338,
-      "embedded": 5957,
+      "raw": 26661,
+      "embedded": 5928,
       "gzip": true
     },
     {
@@ -195,8 +195,8 @@
     {
       "path": "/studio/js/shdo_model.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 9033,
-      "embedded": 2510,
+      "raw": 8790,
+      "embedded": 2496,
       "gzip": true
     },
     {
@@ -216,8 +216,8 @@
     {
       "path": "/studio/js/timeline.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 65227,
-      "embedded": 13989,
+      "raw": 63664,
+      "embedded": 13921,
       "gzip": true
     },
     {
@@ -293,8 +293,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 20741,
-      "embedded": 5266,
+      "raw": 20241,
+      "embedded": 5238,
       "gzip": true
     },
     {
@@ -314,8 +314,8 @@
     {
       "path": "/studio/js/studio-deploy.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 15966,
-      "embedded": 4975,
+      "raw": 15616,
+      "embedded": 4957,
       "gzip": true
     },
     {
@@ -328,8 +328,8 @@
     {
       "path": "/studio/js/studio-mobile.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 53731,
-      "embedded": 12503,
+      "raw": 52729,
+      "embedded": 12460,
       "gzip": true
     },
     {
@@ -342,8 +342,8 @@
     {
       "path": "/studio/js/studio-v4.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 52074,
-      "embedded": 13395,
+      "raw": 51300,
+      "embedded": 13350,
       "gzip": true
     },
     {
@@ -356,8 +356,8 @@
     {
       "path": "/studio/css/studio-mobile-simple.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 15042,
-      "embedded": 3659,
+      "raw": 14714,
+      "embedded": 3644,
       "gzip": true
     }
   ]
