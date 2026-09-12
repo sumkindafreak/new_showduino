@@ -17,5 +17,7 @@ void lampLocalBegin();
 LampLocalEvent lampLocalPoll();
 void lampLocalPrintStatus();
 bool lampLocalPinConfirmed();
+bool lampLocalPressed();
+const char *lampLocalStatus();
 
 #endif

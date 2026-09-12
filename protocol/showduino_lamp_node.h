@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 #include <ctype.h>
 #include "showduino_node_ownership.h"
 
@@ -29,7 +30,7 @@ extern "C" {
 #define SHOWDUINO_LAMP_DISPLAY_MAX      24
 #define SHOWDUINO_LAMP_LOGICAL_MAX      12
 #define SHOWDUINO_LAMP_BRI_MAX          100
-#define SHOWDUINO_LAMP_COMMS_TIMEOUT_MS 5000u
+#define SHOWDUINO_LAMP_COMMS_TIMEOUT_MS SHOWDUINO_OWNER_KEEPALIVE_MS
 #define SHOWDUINO_LAMP_LIST_PER_PAGE    5
 #define SHOWDUINO_LAMP_CAPS \
   "CARBIDE_MACHINE,CARBIDE_FX,SHOWDUINO_FX,BLOW,SENSORS,LOCAL_AUDIO,BRI,ESPNOW,EMERGENCY,STANDALONE,OWN"
@@ -444,6 +445,60 @@ static inline int showduino_lamp_comms_loss_extinguish(ShowduinoLampNodeState st
                                                        int authorityFresh) {
   if (st == SHOWDUINO_LAMP_ST_EMERGENCY) return 0;
   return showControlled && !authorityFresh;
+}
+
+/* GRANT keepalive is the ownership clock. Hearing ESP-NOW, or a short
+ * gap shorter than keepMs, is not permission to take standalone control. */
+static inline int showduino_lamp_grant_fresh(int granted, uint32_t nowMs,
+                                             uint32_t lastGrantMs, uint32_t keepMs) {
+  if (!granted || keepMs == 0) return 0;
+  return (nowMs - lastGrantMs) < keepMs;
+}
+
+static inline int32_t showduino_lamp_light_normalized(int32_t filtered, uint32_t scale) {
+  int32_t n;
+  if (scale == 0) return -1;
+  n = (int32_t)((filtered * 100L) / (int32_t)scale);
+  if (n < 0) n = 0;
+  if (n > 100) n = 100;
+  return n;
+}
+
+typedef enum ShowduinoLampProductMode {
+  SHOWDUINO_LAMP_PRODUCT_STANDALONE = 0,
+  SHOWDUINO_LAMP_PRODUCT_SHOWDUINO = 1,
+  SHOWDUINO_LAMP_PRODUCT_EMERGENCY = 2
+} ShowduinoLampProductMode;
+
+static inline ShowduinoLampProductMode showduino_lamp_product_mode(
+    ShowduinoLampNodeState st) {
+  if (st == SHOWDUINO_LAMP_ST_EMERGENCY) return SHOWDUINO_LAMP_PRODUCT_EMERGENCY;
+  if (st == SHOWDUINO_LAMP_ST_SHOW_CONTROLLED) return SHOWDUINO_LAMP_PRODUCT_SHOWDUINO;
+  return SHOWDUINO_LAMP_PRODUCT_STANDALONE;
+}
+
+static inline const char *showduino_lamp_product_mode_name(ShowduinoLampProductMode m) {
+  switch (m) {
+    case SHOWDUINO_LAMP_PRODUCT_SHOWDUINO: return "SHOWDUINO";
+    case SHOWDUINO_LAMP_PRODUCT_EMERGENCY: return "EMERGENCY";
+    default: return "STANDALONE";
+  }
+}
+
+static inline int showduino_lamp_local_authority(ShowduinoLampNodeState st) {
+  return st == SHOWDUINO_LAMP_ST_BOOTING ||
+         st == SHOWDUINO_LAMP_ST_SEARCHING ||
+         st == SHOWDUINO_LAMP_ST_STANDALONE;
+}
+
+static inline int showduino_lamp_web_may_control(ShowduinoLampNodeState st) {
+  return showduino_lamp_local_authority(st);
+}
+
+static inline void showduino_lamp_format_ssid(const char *logicalId, char *out, size_t n) {
+  const char *id = (logicalId && showduino_lamp_id_ok(logicalId)) ? logicalId : "LAMP";
+  if (!out || n < 8) return;
+  snprintf(out, n, "Showduino-Lamp-%s", id);
 }
 
 static inline ShowduinoLampFail showduino_lamp_can_accept_ex(

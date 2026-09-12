@@ -8,6 +8,8 @@ typedef void (*NodeSoftApRadioHook)();
 
 bool nodeSoftApBegin(const char *typeToken, const uint8_t mac[6],
                      uint8_t channel, const char *password);
+bool nodeSoftApBeginNamed(const char *ssid, uint8_t channel, const char *password);
+void nodeSoftApRetitle(const char *ssid);
 void nodeSoftApSetRadioHook(NodeSoftApRadioHook fn);
 void nodeSoftApFollowChannel(uint8_t channel);
 void nodeSoftApService();

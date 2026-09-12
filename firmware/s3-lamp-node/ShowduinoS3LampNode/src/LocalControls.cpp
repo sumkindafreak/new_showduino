@@ -62,3 +62,17 @@ void lampLocalPrintStatus() {
 }
 
 bool lampLocalPinConfirmed() { return SHOWDUINO_LAMP_BTN_IGNITE >= 0; }
+
+bool lampLocalPressed() {
+  if (SHOWDUINO_LAMP_BTN_IGNITE < 0) return false;
+#if SHOWDUINO_LAMP_BTN_ACTIVE_LOW
+  return sStable == 0;
+#else
+  return sStable == 1;
+#endif
+}
+
+const char *lampLocalStatus() {
+  if (SHOWDUINO_LAMP_BTN_IGNITE < 0) return "UNCONFIRMED";
+  return lampLocalPressed() ? "PRESSED" : "RELEASED";
+}

@@ -128,7 +128,7 @@ Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inve
 
 ### S3 Lamp Node
 
-**Classification:** ACTIVE firmware / hardware GPIO trace required. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/`; P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
+**Classification:** ACTIVE firmware / hardware GPIO trace required. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/` firmware **0.3.1**; same image is a standalone SoftAP prop (`Showduino-Lamp-<id>`) and a GRANT-managed Showduino node. P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ### C3 Pixel Node
 

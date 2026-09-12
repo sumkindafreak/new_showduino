@@ -21,7 +21,7 @@
  * must never be mistaken for confirmed production wiring.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.3.0"
+#define SHOWDUINO_LAMP_NODE_FW             "0.3.1"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 

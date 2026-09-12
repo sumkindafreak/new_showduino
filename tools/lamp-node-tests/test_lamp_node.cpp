@@ -133,6 +133,84 @@ int main() {
                                               1, 0) == 0,
          "emergency is not locally cleared by comms loss");
 
+  expect(showduino_lamp_product_mode(SHOWDUINO_LAMP_ST_SEARCHING) ==
+             SHOWDUINO_LAMP_PRODUCT_STANDALONE,
+         "searching is standalone product mode");
+  expect(showduino_lamp_product_mode(SHOWDUINO_LAMP_ST_STANDALONE) ==
+             SHOWDUINO_LAMP_PRODUCT_STANDALONE,
+         "standalone product mode");
+  expect(showduino_lamp_product_mode(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED) ==
+             SHOWDUINO_LAMP_PRODUCT_SHOWDUINO,
+         "show-controlled is SHOWDUINO product mode");
+  expect(showduino_lamp_product_mode(SHOWDUINO_LAMP_ST_EMERGENCY) ==
+             SHOWDUINO_LAMP_PRODUCT_EMERGENCY,
+         "emergency product mode");
+  expect(!strcmp(showduino_lamp_product_mode_name(SHOWDUINO_LAMP_PRODUCT_STANDALONE),
+                 "STANDALONE"),
+         "standalone label");
+  expect(!strcmp(showduino_lamp_product_mode_name(SHOWDUINO_LAMP_PRODUCT_SHOWDUINO),
+                 "SHOWDUINO"),
+         "showduino label");
+  expect(showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_SEARCHING),
+         "web may control while searching");
+  expect(showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_STANDALONE),
+         "web may control standalone");
+  expect(!showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED),
+         "web may not override P4");
+  expect(!showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_EMERGENCY),
+         "web may not control emergency");
+  expect(showduino_lamp_local_authority(SHOWDUINO_LAMP_ST_SEARCHING),
+         "physical lamp lives during search");
+
+  char ssid[33] = "";
+  showduino_lamp_format_ssid("LAMP-01", ssid, sizeof(ssid));
+  expect(!strcmp(ssid, "Showduino-Lamp-LAMP-01"), "ssid from logical id");
+  showduino_lamp_format_ssid("LED-01", ssid, sizeof(ssid));
+  expect(!strcmp(ssid, "Showduino-Lamp-LAMP"), "invalid id falls back");
+
+  expect(showduino_lamp_grant_fresh(1, 4000, 1000, SHOWDUINO_OWNER_KEEPALIVE_MS),
+         "short grant gap is still owned");
+  expect(!showduino_lamp_grant_fresh(1, 10000, 1000, SHOWDUINO_OWNER_KEEPALIVE_MS),
+         "stale grant is not standalone permission by itself");
+  expect(!showduino_lamp_grant_fresh(0, 4000, 1000, SHOWDUINO_OWNER_KEEPALIVE_MS),
+         "ungranted is not fresh");
+  expect(showduino_lamp_light_normalized(50, 0) == -1, "uncalibrated light");
+  expect(showduino_lamp_light_normalized(50, 100) == 50, "normalized light");
+  expect(showduino_lamp_light_normalized(200, 100) == 100, "normalized clamp");
+
+  ShowduinoOwnerMachine owner;
+  showduino_owner_begin(&owner, 0);
+  expect(owner.mode == SHOWDUINO_OWNER_SEARCHING, "boot searches");
+  showduino_owner_apply(&owner, SHOWDUINO_OWNER_EV_TICK, 1000,
+                        SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
+  expect(owner.mode == SHOWDUINO_OWNER_SEARCHING, "still searching at 1s");
+  expect(showduino_lamp_web_may_control(showduino_lamp_state_from_owner(owner.mode)),
+         "local control during search");
+  showduino_owner_apply(&owner, SHOWDUINO_OWNER_EV_TICK, SHOWDUINO_OWNER_DISCOVER_MS,
+                        SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
+  expect(owner.mode == SHOWDUINO_OWNER_STANDALONE, "discover timeout is standalone");
+  expect(owner.enteredStandalone, "entered standalone edge");
+  showduino_owner_apply(&owner, SHOWDUINO_OWNER_EV_GRANT, 9000,
+                        SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
+  expect(owner.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED, "grant becomes showduino");
+  expect(owner.enteredShow, "entered show edge");
+  expect(!showduino_lamp_web_may_control(showduino_lamp_state_from_owner(owner.mode)),
+         "no silent web override after grant");
+  showduino_owner_apply(&owner, SHOWDUINO_OWNER_EV_TICK, 12000,
+                        SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
+  expect(owner.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED,
+         "momentary gap is not standalone");
+  expect(!owner.lostAuthority, "keepalive window still open");
+  showduino_owner_apply(&owner, SHOWDUINO_OWNER_EV_TICK, 9000 + SHOWDUINO_OWNER_KEEPALIVE_MS,
+                        SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
+  expect(owner.mode == SHOWDUINO_OWNER_STANDALONE, "grant timeout returns standalone");
+  expect(owner.lostAuthority, "lost authority is explicit");
+  expect(showduino_lamp_comms_loss_extinguish(
+             SHOWDUINO_LAMP_ST_SHOW_CONTROLLED, 1,
+             showduino_lamp_grant_fresh(0, 20000, 9000,
+                                        SHOWDUINO_OWNER_KEEPALIVE_MS)) == 1,
+         "lost grant uses comms-loss extinguish");
+
   uint16_t start = 0, count = 0;
   showduino_lamp_list_slice(0, &start, &count);
   expect(start == 0 && count == SHOWDUINO_LAMP_LIST_PER_PAGE, "list page 0");

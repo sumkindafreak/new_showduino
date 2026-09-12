@@ -1,6 +1,7 @@
 #include "LampSensors.h"
 #include "LampConfig.h"
 #include "../BoardConfig.h"
+#include "../../../protocol/showduino_lamp_node.h"
 
 #include <Arduino.h>
 
@@ -95,8 +96,32 @@ const char *lampSensorsMicStatus() {
   return SHOWDUINO_LAMP_MIC_PIN < 0 ? "UNCONFIRMED" : "OK";
 }
 
+void lampSensorsApplyConfig() {
+  ShowduinoBlowConfig cfg = showduino_blow_config_defaults();
+  cfg.threshold = lampConfigBlowThreshold();
+  cfg.puffMs = lampConfigPuffMs();
+  cfg.blowMs = lampConfigBlowMs();
+  showduino_blow_reset(&sBlow, &cfg);
+  sPending = SHOWDUINO_BLOW_NONE;
+}
+
+void lampSensorsCalibrateQuiet() {
+  lampSensorsApplyConfig();
+}
+
+void lampSensorsCalibrateLight() {
+  const int32_t v = sLightFilt > 0 ? sLightFilt : sLightRaw;
+  if (v > 0) lampConfigSetLightScale((uint32_t)v);
+}
+
+int32_t lampSensorsLightNormalized() {
+  return showduino_lamp_light_normalized(sLightFilt, lampConfigLightScale());
+}
+
 const char *lampSensorsLightStatus() {
-  return SHOWDUINO_LAMP_LIGHT_PIN < 0 ? "UNCONFIRMED" : "OK";
+  if (SHOWDUINO_LAMP_LIGHT_PIN < 0) return "UNCONFIRMED";
+  if (lampConfigLightScale() == 0) return "UNCALIBRATED";
+  return "CALIBRATED";
 }
 
 const char *lampSensorsVoltStatus() {

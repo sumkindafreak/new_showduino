@@ -109,3 +109,10 @@ void lampConfigSetVoltScale(uint32_t num, uint32_t den) {
 
 uint32_t lampConfigVoltWarnMv() { return nodeConfigGetU16("vwarn", 0); }
 uint32_t lampConfigVoltUnderMv() { return nodeConfigGetU16("vund", 0); }
+
+uint32_t lampConfigLightScale() { return nodeConfigGetU16("lsc", 0); }
+
+void lampConfigSetLightScale(uint32_t scale) {
+  if (scale > 65535) scale = 65535;
+  nodeConfigSetU16("lsc", (uint16_t)scale);
+}

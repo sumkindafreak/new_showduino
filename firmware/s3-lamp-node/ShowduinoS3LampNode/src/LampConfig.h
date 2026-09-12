@@ -23,5 +23,7 @@ uint32_t lampConfigVoltScaleDen();
 void lampConfigSetVoltScale(uint32_t num, uint32_t den);
 uint32_t lampConfigVoltWarnMv();
 uint32_t lampConfigVoltUnderMv();
+uint32_t lampConfigLightScale();
+void lampConfigSetLightScale(uint32_t scale);
 
 #endif

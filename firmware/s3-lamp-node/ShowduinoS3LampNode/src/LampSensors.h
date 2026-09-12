@@ -12,6 +12,10 @@ int32_t lampSensorsMicFiltered();
 int32_t lampSensorsMicBaseline();
 int32_t lampSensorsLightRaw();
 int32_t lampSensorsLightFiltered();
+int32_t lampSensorsLightNormalized(); /* -1 if uncalibrated */
+void lampSensorsApplyConfig();
+void lampSensorsCalibrateQuiet();
+void lampSensorsCalibrateLight();
 int32_t lampSensorsVoltRaw();
 int32_t lampSensorsVoltFiltered();
 int32_t lampSensorsVoltMv(); /* -1 if uncalibrated — never invent 5.00 V */

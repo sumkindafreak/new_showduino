@@ -19,5 +19,17 @@ void lampNodeStateNoteComms();
 uint32_t lampNodeStateLastCommsMs();
 bool lampNodeStateAuthorityFresh(uint32_t timeoutMs);
 const char *lampNodeStateName();
+ShowduinoLampProductMode lampNodeProductMode();
+const char *lampNodeProductModeName();
+
+void lampOwnerTick();
+void lampOwnerApplyEvent(ShowduinoOwnerEvent ev);
+ShowduinoNodeOwnerMode lampOwnerMode();
+const char *lampOwnerModeName();
+bool lampOwnerGranted();
+bool lampOwnerLostAuthority();
+bool lampOwnerEnteredStandalone();
+bool lampOwnerEnteredShow();
+uint32_t lampOwnerLastGrantMs();
 
 #endif

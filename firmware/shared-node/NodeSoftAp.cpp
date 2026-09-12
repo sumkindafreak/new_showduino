@@ -7,7 +7,7 @@
 static bool sStarted = false;
 static bool sReady = false;
 static uint8_t sChannel = 1;
-static char sSsid[SHOWDUINO_OWNER_SSID_MAX] = "";
+static char sSsid[33] = "";
 static char sPass[32] = "showduino";
 static char sIp[16] = "0.0.0.0";
 static uint32_t sLastCheck = 0;
@@ -92,6 +92,25 @@ bool nodeSoftApBegin(const char *typeToken, const uint8_t mac[6],
   strncpy(sPass, (password && password[0]) ? password : "showduino", sizeof(sPass) - 1);
   sPass[sizeof(sPass) - 1] = 0;
   return startAp();
+}
+
+bool nodeSoftApBeginNamed(const char *ssid, uint8_t channel, const char *password) {
+  sChannel = channel ? channel : 1;
+  strncpy(sSsid, (ssid && ssid[0]) ? ssid : "Showduino-Lamp", sizeof(sSsid) - 1);
+  sSsid[sizeof(sSsid) - 1] = 0;
+  strncpy(sPass, (password && password[0]) ? password : "showduino", sizeof(sPass) - 1);
+  sPass[sizeof(sPass) - 1] = 0;
+  return startAp();
+}
+
+void nodeSoftApRetitle(const char *ssid) {
+  if (!ssid || !ssid[0]) return;
+  if (!strcmp(sSsid, ssid)) return;
+  strncpy(sSsid, ssid, sizeof(sSsid) - 1);
+  sSsid[sizeof(sSsid) - 1] = 0;
+  if (!sStarted) return;
+  Serial.printf("[NODE-AP] retitle ssid=%s (reassert ESP-NOW, no deinit)\n", sSsid);
+  startAp();
 }
 
 void nodeSoftApFollowChannel(uint8_t channel) {

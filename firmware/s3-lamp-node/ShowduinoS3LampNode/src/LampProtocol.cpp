@@ -59,17 +59,7 @@ void lampProtocolBegin() {
   if (!sApDueMs) sApDueMs = millis() + 400UL;
 }
 
-static void markShow(bool fromShow) {
-  if (fromShow) {
-    lampNodeStateSetShowControlled(true);
-    lampNodeStateSet(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED);
-  } else if (lampNodeState() != SHOWDUINO_LAMP_ST_SHOW_CONTROLLED) {
-    lampNodeStateSet(SHOWDUINO_LAMP_ST_STANDALONE);
-  }
-}
-
-static void accepted(uint32_t sequence, bool fromShow) {
-  markShow(fromShow);
+static void accepted(uint32_t sequence) {
   sActiveSeq = sequence;
   char acc[48];
   snprintf(acc, sizeof(acc), "LAMP:ACCEPTED:%lu", (unsigned long)sequence);
@@ -84,17 +74,23 @@ static void accepted(uint32_t sequence, bool fromShow) {
 
 static void goIdle() {
   lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_EXTINGUISH);
-  if (lampNodeState() == SHOWDUINO_LAMP_ST_FAULT ||
-      lampNodeState() == SHOWDUINO_LAMP_ST_EMERGENCY) {
-    return;
+}
+
+static void onOwnerEdges() {
+  if (lampOwnerEnteredShow()) {
+    SD_LOGI("LAMP", "SHOWDUINO MODE — P4 authoritative, waiting for sync");
+    /* Keep the current flame. Do not apply stale P4 FX. */
   }
-  if (lampNodeStateShowControlled() &&
-      lampNodeStateAuthorityFresh(SHOWDUINO_LAMP_COMMS_TIMEOUT_MS)) {
-    lampNodeStateSet(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED);
-  } else {
-    lampNodeStateSetShowControlled(false);
-    lampNodeStateSet(lampEspNowHaveComms() ? SHOWDUINO_LAMP_ST_STANDALONE
-                                           : SHOWDUINO_LAMP_ST_SEARCHING);
+  if (lampOwnerLostAuthority()) {
+    SD_LOGW("LAMP", "Show-control GRANT timeout — extinguish, then standalone");
+    goIdle();
+    char line[64];
+    snprintf(line, sizeof(line), "LAMP:FAILED:%lu:%s",
+             (unsigned long)sActiveSeq,
+             showduino_lamp_fail_name(SHOWDUINO_LAMP_FAIL_COMMS_TIMEOUT));
+    report(line, sActiveSeq);
+  } else if (lampOwnerEnteredStandalone()) {
+    SD_LOGI("LAMP", "STANDALONE MODE — local carbide authority");
   }
 }
 
@@ -123,6 +119,15 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     return;
   }
 
+  if (origin == SHOWDUINO_CMD_ORIGIN_SHOW &&
+      (cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT || cmd == SHOWDUINO_LAMP_CMD_STATUS ||
+       showduino_lamp_cmd_theatrical(cmd))) {
+    lampOwnerApplyEvent(cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT
+                            ? SHOWDUINO_OWNER_EV_GRANT
+                            : SHOWDUINO_OWNER_EV_KEEP);
+    onOwnerEdges();
+  }
+
   const ShowduinoLampFail gate =
       showduino_lamp_can_accept_ex(lampNodeState(), cmd, origin);
   if (gate != SHOWDUINO_LAMP_FAIL_NONE) {
@@ -133,11 +138,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     return;
   }
 
-  const bool fromShow = origin == SHOWDUINO_CMD_ORIGIN_SHOW;
-
   if (cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT) {
-    lampNodeStateSetShowControlled(true);
-    lampNodeStateSet(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED);
     char line[48];
     snprintf(line, sizeof(line), "LAMP:OWNED:%lu", (unsigned long)sequence);
     report(line, sequence);
@@ -146,8 +147,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
 
   if (cmd == SHOWDUINO_LAMP_CMD_EMERGENCY_STOP) {
     lampEngineOnEmergency(true);
-    lampNodeStateSetShowControlled(false);
-    lampNodeStateSet(SHOWDUINO_LAMP_ST_EMERGENCY);
+    lampOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_STOP);
     char line[48];
     snprintf(line, sizeof(line), "LAMP:EMERGENCY:%lu", (unsigned long)sequence);
     report(line, sequence);
@@ -156,11 +156,8 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
 
   if (cmd == SHOWDUINO_LAMP_CMD_EMERGENCY_CLEAR) {
     lampEngineOnEmergency(false);
-    lampNodeStateSetShowControlled(false);
-    if (lampNodeState() != SHOWDUINO_LAMP_ST_FAULT) {
-      lampNodeStateSet(lampEspNowHaveComms() ? SHOWDUINO_LAMP_ST_STANDALONE
-                                             : SHOWDUINO_LAMP_ST_SEARCHING);
-    }
+    lampOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_CLEAR);
+    goIdle();
     char line[48];
     snprintf(line, sizeof(line), "LAMP:IDLE:%lu", (unsigned long)sequence);
     report(line, sequence);
@@ -178,6 +175,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
 
   if (cmd == SHOWDUINO_LAMP_CMD_BRIGHTNESS) {
     lampEngineSetBrightness(parsed.brightness);
+    lampConfigSetBrightness(parsed.brightness);
     char line[32];
     snprintf(line, sizeof(line), "LAMP:BRIGHTNESS:%u",
              (unsigned)lampEngineBrightness());
@@ -242,7 +240,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       lampEngineSetBrightness(parsed.brightness);
     }
     lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_IGNITE);
-    accepted(sequence, fromShow);
+    accepted(sequence);
     return;
   }
 
@@ -251,7 +249,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       lampEngineSetBrightness(parsed.brightness);
     }
     lampEngineSetSolid(parsed.r, parsed.g, parsed.b);
-    accepted(sequence, fromShow);
+    accepted(sequence);
     return;
   }
 
@@ -260,7 +258,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       lampEngineSetBrightness(parsed.brightness);
     }
     lampEngineSetCompatFx(parsed.fx, parsed.speed, parsed.intensity);
-    accepted(sequence, fromShow);
+    accepted(sequence);
   }
 }
 
@@ -269,7 +267,7 @@ void lampProtocolLocalIgnite() {
     Serial.println("[LAMP] Ignition blocked — emergency");
     return;
   }
-  if (lampNodeStateShowControlled()) {
+  if (!showduino_lamp_local_authority(lampNodeState())) {
     Serial.println("[LAMP] Ignition blocked — P4 show control");
     return;
   }
@@ -289,43 +287,20 @@ void lampProtocolAnnounce() {
 
 void lampProtocolService() {
   lampEspNowService();
+  lampOwnerTick();
+  onOwnerEdges();
 
+  const bool localOk = showduino_lamp_local_authority(lampNodeState());
   const ShowduinoBlowClass blow = lampSensorsTakeBlowEvent();
-  if (blow == SHOWDUINO_BLOW_SUSTAINED && lampEngineFlameLit() &&
-      lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
-    lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW);
-    Serial.println("[LAMP] Sustained blow → EXTINGUISH");
-  } else if (blow == SHOWDUINO_BLOW_PUFF && lampEngineFlameLit() &&
-             lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
-    lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_PUFF);
-  } else if (blow == SHOWDUINO_BLOW_RELEASE &&
-             lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
-    lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW_END);
-  }
-
-  if (showduino_lamp_comms_loss_extinguish(
-          lampNodeState(),
-          lampNodeStateShowControlled() ? 1 : 0,
-          lampNodeStateAuthorityFresh(SHOWDUINO_LAMP_COMMS_TIMEOUT_MS) ? 1 : 0) &&
-      lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
-    Serial.println("[LAMP] Show-control comms timeout — extinguish");
-    lampNodeStateSetShowControlled(false);
-    goIdle();
-    char line[64];
-    snprintf(line, sizeof(line), "LAMP:FAILED:%lu:%s",
-             (unsigned long)sActiveSeq,
-             showduino_lamp_fail_name(SHOWDUINO_LAMP_FAIL_COMMS_TIMEOUT));
-    report(line, sActiveSeq);
-  }
-
-  if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY &&
-      lampNodeState() != SHOWDUINO_LAMP_ST_FAULT &&
-      lampNodeState() != SHOWDUINO_LAMP_ST_SHOW_CONTROLLED &&
-      lampNodeState() != SHOWDUINO_LAMP_ST_STANDALONE) {
-    const ShowduinoLampNodeState want =
-        lampEspNowHaveComms() ? SHOWDUINO_LAMP_ST_STANDALONE
-                              : SHOWDUINO_LAMP_ST_SEARCHING;
-    if (lampNodeState() != want) lampNodeStateSet(want);
+  if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY && localOk) {
+    if (blow == SHOWDUINO_BLOW_SUSTAINED && lampEngineFlameLit()) {
+      lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW);
+      Serial.println("[LAMP] Sustained blow → EXTINGUISH");
+    } else if (blow == SHOWDUINO_BLOW_PUFF && lampEngineFlameLit()) {
+      lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_PUFF);
+    } else if (blow == SHOWDUINO_BLOW_RELEASE) {
+      lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW_END);
+    }
   }
 
   if (sApDueMs && (int32_t)(millis() - sApDueMs) >= 0) {

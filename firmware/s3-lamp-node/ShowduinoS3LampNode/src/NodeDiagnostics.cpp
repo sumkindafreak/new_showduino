@@ -76,13 +76,14 @@ void nodeDiagPrintBootBanner() {
                 lampEngineJewelReady() ? "driver" : "stub",
                 (unsigned)lampEngineCount(), lampEngineCarbideName());
   Serial.printf("Fermion: %s (local FX, not Audio Node)\n", lampAudioStatus());
-  Serial.printf("State: %s  emergency=%s  fault=%s\n",
+  Serial.printf("Mode: %s  owner=%s  emergency=%s  fault=%s\n",
+                lampNodeProductModeName(),
                 lampNodeStateName(),
                 lampEngineEmergency() ? "ACTIVE" : "CLEAR",
                 lampNodeStateFault());
   nodeDiagPrintPins();
   Serial.println("Do not flash a production lamp until GPIOs are traced.");
-  Serial.println("Waiting for Showduino.");
+  Serial.println("Physical lamp is live. SoftAP WebUI is local. Showduino is optional.");
 }
 
 void nodeDiagPrintHelp() {
@@ -98,7 +99,9 @@ void nodeDiagPrintStatus() {
   char mac[24];
   lampEspNowMacString(mac, sizeof(mac));
   Serial.printf("ID %s  NAME %s\n", lampConfigId(), lampConfigName());
-  Serial.printf("STATE %s  CARBIDE %s\n", lampNodeStateName(), lampEngineCarbideName());
+  Serial.printf("MODE %s  OWNER %s  CARBIDE %s\n",
+                lampNodeProductModeName(), lampNodeStateName(),
+                lampEngineCarbideName());
   Serial.printf("FAULT %s  SHOW %s  EMERGENCY %s\n",
                 lampNodeStateFault(),
                 lampNodeStateShowControlled() ? "YES" : "NO",

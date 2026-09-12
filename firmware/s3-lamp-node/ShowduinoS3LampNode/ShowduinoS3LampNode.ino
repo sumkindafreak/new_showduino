@@ -2,9 +2,9 @@
   Showduino S3 Lamp Node — ESP32-S3 interactive carbide-lamp simulator.
 
   Specialist practical-prop controller. Not a Pixel Node. Not an Audio Node.
-  The P4 remains authoritative. This node renders flame, blow-out, and
-  local Fermion effect audio. GPIOs are unconfirmed — do not flash until
-  Toby traces the jewel, button, sensors, and UART.
+  Same firmware is a standalone carbide lamp and a managed Showduino node.
+  The P4 is authoritative only after GRANT. GPIOs are unconfirmed — do
+  not flash until Toby traces the jewel, button, sensors, and UART.
 */
 
 #include <Arduino.h>

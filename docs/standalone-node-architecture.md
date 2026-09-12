@@ -31,15 +31,17 @@ The P4 sends GRANT when the node announces, and retries GRANT about every 2 s as
 | EMERGENCY | Above everything. Pixel-capable outputs go bright white. Audio stops and mutes |
 | FAULT | Node-level fault |
 
-On GRANT: stop autonomous actions, go to safe idle, **do not restore** the previous local FX / audio, wait for a **fresh** P4 command.
+On GRANT: Audio and Pixel stop autonomous actions and go to safe idle. They do **not** restore the previous local FX / audio. They wait for a **fresh** P4 command.
 
-On GRANT loss: apply the node-type fail-safe, then STANDALONE WebUI.
+The S3 Lamp Node is the interactive-prop exception: GRANT enters SHOWDUINO mode and **keeps the current flame**. It does not apply stale P4 FX. A later P4 command becomes authoritative.
+
+On GRANT loss: apply the node-type fail-safe, then STANDALONE WebUI. A short ESP-NOW gap inside the keepalive window is not standalone permission.
 
 Emergency CLEAR returns to safe idle. It does not resume the previous cue.
 
 ## SoftAP
 
-SSID is `Showduino-<Type>-<MAC suffix>`, for example `Showduino-Audio-31C8`. Password `showduino`. Channel **must** remain `SHOWDUINO_ESPNOW_CHANNEL` (1). Radio mode is AP+STA so the local WebUI cannot retune ESP-NOW. Node SoftAP uses **192.168.5.1** so it does not collide with the Communications S3 Studio AP at 192.168.4.1. ESP-NOW stays on STA; SoftAP must not start until ESP-NOW is up, and must rebind ESP-NOW after the AP comes up. STA scanning is disabled. TX power is held down so a node AP cannot deafen Director ↔ Comms.
+SSID is `Showduino-<Type>-<MAC suffix>`, for example `Showduino-Audio-31C8`. The S3 Lamp Node uses the logical Node ID instead: `Showduino-Lamp-LAMP-01`. Password `showduino`. Channel **must** remain `SHOWDUINO_ESPNOW_CHANNEL` (1). Radio mode is AP+STA so the local WebUI cannot retune ESP-NOW. Node SoftAP uses **192.168.5.1** so it does not collide with the Communications S3 Studio AP at 192.168.4.1. ESP-NOW stays on STA; SoftAP must not start until ESP-NOW is up, and must rebind ESP-NOW after the AP comes up. STA scanning is disabled. TX power is held down so a node AP cannot deafen Director ↔ Comms.
 
 Persist **name / defaults only**. Never persist live ON / FX / PLAY as a boot state.
 
@@ -59,5 +61,5 @@ MOSFET is specified for the shared ownership model but is **not implemented** in
 ## Current firmware
 
 - Audio Node `0.4.1` — ownership + SoftAP WebUI implemented beside playback states (`IDLE` / `PLAYING` / … stay playback-only).
-- C3 Lamp Node `0.2.0` — same ownership protocol; P4 `LampNodeLink` and ESP-NOW FX implemented.
-- MOSFET / C3 Pixel — document only.
+- S3 Lamp Node `0.3.1` — same GRANT machine; standalone carbide lamp + local WebUI; P4 `LampNodeLink` and ESP-NOW FX implemented. Historical C3 Lamp Node remains reference-only.
+- MOSFET / C3 Pixel — Pixel firmware exists; MOSFET is document only.

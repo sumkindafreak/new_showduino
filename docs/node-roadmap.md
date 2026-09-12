@@ -37,7 +37,7 @@ Current first production specialist node. Firmware exists (0.4.1) with P4 GRANT 
 
 Second specialist node. Replaces the retired Relay Node product role on the Director (Page 04 / Home footer). Production firmware lives in `firmware/s3-lamp-node/`. Historical C3 Super Mini OLED firmware is retained in `firmware/c3-lamp-node/`.
 
-This is an interactive carbide-lamp practical (jewel flame, striker, blow-to-extinguish, local Fermion FX). It is not a Pixel Node and not a second Audio Node. GPIOs are unconfirmed — do not flash until traced. See [`s3-lamp-node.md`](s3-lamp-node.md).
+This is an interactive carbide-lamp practical (jewel flame, striker, blow-to-extinguish, local Fermion FX). Firmware **0.3.1** is both a standalone SoftAP carbide lamp and a managed Showduino node. It is not a Pixel Node and not a second Audio Node. GPIOs are unconfirmed — do not flash until traced. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 P4 links via `ROUTE:LAMP:` / `LampNodeLink` (Audio Node parity).
 

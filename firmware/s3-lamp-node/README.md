@@ -4,7 +4,7 @@
 Status: ACTIVE firmware / GPIOs UNCONFIRMED — do not flash
 Role: Interactive carbide-lamp practical
 Hardware: ESP32-S3 development board (same family as the Comms Controller)
-Firmware: 0.3.0
+Firmware: 0.3.1
 ```
 
 This is the **production Lamp Node**.
@@ -24,7 +24,7 @@ ESP32-P4 Show Engine
 this S3 Lamp Node  (ESP-NOW)
 ```
 
-The P4 remains authoritative. The node runs a local carbide state machine, jewel flame renderer, blow-to-extinguish detector, and optional Fermion DFPlayer Pro effect audio.
+The same firmware is a standalone interactive carbide lamp and a managed Showduino node. The P4 is authoritative only after GRANT. SoftAP `Showduino-Lamp-<id>` (typically `192.168.5.1`) hosts the local WebUI with no internet required. The node runs a local carbide state machine, jewel flame renderer, blow-to-extinguish detector, and optional Fermion DFPlayer Pro effect audio.
 
 ## Sketch
 
