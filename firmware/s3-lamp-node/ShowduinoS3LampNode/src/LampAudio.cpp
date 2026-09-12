@@ -61,7 +61,19 @@ void lampAudioBegin() {
 
 void lampAudioService() {
   if (!sBegun) return;
-  while (Serial1.available() > 0) (void)Serial1.read();
+  static char rx[96];
+  static uint8_t n = 0;
+  while (Serial1.available() > 0) {
+    const char c = (char)Serial1.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      rx[n] = 0;
+      if (n > 0) Serial.printf("[LAMP-AUD] RX %s\n", rx);
+      n = 0;
+      continue;
+    }
+    if (n + 1U < sizeof(rx)) rx[n++] = c;
+  }
 }
 
 void lampAudioPlay(ShowduinoLampSound id) {

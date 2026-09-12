@@ -4,7 +4,7 @@
 Status: ACTIVE firmware / physical GPIOs confirmed
 Role: Interactive carbide-lamp practical
 Hardware: ESP32-S3 development board (same family as the Comms Controller)
-Firmware: 0.3.3
+Firmware: 0.3.4
 ```
 
 This is the **production Lamp Node**.
@@ -32,10 +32,10 @@ The same firmware is a standalone interactive carbide lamp and a managed Showdui
 firmware/s3-lamp-node/ShowduinoS3LampNode/
 ```
 
-Suggested Arduino profile (same board family as Comms; flash/PSRAM still unconfirmed):
+This physical Lamp Node uses a CH343 USB-UART on UART0 (COM9 in the first bench). Application Serial must stay on UART0, not native USB CDC:
 
 ```text
-arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-lamp-node/ShowduinoS3LampNode
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-lamp-node/ShowduinoS3LampNode
 ```
 
 Production pins are in `BoardConfig.h` (`SHOWDUINO_LAMP_PINS_CONFIRMED = 1`).

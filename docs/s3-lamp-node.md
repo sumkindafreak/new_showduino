@@ -1,6 +1,6 @@
 # Showduino S3 Lamp Node — carbide lamp
 
-Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.3**. Protocol **1.0**. SHDO package **v2**.
+Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.4**. Protocol **1.0**. SHDO package **v2**.
 
 The production Lamp Node is an **ESP32-S3 interactive carbide-lamp simulator**. It is not a Pixel Node and not a second Audio Node.
 
@@ -104,3 +104,9 @@ Studio should author `LAMP-01 IGNITE` / `UNSTABLE_FLAME` / `EXTINGUISH`. SHDO v2
 | Jewel DATA | 8 | 7 pixels |
 | Fermion TX | 17 | S3 TX → Fermion RX |
 | Fermion RX | 18 | S3 RX ← Fermion TX |
+
+This physical board talks over a CH343 USB-UART on UART0. Flash and monitor with `CDCOnBoot=default` so application `Serial` stays on that UART, not native USB CDC:
+
+```text
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-lamp-node/ShowduinoS3LampNode
+```
