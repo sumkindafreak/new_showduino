@@ -220,7 +220,10 @@ bool lampNodeLinkHandleCommand(const char *command, char *reply, size_t replyLen
       !strcmp(command, "LAMP:NODE:STATUS") ||
       !strcmp(command, "LAMP:OFF") ||
       !strcmp(command, "LAMP:STOP") ||
-      !strcmp(command, "LAMP:NODE:STOP");
+      !strcmp(command, "LAMP:NODE:STOP") ||
+      !strcmp(command, "LAMP:EXTINGUISH") ||
+      !strcmp(command, "LAMP:NODE:EXTINGUISH") ||
+      (strstr(command, ":EXTINGUISH") != nullptr);
   if (emergencyLocked && !alwaysOk) {
     if (reply && replyLen) strncpy(reply, "REJECTED:LAMP:EMERGENCY_ACTIVE", replyLen - 1);
     return true;

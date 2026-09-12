@@ -24,7 +24,7 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 
 ```text
 1. Audio Node
-2. C3 Lamp Node
+2. S3 Lamp Node
 3. C3 Pixel Node
 4. MOSFET Node
 ```
@@ -33,9 +33,11 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 
 Current first production specialist node. Firmware exists (0.4.1) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
 
-### 2. C3 Lamp Node
+### 2. S3 Lamp Node
 
-Second specialist node. Replaces the retired Relay Node product role on the Director (Page 04 / Home footer). Firmware lives in `firmware/c3-lamp-node/`. Carbide / theatrical lamp FX; not a 1:1 mapping of old `RELAY:n:ON` commands.
+Second specialist node. Replaces the retired Relay Node product role on the Director (Page 04 / Home footer). Production firmware lives in `firmware/s3-lamp-node/`. Historical C3 Super Mini OLED firmware is retained in `firmware/c3-lamp-node/`.
+
+This is an interactive carbide-lamp practical (jewel flame, striker, blow-to-extinguish, local Fermion FX). It is not a Pixel Node and not a second Audio Node. GPIOs are unconfirmed — do not flash until traced. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 P4 links via `ROUTE:LAMP:` / `LampNodeLink` (Audio Node parity).
 

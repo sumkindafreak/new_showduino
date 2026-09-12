@@ -246,7 +246,7 @@ Status LED      GPIO22
 
 ## 15. C3 Pixel Node — CURRENT / HARDWARE TEST REQUIRED
 
-ESP32-C3 Super Mini OLED. Same board family as the Lamp Node.
+ESP32-C3 Super Mini OLED. Not the production Lamp Node (that is an ESP32-S3).
 
 ```text
 OLED SDA      GPIO5
@@ -258,9 +258,25 @@ Buttons       GPIO9 (A / BOOT), GPIO0 (B)
 
 Do not move OLED pins. Do not power the strip from the C3. See [`c3-pixel-node.md`](c3-pixel-node.md) and [`firmware/c3-pixel-node/README.md`](../firmware/c3-pixel-node/README.md).
 
-## 16. Related documents
+## 16. S3 Lamp Node — CURRENT / GPIO TRACE REQUIRED
+
+ESP32-S3 development-board family (same as the Communications Controller). Interactive carbide lamp. **Every lamp GPIO is unconfirmed.**
+
+```text
+Jewel DATA          PHYSICAL CONFIRMATION REQUIRED
+Ignition button     PHYSICAL CONFIRMATION REQUIRED
+Mic / blow ADC      PHYSICAL CONFIRMATION REQUIRED  (ADC1)
+Light ADC           PHYSICAL CONFIRMATION REQUIRED  (ADC1)
+Voltage ADC         PHYSICAL CONFIRMATION REQUIRED  (ADC1)
+Fermion UART TX/RX  PHYSICAL CONFIRMATION REQUIRED
+```
+
+Do not guess pins. Do not flash until traced. See [`s3-lamp-node.md`](s3-lamp-node.md).
+
+## 17. Related documents
 
 - [`final-hardware-architecture.md`](final-hardware-architecture.md)
 - [`audio-pixel-engine.md`](audio-pixel-engine.md)
+- [`s3-lamp-node.md`](s3-lamp-node.md)
 - [`node-roadmap.md`](node-roadmap.md)
 - Waveshare board documentation: https://docs.waveshare.com/ESP32-P4-Module-DEV-KIT

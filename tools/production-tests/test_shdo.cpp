@@ -226,6 +226,62 @@ int main() {
   expect(sawLed02, "mixed production keeps LED-02 PIXEL:NODE commands");
   expect(sawAudio, "mixed production keeps Audio Node commands");
 
+  static const char *kLampNode =
+      "{\n"
+      "  \"schema\": \"showduino-production-v2\",\n"
+      "  \"package\": { \"version\": 2 },\n"
+      "  \"project\": { \"id\": \"lamp_bench\", \"name\": \"Lamp Bench\" },\n"
+      "  \"architecture\": {\n"
+      "    \"runtimeAuthority\": \"esp32-p4-show-engine\",\n"
+      "    \"transport\": \"esp32-s3-comms-controller\"\n"
+      "  },\n"
+      "  \"safety\": {\n"
+      "    \"policy\": \"firmware-authoritative\",\n"
+      "    \"productionCannotDisable\": true,\n"
+      "    \"emergency\": {\n"
+      "      \"autoResume\": false,\n"
+      "      \"requiresManualClear\": true,\n"
+      "      \"stopTimeline\": true,\n"
+      "      \"pixelOverride\": \"all-white\"\n"
+      "    }\n"
+      "  },\n"
+      "  \"devices\": [{\n"
+      "    \"id\": \"carbide\",\n"
+      "    \"type\": \"lamp\",\n"
+      "    \"binding\": { \"route\": \"lamp-node\", \"nodeId\": \"LAMP-01\" }\n"
+      "  }],\n"
+      "  \"clips\": [{\n"
+      "    \"id\": \"light\",\n"
+      "    \"type\": \"lamp\",\n"
+      "    \"targetDeviceId\": \"carbide\",\n"
+      "    \"startMs\": 12000,\n"
+      "    \"durationMs\": 5000,\n"
+      "    \"params\": { \"effect\": \"IGNITE\" }\n"
+      "  },{\n"
+      "    \"id\": \"flutter\",\n"
+      "    \"type\": \"lamp\",\n"
+      "    \"targetDeviceId\": \"carbide\",\n"
+      "    \"startMs\": 14000,\n"
+      "    \"params\": { \"effect\": \"UNSTABLE_FLAME\", \"brightness\": 80 }\n"
+      "  }]\n"
+      "}\n";
+  ShdoCue lampCues[16]{};
+  uint16_t lampCount = 0;
+  const ShdoStatus lampOk = shdoCompile(kLampNode, std::strlen(kLampNode), &manifest,
+                                        lampCues, 16, &lampCount, err, sizeof(err));
+  expect(lampOk == SHDO_OK, "lamp-node SHDO v2 compiles");
+  bool sawIgnite = false, sawExt = false, sawUnstable = false;
+  for (uint16_t i = 0; i < lampCount; ++i) {
+    if (std::strstr(lampCues[i].command, "LAMP:NODE:LAMP-01:IGNITE") != nullptr) sawIgnite = true;
+    if (std::strstr(lampCues[i].command, "LAMP:NODE:LAMP-01:EXTINGUISH") != nullptr) sawExt = true;
+    if (std::strstr(lampCues[i].command, "LAMP:NODE:LAMP-01:FX:UNSTABLE_FLAME") != nullptr) {
+      sawUnstable = true;
+    }
+  }
+  expect(sawIgnite, "IGNITE compiles to LAMP:NODE:LAMP-01:IGNITE");
+  expect(sawExt, "duration end compiles EXTINGUISH");
+  expect(sawUnstable, "UNSTABLE_FLAME compiles as FX token");
+
   std::string example;
   std::string examplePath;
   expect(loadFirstAudioExample(&example, &examplePath),

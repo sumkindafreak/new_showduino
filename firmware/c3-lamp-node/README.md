@@ -1,67 +1,53 @@
-# Showduino C3 Lamp Node
+# Showduino C3 Lamp Node — HISTORICAL
 
 ```text
-Status: ACTIVE
-Role: Specialist lamp / FX node
+Status: SUPERSEDED / retained as reference
+Role: Historical lamp / FX node
 Hardware: ESP32-C3 Super Mini OLED (HUNT-proven pin map)
-Firmware: 0.2.0
+Firmware: 0.2.1
 ```
 
-This is a **specialist output node**, not a communications engine.
+**The physical production Lamp Node is an ESP32-S3 carbide-lamp simulator.**
 
-It is **not** the superseded ESP32-C3/SUE Comms path (`firmware/c3-supermini-espnow-bridge/`).
-It is **not** the unused/reserved onboard ESP32-C6.
+Do not treat this C3 tree as the live target. The current firmware lives in [`firmware/s3-lamp-node/`](../s3-lamp-node/README.md). This folder is kept because useful architecture-independent lamp code and the original carbide FX set still inform the S3 rebuild.
 
 ```text
-Director ESP32-S3
-        │ ESP-NOW
-        ▼
-ESP32-S3 Communications Engine
-        │ UART
-        ▼
-ESP32-P4 Show Engine
-        │ NODE:LAMP: / LAMP:*
-        ▼
-this C3 Lamp Node  (ESP-NOW)
+Previous assumption: ESP32-C3 Super Mini OLED
+Physical audit:     ESP32-S3 Dev Module family (same as Comms)
 ```
 
-The P4 remains authoritative. The node executes local carbide-style lamp FX and reports what happened.
+C3-specific assumptions that must not be copied forward:
 
-## Sketch
+- FQBN `esp32c3` / Super Mini OLED / HUNT crop
+- OLED required (fault if OLED fails)
+- Jewel DATA on GPIO2 (HUNT-unused C3 pin — **not** the S3 lamp wiring)
+- Buttons on GPIO9 / GPIO0
+- Capability string advertised `OLED`
+- No microphone, light sensor, voltage sensor, or Fermion UART
+
+## Sketch (reference only)
 
 ```text
 firmware/c3-lamp-node/ShowduinoC3LampNode/
 ```
 
-Arduino profile used in HUNT: MakerGO ESP32 C3 SuperMini, otherwise ESP32C3 Dev Module.
-
-- USB CDC On Boot: enabled
-- Flash: DIO, 4 MB
-- No PSRAM
-
 ```text
 arduino-cli compile --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=dio" firmware/c3-lamp-node/ShowduinoC3LampNode
 ```
 
-## Pins (do not guess)
-
-Copied from the HUNT player-node map. Do not reassign without hardware confirmation.
+## Pins (C3 HUNT board only — not the physical S3 lamp)
 
 | GPIO | Function |
 |------|----------|
 | 5 / 6 | OLED SDA / SCL (SSD1306 0x3C) |
 | 9 | Button A (BOOT / local test) |
 | 0 | Button B (OLED page / STATUS) |
-| 2 | Lamp NeoPixels (7 × WS2812, original carbide lamp data pin) |
+| 2 | Lamp NeoPixels (7 × WS2812 on the C3 HUNT board) |
 
-Unused HUNT GPIOs (3, 4, 7, 8, 10) are left alone.
+## Ownership / emergency
 
-## Ownership
+Same GRANT / standalone model as other specialist nodes.
 
-Same GRANT / standalone model as the Audio Node. See [`docs/standalone-node-architecture.md`](../../docs/standalone-node-architecture.md).
+Emergency on this historical firmware forces lamp pixels bright white. Clearing emergency returns to safe idle; it does not resume the previous FX. The S3 carbide node currently keeps that product policy and documents the semantic conflict with a simulated flame.
 
-Emergency on the node forces lamp pixels bright white. Clearing emergency returns to safe idle; it does not resume the previous FX.
-
-## Protocol
-
-See `protocol/showduino_lamp_node.h`. P4 link: `firmware/stage-engine-p4/.../src/nodes/LampNodeLink.*`.
+Protocol: `protocol/showduino_lamp_node.h`. Production target: `firmware/s3-lamp-node/`.

@@ -729,6 +729,29 @@ static bool shdoCompileLamp(const ShdoClip &clip, const ShdoDevice *device,
   }
   char fx[24];
   shdoEffectToken(clip.params.effect, fx, sizeof(fx));
+  char prefix[40];
+  if (device->nodeId[0] && showduino_lamp_id_ok(device->nodeId)) {
+    snprintf(prefix, sizeof(prefix), "LAMP:NODE:%s:", device->nodeId);
+  } else {
+    snprintf(prefix, sizeof(prefix), "LAMP:NODE:");
+  }
+  char cmd[SHOWDUINO_SHDO_CMD_MAX];
+  if (strcmp(fx, "IGNITE") == 0 || strcmp(fx, "STRIKE") == 0) {
+    snprintf(cmd, sizeof(cmd), "%sIGNITE", prefix);
+    if (!shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status)) return false;
+    if (clip.durationMs > 0) {
+      snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
+      if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "LAMP",
+                      cmd, status)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (strcmp(fx, "EXTINGUISH") == 0 || strcmp(fx, "OFF") == 0) {
+    snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
+    return shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status);
+  }
   ShowduinoLampFx lampFx;
   if (showduino_lamp_fx_from_token(fx, &lampFx) != 0) {
     *status = SHDO_UNSUPPORTED_ACTION;
@@ -737,12 +760,12 @@ static bool shdoCompileLamp(const ShdoClip &clip, const ShdoDevice *device,
   uint32_t bri = clip.params.brightness;
   if (bri > 100) bri = (bri * 100u + 127u) / 255u;
   bri = shdoClampU32(bri, 0, 100, 80);
-  char cmd[SHOWDUINO_SHDO_CMD_MAX];
-  snprintf(cmd, sizeof(cmd), "LAMP:FX:%s:BRI=%lu", fx, (unsigned long)bri);
+  snprintf(cmd, sizeof(cmd), "%sFX:%s:BRI=%lu", prefix, fx, (unsigned long)bri);
   if (!shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status)) return false;
   if (clip.durationMs > 0) {
+    snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
     if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "LAMP",
-                    "LAMP:OFF", status)) {
+                    cmd, status)) {
       return false;
     }
   }

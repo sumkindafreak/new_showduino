@@ -100,12 +100,12 @@ Current rollout order is intentionally fixed:
 
 ```text
 1. Audio Node
-2. C3 Lamp Node
+2. S3 Lamp Node
 3. C3 Pixel Node
 4. MOSFET Node
 ```
 
-The Relay Node product role is **retired**. The C3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. Legacy relay source remains for reference only.
+The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. Legacy relay source remains for reference only.
 
 DMX remains **parked/out of scope** until explicitly reopened.
 
@@ -174,7 +174,8 @@ firmware/director-esp32-8048s050/     Director
 firmware/s3-comms-controller/         Communications Engine
 firmware/stage-engine-p4/             Show Engine / Stage Controller
 firmware/audio-node-esp32-a1s/        Audio Node — hardware test required
-firmware/c3-lamp-node/                C3 Lamp Node — replaces retired Relay role
+firmware/s3-lamp-node/                S3 Lamp Node — carbide practical (GPIO trace required)
+firmware/c3-lamp-node/                Historical C3 lamp — superseded / reference
 ```
 
 ### Planned
@@ -225,4 +226,4 @@ The immediate platform target is to bench-commission the **P4 pixel lines**:
 5. prove emergency forces GPIO23 + GPIO24 white;
 6. prove clear returns signage to locator green and show pixels to safe blackout.
 
-After Audio, the specialist order is **C3 Lamp Node**, then **C3 Pixel**, then **MOSFET**.
+After Audio, the specialist order is **S3 Lamp Node**, then **C3 Pixel**, then **MOSFET**.

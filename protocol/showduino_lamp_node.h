@@ -2,11 +2,14 @@
 #define SHOWDUINO_LAMP_NODE_H
 
 /*
- * Host-testable C3 Lamp Node command, FX registry, and state rules.
+ * Host-testable Lamp Node command, FX registry, and ownership rules.
  * No Arduino, NeoPixel, OLED, or ESP-NOW side effects.
  *
- * Original carbide-lamp visual FX keep their names. Extra Showduino FX are
- * marked separately and must not replace the carbide set.
+ * Logical type is LAMP on any MCU. The production Lamp Node is an ESP32-S3
+ * carbide-lamp simulator. Original carbide FX tokens are preserved. Extra
+ * Showduino FX remain for compatibility and must not become a Pixel Node
+ * authoring model. High-level carbide machine tokens are appended after the
+ * original table so SOLID keeps numeric id 14. The wire uses tokens.
  */
 
 #include <stddef.h>
@@ -20,15 +23,16 @@ extern "C" {
 #endif
 
 #define SHOWDUINO_LAMP_NODE_TYPE        "LAMP"
-#define SHOWDUINO_LAMP_NODE_NAME        "C3 Lamp Node"
+#define SHOWDUINO_LAMP_NODE_NAME        "Lamp Node"
 #define SHOWDUINO_LAMP_PROTOCOL         "1.0"
 #define SHOWDUINO_LAMP_TOKEN_MAX        24
 #define SHOWDUINO_LAMP_DISPLAY_MAX      24
+#define SHOWDUINO_LAMP_LOGICAL_MAX      12
 #define SHOWDUINO_LAMP_BRI_MAX          100
 #define SHOWDUINO_LAMP_COMMS_TIMEOUT_MS 5000u
 #define SHOWDUINO_LAMP_LIST_PER_PAGE    5
 #define SHOWDUINO_LAMP_CAPS \
-  "CARBIDE_FX,SHOWDUINO_FX,BRI,OLED,ESPNOW,EMERGENCY,STANDALONE,OWN"
+  "CARBIDE_MACHINE,CARBIDE_FX,SHOWDUINO_FX,BLOW,SENSORS,LOCAL_AUDIO,BRI,ESPNOW,EMERGENCY,STANDALONE,OWN"
 
 typedef enum ShowduinoLampOrigin {
   SHOWDUINO_LAMP_FX_CARBIDE = 0,
@@ -60,6 +64,11 @@ typedef enum ShowduinoLampFx {
   SHOWDUINO_LAMP_FX_FIRE,
   SHOWDUINO_LAMP_FX_RANDOM_FLICKER,
   SHOWDUINO_LAMP_FX_FAULT_FLICKER,
+  SHOWDUINO_LAMP_FX_STEADY_FLAME,
+  SHOWDUINO_LAMP_FX_LOW_FLAME,
+  SHOWDUINO_LAMP_FX_UNSTABLE,
+  SHOWDUINO_LAMP_FX_FLARE,
+  SHOWDUINO_LAMP_FX_DYING_FLAME,
   SHOWDUINO_LAMP_FX_COUNT
 } ShowduinoLampFx;
 
@@ -86,6 +95,8 @@ typedef enum ShowduinoLampCmd {
   SHOWDUINO_LAMP_CMD_OWN_GRANT,
   SHOWDUINO_LAMP_CMD_EMERGENCY_STOP,
   SHOWDUINO_LAMP_CMD_EMERGENCY_CLEAR,
+  SHOWDUINO_LAMP_CMD_IGNITE,
+  SHOWDUINO_LAMP_CMD_EXTINGUISH,
   SHOWDUINO_LAMP_CMD_LOCAL_REJECT
 } ShowduinoLampCmd;
 
@@ -96,7 +107,8 @@ typedef enum ShowduinoLampFail {
   SHOWDUINO_LAMP_FAIL_UNKNOWN_FX,
   SHOWDUINO_LAMP_FAIL_COMMS_TIMEOUT,
   SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED,
-  SHOWDUINO_LAMP_FAIL_NOT_OWNER
+  SHOWDUINO_LAMP_FAIL_NOT_OWNER,
+  SHOWDUINO_LAMP_FAIL_WRONG_ID
 } ShowduinoLampFail;
 
 typedef struct ShowduinoLampFxInfo {
@@ -117,6 +129,7 @@ typedef struct ShowduinoLampCommand {
   uint8_t speed;       /* 1..100, 0 = default */
   uint8_t intensity;   /* 0..100, 255 = unchanged */
   uint8_t randomness;  /* 0..100, 255 = unchanged; carbide FX ignore this */
+  char logicalId[SHOWDUINO_LAMP_LOGICAL_MAX];
 } ShowduinoLampCommand;
 
 static const ShowduinoLampFxInfo SHOWDUINO_LAMP_FX_TABLE[] = {
@@ -142,7 +155,12 @@ static const ShowduinoLampFxInfo SHOWDUINO_LAMP_FX_TABLE[] = {
   { SHOWDUINO_LAMP_FX_CANDLE,         "CANDLE",         "Candle",         SHOWDUINO_LAMP_FX_SHOWDUINO, 40 },
   { SHOWDUINO_LAMP_FX_FIRE,           "FIRE",           "Fire",           SHOWDUINO_LAMP_FX_SHOWDUINO, 40 },
   { SHOWDUINO_LAMP_FX_RANDOM_FLICKER, "RANDOM_FLICKER", "Random Flicker", SHOWDUINO_LAMP_FX_SHOWDUINO, 50 },
-  { SHOWDUINO_LAMP_FX_FAULT_FLICKER,  "FAULT_FLICKER",  "Fault Flicker",  SHOWDUINO_LAMP_FX_SHOWDUINO, 80 }
+  { SHOWDUINO_LAMP_FX_FAULT_FLICKER,  "FAULT_FLICKER",  "Fault Flicker",  SHOWDUINO_LAMP_FX_SHOWDUINO, 80 },
+  { SHOWDUINO_LAMP_FX_STEADY_FLAME,   "STEADY_FLAME",   "Steady Flame",   SHOWDUINO_LAMP_FX_CARBIDE, 40 },
+  { SHOWDUINO_LAMP_FX_LOW_FLAME,      "LOW_FLAME",      "Low Flame",      SHOWDUINO_LAMP_FX_CARBIDE, 50 },
+  { SHOWDUINO_LAMP_FX_UNSTABLE,       "UNSTABLE",       "Unstable",       SHOWDUINO_LAMP_FX_CARBIDE, 30 },
+  { SHOWDUINO_LAMP_FX_FLARE,          "FLARE",          "Flare",          SHOWDUINO_LAMP_FX_CARBIDE, 25 },
+  { SHOWDUINO_LAMP_FX_DYING_FLAME,    "DYING_FLAME",    "Dying Flame",    SHOWDUINO_LAMP_FX_CARBIDE, 70 }
 };
 
 #define SHOWDUINO_LAMP_FX_TABLE_LEN \
@@ -190,6 +208,14 @@ static inline int showduino_lamp_fx_from_token(const char *token, ShowduinoLampF
       return 0;
     }
   }
+  if (strcmp(token, "BURNING") == 0 || strcmp(token, "STEADY") == 0) {
+    *out = SHOWDUINO_LAMP_FX_STEADY_FLAME;
+    return 0;
+  }
+  if (strcmp(token, "UNSTABLE_FLAME") == 0) {
+    *out = SHOWDUINO_LAMP_FX_UNSTABLE;
+    return 0;
+  }
   return -1;
 }
 
@@ -214,6 +240,44 @@ static inline const char *showduino_lamp_strip_prefix(const char *cmd) {
   if (strncmp(cmd, "LAMP:NODE:", 10) == 0) return cmd + 10;
   if (strncmp(cmd, "LAMP:", 5) == 0) return cmd;
   return cmd;
+}
+
+static inline int showduino_lamp_is_logical_id(const char *s) {
+  size_t n = 0;
+  if (!s || strncmp(s, "LAMP-", 5) != 0) return 0;
+  s += 5;
+  if (*s < '0' || *s > '9') return 0;
+  while (*s >= '0' && *s <= '9' && n < 4) {
+    s++;
+    n++;
+  }
+  return *s == ':' || *s == 0;
+}
+
+static inline int showduino_lamp_id_ok(const char *s) {
+  return showduino_lamp_is_logical_id(s) && s && !strchr(s, ':');
+}
+
+static inline void showduino_lamp_extract_logical(const char **cmd, char *idOut, size_t n) {
+  if (idOut && n) idOut[0] = 0;
+  if (!cmd || !*cmd) return;
+  if (!showduino_lamp_is_logical_id(*cmd)) return;
+  {
+    const char *p = strchr(*cmd, ':');
+    size_t len = p ? (size_t)(p - *cmd) : strlen(*cmd);
+    if (idOut && n) {
+      if (len >= n) len = n - 1;
+      memcpy(idOut, *cmd, len);
+      idOut[len] = 0;
+    }
+    if (p && p[1]) *cmd = p + 1;
+  }
+}
+
+static inline int showduino_lamp_id_matches(const char *cmdId, const char *selfId) {
+  if (!cmdId || !cmdId[0]) return 1;
+  if (!selfId || !selfId[0]) return 1;
+  return strcmp(cmdId, selfId) == 0;
 }
 
 static inline int showduino_lamp_parse_u8(const char *s, uint8_t *out, uint8_t maxv) {
@@ -262,9 +326,12 @@ static inline ShowduinoLampCmd showduino_lamp_parse_command(
   } else if (strncmp(raw, "LAMP:NODE:", 10) != 0) {
     return SHOWDUINO_LAMP_CMD_NONE;
   }
+  showduino_lamp_extract_logical(&cmd, tmp.logicalId, sizeof(tmp.logicalId));
 
   if (strcmp(cmd, "STATUS") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_STATUS;
   else if (strcmp(cmd, "OFF") == 0 || strcmp(cmd, "STOP") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_OFF;
+  else if (strcmp(cmd, "IGNITE") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_IGNITE;
+  else if (strcmp(cmd, "EXTINGUISH") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_EXTINGUISH;
   else if (strcmp(cmd, "TEST") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_TEST;
   else if (strcmp(cmd, "LIST") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_LIST;
   else if (strcmp(cmd, "OWN:GRANT") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_OWN_GRANT;
@@ -360,6 +427,7 @@ static inline const char *showduino_lamp_fail_name(ShowduinoLampFail f) {
     case SHOWDUINO_LAMP_FAIL_COMMS_TIMEOUT: return "COMMS_TIMEOUT";
     case SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED: return "SHOW_CONTROLLED";
     case SHOWDUINO_LAMP_FAIL_NOT_OWNER: return "NOT_OWNER";
+    case SHOWDUINO_LAMP_FAIL_WRONG_ID: return "WRONG_ID";
     default: return "FAULT";
   }
 }
@@ -367,7 +435,15 @@ static inline const char *showduino_lamp_fail_name(ShowduinoLampFail f) {
 static inline int showduino_lamp_cmd_theatrical(ShowduinoLampCmd cmd) {
   return cmd == SHOWDUINO_LAMP_CMD_OFF || cmd == SHOWDUINO_LAMP_CMD_STOP ||
          cmd == SHOWDUINO_LAMP_CMD_SOLID || cmd == SHOWDUINO_LAMP_CMD_FX ||
-         cmd == SHOWDUINO_LAMP_CMD_BRIGHTNESS || cmd == SHOWDUINO_LAMP_CMD_TEST;
+         cmd == SHOWDUINO_LAMP_CMD_BRIGHTNESS || cmd == SHOWDUINO_LAMP_CMD_TEST ||
+         cmd == SHOWDUINO_LAMP_CMD_IGNITE || cmd == SHOWDUINO_LAMP_CMD_EXTINGUISH;
+}
+
+static inline int showduino_lamp_comms_loss_extinguish(ShowduinoLampNodeState st,
+                                                       int showControlled,
+                                                       int authorityFresh) {
+  if (st == SHOWDUINO_LAMP_ST_EMERGENCY) return 0;
+  return showControlled && !authorityFresh;
 }
 
 static inline ShowduinoLampFail showduino_lamp_can_accept_ex(
@@ -406,7 +482,8 @@ static inline ShowduinoLampFail showduino_lamp_can_accept_ex(
     }
     if (st == SHOWDUINO_LAMP_ST_STANDALONE) return SHOWDUINO_LAMP_FAIL_NONE;
     if (st == SHOWDUINO_LAMP_ST_SEARCHING &&
-        origin == SHOWDUINO_CMD_ORIGIN_LOCAL) {
+        (origin == SHOWDUINO_CMD_ORIGIN_LOCAL ||
+         origin == SHOWDUINO_CMD_ORIGIN_WEB)) {
       return SHOWDUINO_LAMP_FAIL_NONE;
     }
     return SHOWDUINO_LAMP_FAIL_NOT_OWNER;

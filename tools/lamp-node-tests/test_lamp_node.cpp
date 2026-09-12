@@ -14,6 +14,7 @@ static void expect(bool ok, const char *msg) {
 
 int main() {
   expect(SHOWDUINO_LAMP_FX_CARBIDE_COUNT == 14, "14 original carbide FX");
+  expect(SHOWDUINO_LAMP_FX_SOLID == 14, "SOLID numeric id unchanged");
   expect(SHOWDUINO_LAMP_FX_TABLE_LEN == (size_t)SHOWDUINO_LAMP_FX_COUNT,
          "table covers every FX id");
 
@@ -22,7 +23,7 @@ int main() {
     if (SHOWDUINO_LAMP_FX_TABLE[i].origin == SHOWDUINO_LAMP_FX_CARBIDE) carbide++;
     else extra++;
   }
-  expect(carbide == 14, "carbide origin count");
+  expect(carbide == 19, "carbide origin count includes machine tokens");
   expect(extra == 9, "showduino extra count");
 
   ShowduinoLampFx fx = SHOWDUINO_LAMP_FX_COUNT;
@@ -89,6 +90,48 @@ int main() {
                                    SHOWDUINO_LAMP_CMD_FX) ==
              SHOWDUINO_LAMP_FAIL_NONE,
          "show-controlled allows fx");
+
+  expect(showduino_lamp_parse_command("LAMP:NODE:LAMP-01:IGNITE", &c) ==
+             SHOWDUINO_LAMP_CMD_IGNITE,
+         "logical ignite");
+  expect(strcmp(c.logicalId, "LAMP-01") == 0, "logical id extracted");
+  expect(showduino_lamp_parse_command("LAMP:NODE:EXTINGUISH", &c) ==
+             SHOWDUINO_LAMP_CMD_EXTINGUISH,
+         "extinguish");
+  expect(c.logicalId[0] == 0, "broadcast extinguish has empty id");
+  expect(showduino_lamp_parse_command("LAMP:FX:LOW_FLAME", &c) ==
+             SHOWDUINO_LAMP_CMD_FX,
+         "low flame token");
+  expect(c.fx == SHOWDUINO_LAMP_FX_LOW_FLAME, "low flame id");
+  expect(showduino_lamp_fx_from_token("BURNING", &fx) == 0 &&
+             fx == SHOWDUINO_LAMP_FX_STEADY_FLAME,
+         "BURNING aliases STEADY_FLAME");
+  expect(showduino_lamp_fx_from_token("UNSTABLE_FLAME", &fx) == 0 &&
+             fx == SHOWDUINO_LAMP_FX_UNSTABLE,
+         "UNSTABLE_FLAME alias");
+  expect(showduino_lamp_id_ok("LAMP-01"), "LAMP-01 ok");
+  expect(!showduino_lamp_id_ok("LED-01"), "LED-01 is not a lamp id");
+  expect(showduino_lamp_id_matches("", "LAMP-01"), "empty id matches all");
+  expect(!showduino_lamp_id_matches("LAMP-02", "LAMP-01"), "wrong id rejected");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_EMERGENCY,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_LAMP_FAIL_EMERGENCY,
+         "emergency rejects ignite");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_SEARCHING,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_LAMP_FAIL_NONE,
+         "web commissioning ignite while searching");
+  expect(showduino_lamp_comms_loss_extinguish(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
+                                              1, 0) == 1,
+         "show-controlled timeout extinguishes");
+  expect(showduino_lamp_comms_loss_extinguish(SHOWDUINO_LAMP_ST_STANDALONE,
+                                              0, 0) == 0,
+         "standalone local burn continues");
+  expect(showduino_lamp_comms_loss_extinguish(SHOWDUINO_LAMP_ST_EMERGENCY,
+                                              1, 0) == 0,
+         "emergency is not locally cleared by comms loss");
 
   uint16_t start = 0, count = 0;
   showduino_lamp_list_slice(0, &start, &count);

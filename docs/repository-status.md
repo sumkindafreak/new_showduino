@@ -30,10 +30,10 @@ The supported current stack also includes the first specialist **Audio Node**.
 Current specialist-node rollout order:
 
 ```text
-Audio Node → C3 Lamp Node → C3 Pixel Node → MOSFET Node
+Audio Node → S3 Lamp Node → C3 Pixel Node → MOSFET Node
 ```
 
-The Relay Node product role is **retired**. The C3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. DMX remains parked until explicitly reopened.
+The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. DMX remains parked until explicitly reopened.
 
 The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxies API requests to the P4. It remains transport/UI hosting only; it does not own show decisions.
 
@@ -45,7 +45,8 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | Communications Engine — dedicated ESP32-S3 ESP-NOW + UART + SoftAP/WebUI proxy |
 | `firmware/stage-engine-p4/` | Show Engine on Stage Controller |
 | `firmware/audio-node-esp32-a1s/` | First specialist Audio Node — implemented, hardware test required |
-| `firmware/c3-lamp-node/` | C3 Lamp Node — ACTIVE (replaces retired Relay product role) |
+| `firmware/s3-lamp-node/` | S3 Lamp Node — ACTIVE carbide simulator (GPIOs unconfirmed) |
+| `firmware/c3-lamp-node/` | Historical C3 lamp — SUPERSEDED / reference |
 
 ---
 
@@ -57,7 +58,8 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Communications Engine, Audio Node routing, SoftAP/WebUI/API proxy | Keep transport-only; no show decisions |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Authoritative Show Engine | Current platform focus includes P4 pixel bench commissioning |
 | `firmware/audio-node-esp32-a1s/` | **ACTIVE / HARDWARE TEST REQUIRED** | Ai-Thinker ESP32-A1S / ES8388 | Attraction/programme audio node | Bench commission before claiming hardware-complete |
-| `firmware/c3-lamp-node/` | **ACTIVE** | ESP32-C3 Super Mini OLED / lamp | Carbide / theatrical lamp FX specialist | Replaces retired Relay product role; P4 `LampNodeLink` |
+| `firmware/s3-lamp-node/` | **ACTIVE / GPIO TRACE REQUIRED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node; do not flash until GPIOs traced |
+| `firmware/c3-lamp-node/` | **SUPERSEDED** | ESP32-C3 Super Mini OLED | Historical lamp FX firmware | Retained as reference; not the physical lamp |
 | `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output / PWM specialist | Comes after C3 Pixel Node; no implementation yet |
 | `firmware/relay-node-esp32/` | **LEGACY / RETIRED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; not a production Node |
 | `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 | Historical C6 bridge qualification | C6 hardware remains unused/reserved |
@@ -124,9 +126,9 @@ Shared FX vocabulary: `protocol/showduino_pixel_fx.h`.
 
 Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inventory, P4 GRANT ownership, and a channel-1 SoftAP WebUI when standalone. It does not own P4 system/emergency audio or show decisions.
 
-### C3 Lamp Node
+### S3 Lamp Node
 
-**Classification:** ACTIVE. Replaces the retired Relay Node product role on the Director fabric. Carbide / theatrical lamp FX via `firmware/c3-lamp-node/`; P4 `LampNodeLink` / Comms `ROUTE:LAMP:`.
+**Classification:** ACTIVE firmware / hardware GPIO trace required. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/`; P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ### C3 Pixel Node
 

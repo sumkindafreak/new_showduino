@@ -31,7 +31,8 @@ protocol/
 ├── showduino_state_wire.h      # Stage 3 STATE/SNAPSHOT/ACCEPTED tokens
 ├── showduino_audio_node.h      # Audio Node path/command/state rules
 ├── showduino_node_ownership.h  # GRANT / standalone / command origin
-├── showduino_lamp_node.h       # C3 Lamp Node FX/command rules
+├── showduino_lamp_node.h       # Lamp Node FX/command/ownership rules
+├── showduino_carbide_lamp.h    # Host-testable carbide machine / blow / audio map
 └── showduino_web_timeline_upload_policy.h  # Studio RAM timeline envelope
 ```
 
