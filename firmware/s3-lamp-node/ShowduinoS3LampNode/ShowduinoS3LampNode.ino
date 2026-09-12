@@ -17,6 +17,7 @@
 #include "src/LampAudio.h"
 #include "src/EspNowLampTransport.h"
 #include "src/LocalControls.h"
+#include "src/LampMotion.h"
 #include "src/NodeDiagnostics.h"
 #include "../../shared-node/NodeConfig.h"
 #include "../../../protocol/showduino_lamp_node.h"
@@ -60,8 +61,9 @@ static void pollButton() {
 }
 
 void setup() {
+  lampEngineBlackoutEarly();
   Serial.begin(115200);
-  delay(200);
+  delay(50);
 
   nodeDiagBegin();
   lampConfigBegin();
@@ -70,6 +72,7 @@ void setup() {
   lampSensorsBegin();
   lampAudioBegin();
   lampLocalBegin();
+  lampMotionBegin();
 
   const bool radioOk = lampEspNowBegin();
   lampEspNowSetHandler(onEspNowCommand);
@@ -90,6 +93,7 @@ void loop() {
   pollUsb();
   pollButton();
   lampSensorsService();
+  lampMotionService();
   lampAudioService();
   lampEngineService();
   lampProtocolService();

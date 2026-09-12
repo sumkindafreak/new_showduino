@@ -21,12 +21,18 @@ extern "C" {
 
 #define SHOWDUINO_CARBIDE_LOGICAL_DEFAULT  "LAMP-01"
 #define SHOWDUINO_CARBIDE_LOGICAL_MAX      12
-#define SHOWDUINO_CARBIDE_STRIKE_MS        180u
-#define SHOWDUINO_CARBIDE_IGNITE_MS        420u
-#define SHOWDUINO_CARBIDE_EXTINGUISH_MS    350u
+#define SHOWDUINO_CARBIDE_STRIKE_MS        220u
+#define SHOWDUINO_CARBIDE_IGNITE_MS        1600u
+#define SHOWDUINO_CARBIDE_EXTINGUISH_MS    420u
 #define SHOWDUINO_CARBIDE_FLARE_MS         900u
 #define SHOWDUINO_CARBIDE_PUFF_MS          80u
 #define SHOWDUINO_CARBIDE_BLOW_MS          350u
+#define SHOWDUINO_CARBIDE_FLINT_CORE_MS    45u
+#define SHOWDUINO_CARBIDE_FLINT_NEAR_MS    40u
+#define SHOWDUINO_CARBIDE_FLINT_DARK_MS    80u
+#define SHOWDUINO_CARBIDE_RECOVER_MS       450u
+#define SHOWDUINO_CARBIDE_JEWEL_PIXELS     7u
+#define SHOWDUINO_CARBIDE_IDENTIFY_DWELL_MS 700u
 #define SHOWDUINO_CARBIDE_BASELINE_SHIFT   6
 #define SHOWDUINO_CARBIDE_DEFAULT_THRESH   80
 #define SHOWDUINO_CARBIDE_FAIL_STRIKE_OFF  0
@@ -168,6 +174,128 @@ static inline int showduino_carbide_is_flame(ShowduinoCarbideState st) {
          st == SHOWDUINO_CARBIDE_LOW_FLAME ||
          st == SHOWDUINO_CARBIDE_UNSTABLE ||
          st == SHOWDUINO_CARBIDE_FLARE;
+}
+
+typedef enum ShowduinoCarbideVisual {
+  SHOWDUINO_CARBIDE_VIS_BLACK = 0,
+  SHOWDUINO_CARBIDE_VIS_FLINT_CORE,
+  SHOWDUINO_CARBIDE_VIS_FLINT_NEAR,
+  SHOWDUINO_CARBIDE_VIS_FLINT_DARK,
+  SHOWDUINO_CARBIDE_VIS_CATCH_A,
+  SHOWDUINO_CARBIDE_VIS_CATCH_B,
+  SHOWDUINO_CARBIDE_VIS_CATCH_DIP,
+  SHOWDUINO_CARBIDE_VIS_CATCH_C,
+  SHOWDUINO_CARBIDE_VIS_CATCH_D,
+  SHOWDUINO_CARBIDE_VIS_BURN,
+  SHOWDUINO_CARBIDE_VIS_PUFF,
+  SHOWDUINO_CARBIDE_VIS_RECOVER,
+  SHOWDUINO_CARBIDE_VIS_EXT_OUTER,
+  SHOWDUINO_CARBIDE_VIS_EXT_CORE,
+  SHOWDUINO_CARBIDE_VIS_EXT_REMNANT,
+  SHOWDUINO_CARBIDE_VIS_EXT_EMBER,
+  SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+  SHOWDUINO_CARBIDE_VIS_IDENTIFY
+} ShowduinoCarbideVisual;
+
+static inline const char *showduino_carbide_visual_name(ShowduinoCarbideVisual v) {
+  switch (v) {
+    case SHOWDUINO_CARBIDE_VIS_FLINT_CORE: return "FLINT_CORE";
+    case SHOWDUINO_CARBIDE_VIS_FLINT_NEAR: return "FLINT_NEAR";
+    case SHOWDUINO_CARBIDE_VIS_FLINT_DARK: return "FLINT_DARK";
+    case SHOWDUINO_CARBIDE_VIS_CATCH_A: return "CATCH_A";
+    case SHOWDUINO_CARBIDE_VIS_CATCH_B: return "CATCH_B";
+    case SHOWDUINO_CARBIDE_VIS_CATCH_DIP: return "CATCH_DIP";
+    case SHOWDUINO_CARBIDE_VIS_CATCH_C: return "CATCH_C";
+    case SHOWDUINO_CARBIDE_VIS_CATCH_D: return "CATCH_D";
+    case SHOWDUINO_CARBIDE_VIS_BURN: return "BURN";
+    case SHOWDUINO_CARBIDE_VIS_PUFF: return "PUFF";
+    case SHOWDUINO_CARBIDE_VIS_RECOVER: return "RECOVER";
+    case SHOWDUINO_CARBIDE_VIS_EXT_OUTER: return "EXT_OUTER";
+    case SHOWDUINO_CARBIDE_VIS_EXT_CORE: return "EXT_CORE";
+    case SHOWDUINO_CARBIDE_VIS_EXT_REMNANT: return "EXT_REMNANT";
+    case SHOWDUINO_CARBIDE_VIS_EXT_EMBER: return "EXT_EMBER";
+    case SHOWDUINO_CARBIDE_VIS_EMERGENCY: return "EMERGENCY";
+    case SHOWDUINO_CARBIDE_VIS_IDENTIFY: return "IDENTIFY";
+    default: return "BLACK";
+  }
+}
+
+static inline uint32_t showduino_carbide_elapsed_ms(const ShowduinoCarbideMachine *m) {
+  if (!m || m->nowMs < m->enteredMs) return 0;
+  return m->nowMs - m->enteredMs;
+}
+
+static inline uint8_t showduino_jewel_core_index(uint8_t core) {
+  return (core < SHOWDUINO_CARBIDE_JEWEL_PIXELS) ? core : 0;
+}
+
+static inline uint8_t showduino_jewel_ring_index(uint8_t core, uint8_t ringI) {
+  uint8_t i;
+  uint8_t n = 0;
+  core = showduino_jewel_core_index(core);
+  ringI = (uint8_t)(ringI % 6u);
+  for (i = 0; i < SHOWDUINO_CARBIDE_JEWEL_PIXELS; i++) {
+    if (i == core) continue;
+    if (n == ringI) return i;
+    n++;
+  }
+  return 0;
+}
+
+static inline int showduino_carbide_visual_is_black(ShowduinoCarbideVisual v) {
+  return v == SHOWDUINO_CARBIDE_VIS_BLACK || v == SHOWDUINO_CARBIDE_VIS_FLINT_DARK;
+}
+
+static inline ShowduinoCarbideVisual showduino_carbide_visual(
+    ShowduinoCarbideState st,
+    uint32_t elapsedMs,
+    uint32_t igniteMs,
+    uint32_t extinguishMs,
+    uint8_t puffStruggle,
+    uint8_t recovering,
+    uint8_t emergency,
+    int identifyPixel) {
+  uint32_t a, b, dip, c;
+  uint32_t o, k, r;
+  if (emergency) return SHOWDUINO_CARBIDE_VIS_EMERGENCY;
+  if (identifyPixel >= 0) return SHOWDUINO_CARBIDE_VIS_IDENTIFY;
+  if (st == SHOWDUINO_CARBIDE_OFF) return SHOWDUINO_CARBIDE_VIS_BLACK;
+  if (st == SHOWDUINO_CARBIDE_STRIKING) {
+    if (elapsedMs < SHOWDUINO_CARBIDE_FLINT_CORE_MS) {
+      return SHOWDUINO_CARBIDE_VIS_FLINT_CORE;
+    }
+    if (elapsedMs < (SHOWDUINO_CARBIDE_FLINT_CORE_MS +
+                     SHOWDUINO_CARBIDE_FLINT_NEAR_MS)) {
+      return SHOWDUINO_CARBIDE_VIS_FLINT_NEAR;
+    }
+    return SHOWDUINO_CARBIDE_VIS_FLINT_DARK;
+  }
+  if (st == SHOWDUINO_CARBIDE_IGNITING) {
+    if (igniteMs == 0) igniteMs = SHOWDUINO_CARBIDE_IGNITE_MS;
+    a = (igniteMs * 18u) / 100u;
+    b = (igniteMs * 26u) / 100u;
+    dip = (igniteMs * 10u) / 100u;
+    c = (igniteMs * 26u) / 100u;
+    if (elapsedMs < a) return SHOWDUINO_CARBIDE_VIS_CATCH_A;
+    if (elapsedMs < a + b) return SHOWDUINO_CARBIDE_VIS_CATCH_B;
+    if (elapsedMs < a + b + dip) return SHOWDUINO_CARBIDE_VIS_CATCH_DIP;
+    if (elapsedMs < a + b + dip + c) return SHOWDUINO_CARBIDE_VIS_CATCH_C;
+    return SHOWDUINO_CARBIDE_VIS_CATCH_D;
+  }
+  if (st == SHOWDUINO_CARBIDE_EXTINGUISHING) {
+    if (extinguishMs == 0) extinguishMs = SHOWDUINO_CARBIDE_EXTINGUISH_MS;
+    o = (extinguishMs * 28u) / 100u;
+    k = (extinguishMs * 28u) / 100u;
+    r = (extinguishMs * 24u) / 100u;
+    if (elapsedMs < o) return SHOWDUINO_CARBIDE_VIS_EXT_OUTER;
+    if (elapsedMs < o + k) return SHOWDUINO_CARBIDE_VIS_EXT_CORE;
+    if (elapsedMs < o + k + r) return SHOWDUINO_CARBIDE_VIS_EXT_REMNANT;
+    return SHOWDUINO_CARBIDE_VIS_EXT_EMBER;
+  }
+  if (puffStruggle) return SHOWDUINO_CARBIDE_VIS_PUFF;
+  if (recovering) return SHOWDUINO_CARBIDE_VIS_RECOVER;
+  if (showduino_carbide_is_flame(st)) return SHOWDUINO_CARBIDE_VIS_BURN;
+  return SHOWDUINO_CARBIDE_VIS_BLACK;
 }
 
 static inline ShowduinoCarbideConfig showduino_carbide_config_defaults(void) {
@@ -495,8 +623,32 @@ static inline int showduino_lamp_audio_blocks_machine(void) {
   return 0;
 }
 
-/* Fermion playback is fire-and-forget AT UART. flameloop.mp3 is a background
- * PLAYMODE=2 state. Firmware must never wait for track completion. */
+/* Official DFR0768 PLAYMODE: 1 = repeat one, 3 = play one and pause.
+ * PLAYMODE=2 is repeat-all, not a single-file burn loop. */
+#define SHOWDUINO_LAMP_FERMION_PLAYMODE_LOOP  1u
+#define SHOWDUINO_LAMP_FERMION_PLAYMODE_ONCE  3u
+#define SHOWDUINO_LAMP_FERMION_FUNCTION_MUSIC 1u
+
+static inline uint8_t showduino_lamp_fermion_playmode(uint8_t loop) {
+  return loop ? (uint8_t)SHOWDUINO_LAMP_FERMION_PLAYMODE_LOOP
+              : (uint8_t)SHOWDUINO_LAMP_FERMION_PLAYMODE_ONCE;
+}
+
+/* Wiki path form is AT+PLAYFILE=/name.mp3 — a bare filename is rejected. */
+static inline int showduino_lamp_fermion_playfile_cmd(const char *file, char *out, size_t n) {
+  int wrote;
+  if (!file || !file[0] || !out || n < 18) return -1;
+  if (file[0] == '/') {
+    wrote = snprintf(out, n, "AT+PLAYFILE=%s", file);
+  } else {
+    wrote = snprintf(out, n, "AT+PLAYFILE=/%s", file);
+  }
+  if (wrote < 0 || (size_t)wrote >= n) return -1;
+  return 0;
+}
+
+/* Fermion playback is fire-and-forget AT UART. flameloop.mp3 uses
+ * PLAYMODE=1 (repeat one). Firmware must never wait for track completion. */
 static inline int showduino_lamp_audio_transport_nonblocking(void) {
   return 1;
 }

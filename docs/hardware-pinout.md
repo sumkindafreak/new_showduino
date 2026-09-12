@@ -268,11 +268,12 @@ GPIO5   ambient light sensor analog       ADC1_CH4
 GPIO6   voltage sensor analog             ADC1_CH5
 GPIO7   ignition / striker button         switch to GND, INPUT_PULLUP
 GPIO8   7-pixel NeoPixel Jewel DATA
+GPIO15  motion digital input (3.3V; sensor physically unconfirmed)
 GPIO17  S3 TX -> Fermion DFPlayer Pro RX
 GPIO18  S3 RX <- Fermion DFPlayer Pro TX
 ```
 
-Jewel and Fermion use the lamp 5V rail with common ground. Voltage millivolts stay UNCALIBRATED until a divider scale is stored. See [`s3-lamp-node.md`](s3-lamp-node.md).
+Jewel and Fermion use the lamp 5V rail with common ground. Voltage full scale is operator-confirmed 5.00 V; GPIO6 stays ≤ 3.3 V. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ## 17. Related documents
 

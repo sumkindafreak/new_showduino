@@ -3,11 +3,13 @@
 #include "LampNodeState.h"
 #include "LampConfig.h"
 #include "LampSensors.h"
+#include "LampMotion.h"
 #include "LampWeb.h"
 #include "EspNowLampTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_lamp_node.h"
 #include "../../../protocol/showduino_carbide_lamp.h"
+#include "../../../protocol/showduino_lamp_motion.h"
 #include "../../../protocol/showduino_node_packet.h"
 #include "../../../protocol/showduino_log.h"
 
@@ -79,6 +81,7 @@ static void goIdle() {
 static void onOwnerEdges() {
   if (lampOwnerEnteredShow()) {
     SD_LOGI("LAMP", "SHOWDUINO MODE — P4 authoritative, waiting for sync");
+    lampEngineStopIdentify();
     /* Keep the current flame. Do not apply stale P4 FX. */
   }
   if (lampOwnerLostAuthority()) {
@@ -291,6 +294,22 @@ void lampProtocolService() {
   onOwnerEdges();
 
   const bool localOk = showduino_lamp_local_authority(lampNodeState());
+  const ShowduinoBlowDetector *blowDet = lampSensorsBlow();
+  uint8_t stress = 0;
+  if (blowDet && blowDet->threshold > 0) {
+    const int32_t delta = blowDet->filtered - blowDet->baseline;
+    if (delta > 0) {
+      int32_t n = (delta * 100) / blowDet->threshold;
+      if (n > 100) n = 100;
+      if (blowDet->blowMs) {
+        const int32_t d = (int32_t)((blowDet->aboveMs * 100u) / blowDet->blowMs);
+        if (d > n) n = d > 100 ? 100 : d;
+      }
+      stress = (uint8_t)n;
+    }
+  }
+  lampEngineSetBlowStress(lampEngineEmergency() ? 0 : stress);
+
   const ShowduinoBlowClass blow = lampSensorsTakeBlowEvent();
   if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY && localOk) {
     if (blow == SHOWDUINO_BLOW_SUSTAINED && lampEngineFlameLit()) {
@@ -300,6 +319,39 @@ void lampProtocolService() {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_PUFF);
     } else if (blow == SHOWDUINO_BLOW_RELEASE) {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW_END);
+    }
+  }
+
+  const ShowduinoMotionEvent motion = lampMotionTakeEvent();
+  if (motion == SHOWDUINO_MOTION_EV_CLEAR) {
+    static uint32_t sLastClearLog = 0;
+    if ((millis() - sLastClearLog) >= 1000UL) {
+      sLastClearLog = millis();
+      Serial.println("[MOTION] CLEAR");
+    }
+  } else if (motion == SHOWDUINO_MOTION_EV_ACTIVE) {
+    const ShowduinoMotionDecision dec = showduino_motion_decide_ex(
+        motion, lampConfigMotionEnabled(), lampConfigMotionAction(),
+        lampNodeState(), lampEngineCarbide(),
+        lampMotionHardwareConfirmed() ? 1 : 0);
+    const char *cmd = showduino_motion_protocol_command(dec);
+    const bool theatrical = cmd[0] != 0;
+    static uint32_t sLastDetectLog = 0;
+    if (theatrical || (millis() - sLastDetectLog) >= 1000UL) {
+      sLastDetectLog = millis();
+      Serial.printf("[MOTION] DETECTED decide=%s action=%s pin=%s\n",
+                    showduino_motion_decision_name(dec),
+                    showduino_motion_action_name(lampConfigMotionAction()),
+                    lampMotionPhysicalStatus());
+    }
+    if (cmd[0]) {
+      lampProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
+    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_OWNER) {
+      Serial.println("[MOTION] ignored — P4 show control");
+    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_EMERGENCY) {
+      Serial.println("[MOTION] ignored — emergency");
+    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_UNCONFIRMED) {
+      Serial.println("[MOTION] ignored — sensor unconfirmed, telemetry only");
     }
   }
 

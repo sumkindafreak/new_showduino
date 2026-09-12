@@ -222,6 +222,164 @@ int main() {
              SHOWDUINO_LAMP_SND_NONE,
          "state→role silence");
 
+  expect(showduino_lamp_fermion_playmode(1) == 1, "loop is repeat-one");
+  expect(showduino_lamp_fermion_playmode(0) == 3, "oneshot is play-and-pause");
+  char play[40];
+  expect(showduino_lamp_fermion_playfile_cmd("flick.mp3", play, sizeof(play)) == 0,
+         "playfile ok");
+  expect(strcmp(play, "AT+PLAYFILE=/flick.mp3") == 0, "leading slash");
+  expect(showduino_lamp_fermion_playfile_cmd("/flameloop.mp3", play, sizeof(play)) == 0,
+         "already slashed");
+  expect(strcmp(play, "AT+PLAYFILE=/flameloop.mp3") == 0, "no double slash");
+  expect(showduino_lamp_fermion_playfile_cmd("", play, sizeof(play)) != 0,
+         "empty file rejected");
+
+  /* Physical flame visual phases — host-testable timing, no delay(). */
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_OFF, 0, cfg.igniteMs,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_BLACK,
+         "BOOT/OFF visual is BLACK");
+  expect(showduino_carbide_visual_is_black(SHOWDUINO_CARBIDE_VIS_BLACK),
+         "OFF pixels conceptually black");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_STRIKING, 0, cfg.igniteMs,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_FLINT_CORE,
+         "STRIKING t0 → flint core");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_STRIKING,
+                                  SHOWDUINO_CARBIDE_FLINT_CORE_MS, cfg.igniteMs,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_FLINT_NEAR,
+         "STRIKING → flint neighbour");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_STRIKING,
+                                  SHOWDUINO_CARBIDE_FLINT_CORE_MS +
+                                      SHOWDUINO_CARBIDE_FLINT_NEAR_MS,
+                                  cfg.igniteMs, cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_FLINT_DARK,
+         "STRIKING → micro dark gap");
+  expect(showduino_carbide_visual_is_black(SHOWDUINO_CARBIDE_VIS_FLINT_DARK),
+         "dark gap is black");
+  expect(SHOWDUINO_CARBIDE_FLINT_CORE_MS + SHOWDUINO_CARBIDE_FLINT_NEAR_MS +
+             SHOWDUINO_CARBIDE_FLINT_DARK_MS <=
+         cfg.strikeMs,
+         "flint + dark gap fits inside STRIKING");
+
+  const uint32_t ign = cfg.igniteMs ? cfg.igniteMs : SHOWDUINO_CARBIDE_IGNITE_MS;
+  const uint32_t a = (ign * 18u) / 100u;
+  const uint32_t b = (ign * 26u) / 100u;
+  const uint32_t dip = (ign * 10u) / 100u;
+  const uint32_t c = (ign * 26u) / 100u;
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, 0, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_CATCH_A,
+         "IGNITING → CATCH_A first gas");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, a, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_CATCH_B,
+         "IGNITING → CATCH_B");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, a + b, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_CATCH_DIP,
+         "IGNITING → CATCH_DIP");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, a + b + dip, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_CATCH_C,
+         "IGNITING → CATCH_C");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, a + b + dip + c, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_CATCH_D,
+         "IGNITING → CATCH_D establish");
+
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 0, ign,
+                                  cfg.extinguishMs, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_BURN,
+         "BURNING living flame");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 0, ign,
+                                  cfg.extinguishMs, 1, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_PUFF,
+         "short puff struggles");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 0, ign,
+                                  cfg.extinguishMs, 0, 1, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_RECOVER,
+         "puff end recovers");
+
+  const uint32_t ext = cfg.extinguishMs;
+  const uint32_t o = (ext * 28u) / 100u;
+  const uint32_t k = (ext * 28u) / 100u;
+  const uint32_t r = (ext * 24u) / 100u;
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_EXTINGUISHING, 0, ign, ext, 0,
+                                  0, 0, -1) == SHOWDUINO_CARBIDE_VIS_EXT_OUTER,
+         "extinguish outer collapse");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_EXTINGUISHING, o, ign, ext, 0,
+                                  0, 0, -1) == SHOWDUINO_CARBIDE_VIS_EXT_CORE,
+         "extinguish shrink to core");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_EXTINGUISHING, o + k, ign, ext,
+                                  0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_EXT_REMNANT,
+         "extinguish remnant");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_EXTINGUISHING, o + k + r, ign,
+                                  ext, 0, 0, 0, -1) ==
+             SHOWDUINO_CARBIDE_VIS_EXT_EMBER,
+         "extinguish ember");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_OFF, 0, ign, ext, 0, 0, 0,
+                                  -1) == SHOWDUINO_CARBIDE_VIS_BLACK,
+         "OFF after extinguish is black");
+
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_STRIKING, 0, ign, ext, 1, 1, 1,
+                                  3) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from STRIKING");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_IGNITING, 10, ign, ext, 0, 0,
+                                  1, -1) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from IGNITING");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 10, ign, ext, 1, 0, 1,
+                                  -1) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from PUFF/BURN");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 10, ign, ext, 0, 1, 1,
+                                  -1) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from RECOVER");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_EXTINGUISHING, 10, ign, ext, 0,
+                                  0, 1, -1) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from EXTINGUISHING");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_FLARE, 10, ign, ext, 0, 0, 1,
+                                  -1) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency from FLARE");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_OFF, 0, ign, ext, 0, 0, 0, 2) ==
+             SHOWDUINO_CARBIDE_VIS_IDENTIFY,
+         "identify overlays when not emergency");
+  expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_BURNING, 0, ign, ext, 0, 0, 1,
+                                  2) == SHOWDUINO_CARBIDE_VIS_EMERGENCY,
+         "emergency beats identify");
+
+  expect(showduino_jewel_core_index(0) == 0, "default core 0 until mapped");
+  expect(showduino_jewel_core_index(9) == 0, "invalid core clamps");
+  expect(showduino_jewel_ring_index(0, 0) == 1, "ring0 beside core0");
+  expect(showduino_jewel_ring_index(0, 5) == 6, "last ring pixel");
+  expect(showduino_jewel_ring_index(3, 0) != 3, "ring skips physical core");
+
+  expect(showduino_carbide_event_from_cmd(SHOWDUINO_LAMP_CMD_IGNITE,
+                                          SHOWDUINO_LAMP_FX_STEADY_FLAME) ==
+             SHOWDUINO_CARBIDE_EV_IGNITE,
+         "P4 IGNITE uses the same IGNITE event as the striker");
+  expect(showduino_carbide_event_from_cmd(SHOWDUINO_LAMP_CMD_EXTINGUISH,
+                                          SHOWDUINO_LAMP_FX_STEADY_FLAME) ==
+             SHOWDUINO_CARBIDE_EV_EXTINGUISH,
+         "P4 EXTINGUISH uses the same extinguish renderer path");
+
+  {
+    ShowduinoCarbideMachine again;
+    showduino_carbide_reset(&again, 5000);
+    showduino_carbide_apply(&again, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+    tick(&again, &cfg, cfg.strikeMs);
+    tick(&again, &cfg, cfg.igniteMs);
+    showduino_carbide_apply(&again, SHOWDUINO_CARBIDE_EV_BLOW, &cfg);
+    tick(&again, &cfg, cfg.extinguishMs);
+    expect(again.state == SHOWDUINO_CARBIDE_OFF, "re-ignite setup OFF");
+    expect(again.sound == SHOWDUINO_LAMP_SND_NONE, "re-ignite setup silent");
+    showduino_carbide_apply(&again, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+    expect(again.state == SHOWDUINO_CARBIDE_STRIKING, "re-ignite after extinguish");
+    expect(again.sound == SHOWDUINO_LAMP_SND_STRIKE, "re-ignite requests STRIKE");
+    expect(showduino_carbide_elapsed_ms(&again) == 0, "re-ignite resets phase time");
+  }
+
   if (gFails) {
     std::printf("%d FAILED\n", gFails);
     return 1;

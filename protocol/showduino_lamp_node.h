@@ -32,6 +32,9 @@ extern "C" {
 #define SHOWDUINO_LAMP_BRI_MAX          100
 #define SHOWDUINO_LAMP_COMMS_TIMEOUT_MS SHOWDUINO_OWNER_KEEPALIVE_MS
 #define SHOWDUINO_LAMP_LIST_PER_PAGE    5
+/* Operator-confirmed lamp rail / sensor maximum. GPIO6 itself stays ≤ 3.3 V. */
+#define SHOWDUINO_LAMP_VOLT_FS_MV       5000u
+#define SHOWDUINO_LAMP_VOLT_ADC_MAX     4095u
 #define SHOWDUINO_LAMP_CAPS \
   "CARBIDE_MACHINE,CARBIDE_FX,SHOWDUINO_FX,BLOW,SENSORS,LOCAL_AUDIO,BRI,ESPNOW,EMERGENCY,STANDALONE,OWN"
 
@@ -462,6 +465,17 @@ static inline int32_t showduino_lamp_light_normalized(int32_t filtered, uint32_t
   if (n < 0) n = 0;
   if (n > 100) n = 100;
   return n;
+}
+
+/* mv = raw * num / den. Default num/den is 5000/4095 (5.00 V at 12-bit FS).
+ * Missing scale stays -1. Does not treat an arbitrary live raw as 5.00 V. */
+static inline int32_t showduino_lamp_volt_mv(int32_t raw, uint32_t num, uint32_t den) {
+  if (raw < 0 || num == 0 || den == 0) return -1;
+  return (int32_t)(((int64_t)raw * (int64_t)num) / (int64_t)den);
+}
+
+static inline int showduino_lamp_volt_is_default_fs(uint32_t num, uint32_t den) {
+  return num == SHOWDUINO_LAMP_VOLT_FS_MV && den == SHOWDUINO_LAMP_VOLT_ADC_MAX;
 }
 
 typedef enum ShowduinoLampProductMode {

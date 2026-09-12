@@ -1,6 +1,7 @@
 #include "LampConfig.h"
 #include "../../shared-node/NodeConfig.h"
 #include "../../../protocol/showduino_carbide_lamp.h"
+#include "../../../protocol/showduino_lamp_motion.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -94,10 +95,11 @@ void lampConfigSetBlowWindows(uint16_t puffMs, uint16_t blowMs) {
   nodeConfigSetU16("blow", blowMs);
 }
 
-uint32_t lampConfigVoltScaleNum() { return nodeConfigGetU16("vnum", 0); }
+uint32_t lampConfigVoltScaleNum() {
+  return nodeConfigGetU16("vnum", (uint16_t)SHOWDUINO_LAMP_VOLT_FS_MV);
+}
 uint32_t lampConfigVoltScaleDen() {
-  const uint16_t d = nodeConfigGetU16("vden", 0);
-  return d;
+  return nodeConfigGetU16("vden", (uint16_t)SHOWDUINO_LAMP_VOLT_ADC_MAX);
 }
 
 void lampConfigSetVoltScale(uint32_t num, uint32_t den) {
@@ -115,4 +117,86 @@ uint32_t lampConfigLightScale() { return nodeConfigGetU16("lsc", 0); }
 void lampConfigSetLightScale(uint32_t scale) {
   if (scale > 65535) scale = 65535;
   nodeConfigSetU16("lsc", (uint16_t)scale);
+}
+
+uint8_t lampConfigMotionEnabled() {
+  return nodeConfigGetU8("men", SHOWDUINO_MOTION_DEFAULT_ENABLED) ? 1 : 0;
+}
+
+void lampConfigSetMotionEnabled(uint8_t en) {
+  nodeConfigSetU8("men", en ? 1 : 0);
+}
+
+ShowduinoMotionAction lampConfigMotionAction() {
+  return showduino_motion_action_from_u8(
+      nodeConfigGetU8("mact", (uint8_t)SHOWDUINO_MOTION_ACT_DISABLED));
+}
+
+void lampConfigSetMotionAction(ShowduinoMotionAction act) {
+  nodeConfigSetU8("mact", (uint8_t)showduino_motion_action_from_u8((uint8_t)act));
+}
+
+uint8_t lampConfigMotionActiveLow() {
+  return nodeConfigGetU8("mpol", SHOWDUINO_MOTION_DEFAULT_ACTIVE_LOW) ? 1 : 0;
+}
+
+void lampConfigSetMotionActiveLow(uint8_t activeLow) {
+  nodeConfigSetU8("mpol", activeLow ? 1 : 0);
+}
+
+uint16_t lampConfigMotionCooldownMs() {
+  uint16_t ms = nodeConfigGetU16("mcd", SHOWDUINO_MOTION_DEFAULT_COOLDOWN_MS);
+  if (ms > SHOWDUINO_MOTION_COOLDOWN_MAX_MS) ms = SHOWDUINO_MOTION_COOLDOWN_MAX_MS;
+  return ms;
+}
+
+void lampConfigSetMotionCooldownMs(uint16_t ms) {
+  if (ms > SHOWDUINO_MOTION_COOLDOWN_MAX_MS) ms = SHOWDUINO_MOTION_COOLDOWN_MAX_MS;
+  nodeConfigSetU16("mcd", ms);
+}
+
+uint8_t lampConfigFlameActivity() {
+  uint8_t v = nodeConfigGetU8("fact", 45);
+  if (v > 100) v = 100;
+  return v;
+}
+
+void lampConfigSetFlameActivity(uint8_t v) {
+  if (v > 100) v = 100;
+  nodeConfigSetU8("fact", v);
+}
+
+uint8_t lampConfigFlickerAmount() {
+  uint8_t v = nodeConfigGetU8("flic", 35);
+  if (v > 100) v = 100;
+  return v;
+}
+
+void lampConfigSetFlickerAmount(uint8_t v) {
+  if (v > 100) v = 100;
+  nodeConfigSetU8("flic", v);
+}
+
+uint8_t lampConfigIgnitionSpeed() {
+  uint8_t v = nodeConfigGetU8("igsp", 100);
+  if (v < 50) v = 50;
+  if (v > 200) v = 200;
+  return v;
+}
+
+void lampConfigSetIgnitionSpeed(uint8_t v) {
+  if (v < 50) v = 50;
+  if (v > 200) v = 200;
+  nodeConfigSetU8("igsp", v);
+}
+
+uint8_t lampConfigJewelCore() {
+  uint8_t v = nodeConfigGetU8("core", 0);
+  if (v >= SHOWDUINO_CARBIDE_JEWEL_PIXELS) v = 0;
+  return v;
+}
+
+void lampConfigSetJewelCore(uint8_t v) {
+  if (v >= SHOWDUINO_CARBIDE_JEWEL_PIXELS) v = 0;
+  nodeConfigSetU8("core", v);
 }

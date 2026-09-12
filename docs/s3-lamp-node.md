@@ -1,6 +1,6 @@
 # Showduino S3 Lamp Node — carbide lamp
 
-Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.3.4**. Protocol **1.0**. SHDO package **v2**.
+Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.4.0**. Protocol **1.0**. SHDO package **v2**.
 
 The production Lamp Node is an **ESP32-S3 interactive carbide-lamp simulator**. It is not a Pixel Node and not a second Audio Node.
 
@@ -38,7 +38,9 @@ If Showduino disappears, GRANT keepalive must go stale (~8 s). A momentary packe
 
 `OFF → STRIKING → IGNITING → BURNING`, plus `LOW_FLAME`, `UNSTABLE`, `FLARE`, `EXTINGUISHING`.
 
-Physical striker and P4 `IGNITE` enter the **same** machine. Failed strikes exist only as a configurable percentage and default to **0**.
+Physical striker, optional motion IGNITE, and P4 `IGNITE` enter the **same** machine. Failed strikes exist only as a configurable percentage and default to **0**.
+
+The Jewel starts **black** (no boot / Wi-Fi / ownership colour). A press is one IGNITE event: flint spark (one or two pixels, ~50–150 ms) → dark gap → catch (~1–2 s, carbide blue-white → pale warmth) → living procedural flame. Short puff recoils and recovers. Sustained blow collapses to black and silence. Emergency is immediate bright white + `emergency.mp3`. PIXEL IDENTIFY walks pixels 0–6 for Jewel mapping; it is blocked in SHOWDUINO and emergency.
 
 Without Showduino:
 
@@ -53,11 +55,11 @@ No browser, Wi-Fi client, or internet is required for the physical lamp.
 
 - **Mic:** non-blocking blow detector (baseline, relative rise, puff vs sustained). Not `analogRead > threshold`.
 - **Light:** telemetry only. Normalized 0–100 only after a stored calibration scale. No automatic flame compensation in this pass.
-- **Voltage:** raw ADC always; millivolts only when a calibration scale is stored. Never invent 5.00 V.
+- **Voltage:** operator-confirmed maximum is 5.00 V on the measured rail / sensor. GPIO6 stays ≤ 3.3 V. Default scale is 12-bit full scale → 5000 mV. One-point cal can store the current ADC as 5.00 V.
 
 ## Local audio
 
-DFRobot Fermion DFPlayer Pro (DFR0768) over UART, 115200, no BUSY pin. Semantic roles map to the V1 four-file library:
+DFRobot Fermion DFPlayer Pro (DFR0768) over UART, 115200, no BUSY pin. Init is non-blocking: `AT`, `AT+FUNCTION=1` (MUSIC), `AT+AMP=ON`, volume. Play uses `AT+PLAYFILE=/name.mp3` and wiki PLAYMODE 1 (repeat one) / 3 (play once). Semantic roles map to the V1 four-file library:
 
 | Role | File | When |
 |------|------|------|
@@ -79,13 +81,13 @@ Emergency forces the jewel **bright white**, interrupts theatrical audio, and lo
 
 ## Standalone SoftAP / WebUI
 
-SSID is `Showduino-Lamp-<logical-id>`, for example `Showduino-Lamp-LAMP-01`. Password `showduino`. Typical IP `192.168.5.1` on the ESP-NOW channel. No internet, P4, Communications Controller, Director, or external server is required.
+SSID is `Showduino-Lamp-<logical-id>`, for example `Showduino-Lamp-LAMP-01`. Password `showduino`. Typical IP `192.168.5.1` on the ESP-NOW channel. Join that 2.4 GHz SoftAP, then open `http://192.168.5.1` (not https, not a hostname). No internet, P4, Communications Controller, Director, or external server is required.
 
-In STANDALONE the WebUI may ignite, extinguish, set theatrical flame states, test Fermion roles, and adjust volume / brightness.
+In STANDALONE the WebUI may ignite, extinguish, set theatrical flame states, test Fermion roles, run PIXEL IDENTIFY, and adjust volume / brightness / flame activity / flicker / ignition speed.
 
 In SHOWDUINO the WebUI is commissioning / status / diagnostics. Firmware rejects theatrical and audio-test commands from the browser. Identity, blow calibration, and reboot remain available.
 
-Sections: STATUS, LAMP, AUDIO, BLOW SENSOR, LIGHT SENSOR, VOLTAGE, BUTTON, SYSTEM.
+Sections: STATUS, LAMP, AUDIO, BLOW SENSOR, LIGHT SENSOR, VOLTAGE, BUTTON, MOTION, SYSTEM. Motion action defaults to DISABLED. Theatrical motion is ignored until the GPIO15 sensor is physically confirmed.
 
 ## Future Director / Studio
 
@@ -99,9 +101,10 @@ Studio should author `LAMP-01 IGNITE` / `UNSTABLE_FLAME` / `EXTINGUISH`. SHDO v2
 |----------|------|-------|
 | Mic / blow | 4 | ADC1_CH3 |
 | Light | 5 | ADC1_CH4 |
-| Voltage | 6 | ADC1_CH5, raw until calibrated |
+| Voltage | 6 | ADC1_CH5, 5.00 V full scale |
 | Ignition button | 7 | to GND, active-LOW |
 | Jewel DATA | 8 | 7 pixels |
+| Motion | 15 | digital, 3.3 V only; sensor physically unconfirmed |
 | Fermion TX | 17 | S3 TX → Fermion RX |
 | Fermion RX | 18 | S3 RX ← Fermion TX |
 

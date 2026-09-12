@@ -58,7 +58,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Communications Engine, Audio Node routing, SoftAP/WebUI/API proxy | Keep transport-only; no show decisions |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Authoritative Show Engine | Current platform focus includes P4 pixel bench commissioning |
 | `firmware/audio-node-esp32-a1s/` | **ACTIVE / HARDWARE TEST REQUIRED** | Ai-Thinker ESP32-A1S / ES8388 | Attraction/programme audio node | Bench commission before claiming hardware-complete |
-| `firmware/s3-lamp-node/` | **ACTIVE / PHYSICAL PINS CONFIRMED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node firmware 0.3.4 |
+| `firmware/s3-lamp-node/` | **ACTIVE / PHYSICAL PINS CONFIRMED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node firmware 0.4.0 |
 | `firmware/c3-lamp-node/` | **SUPERSEDED** | ESP32-C3 Super Mini OLED | Historical lamp FX firmware | Retained as reference; not the physical lamp |
 | `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output / PWM specialist | Comes after C3 Pixel Node; no implementation yet |
 | `firmware/relay-node-esp32/` | **LEGACY / RETIRED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; not a production Node |
@@ -128,7 +128,7 @@ Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inve
 
 ### S3 Lamp Node
 
-**Classification:** ACTIVE firmware / physical GPIOs confirmed. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/` firmware **0.3.4**; same image is a standalone SoftAP prop (`Showduino-Lamp-<id>`) and a GRANT-managed Showduino node. P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
+**Classification:** ACTIVE firmware / physical GPIOs confirmed. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/` firmware **0.4.0**; same image is a standalone SoftAP prop (`Showduino-Lamp-<id>`) and a GRANT-managed Showduino node. P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ### C3 Pixel Node
 

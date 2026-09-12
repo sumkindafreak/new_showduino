@@ -18,7 +18,8 @@ void lampSensorsCalibrateQuiet();
 void lampSensorsCalibrateLight();
 int32_t lampSensorsVoltRaw();
 int32_t lampSensorsVoltFiltered();
-int32_t lampSensorsVoltMv(); /* -1 if uncalibrated — never invent 5.00 V */
+int32_t lampSensorsVoltMv(); /* -1 if scale missing; default is 5.00 V FS */
+bool lampSensorsCalibrateVoltFullScale(); /* store current ADC as 5.00 V */
 const char *lampSensorsMicStatus();
 const char *lampSensorsLightStatus();
 const char *lampSensorsVoltStatus();

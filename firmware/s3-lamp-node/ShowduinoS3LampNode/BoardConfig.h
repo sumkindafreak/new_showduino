@@ -17,14 +17,22 @@
  *   GPIO6  voltage ADC         ADC1_CH5
  *   GPIO7  ignition button     GPIO7 -> switch -> GND
  *   GPIO8  NeoPixel Jewel DATA 7 pixels
+ *   GPIO15 motion digital in   header-nominated; sensor NOT physically confirmed
  *   GPIO17 S3 TX -> Fermion RX
  *   GPIO18 S3 RX <- Fermion TX
+ *
+ * GPIO9 is not broken out on this module. Do not use it.
+ * GPIO15 suitability (ESP32-S3): not strapping (0/3/45/46), not flash/PSRAM
+ * (26-32 / octal 33-37), not USB (19/20), not UART0 data (43/44), not JTAG
+ * (39-42), not on the confirmed lamp map. ADC2_CH4 is unused analog — digital
+ * input only. Alternate U0RTS / XTAL_32K_P are not used on this board.
+ * Input presented to GPIO15 must be 3.3 V logic — never 5 V.
  *
  * SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS remains for spare-board development
  * only and must never be combined with the confirmed production map.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.3.4"
+#define SHOWDUINO_LAMP_NODE_FW             "0.4.0"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 
@@ -54,18 +62,26 @@
 #define SHOWDUINO_LAMP_SENSOR_LIGHT_MS     200UL
 #define SHOWDUINO_LAMP_SENSOR_VOLT_MS      500UL
 #define SHOWDUINO_LAMP_FERMION_BAUD        115200UL
+#define SHOWDUINO_LAMP_MOTION_DEBOUNCE_MS  50UL
+
+#ifndef SHOWDUINO_LAMP_MOTION_PIN_CONFIRMED
+#define SHOWDUINO_LAMP_MOTION_PIN_CONFIRMED 0
+#endif
 
 /*
  * Fermion DFPlayer Pro DFR0768 — local lamp FX only. UART 115200, no BUSY pin.
  * Powered from the lamp 5V rail with common ground. S3 UART is 3.3V.
- * Playback is fire-and-forget AT commands. flameloop.mp3 uses PLAYMODE=2.
+ * Playback is fire-and-forget AT commands. flameloop.mp3 uses PLAYMODE=1
+ * (repeat one). One-shot files use PLAYMODE=3. PLAYFILE paths start with /.
  * The main loop never waits for a track to finish.
  */
 
 /*
  * ADC1 only for sensors (ESP32-S3 GPIO1–GPIO10). GPIO4/5/6 are ADC1_CH3/4/5.
- * Wi-Fi / ESP-NOW conflicts with ADC2. Voltage millivolts stay UNCALIBRATED
- * until a divider scale is stored. Do not invent 5.00 V.
+ * Wi-Fi / ESP-NOW conflicts with ADC2. Operator-confirmed voltage maximum is
+ * 5.00 V on the measured rail / sensor. GPIO6 must stay ≤ 3.3 V (divider).
+ * Default scale is 12-bit full scale → 5000 mV. One-point cal stores the
+ * current ADC counts as 5.00 V when the divider does not reach 4095.
  */
 
 #if SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS
@@ -76,6 +92,7 @@
 #define SHOWDUINO_LAMP_MIC_PIN             1
 #define SHOWDUINO_LAMP_LIGHT_PIN           4
 #define SHOWDUINO_LAMP_VOLT_PIN            5
+#define SHOWDUINO_LAMP_MOTION_PIN          15
 #define SHOWDUINO_LAMP_FERMION_TX_PIN      17
 #define SHOWDUINO_LAMP_FERMION_RX_PIN      18
 #define SHOWDUINO_LAMP_PIN_SOURCE          "DEV_PLACEHOLDER"
@@ -85,6 +102,7 @@
 #define SHOWDUINO_LAMP_MIC_PIN             4
 #define SHOWDUINO_LAMP_LIGHT_PIN           5
 #define SHOWDUINO_LAMP_VOLT_PIN            6
+#define SHOWDUINO_LAMP_MOTION_PIN          15
 #define SHOWDUINO_LAMP_FERMION_TX_PIN      17
 #define SHOWDUINO_LAMP_FERMION_RX_PIN      18
 #define SHOWDUINO_LAMP_PIN_SOURCE          "PHYSICAL_CONFIRMED"
@@ -94,6 +112,7 @@
 #define SHOWDUINO_LAMP_MIC_PIN             (-1)
 #define SHOWDUINO_LAMP_LIGHT_PIN           (-1)
 #define SHOWDUINO_LAMP_VOLT_PIN            (-1)
+#define SHOWDUINO_LAMP_MOTION_PIN          (-1)
 #define SHOWDUINO_LAMP_FERMION_TX_PIN      (-1)
 #define SHOWDUINO_LAMP_FERMION_RX_PIN      (-1)
 #define SHOWDUINO_LAMP_PIN_SOURCE          "UNCONFIRMED"
@@ -102,8 +121,8 @@
 #if SHOWDUINO_LAMP_PINS_CONFIRMED && !SHOWDUINO_LAMP_DEV_PLACEHOLDER_PINS
 #if SHOWDUINO_LAMP_MIC_PIN != 4 || SHOWDUINO_LAMP_LIGHT_PIN != 5 || \
     SHOWDUINO_LAMP_VOLT_PIN != 6 || SHOWDUINO_LAMP_BTN_IGNITE != 7 || \
-    SHOWDUINO_LAMP_PIXEL_PIN != 8 || SHOWDUINO_LAMP_FERMION_TX_PIN != 17 || \
-    SHOWDUINO_LAMP_FERMION_RX_PIN != 18
+    SHOWDUINO_LAMP_PIXEL_PIN != 8 || SHOWDUINO_LAMP_MOTION_PIN != 15 || \
+    SHOWDUINO_LAMP_FERMION_TX_PIN != 17 || SHOWDUINO_LAMP_FERMION_RX_PIN != 18
 #error "Confirmed Lamp Node pin map does not match the physical wiring"
 #endif
 #if SHOWDUINO_LAMP_MIC_PIN < 1 || SHOWDUINO_LAMP_MIC_PIN > 10 || \

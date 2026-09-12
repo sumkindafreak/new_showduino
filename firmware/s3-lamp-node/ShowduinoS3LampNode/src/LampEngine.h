@@ -4,9 +4,19 @@
 #include <Arduino.h>
 #include "../../../protocol/showduino_carbide_lamp.h"
 
+void lampEngineBlackoutEarly();
 void lampEngineBegin();
 void lampEngineService();
 void lampEngineApplyEvent(ShowduinoCarbideEvent ev);
+void lampEngineSetBlowStress(uint8_t stress0to100);
+uint8_t lampEngineBlowStress();
+ShowduinoCarbideVisual lampEngineVisual();
+const char *lampEngineVisualName();
+void lampEngineApplyTune();
+bool lampEngineStartIdentify();
+void lampEngineStopIdentify();
+int lampEngineIdentifyPixel();
+bool lampEngineIdentifyActive();
 void lampEngineSetBrightness(uint8_t bri0to100);
 uint8_t lampEngineBrightness();
 void lampEngineSetSolid(uint8_t r, uint8_t g, uint8_t b);

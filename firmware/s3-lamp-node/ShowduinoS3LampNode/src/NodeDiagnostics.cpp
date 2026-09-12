@@ -7,7 +7,9 @@
 #include "LampAudio.h"
 #include "EspNowLampTransport.h"
 #include "LocalControls.h"
+#include "LampMotion.h"
 #include "../BoardConfig.h"
+#include "../../../protocol/showduino_lamp_motion.h"
 #include "../../../protocol/showduino_lamp_node.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_version.h"
@@ -42,6 +44,11 @@ void nodeDiagPrintPins() {
                 SHOWDUINO_LAMP_LIGHT_PIN);
   Serial.printf("  Voltage ADC %s (%d)\n", showduino_lamp_gpio_label(SHOWDUINO_LAMP_VOLT_PIN),
                 SHOWDUINO_LAMP_VOLT_PIN);
+  Serial.printf("  Motion %s (%d) %s polarity=%s action=%s\n",
+                showduino_lamp_gpio_label(SHOWDUINO_LAMP_MOTION_PIN),
+                SHOWDUINO_LAMP_MOTION_PIN, lampMotionPhysicalStatus(),
+                showduino_motion_polarity_name(lampConfigMotionActiveLow()),
+                showduino_motion_action_name(lampConfigMotionAction()));
   Serial.printf("  Fermion TX %s (%d)  RX %s (%d) baud=%lu\n",
                 showduino_lamp_gpio_label(SHOWDUINO_LAMP_FERMION_TX_PIN),
                 SHOWDUINO_LAMP_FERMION_TX_PIN,
@@ -95,7 +102,7 @@ void nodeDiagPrintHelp() {
   Serial.println("  HELP  STATUS  MAC  PINS");
   Serial.println("  LAMP:STATUS  LAMP:IGNITE  LAMP:EXTINGUISH  LAMP:TEST");
   Serial.println("  LAMP:FX:LOW_FLAME | UNSTABLE | FLARE | STEADY_FLAME");
-  Serial.println("  LAMP:OFF  MIC:STATUS  SENSORS  AUDIO:STATUS");
+  Serial.println("  LAMP:OFF  MIC:STATUS  SENSORS  AUDIO:STATUS  MOTION:STATUS");
   Serial.println("Webpage cannot clear emergency. P4 remains authoritative.");
 }
 
@@ -122,9 +129,20 @@ void nodeDiagPrintStatus() {
                 (long)lampSensorsLightRaw(), (long)lampSensorsVoltRaw(),
                 (long)lampSensorsVoltMv(), lampSensorsVoltStatus(),
                 lampSensorsVoltWarn());
-  Serial.printf("AUDIO %s role=%s file=%s query=%s\n", lampAudioStatus(),
-                lampAudioCurrentRole(), lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
+  Serial.printf("AUDIO %s heard=%s rx=%s role=%s file=%s query=%s\n",
+                lampAudioStatus(),
+                lampAudioHeardReply() ? "YES" : "NO",
+                lampAudioLastRx(),
+                lampAudioCurrentRole(),
+                lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
                 lampAudioFileQueryStatus());
+  Serial.printf("MOTION gpio=%d %s raw=%s state=%s pol=%s en=%s act=%s cd=%s\n",
+                lampMotionPin(), lampMotionPhysicalStatus(),
+                lampMotionRawName(), lampMotionStateName(),
+                showduino_motion_polarity_name(lampConfigMotionActiveLow()),
+                lampConfigMotionEnabled() ? "YES" : "NO",
+                showduino_motion_action_name(lampConfigMotionAction()),
+                showduino_motion_cooldown_hold(lampMotionDetector()) ? "HOLD" : "READY");
   Serial.printf("UPTIME %lu ms heap=%lu min=%lu loop_us=%lu max=%lu\n",
                 (unsigned long)millis(),
                 (unsigned long)ESP.getFreeHeap(),
@@ -159,6 +177,10 @@ bool nodeDiagHandleLine(const char *line) {
     nodeDiagPrintStatus();
     return true;
   }
+  if (!strcmp(line, "MOTION:STATUS") || !strcmp(line, "MOTION")) {
+    nodeDiagPrintStatus();
+    return true;
+  }
   if (!strcmp(line, "AUDIO:STATUS")) {
     Serial.printf("AUDIO %s role=%s file=%s vol=%u query=%s expected=%s\n",
                   lampAudioStatus(), lampAudioCurrentRole(),
@@ -171,6 +193,18 @@ bool nodeDiagHandleLine(const char *line) {
     char st[96];
     lampProtocolFormatStatus(st, sizeof(st));
     Serial.println(st);
+    return true;
+  }
+  if (!strcmp(line, "PIXEL:IDENTIFY")) {
+    if (lampEngineEmergency() || !showduino_lamp_web_may_control(lampNodeState())) {
+      Serial.println("[LAMP] PIXEL IDENTIFY locked");
+      return true;
+    }
+    if (!lampEngineStartIdentify()) {
+      Serial.println("[LAMP] PIXEL IDENTIFY rejected");
+      return true;
+    }
+    Serial.println("[LAMP] PIXEL IDENTIFY started");
     return true;
   }
   return false;

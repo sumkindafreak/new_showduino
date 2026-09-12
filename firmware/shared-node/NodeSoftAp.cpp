@@ -2,16 +2,19 @@
 
 #include <string.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 #include <esp_wifi.h>
 
 static bool sStarted = false;
 static bool sReady = false;
+static bool sDnsOn = false;
 static uint8_t sChannel = 1;
 static char sSsid[33] = "";
 static char sPass[32] = "showduino";
 static char sIp[16] = "0.0.0.0";
 static uint32_t sLastCheck = 0;
 static NodeSoftApRadioHook sHook = nullptr;
+static DNSServer sDns;
 
 static void logRadio(const char *when) {
   uint8_t ch = 0;
@@ -49,7 +52,7 @@ static bool startAp() {
   memcpy(country.cc, "01", 2);
   country.schan = 1;
   country.nchan = 13;
-  country.max_tx_power = 8;
+  country.max_tx_power = 20;
   country.policy = WIFI_COUNTRY_POLICY_MANUAL;
   (void)esp_wifi_set_country(&country);
 
@@ -66,7 +69,7 @@ static bool startAp() {
     conf.ap.channel = sChannel;
     conf.ap.authmode = WIFI_AUTH_WPA2_PSK;
     conf.ap.max_connection = 2;
-    conf.ap.beacon_interval = 300;
+    conf.ap.beacon_interval = 100;
     (void)esp_wifi_set_config(WIFI_IF_AP, &conf);
   }
   (void)esp_wifi_set_channel(sChannel, WIFI_SECOND_CHAN_NONE);
@@ -75,6 +78,9 @@ static bool startAp() {
 
   strncpy(sIp, WiFi.softAPIP().toString().c_str(), sizeof(sIp) - 1);
   sIp[sizeof(sIp) - 1] = 0;
+  sDns.stop();
+  sDnsOn = false;
+  if (ok) sDnsOn = sDns.start(53, "*", apIP);
   sReady = ok;
   sStarted = true;
   logRadio("start");
@@ -129,6 +135,7 @@ void nodeSoftApFollowChannel(uint8_t channel) {
 
 void nodeSoftApService() {
   if (!sStarted) return;
+  if (sDnsOn) sDns.processNextRequest();
   if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
   const uint32_t now = millis();
   if ((now - sLastCheck) < 2000UL) return;

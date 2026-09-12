@@ -41,7 +41,10 @@ void lampSensorsBegin() {
   sVoltArmed = 0;
   if (SHOWDUINO_LAMP_MIC_PIN >= 0) pinMode(SHOWDUINO_LAMP_MIC_PIN, INPUT);
   if (SHOWDUINO_LAMP_LIGHT_PIN >= 0) pinMode(SHOWDUINO_LAMP_LIGHT_PIN, INPUT);
-  if (SHOWDUINO_LAMP_VOLT_PIN >= 0) pinMode(SHOWDUINO_LAMP_VOLT_PIN, INPUT);
+  if (SHOWDUINO_LAMP_VOLT_PIN >= 0) {
+    pinMode(SHOWDUINO_LAMP_VOLT_PIN, INPUT);
+    analogSetPinAttenuation(SHOWDUINO_LAMP_VOLT_PIN, ADC_11db);
+  }
   analogReadResolution(12);
 }
 
@@ -86,10 +89,15 @@ int32_t lampSensorsVoltRaw() { return sVoltRaw; }
 int32_t lampSensorsVoltFiltered() { return sVoltFilt; }
 
 int32_t lampSensorsVoltMv() {
-  const uint32_t num = lampConfigVoltScaleNum();
-  const uint32_t den = lampConfigVoltScaleDen();
-  if (num == 0 || den == 0) return -1;
-  return (int32_t)((sVoltFilt * (int32_t)num) / (int32_t)den);
+  return showduino_lamp_volt_mv(sVoltFilt, lampConfigVoltScaleNum(),
+                                lampConfigVoltScaleDen());
+}
+
+bool lampSensorsCalibrateVoltFullScale() {
+  const int32_t v = sVoltFilt > 0 ? sVoltFilt : sVoltRaw;
+  if (v <= 0) return false;
+  lampConfigSetVoltScale(SHOWDUINO_LAMP_VOLT_FS_MV, (uint32_t)v);
+  return true;
 }
 
 const char *lampSensorsMicStatus() {
@@ -126,9 +134,10 @@ const char *lampSensorsLightStatus() {
 
 const char *lampSensorsVoltStatus() {
   if (SHOWDUINO_LAMP_VOLT_PIN < 0) return "UNCONFIRMED";
-  if (lampConfigVoltScaleNum() == 0 || lampConfigVoltScaleDen() == 0) {
-    return "UNCALIBRATED";
-  }
+  const uint32_t num = lampConfigVoltScaleNum();
+  const uint32_t den = lampConfigVoltScaleDen();
+  if (num == 0 || den == 0) return "UNCALIBRATED";
+  if (showduino_lamp_volt_is_default_fs(num, den)) return "5V_FULL_SCALE";
   return "CALIBRATED";
 }
 

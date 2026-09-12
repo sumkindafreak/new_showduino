@@ -15,5 +15,6 @@ function Run-LampTest([string]$srcName, [string]$exeName) {
 
 Run-LampTest "test_lamp_node.cpp" "lamp_node_tests.exe"
 Run-LampTest "test_carbide_lamp.cpp" "carbide_lamp_tests.exe"
+Run-LampTest "test_lamp_motion.cpp" "lamp_motion_tests.exe"
 Write-Host "ALL LAMP HOST TESTS PASS"
 exit 0

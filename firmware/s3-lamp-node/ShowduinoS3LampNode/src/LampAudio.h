@@ -17,5 +17,7 @@ const char *lampAudioExpectedFiles();
 void lampAudioSetVolume(uint8_t vol);
 uint8_t lampAudioVolume();
 const char *lampAudioLastError();
+const char *lampAudioLastRx();
+bool lampAudioHeardReply();
 
 #endif

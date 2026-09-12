@@ -9,11 +9,13 @@
 #include "LampProtocol.h"
 #include "LampSensors.h"
 #include "LampAudio.h"
+#include "LampMotion.h"
 #include "LocalControls.h"
 #include "EspNowLampTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_lamp_node.h"
 #include "../../../protocol/showduino_carbide_lamp.h"
+#include "../../../protocol/showduino_lamp_motion.h"
 #include "../../../protocol/showduino_version.h"
 #include "../../../protocol/showduino_protocol_version.h"
 #include "../../shared-node/NodeSoftAp.h"
@@ -61,6 +63,7 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <button data-t="light">LIGHT SENSOR</button>
 <button data-t="volt">VOLTAGE</button>
 <button data-t="btn">BUTTON</button>
+<button data-t="motion">MOTION</button>
 <button data-t="sys">SYSTEM</button>
 </nav>
 <div id="banner" class="banner" hidden></div>
@@ -75,11 +78,24 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <button class="act ctrl" id="unst">UNSTABLE FLAME</button>
 <button class="act ctrl" id="flare">FLARE</button>
 <button class="act ctrl" id="dying">DYING FLAME</button>
+<button class="act ctrl" id="pixid">PIXEL IDENTIFY</button>
 </div>
-<label>Brightness limit <span id="briv"></span></label>
+<label>Max flame brightness <span id="briv"></span></label>
 <input id="bri" type="range" min="1" max="100" value="80">
-<div class="row"><button class="act ctrl" id="setbri">SET BRIGHTNESS</button></div>
-<p>Standalone WebUI uses the same carbide machine as the physical striker. This page cannot clear emergency.</p>
+<label>Flame activity <span id="factv"></span></label>
+<input id="fact" type="range" min="0" max="100" value="45">
+<label>Flicker amount <span id="flicv"></span></label>
+<input id="flic" type="range" min="0" max="100" value="35">
+<label>Ignition speed <span id="igspv"></span></label>
+<input id="igsp" type="range" min="50" max="200" value="100">
+<label>Jewel core pixel</label>
+<input id="core" type="number" min="0" max="6" value="0">
+<div class="row">
+<button class="act ctrl" id="setbri">SET BRIGHTNESS</button>
+<button class="act" id="saveflame">SAVE FLAME TUNE</button>
+</div>
+<pre id="pixdbg" style="font:12px/1.4 monospace;color:#c8c2b4;white-space:pre-wrap"></pre>
+<p>PIXEL IDENTIFY lights 0–6 in turn for Jewel mapping. Blocked in SHOWDUINO and emergency. Tune a carbide flame, not seven RGB sliders.</p>
 </div></section>
 <section class="tab" id="aud" hidden><div class="card"><div class="kv" id="audkv"></div>
 <label>Volume <span id="volv"></span></label>
@@ -92,7 +108,7 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <button class="act ctrl" id="emaud">TEST EMERGENCY</button>
 <button class="act ctrl" id="astop">STOP AUDIO</button>
 </div>
-<p>V1 library: flick.mp3, fire_ignite.mp3, flameloop.mp3, emergency.mp3. TEST EMERGENCY plays emergency.mp3 only — it does not assert a Showduino system emergency. Fermion is local lamp FX, not the Audio Node.</p>
+<p>V1 library: flick.mp3, fire_ignite.mp3, flameloop.mp3, emergency.mp3. TEST EMERGENCY plays emergency.mp3 only — it does not assert a Showduino system emergency. Fermion is local lamp FX, not the Audio Node. NO_REPLY means the module has not answered UART yet — check 5 V, speaker, and GPIO17/18.</p>
 </div></section>
 <section class="tab" id="blow" hidden><div class="card"><div class="kv" id="blowkv"></div>
 <p><span id="blowdot" class="live"></span><span id="blowlive">BLOW IDLE</span></p>
@@ -109,10 +125,31 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <p>Normalized light is shown only after calibration. Raw ADC is always available.</p>
 </div></section>
 <section class="tab" id="volt" hidden><div class="card"><div class="kv" id="voltkv"></div>
-<p>Millivolts appear only when a stored scale is valid. Firmware never invents 5.00 V.</p>
+<div class="row">
+<button class="act" id="calvolt">SET CURRENT AS 5.00 V</button>
+<button class="act" id="defvolt">USE 5.00 V AT 4095 COUNTS</button>
+</div>
+<p>Operator-confirmed rail / sensor maximum is 5.00 V. GPIO6 must stay ≤ 3.3 V through the divider. Default map is 12-bit full scale → 5.00 V. SET CURRENT stores this ADC reading as 5.00 V.</p>
 </div></section>
 <section class="tab" id="btn" hidden><div class="card"><div class="kv" id="btnkv"></div>
 <div class="row"><button class="act ctrl" id="btntest">IGNITION TEST</button></div>
+</div></section>
+<section class="tab" id="motion" hidden><div class="card"><div class="kv" id="motionkv"></div>
+<p><span id="motdot" class="live"></span><span id="motlive">MOTION: CLEAR</span></p>
+<label>Motion enabled</label>
+<select id="moten"><option value="0">NO — telemetry only</option><option value="1">YES</option></select>
+<label>Polarity</label>
+<select id="motpol"><option value="0">ACTIVE HIGH</option><option value="1">ACTIVE LOW</option></select>
+<label>Motion action</label>
+<select id="motact">
+<option value="DISABLED">Disabled</option>
+<option value="IGNITE">Ignite</option>
+<option value="FLARE">Flare</option>
+<option value="UNSTABLE">Unstable</option>
+</select>
+<label>Cooldown (ms)</label><input id="motcd" type="number" min="0" max="60000" value="3000">
+<div class="row"><button class="act" id="savemot">SAVE MOTION SETTINGS</button></div>
+<p>Default action is DISABLED. GPIO15 is assigned; the physical sensor is unconfirmed. Theatrical actions (IGNITE / FLARE / UNSTABLE) are ignored until the sensor is physically confirmed. A floating pin must not strike the lamp. Sensor output must be 3.3 V, never 5 V.</p>
 </div></section>
 <section class="tab" id="sys" hidden><div class="card"><div class="kv" id="syskv"></div>
 <label>Node ID</label><input id="nid" maxlength="12">
@@ -150,13 +187,27 @@ async function load(){
     ['SSID',S.ssid],['IP',S.ip],['MAC',S.mac]
   ]);
   kv($('lampkv'),[
-    ['Lamp state',S.carbide],['Brightness',S.brightness],
+    ['Lamp state',S.carbide],
+    ['Flame phase',S.flamePhase||'-'],
+    ['Master brightness',S.brightness],
+    ['Blow strength',S.blowStress],
+    ['Burn loop',S.audioRole==='BURN_LOOP'?'PLAYING':'OFF',S.audioRole==='BURN_LOOP'?'ok':'warn'],
     ['Jewel',S.jewelReady?'DRIVER READY':'STUB / UNCONFIRMED',S.jewelReady?'ok':'warn'],
+    ['Identify',S.identify>=0?('PIXEL '+S.identify):'OFF'],
     ['Local control',may?'ALLOWED':'LOCKED',may?'ok':'warn']
   ]);
   $('bri').value=S.brightness; $('briv').textContent=S.brightness;
+  if(document.activeElement!==$('fact')) {$('fact').value=S.flameActivity; $('factv').textContent=S.flameActivity;}
+  if(document.activeElement!==$('flic')) {$('flic').value=S.flickerAmount; $('flicv').textContent=S.flickerAmount;}
+  if(document.activeElement!==$('igsp')) {$('igsp').value=S.ignitionSpeed; $('igspv').textContent=S.ignitionSpeed;}
+  if(document.activeElement!==$('core')) $('core').value=S.jewelCore;
+  if(S.pixels){
+    $('pixdbg').textContent=S.pixels.map((p,i)=>'P'+i+'  '+p.r+','+p.g+','+p.b).join('\n');
+  }
   kv($('audkv'),[
     ['Fermion',S.audioStatus,S.audioStatus==='OK'?'ok':'warn'],
+    ['UART replies',S.audioHeard?'YES':'NO',S.audioHeard?'ok':'warn'],
+    ['Last UART RX',S.audioLastRx||'-'],
     ['Connected',S.audioPresent?'YES':'NO',S.audioPresent?'ok':'warn'],
     ['Semantic role',S.audioRole],
     ['Current file',S.audioFile||'-'],
@@ -169,7 +220,7 @@ async function load(){
   kv($('blowkv'),[
     ['Raw',S.micRaw],['Filtered',S.micFilt],['Baseline',S.micBase],
     ['Threshold',S.blowThresh],['Minimum duration',S.blowMinMs+' ms'],
-    ['Above ms',S.blowMs],['Class',S.blowClass],
+    ['Above ms',S.blowMs+' ms'],['Strength',S.blowStress],['Class',S.blowClass],
     ['Live blow',S.blowYes?'YES':'NO',S.blowYes?'warn':'ok']
   ]);
   $('blowdot').className='live'+(S.blowYes?' on':'');
@@ -184,19 +235,41 @@ async function load(){
   ]);
   kv($('voltkv'),[
     ['Raw ADC',S.voltRaw],
-    ['Voltage mV',S.voltMv<0?'UNCALIBRATED':S.voltMv,S.voltMv<0?'warn':'ok'],
+    ['Voltage',S.voltMv<0?'UNCALIBRATED':(S.voltMv/1000).toFixed(3)+' V',S.voltMv<0?'warn':'ok'],
+    ['Millivolts',S.voltMv<0?'UNCALIBRATED':S.voltMv,S.voltMv<0?'warn':'ok'],
+    ['Full scale','5.00 V'],
+    ['Scale',S.voltNum+' mV / '+S.voltDen+' counts'],
     ['Calibration',S.voltStatus],['Warning',S.voltWarn]
   ]);
   kv($('btnkv'),[
     ['Status',S.buttonStatus,S.buttonPressed?'warn':'ok'],
     ['GPIO',pin(S.pinBtn)],['Polarity',S.buttonPolarity]
   ]);
+  kv($('motionkv'),[
+    ['GPIO',pin(S.pinMotion)],
+    ['Physical',S.motionPhysical,S.motionConfirmed?'ok':'warn'],
+    ['Raw',S.motionRaw],
+    ['State',S.motionState,S.motionActive?'warn':'ok'],
+    ['Polarity',S.motionPolarity],
+    ['Enabled',S.motionEnabled?'YES':'NO'],
+    ['Action',S.motionAction],
+    ['Active duration',S.motionActiveMs+' ms'],
+    ['Last motion',S.motionLastMs?S.motionLastMs+' ms ago':'-'],
+    ['Cooldown',S.motionCooldownHold?'HOLD '+S.motionCooldownRemainMs+' ms':'READY']
+  ]);
+  $('motdot').className='live'+(S.motionActive?' on':'');
+  $('motlive').textContent=S.motionActive?'MOTION: DETECTED':'MOTION: CLEAR';
+  if(document.activeElement!==$('moten')) $('moten').value=S.motionEnabled?'1':'0';
+  if(document.activeElement!==$('motpol')) $('motpol').value=S.motionActiveLow?'1':'0';
+  if(document.activeElement!==$('motact')) $('motact').value=S.motionAction||'DISABLED';
+  if(document.activeElement!==$('motcd')) $('motcd').value=S.motionCooldownMs;
   kv($('syskv'),[
     ['Firmware',S.fw],['Uptime',S.uptime+' s'],
     ['Pin source',S.pinSource,S.pinsConfirmed?'ok':'warn'],
     ['Jewel DATA',pin(S.pinJewel)],['Ignition button',pin(S.pinBtn)],
     ['Mic ADC',pin(S.pinMic)],['Light ADC',pin(S.pinLight)],
-    ['Voltage ADC',pin(S.pinVolt)],['Fermion TX',pin(S.pinAudTx)],
+    ['Voltage ADC',pin(S.pinVolt)],['Motion',pin(S.pinMotion)],
+    ['Fermion TX',pin(S.pinAudTx)],
     ['Fermion RX',pin(S.pinAudRx)],['Last command',S.lastCommand],
     ['Last result',S.lastResult],['Fault',S.fault]
   ]);
@@ -219,9 +292,17 @@ async function cfg(body){
 }
 $('saveid').onclick=()=>cfg({id:$('nid').value,name:$('nname').value});
 $('saveblow').onclick=()=>cfg({blowThresh:+$('bth').value,puffMs:+$('puff').value,blowMs:+$('blowms').value});
+$('savemot').onclick=()=>cfg({motionEnabled:+$('moten').value,motionActiveLow:+$('motpol').value,motionAction:$('motact').value,motionCooldownMs:+$('motcd').value});
 $('calblow').onclick=()=>cfg({calibrateBlow:1});
 $('callight').onclick=()=>cfg({calibrateLight:1});
+$('calvolt').onclick=()=>cfg({calibrateVolt5:1});
+$('defvolt').onclick=()=>cfg({voltScaleDefault:1});
 $('setbri').onclick=()=>send('LAMP:BRIGHTNESS:'+$('bri').value);
+$('saveflame').onclick=()=>cfg({flameActivity:+$('fact').value,flickerAmount:+$('flic').value,ignitionSpeed:+$('igsp').value,jewelCore:+$('core').value});
+$('pixid').onclick=()=>cfg({pixelIdentify:1});
+$('fact').oninput=()=>$('factv').textContent=$('fact').value;
+$('flic').oninput=()=>$('flicv').textContent=$('flic').value;
+$('igsp').oninput=()=>$('igspv').textContent=$('igsp').value;
 $('setvol').onclick=()=>cfg({vol:+$('vol').value});
 $('ignite').onclick=()=>send('LAMP:IGNITE');
 $('ext').onclick=()=>send('LAMP:EXTINGUISH');
@@ -326,7 +407,34 @@ static void handleStatus() {
   else json += "ESP-NOW QUIET";
   json += "\",\"carbide\":\"";
   json += lampEngineCarbideName();
-  json += "\",\"brightness\":";
+  json += "\",\"flamePhase\":\"";
+  json += lampEngineVisualName();
+  json += "\",\"blowStress\":";
+  json += String((unsigned)lampEngineBlowStress());
+  json += ",\"flameActivity\":";
+  json += String((unsigned)lampConfigFlameActivity());
+  json += ",\"flickerAmount\":";
+  json += String((unsigned)lampConfigFlickerAmount());
+  json += ",\"ignitionSpeed\":";
+  json += String((unsigned)lampConfigIgnitionSpeed());
+  json += ",\"jewelCore\":";
+  json += String((unsigned)lampConfigJewelCore());
+  json += ",\"identify\":";
+  json += String(lampEngineIdentifyPixel());
+  json += ",\"pixels\":[";
+  for (uint8_t i = 0; i < SHOWDUINO_LAMP_PIXEL_COUNT; i++) {
+    uint8_t r = 0, g = 0, b = 0;
+    lampEnginePixelRgb(i, &r, &g, &b);
+    if (i) json += ",";
+    json += "{\"r\":";
+    json += String((unsigned)r);
+    json += ",\"g\":";
+    json += String((unsigned)g);
+    json += ",\"b\":";
+    json += String((unsigned)b);
+    json += "}";
+  }
+  json += "],\"brightness\":";
   json += String((unsigned)lampEngineBrightness());
   json += ",\"emergency\":";
   json += lampEngineEmergency() ? "true" : "false";
@@ -377,8 +485,16 @@ static void handleStatus() {
   json += lampSensorsVoltStatus();
   json += "\",\"voltWarn\":\"";
   json += lampSensorsVoltWarn();
-  json += "\",\"audioStatus\":\"";
+  json += "\",\"voltNum\":";
+  json += String((unsigned long)lampConfigVoltScaleNum());
+  json += ",\"voltDen\":";
+  json += String((unsigned long)lampConfigVoltScaleDen());
+  json += ",\"audioStatus\":\"";
   json += lampAudioStatus();
+  json += "\",\"audioHeard\":";
+  json += lampAudioHeardReply() ? "true" : "false";
+  json += ",\"audioLastRx\":\"";
+  jsonEsc(lampAudioLastRx(), json);
   json += "\",\"audioPresent\":";
   json += lampAudioHardwarePresent() ? "true" : "false";
   json += ",\"audioRole\":\"";
@@ -399,7 +515,41 @@ static void handleStatus() {
   json += lampLocalPressed() ? "true" : "false";
   json += ",\"buttonPolarity\":\"";
   json += SHOWDUINO_LAMP_BTN_POLARITY_NOTE;
-  json += "\",\"lastCommand\":\"";
+  json += "\",\"pinMotion\":";
+  json += String(SHOWDUINO_LAMP_MOTION_PIN);
+  json += ",\"motionPhysical\":\"";
+  json += lampMotionPhysicalStatus();
+  json += "\",\"motionConfirmed\":";
+  json += lampMotionHardwareConfirmed() ? "true" : "false";
+  json += ",\"motionRaw\":\"";
+  json += lampMotionRawName();
+  json += "\",\"motionState\":\"";
+  json += lampMotionStateName();
+  json += "\",\"motionActive\":";
+  json += lampMotionActive() ? "true" : "false";
+  json += ",\"motionPolarity\":\"";
+  json += showduino_motion_polarity_name(lampConfigMotionActiveLow());
+  json += "\",\"motionActiveLow\":";
+  json += lampConfigMotionActiveLow() ? "true" : "false";
+  json += ",\"motionEnabled\":";
+  json += lampConfigMotionEnabled() ? "true" : "false";
+  json += ",\"motionAction\":\"";
+  json += showduino_motion_action_name(lampConfigMotionAction());
+  json += "\",\"motionActiveMs\":";
+  json += String((unsigned long)showduino_motion_active_ms(lampMotionDetector()));
+  json += ",\"motionLastMs\":";
+  {
+    const ShowduinoMotionDetector *md = lampMotionDetector();
+    const uint32_t last = (md && md->lastActiveMs) ? (millis() - md->lastActiveMs) : 0;
+    json += String((unsigned long)last);
+  }
+  json += ",\"motionCooldownHold\":";
+  json += showduino_motion_cooldown_hold(lampMotionDetector()) ? "true" : "false";
+  json += ",\"motionCooldownRemainMs\":";
+  json += String((unsigned long)showduino_motion_cooldown_remain_ms(lampMotionDetector()));
+  json += ",\"motionCooldownMs\":";
+  json += String((unsigned)lampConfigMotionCooldownMs());
+  json += ",\"lastCommand\":\"";
   jsonEsc(lampNodeStateLastCommand(), json);
   json += "\",\"lastResult\":\"";
   jsonEsc(lampNodeStateLastResult(), json);
@@ -484,6 +634,66 @@ static void handleConfigPost() {
   if (extractJsonLong(body, "calibrateLight", &v) && v) {
     lampSensorsCalibrateLight();
   }
+  if (extractJsonLong(body, "calibrateVolt5", &v) && v) {
+    if (!lampSensorsCalibrateVoltFullScale()) {
+      sServer.send(200, "application/json",
+                   "{\"ok\":false,\"error\":\"NO_VOLT_READING\"}");
+      return;
+    }
+  }
+  if (extractJsonLong(body, "voltScaleDefault", &v) && v) {
+    lampConfigSetVoltScale(SHOWDUINO_LAMP_VOLT_FS_MV, SHOWDUINO_LAMP_VOLT_ADC_MAX);
+  }
+  if (extractJsonLong(body, "flameActivity", &v)) {
+    lampConfigSetFlameActivity((uint8_t)v);
+  }
+  if (extractJsonLong(body, "flickerAmount", &v)) {
+    lampConfigSetFlickerAmount((uint8_t)v);
+  }
+  if (extractJsonLong(body, "ignitionSpeed", &v)) {
+    lampConfigSetIgnitionSpeed((uint8_t)v);
+  }
+  if (extractJsonLong(body, "jewelCore", &v)) {
+    lampConfigSetJewelCore((uint8_t)v);
+  }
+  if (extractJsonLong(body, "flameActivity", &v) ||
+      extractJsonLong(body, "flickerAmount", &v) ||
+      extractJsonLong(body, "ignitionSpeed", &v) ||
+      extractJsonLong(body, "jewelCore", &v)) {
+    lampEngineApplyTune();
+  }
+  if (extractJsonLong(body, "pixelIdentify", &v) && v) {
+    if (lampEngineEmergency() || !showduino_lamp_web_may_control(lampNodeState())) {
+      sServer.send(200, "application/json",
+                   "{\"ok\":false,\"error\":\"IDENTIFY_LOCKED\"}");
+      return;
+    }
+    if (!lampEngineStartIdentify()) {
+      sServer.send(200, "application/json",
+                   "{\"ok\":false,\"error\":\"IDENTIFY_REJECTED\"}");
+      return;
+    }
+  }
+  bool motionChanged = false;
+  if (extractJsonLong(body, "motionEnabled", &v)) {
+    lampConfigSetMotionEnabled(v ? 1 : 0);
+    motionChanged = true;
+  }
+  if (extractJsonLong(body, "motionActiveLow", &v)) {
+    lampConfigSetMotionActiveLow(v ? 1 : 0);
+    motionChanged = true;
+  }
+  char act[12];
+  if (extractJsonString(body, "motionAction", act, sizeof(act))) {
+    lampConfigSetMotionAction(showduino_motion_action_from_name(act));
+    motionChanged = true;
+  }
+  if (extractJsonLong(body, "motionCooldownMs", &v)) {
+    if (v < 0) v = 0;
+    lampConfigSetMotionCooldownMs((uint16_t)v);
+    motionChanged = true;
+  }
+  if (motionChanged) lampMotionApplyConfig();
   if (idChanged && nodeSoftApStarted()) {
     char ssid[33];
     formatSsid(ssid, sizeof(ssid));
@@ -550,6 +760,8 @@ static void handleReboot() {
   ESP.restart();
 }
 
+static void handleCaptive() { handleRoot(); }
+
 static void addRoutes() {
   if (sRoutes) return;
   sServer.on("/", handleRoot);
@@ -557,6 +769,22 @@ static void addRoutes() {
   sServer.on("/api/config", HTTP_POST, handleConfigPost);
   sServer.on("/api/command", HTTP_POST, handleCommand);
   sServer.on("/api/reboot", HTTP_POST, handleReboot);
+  sServer.on("/generate_204", HTTP_GET, handleCaptive);
+  sServer.on("/gen_204", HTTP_GET, handleCaptive);
+  sServer.on("/hotspot-detect.html", HTTP_GET, handleCaptive);
+  sServer.on("/library/test/success.html", HTTP_GET, handleCaptive);
+  sServer.on("/ncsi.txt", HTTP_GET, handleCaptive);
+  sServer.on("/connecttest.txt", HTTP_GET, handleCaptive);
+  sServer.on("/canonical.html", HTTP_GET, handleCaptive);
+  sServer.on("/success.txt", HTTP_GET, handleCaptive);
+  sServer.on("/fwlink/", HTTP_GET, handleCaptive);
+  sServer.onNotFound([]() {
+    if (sServer.uri().startsWith("/api/")) {
+      sServer.send(404, "text/plain", "not found");
+      return;
+    }
+    handleRoot();
+  });
   sRoutes = true;
 }
 
@@ -580,9 +808,7 @@ void lampWebEnsure() {
 }
 
 void lampWebService() {
-  if (nodeSoftApStarted() && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
-    nodeSoftApService();
-  }
+  if (nodeSoftApStarted()) nodeSoftApService();
   if (sBegun) sServer.handleClient();
 }
 

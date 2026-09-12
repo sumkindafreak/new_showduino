@@ -217,6 +217,22 @@ int main() {
   showduino_lamp_list_slice(10, &start, &count);
   expect(count == 0, "list past end");
 
+  expect(showduino_lamp_volt_mv(-1, SHOWDUINO_LAMP_VOLT_FS_MV,
+                                SHOWDUINO_LAMP_VOLT_ADC_MAX) == -1,
+         "negative raw stays uncalibrated");
+  expect(showduino_lamp_volt_mv(4095, 0, SHOWDUINO_LAMP_VOLT_ADC_MAX) == -1,
+         "missing num stays uncalibrated");
+  expect(showduino_lamp_volt_mv(4095, SHOWDUINO_LAMP_VOLT_FS_MV,
+                                SHOWDUINO_LAMP_VOLT_ADC_MAX) == 5000,
+         "12-bit full scale is 5.00 V");
+  expect(showduino_lamp_volt_mv(0, SHOWDUINO_LAMP_VOLT_FS_MV,
+                                SHOWDUINO_LAMP_VOLT_ADC_MAX) == 0,
+         "zero counts is 0 V");
+  expect(showduino_lamp_volt_is_default_fs(SHOWDUINO_LAMP_VOLT_FS_MV,
+                                           SHOWDUINO_LAMP_VOLT_ADC_MAX),
+         "default 5 V FS flag");
+  expect(!showduino_lamp_volt_is_default_fs(5000, 484), "one-point is not default FS");
+
   if (gFails) {
     std::printf("%d FAILED\n", gFails);
     return 1;

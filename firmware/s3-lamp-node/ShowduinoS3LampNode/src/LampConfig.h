@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include "../../../protocol/showduino_lamp_node.h"
+#include "../../../protocol/showduino_lamp_motion.h"
 
 void lampConfigBegin();
 const char *lampConfigId();
@@ -25,5 +26,21 @@ uint32_t lampConfigVoltWarnMv();
 uint32_t lampConfigVoltUnderMv();
 uint32_t lampConfigLightScale();
 void lampConfigSetLightScale(uint32_t scale);
+uint8_t lampConfigMotionEnabled();
+void lampConfigSetMotionEnabled(uint8_t en);
+ShowduinoMotionAction lampConfigMotionAction();
+void lampConfigSetMotionAction(ShowduinoMotionAction act);
+uint8_t lampConfigMotionActiveLow();
+void lampConfigSetMotionActiveLow(uint8_t activeLow);
+uint16_t lampConfigMotionCooldownMs();
+void lampConfigSetMotionCooldownMs(uint16_t ms);
+uint8_t lampConfigFlameActivity();
+void lampConfigSetFlameActivity(uint8_t v);
+uint8_t lampConfigFlickerAmount();
+void lampConfigSetFlickerAmount(uint8_t v);
+uint8_t lampConfigIgnitionSpeed();
+void lampConfigSetIgnitionSpeed(uint8_t v);
+uint8_t lampConfigJewelCore();
+void lampConfigSetJewelCore(uint8_t v);
 
 #endif
