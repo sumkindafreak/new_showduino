@@ -10,7 +10,7 @@
   "emergencyUpdatePolicy": "ONE_AT_A_TIME",
   "components": [
     { "role": "p4", "id": "P4", "firmware": "0.6.3", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "comms", "id": "COMMS", "firmware": "0.5.0", "otaCapable": true, "hardwareId": "SHOWDUINO-S3-COMMS-V1", "filename": "ShowduinoS3CommsController.ino.bin", "size": 1357232, "sha256": "2dfac726f6c08e6b4486ae22c0849a8c90e27afaaa937f0baa14602cfdf97107", "updatePolicy": "INDEPENDENT" },
+    { "role": "comms", "id": "COMMS", "firmware": "0.5.0", "otaCapable": true, "hardwareId": "SHOWDUINO-S3-COMMS-V1", "filename": "ShowduinoS3CommsController.ino.bin", "size": 1357520, "sha256": "080d27e7a3ed59916f93180b5e068f2bd87b0da30d688c2c5964685cab3800d1", "updatePolicy": "INDEPENDENT" },
     { "role": "director", "id": "DIRECTOR", "firmware": "0.9.7-director", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
     { "role": "audio", "id": "AUDIO", "firmware": "0.4.2", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
     { "role": "lamp", "id": "LAMP", "firmware": "0.4.0", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
