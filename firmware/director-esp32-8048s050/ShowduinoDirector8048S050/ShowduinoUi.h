@@ -1070,6 +1070,16 @@ public:
     return true;
   }
 
+  bool commsUpdatingVisible() const {
+    if (maintenanceWire_) return true;
+    if (expectCommsReconnect_ && linkState != LINK_READY) return true;
+    if (!commsOtaActive_) return false;
+    return strcmp(commsOtaState_, "COMPLETE") != 0 &&
+           strcmp(commsOtaState_, "ROLLED_BACK") != 0 &&
+           strcmp(commsOtaState_, "FAILED") != 0 &&
+           strcmp(commsOtaState_, "IDLE") != 0;
+  }
+
   bool applyUpdateWire(const char *line) {
     if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_UPDATE_PREFIX,
                          strlen(SHOWDUINO_WIRE_STATE_UPDATE_PREFIX)) != 0) {
@@ -1079,6 +1089,24 @@ public:
     strncpy(updateStatus_, p, sizeof(updateStatus_) - 1);
     updateStatus_[sizeof(updateStatus_) - 1] = '\0';
     updateLatest_[0] = '\0';
+    commsOtaActive_ = (strncmp(p, "COMMS:", 6) == 0);
+    maintenanceWire_ = (strcmp(p, "MAINTENANCE") == 0);
+    if (commsOtaActive_) {
+      strncpy(commsOtaState_, p + 6, sizeof(commsOtaState_) - 1);
+      commsOtaState_[sizeof(commsOtaState_) - 1] = '\0';
+      if (!strcmp(commsOtaState_, "REBOOT_REQUIRED") ||
+          !strcmp(commsOtaState_, "PENDING_VALIDATION")) {
+        expectCommsReconnect_ = true;
+      }
+      if (!strcmp(commsOtaState_, "COMPLETE") ||
+          !strcmp(commsOtaState_, "ROLLED_BACK") ||
+          !strcmp(commsOtaState_, "FAILED") ||
+          !strcmp(commsOtaState_, "IDLE")) {
+        expectCommsReconnect_ = false;
+      }
+      statusBar_.setUpdateHint(false, nullptr);
+      return true;
+    }
     char *colon = strchr(updateStatus_, ':');
     if (colon) {
       *colon = '\0';
@@ -1113,6 +1141,9 @@ public:
       sys = SB::SystemState::Discovery;
     } else {
       sys = SB::SystemState::Ready;
+    }
+    if (em != SB::EmergencyState::EmergencyStop && commsUpdatingVisible()) {
+      sys = SB::SystemState::Ota;
     }
     statusBar_.setSystemState(sys);
 
@@ -1639,7 +1670,11 @@ private:
   bool gwSta_ = false;
   bool gwInet_ = false;
   uint8_t gwCh_ = 1;
-  char updateStatus_[20] = "NONE";
+  char updateStatus_[40] = "NONE";
+  char commsOtaState_[32] = "";
+  bool commsOtaActive_ = false;
+  bool expectCommsReconnect_ = false;
+  bool maintenanceWire_ = false;
   char updateLatest_[32] = "";
   bool emergencyOverlayVisible = false;
   bool emergencyOverlayDismissed = false;
@@ -3059,13 +3094,39 @@ private:
   }
 
   void fillAboutText(char *text, size_t n) {
+    const char *otaLine = "COMMS ONLY — not system-wide";
+    const char *phaseLine = "READY";
+    if (maintenanceWire_ && !commsOtaActive_) phaseLine = "SYSTEM MAINTENANCE";
+    if (commsOtaActive_) {
+      if (!strcmp(commsOtaState_, "DOWNLOADING") ||
+          !strcmp(commsOtaState_, "VERIFYING") ||
+          !strcmp(commsOtaState_, "INSTALLING")) {
+        phaseLine = "UPDATING COMMS";
+      } else if (!strcmp(commsOtaState_, "REBOOT_REQUIRED")) {
+        phaseLine = "COMMS RESTARTING";
+      } else if (!strcmp(commsOtaState_, "PENDING_VALIDATION")) {
+        phaseLine = "PENDING VALIDATION";
+      } else if (!strcmp(commsOtaState_, "COMPLETE")) {
+        phaseLine = "UPDATE COMPLETE";
+      } else if (!strcmp(commsOtaState_, "ROLLED_BACK")) {
+        phaseLine = "UPDATE ROLLED BACK";
+      } else if (!strcmp(commsOtaState_, "FAILED") ||
+                 !strcmp(commsOtaState_, "INTERRUPTED_BY_EMERGENCY")) {
+        phaseLine = "UPDATE FAILED";
+      } else {
+        phaseLine = commsOtaState_;
+      }
+    }
+    if (expectCommsReconnect_ && linkState != LINK_READY) {
+      phaseLine = "RECONNECTING";
+    }
     snprintf(text, n,
              "Showduino  %s\n"
              "Director   %s\n"
              "Board      %s\n"
              "Protocol   %d.%d\n"
-             "Update     %s%s%s\n"
-             "OTA        NOT IMPLEMENTED\n"
+             "Update     %s\n"
+             "OTA        %s\n"
              "E-stop     ESTOP-01 then healthy+linked\n"
              "Role       control surface\n"
              "P4 is the show authority.",
@@ -3074,9 +3135,8 @@ private:
              SHOWDUINO_BOARD_NAME,
              SHOWDUINO_PROTOCOL_VERSION_MAJOR,
              SHOWDUINO_PROTOCOL_VERSION_MINOR,
-             updateStatus_,
-             updateLatest_[0] ? " " : "",
-             updateLatest_);
+             phaseLine,
+             otaLine);
   }
 
   void showAboutDialog() {

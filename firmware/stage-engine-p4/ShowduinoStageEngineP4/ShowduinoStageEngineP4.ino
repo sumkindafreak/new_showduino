@@ -83,6 +83,7 @@ static bool sProductionStoreReady = false;
 static uint32_t sProductionStoreRetryMs = 0;
 
 bool emergencyLocked = false;
+bool gMaintenanceMode = false;
 uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 USB, 4 wireless */
 unsigned long lastHeartbeatMs = 0;
 
@@ -152,6 +153,7 @@ static bool isKnownCommsCommand(const String &c) {
       c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
       c.startsWith("STORAGE:")) return true;
   if (c.startsWith("PLUGIN:")) return true;
+  if (c.startsWith("UPDATE:")) return true;
   if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:") || c.startsWith("ESTOP:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
@@ -738,6 +740,11 @@ void handleShowCommand(const String &command) {
       sendCommandReply("SHOW:START:REJECTED:EMERGENCY");
       return;
     }
+    if (gMaintenanceMode) {
+      Serial.println("[SHOW] Start rejected: SYSTEM MAINTENANCE");
+      sendCommandReply("SHOW:START:REJECTED:MAINTENANCE");
+      return;
+    }
     if (gRuntime.timeline.cueTotal() == 0) {
       sendCommandReply("SHOW:START:REJECTED:NO_PRODUCTION");
       return;
@@ -863,6 +870,7 @@ static void printUsbHelp() {
   Serial.println("  PRODUCTION:LOAD:<id>");
   Serial.println("  PRODUCTION:UNLOAD");
   Serial.println("  PRODUCTION:STATUS");
+  Serial.println("  UPDATE:MAINTENANCE:ON | UPDATE:MAINTENANCE:OFF");
   Serial.println("  EMERGENCY:STOP");
   Serial.println("  EMERGENCY:CLEAR            (USB maintenance; loop must be healthy)");
   Serial.println("  EMERGENCY:CLEAR_CONFIRM    (dual-action; requires pending request)");
@@ -1066,6 +1074,18 @@ static void dispatchCommand(const String &command) {
     Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR_CANCEL\n",
                   sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
     handleEmergencyClearCancel();
+    return;
+  }
+
+  if (command == "UPDATE:MAINTENANCE:ON" || command == "UPDATE:MAINTENANCE:OFF") {
+    if (command.endsWith(":ON") && gRuntime.rt.running) {
+      sendCommandReply("UPDATE:MAINTENANCE:REJECTED:SHOW_RUNNING");
+      return;
+    }
+    gMaintenanceMode = command.endsWith(":ON");
+    Serial.printf("[UPDATE] SYSTEM MAINTENANCE %s\n", gMaintenanceMode ? "ON" : "OFF");
+    sendToDirector(gMaintenanceMode ? "STATE:UPDATE:MAINTENANCE" : "STATE:UPDATE:READY");
+    sendCommandReply(gMaintenanceMode ? "UPDATE:MAINTENANCE:OK" : "UPDATE:MAINTENANCE:OFF:OK");
     return;
   }
 
@@ -1592,4 +1612,11 @@ void loop() {
     emergencyPixelsService();
   }
   stageDiagService();
+  if (gMaintenanceMode) {
+    static uint32_t sMaintPubMs = 0;
+    if ((millis() - sMaintPubMs) >= 4000UL) {
+      sMaintPubMs = millis();
+      sendToDirector("STATE:UPDATE:MAINTENANCE");
+    }
+  }
 }

@@ -6,7 +6,7 @@
 #include "../../../protocol/showduino_version.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.2"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.3"
 #endif
 
 /*

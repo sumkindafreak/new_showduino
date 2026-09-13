@@ -33,6 +33,7 @@
 #endif
 
 extern bool emergencyLocked;
+extern bool gMaintenanceMode;
 extern uint8_t gEmergencySourceId;
 extern ShowRuntimeOwner gRuntime;
 extern ProductionStore gProductionStore;
@@ -60,6 +61,7 @@ static void fillUpdateInventory(ShowduinoUpdateInventory *inv) {
   showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_COMMS, "COMMS", "COMMS",
                                  "", comms ? 1 : 0, comms ? 1 : 0, comms ? 1 : 0,
                                  comms ? 1 : 0, 0);
+  if (inv->count) inv->items[inv->count - 1].ota_capable = 1;
   const AudioNodeStatus &an = audioNodeLinkStatus();
   if (an.seen) {
     showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_AUDIO, "AUDIO", "AUDIO",
@@ -109,7 +111,9 @@ static void appendUpdateInventoryJson(String &json, const ShowduinoUpdateInvento
     json += it.healthy ? "true" : "false";
     json += ",\"linked\":";
     json += it.linked ? "true" : "false";
-    json += ",\"otaCapable\":false,\"safetyClass\":";
+    json += ",\"otaCapable\":";
+    json += it.ota_capable ? "true" : "false";
+    json += ",\"safetyClass\":";
     json += it.safety_class ? "true" : "false";
     json += ",\"updatePolicy\":\"";
     json += showduino_update_policy_for_role(it.role);
@@ -271,6 +275,9 @@ static void normalizeWebCmd(String &cmd) {
 static bool webCommandAllowed(const String &cmd) {
   if (cmd == "SHOW:START" || cmd == "SHOW:RUN" || cmd == "SHOW:PAUSE" ||
       cmd == "SHOW:RESUME" || cmd == "SHOW:STOP" || cmd == "STOP:ALL") {
+    return true;
+  }
+  if (cmd == "UPDATE:MAINTENANCE:ON" || cmd == "UPDATE:MAINTENANCE:OFF") {
     return true;
   }
   if (cmd == "PRODUCTION:UNLOAD" || cmd == "PLUGIN:SCAN" ||
@@ -543,6 +550,8 @@ static void handleApiSystem() {
   json += ",\n  \"emergencySafetyFault\": ";
   json += emergencyNodeLinkSafetyFault() ? "true" : "false";
   json += ",\n  \"otaInstall\": false";
+  json += ",\n  \"maintenanceMode\": ";
+  json += gMaintenanceMode ? "true" : "false";
   {
     ShowduinoUpdateInventory inv;
     ShowduinoUpdatePlan plan;
@@ -573,22 +582,54 @@ static void handleApiUpdates() {
   json += "  \"firmwareVersion\": \"" SHOWDUINO_P4_FIRMWARE_VERSION "\",\n";
   json += "  \"otaInstall\": false,\n";
   json += "  \"applyImplemented\": false,\n";
-  json += "  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
+  json += "  \"commsApplyImplemented\": true,\n";
+  json += "  \"maintenanceMode\": ";
+  json += gMaintenanceMode ? "true" : "false";
+  json += ",\n  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
   json += "  \"inventory\": ";
   appendUpdateInventoryJson(json, inv);
   json += ",\n  \"plan\": ";
   appendUpdatePlanJson(json, plan);
-  json += ",\n  \"note\": \"Phase 1 inventory and plan only. OTA install is not implemented.\"\n}\n";
+  json += ",\n  \"note\": \"Phase 2A: Comms self-OTA is applied on the Comms Controller. P4 firmware is not OTA updated.\"\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
 
-static void handleApiUpdatesApply() {
+static void handleApiUpdatesMaintenance(const char *body) {
+  gWebApiLogger.logHttpRequest("POST", "/api/updates/maintenance");
+  String replies;
+  const String b = body ? body : "";
+  const bool off = b.indexOf("\"on\":false") >= 0 || b.indexOf("\"on\": false") >= 0;
+  stageWebDispatchCommand(off ? "UPDATE:MAINTENANCE:OFF" : "UPDATE:MAINTENANCE:ON", &replies);
+  String json = "{\n  \"ok\":true,\n  \"maintenanceMode\": ";
+  json += gMaintenanceMode ? "true" : "false";
+  json += "\n}\n";
+  sendWebr(200, "application/json", json.c_str(), json.length());
+}
+
+static void handleApiUpdatesApply(const char *body) {
   gWebApiLogger.logHttpRequest("POST", "/api/updates/apply");
-  const char *body =
+  String component;
+  if (body && body[0]) {
+    const String b = body;
+    const int key = b.indexOf("\"component\"");
+    const int colon = key >= 0 ? b.indexOf(':', key) : -1;
+    const int q1 = colon >= 0 ? b.indexOf('"', colon) : -1;
+    const int q2 = q1 >= 0 ? b.indexOf('"', q1 + 1) : -1;
+    if (q1 >= 0 && q2 > q1) component = b.substring(q1 + 1, q2);
+  }
+  if (component.length() && component != "comms") {
+    const char *out =
+        "{\"ok\":false,\"error\":\"ota_unavailable\",\"otaInstall\":false,"
+        "\"applyImplemented\":false,\"reason\":\"OTA_UNAVAILABLE\","
+        "\"note\":\"P4 does not install this component. USB remains required.\"}\n";
+    sendWebr(501, "application/json", out, strlen(out));
+    return;
+  }
+  const char *out =
       "{\"ok\":false,\"error\":\"ota_not_implemented\",\"otaInstall\":false,"
       "\"applyImplemented\":false,\"reason\":\"OTA_NOT_IMPLEMENTED\","
-      "\"note\":\"Phase 1 foundation only. System-wide OTA is not physically proven.\"}\n";
-  sendWebr(501, "application/json", body, strlen(body));
+      "\"note\":\"Comms self-OTA is applied on the Comms Controller, not on the P4.\"}\n";
+  sendWebr(501, "application/json", out, strlen(out));
 }
 
 static void handleApiLogs() {
@@ -1136,8 +1177,12 @@ bool webApiDispatch(const char *method, const char *pathIn, const char *body) {
       handleApiCommand(cmd);
       return true;
     }
+    if (path.startsWith("/api/updates/maintenance")) {
+      handleApiUpdatesMaintenance(body);
+      return true;
+    }
     if (path.startsWith("/api/updates/apply")) {
-      handleApiUpdatesApply();
+      handleApiUpdatesApply(body);
       return true;
     }
     if (path.startsWith("/api/updates/plan") || path.startsWith("/api/updates")) {
