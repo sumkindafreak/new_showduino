@@ -22,6 +22,8 @@
 #include "showduino_message_types.h"
 #include "showduino_state_wire.h"
 #include "showduino_show_runtime.h"
+#include "showduino_emergency_node.h"
+#include "showduino_legacy_strings.h"
 
 static int g_failures = 0;
 
@@ -322,6 +324,28 @@ int main() {
     expect(strcmp(stbuf, "SHOW:STATE:RUNNING") == 0, "SHOW:STATE:RUNNING token");
     expect(strcmp(showStateLegacyToken(SHOW_STATE_RUNNING), "PLAYING") == 0, "legacy PLAYING");
     expect(strcmp(SHOW_STATE_QUERY, "SHOW:STATE?") == 0, "SHOW:STATE? token");
+  }
+
+  /* ---- Emergency Node Protocol 1.0 additive ---- */
+  {
+    expect(strcmp(SHOWDUINO_LEGACY_ROUTE_EMERGENCY, "ROUTE:EMERGENCY:") == 0,
+           "ROUTE:EMERGENCY token");
+    expect(showduino_emergency_is_clear_token("ESTOP:CLEAR") != 0, "ESTOP:CLEAR rejected");
+    expect(showduino_emergency_parse_command("ESTOP:CLEAR") ==
+               SHOWDUINO_ESTOP_CMD_REJECT_CLEAR,
+           "parse rejects ESTOP:CLEAR");
+    expect(showduino_emergency_parse_command("EMERGENCY:CLEAR") ==
+               SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED,
+           "P4 fan-out CLEAR is observed");
+    char next[16];
+    expect(showduino_emergency_next_id("ESTOP-01", next, sizeof(next)) != 0,
+           "next after ESTOP-01");
+    expect(strcmp(next, "ESTOP-02") == 0, "ESTOP-01 -> ESTOP-02");
+    expect(showduino_parse_state_node_emergency("STATE:NODE:EMERGENCY:FAULT") ==
+               SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT,
+           "emergency node FAULT wire");
+    expect(showduino_parse_state_safety_estop_fault("STATE:SAFETY:ESTOP:FAULT") == 1,
+           "safety fault wire");
   }
 
   std::printf("\n");

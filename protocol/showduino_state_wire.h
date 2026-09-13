@@ -22,6 +22,9 @@ extern "C" {
 #define SHOWDUINO_WIRE_STATE_NODE_AUDIO_PREFIX "STATE:NODE:AUDIO:"
 #define SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX  "STATE:NODE:LAMP:"
 #define SHOWDUINO_WIRE_STATE_NODE_PIXEL_PREFIX "STATE:NODE:PIXEL:"
+#define SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_PREFIX "STATE:NODE:EMERGENCY:"
+#define SHOWDUINO_WIRE_STATE_EMERGENCY_SOURCE_PREFIX "STATE:EMERGENCY:SOURCE:"
+#define SHOWDUINO_WIRE_STATE_SAFETY_PREFIX "STATE:SAFETY:"
 #define SHOWDUINO_WIRE_STATE_RELAY_PREFIX "STATE:RELAY:"
 /* Reserved for a future Director Ethernet / E1.31 status page. Not published yet. */
 #define SHOWDUINO_WIRE_STATE_ETHERNET_PREFIX "STATE:ETHERNET:"
@@ -537,6 +540,175 @@ static inline int showduino_parse_relay_outcome(
     reasonOut[n] = '\0';
   }
   return 0;
+}
+
+#define SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_DETAIL_PREFIX "STATE:NODE:EMERGENCY:D:"
+#define SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_STATION_PREFIX "STATE:NODE:EMERGENCY:S:"
+#define SHOWDUINO_WIRE_SAFETY_ESTOP_OK    "ESTOP:OK"
+#define SHOWDUINO_WIRE_SAFETY_ESTOP_FAULT "ESTOP:FAULT"
+
+typedef enum ShowduinoEmergencyNodeWire {
+  SHOWDUINO_EMERGENCY_NODE_WIRE_OFFLINE = 0,
+  SHOWDUINO_EMERGENCY_NODE_WIRE_ONLINE,
+  SHOWDUINO_EMERGENCY_NODE_WIRE_ACTIVE,
+  SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT,
+  SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID = -1
+} ShowduinoEmergencyNodeWire;
+
+typedef struct ShowduinoEmergencyDetailWire {
+  uint8_t online;
+  uint8_t seen;
+  uint8_t asserting;
+  uint8_t offline;
+  char firstId[16];
+  char firstName[20];
+  char firstState[20];
+} ShowduinoEmergencyDetailWire;
+
+typedef struct ShowduinoEmergencySourceWire {
+  char kind[12];
+  char id[16];
+  char name[20];
+} ShowduinoEmergencySourceWire;
+
+typedef struct ShowduinoEmergencyStationWire {
+  uint8_t slot;
+  uint8_t online;
+  uint8_t input_open;
+  uint8_t latched;
+  uint8_t acked;
+  char id[16];
+  char name[20];
+  char state[20];
+} ShowduinoEmergencyStationWire;
+
+static inline ShowduinoEmergencyNodeWire showduino_parse_state_node_emergency(const char *line) {
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_PREFIX) - 1;
+  const char *v;
+  if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_PREFIX, prefixLen) != 0) {
+    return SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID;
+  }
+  v = line + prefixLen;
+  if (v[0] == 'D' && v[1] == ':') return SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID;
+  if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_EMERGENCY_NODE_WIRE_OFFLINE;
+  if (strcmp(v, "ONLINE") == 0) return SHOWDUINO_EMERGENCY_NODE_WIRE_ONLINE;
+  if (strcmp(v, "ACTIVE") == 0) return SHOWDUINO_EMERGENCY_NODE_WIRE_ACTIVE;
+  if (strcmp(v, "FAULT") == 0) return SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT;
+  return SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID;
+}
+
+static inline int showduino_parse_state_node_emergency_detail(const char *line,
+                                                             ShowduinoEmergencyDetailWire *out) {
+  const char *p;
+  const char *c;
+  size_t n;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_DETAIL_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_DETAIL_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_DETAIL_PREFIX) - 1);
+  out->online = (uint8_t)strtoul(p, NULL, 10);
+  c = strchr(p, ':');
+  if (!c) return 1;
+  out->seen = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  out->asserting = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  out->offline = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  p = c + 1;
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->firstId)) n = sizeof(out->firstId) - 1;
+  memcpy(out->firstId, p, n);
+  if (!c) return 1;
+  p = c + 1;
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->firstName)) n = sizeof(out->firstName) - 1;
+  memcpy(out->firstName, p, n);
+  if (c) strncpy(out->firstState, c + 1, sizeof(out->firstState) - 1);
+  return 1;
+}
+
+static inline int showduino_parse_state_emergency_source(const char *line,
+                                                         ShowduinoEmergencySourceWire *out) {
+  const char *p;
+  const char *c;
+  size_t n;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_EMERGENCY_SOURCE_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_EMERGENCY_SOURCE_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_EMERGENCY_SOURCE_PREFIX) - 1);
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->kind)) n = sizeof(out->kind) - 1;
+  memcpy(out->kind, p, n);
+  if (!c) return 1;
+  p = c + 1;
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->id)) n = sizeof(out->id) - 1;
+  memcpy(out->id, p, n);
+  if (c) strncpy(out->name, c + 1, sizeof(out->name) - 1);
+  return 1;
+}
+
+static inline int showduino_parse_state_node_emergency_station(const char *line,
+                                                               ShowduinoEmergencyStationWire *out) {
+  const char *p;
+  const char *c;
+  size_t n;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_STATION_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_STATION_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_STATION_PREFIX) - 1);
+  out->slot = (uint8_t)strtoul(p, NULL, 10);
+  c = strchr(p, ':');
+  if (!c) return 1;
+  p = c + 1;
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->id)) n = sizeof(out->id) - 1;
+  memcpy(out->id, p, n);
+  if (!c) return 1;
+  p = c + 1;
+  c = strchr(p, ':');
+  n = c ? (size_t)(c - p) : strlen(p);
+  if (n >= sizeof(out->name)) n = sizeof(out->name) - 1;
+  memcpy(out->name, p, n);
+  if (!c) return 1;
+  out->online = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  out->input_open = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  out->latched = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (!c) return 1;
+  out->acked = (uint8_t)strtoul(c + 1, NULL, 10);
+  c = strchr(c + 1, ':');
+  if (c) strncpy(out->state, c + 1, sizeof(out->state) - 1);
+  return 1;
+}
+
+static inline int showduino_parse_state_safety_estop_fault(const char *line) {
+  if (!line) return -1;
+  if (strcmp(line, "STATE:SAFETY:ESTOP:FAULT") == 0) return 1;
+  if (strcmp(line, "STATE:SAFETY:ESTOP:OK") == 0) return 0;
+  return -1;
 }
 
 #ifdef __cplusplus
