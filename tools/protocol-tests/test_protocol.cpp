@@ -23,6 +23,7 @@
 #include "showduino_state_wire.h"
 #include "showduino_show_runtime.h"
 #include "showduino_emergency_node.h"
+#include "showduino_update_manager.h"
 #include "showduino_legacy_strings.h"
 
 static int g_failures = 0;
@@ -346,6 +347,10 @@ int main() {
            "emergency node FAULT wire");
     expect(showduino_parse_state_safety_estop_fault("STATE:SAFETY:ESTOP:FAULT") == 1,
            "safety fault wire");
+    expect(showduino_update_apply_allowed(0, 0) == 0, "Phase 1 apply blocked");
+    expect(strcmp(SHOWDUINO_UPDATE_POLICY_ONE_AT_TIME,
+                  SHOWDUINO_EMERGENCY_UPDATE_POLICY) == 0,
+           "update manager reuses Emergency gate policy");
   }
 
   std::printf("\n");
