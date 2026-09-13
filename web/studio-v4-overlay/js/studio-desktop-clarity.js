@@ -389,6 +389,7 @@
     window.addEventListener('resize', refresh);
     window.addEventListener('showduino:v4-saved', refresh);
     window.addEventListener('showduino:project-saved', refresh);
+    window.ShowduinoDesktopClarity = Object.freeze({ refresh, version:'1.0.1' });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
