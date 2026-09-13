@@ -24,6 +24,7 @@ Legend:
 | Comms home/venue Wi-Fi + retained AP | WIFI slot ≠ LINK | NVS `sdnet`, AP+STA | Not Wi-Fi authority | Network page | GATEWAY wire | Follow Showduino AP | **NEEDS HARDWARE TEST** |
 | WebUI Network configuration/status | Network dialog (display) | `/api/gateway*` | Ethernet/E1.31 still P4 | Gateway first, Ethernet below | n/a | n/a | **PARTIAL** (implemented; needs bench) |
 | GitHub Releases Check for Updates | UPD hint, no prompt | Discovery only | Not GitHub authority | System Software card | Version compare | n/a | **PARTIAL** (no OTA install; no releases published yet) |
+| System Update Manager Phase 1 | Software dialog: OTA not implemented + sequential E-stop | `/api/updates*` discovery + apply 501 | Inventory + plan; apply 501 | Inventory + sequential policy | `showduino_update_manager.h` + release manifest | Emergency uses existing one-at-a-time gate | **PARTIAL** (foundation only; OTA not physically proven) |
 | Future LAN devices / paludarium | No UI | No dispatcher | No `NETWORK_HTTP` | Not advertised as shipping | Documented only | n/a | **NO** (foundation doc only) |
 | Cross-component sync rule | Checked this pass | Checked | Checked | Checked | Headers added | Audio/Lamp radio | **YES** (process + this change set) |
 | Emergency/safety regression | Dual-action clear unchanged | Transport only | Latch, pixels white, no auto-resume; persist abort | PANIC still P4 | Safety cannot weaken in SHDO | Lamp emergency white | **NEEDS HARDWARE TEST** (code not weakened) |

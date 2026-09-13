@@ -85,6 +85,7 @@ export function setGatewayMode(mode) {
   });
 }
 export function fetchUpdates() { return request('/api/updates'); }
+export function fetchUpdateInventory() { return request('/api/updates/inventory'); }
 export function checkUpdates() {
   return request('/api/updates/check', { method: 'POST', body: '{}' });
 }

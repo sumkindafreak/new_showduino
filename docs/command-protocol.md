@@ -121,6 +121,7 @@ ESTOP:GLOBAL:OBSERVED
 
 There is no wireless `ESTOP:CLEAR`. An Emergency Node must never clear P4 emergency.
 Update/commission stations one at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.
+The System Update Manager must call `showduino_emergency_update_gate()` before advancing. Gate failure or timeout is `SAFETY_NODE_UPDATE_FAILED`. Phase 1 does not install firmware.
 
 ### Global pixel emergency law
 

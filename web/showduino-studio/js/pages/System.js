@@ -1,4 +1,4 @@
-import { fetchLogs, postCommand, isP4Offline, fetchUpdates, checkUpdates } from '../api.js';
+import { fetchLogs, postCommand, isP4Offline, fetchUpdates, fetchUpdateInventory, checkUpdates } from '../api.js';
 import { subscribeStore } from '../store.js';
 import { MemoryBar } from '../components/MemoryBar.js';
 import {
@@ -35,6 +35,7 @@ export async function SystemPage(container) {
   let filter = 'ALL';
   let lastSnap = { comms: null, system: null, p4Online: false };
   let updates = null;
+  let updateInventory = null;
   let updateBusy = false;
   let updateNote = '';
 
@@ -74,10 +75,29 @@ export async function SystemPage(container) {
     software.append(statRow('Status', (updates && updates.status) ? String(updates.status).replace(/_/g, ' ').toUpperCase() : 'NOT CHECKED'));
     software.append(statRow('Internet', (updates && updates.internet) || ((c && c.gateway && c.gateway.internet) || 'unknown')));
     software.append(statRow('OTA install', 'NOT IMPLEMENTED'));
+    software.append(statRow('Apply', 'BLOCKED — PHASE 1 FOUNDATION'));
+    software.append(statRow('Emergency policy', (updates && updates.emergencyUpdatePolicy) || 'ONE_AT_A_TIME'));
     if (updates && updates.releaseNotes) {
       software.append(el('p', { className: 'sub', text: updates.releaseNotes }));
     }
     software.append(el('p', { className: 'sub', text: 'Check for Updates reads GitHub Releases. It does not install firmware. No published release is not a Showduino fault.' }));
+    software.append(el('p', { className: 'sub', text: 'Emergency Nodes: ESTOP-01 update → reboot → healthy+linked → ESTOP-02. Never update two stations at once.' }));
+    const invItems = (updateInventory && Array.isArray(updateInventory.inventory))
+      ? updateInventory.inventory
+      : ((s && Array.isArray(s.updateInventory)) ? s.updateInventory : []);
+    if (invItems.length) {
+      software.append(el('h3', { text: 'Installed inventory' }));
+      for (const it of invItems) {
+        const flag = it.safetyClass
+          ? ((it.healthy && it.linked) ? 'HEALTHY+LINKED' : 'NOT READY')
+          : (it.online ? 'ONLINE' : 'OFFLINE');
+        software.append(statRow((it.id || it.role || 'node').toUpperCase(),
+          (it.firmware || '—') + ' · ' + flag));
+      }
+    }
+    if (updateInventory && updateInventory.plan && updateInventory.plan.safetyFailed) {
+      software.append(el('p', { className: 'sub', text: 'SAFETY NODE UPDATE FAILED — stop the Emergency Node sequence.' }));
+    }
     software.append(el('button', {
       className: 'btn-primary',
       text: updateBusy ? 'Checking…' : 'Check for Updates',
@@ -91,6 +111,7 @@ export async function SystemPage(container) {
           for (let i = 0; i < 10; i++) {
             await new Promise((r) => setTimeout(r, 400));
             updates = await fetchUpdates();
+            try { updateInventory = await fetchUpdateInventory(); } catch (_) {}
             if (updates && updates.checking === false && updates.status !== 'never_checked') break;
           }
           updateNote = updates && updates.htmlUrl ? updates.htmlUrl : '';
@@ -403,6 +424,8 @@ export async function SystemPage(container) {
     paintMain();
   });
   try { updates = await fetchUpdates(); } catch (_) { updates = null; }
+  try { updateInventory = await fetchUpdateInventory(); } catch (_) { updateInventory = null; }
+  paintMain();
   await pollLogs();
   const timer = setInterval(pollLogs, 5000);
   return () => {

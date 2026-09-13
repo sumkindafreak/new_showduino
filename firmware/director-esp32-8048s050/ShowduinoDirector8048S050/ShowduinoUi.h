@@ -2744,7 +2744,7 @@ private:
     makeButton(settings, "About", 284, 364, 120, 44, "SETTINGS:ABOUT");
     makeButton(settings, "Network", 8, 416, 140, 44, "SETTINGS:NETWORK");
     makeButton(settings, "Software", 156, 416, 140, 44, "SETTINGS:SOFTWARE");
-    os_.makeCaption(settings, "Network is Comms home Wi-Fi. Software is Showduino 1.0.0-rc.1.", 8, 468);
+      os_.makeCaption(settings, "Software shows versions. OTA install is not implemented.", 8, 468);
 
     refreshTimeoutLabel();
     refreshAtmosphereLabel();
@@ -3065,6 +3065,8 @@ private:
              "Board      %s\n"
              "Protocol   %d.%d\n"
              "Update     %s%s%s\n"
+             "OTA        NOT IMPLEMENTED\n"
+             "E-stop     ESTOP-01 then healthy+linked\n"
              "Role       control surface\n"
              "P4 is the show authority.",
              SHOWDUINO_PLATFORM_VERSION,
@@ -3080,7 +3082,7 @@ private:
   void showAboutDialog() {
     if (!aboutRoot_) {
       aboutRoot_ = os_.makeDialogScrim(lv_layer_top());
-      lv_obj_t *box = os_.makeDialogBox(aboutRoot_, 520, 320, false);
+      lv_obj_t *box = os_.makeDialogBox(aboutRoot_, 520, 360, false);
 
       lv_obj_t *title = lv_label_create(box);
       lv_label_set_text(title, "SOFTWARE");
@@ -3095,10 +3097,10 @@ private:
       lv_obj_set_width(aboutBody_, 470);
       lv_label_set_long_mode(aboutBody_, LV_LABEL_LONG_WRAP);
 
-      makeButton(box, "CLOSE", 180, 250, 160, OS_BTN_H, "UI:ABOUT:CLOSE");
+      makeButton(box, "CLOSE", 180, 290, 160, OS_BTN_H, "UI:ABOUT:CLOSE");
     }
     if (aboutBody_) {
-      char text[360];
+      char text[420];
       fillAboutText(text, sizeof(text));
       lv_label_set_text(aboutBody_, text);
     }

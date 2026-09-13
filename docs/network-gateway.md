@@ -43,7 +43,7 @@ Passwords are never logged or returned.
 `GET /api/updates` and `POST /api/updates/check` discover tags from
 `sumkindafreak/new_showduino` `/releases?per_page=8`, skipping drafts.
 
-- No OTA install.
+- No OTA install. See [`system-updates.md`](system-updates.md) for Phase 1 inventory / plan.
 - `/releases/latest` is not used (it ignores prereleases).
 - No published releases → status `no_releases`, not a Showduino fault.
 - Unauthenticated GitHub API is rate-limited.

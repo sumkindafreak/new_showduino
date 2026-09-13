@@ -11,6 +11,7 @@ Related:
 - [Audio and Pixel Engine](audio-pixel-engine.md)
 - [Specialist Node Roadmap](node-roadmap.md)
 - [Wireless Emergency Node](emergency-node.md)
+- [System updates](system-updates.md)
 
 **Roadmap note:** the active P4 now owns authoritative runtime/safety, persistent TEST/LOG production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL` cue types and broader logical target routing remain follow-up work.
 
