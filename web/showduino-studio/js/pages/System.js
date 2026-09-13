@@ -1,4 +1,4 @@
-import { fetchLogs, postCommand, isP4Offline, fetchUpdates, fetchUpdateInventory, checkUpdates } from '../api.js';
+import { fetchLogs, postCommand, isP4Offline, fetchUpdates, fetchUpdateInventory, fetchUpdateStatus, checkUpdates, setUpdateMaintenance, applyCommsUpdate } from '../api.js';
 import { subscribeStore } from '../store.js';
 import { MemoryBar } from '../components/MemoryBar.js';
 import {
@@ -38,6 +38,11 @@ export async function SystemPage(container) {
   let updateInventory = null;
   let updateBusy = false;
   let updateNote = '';
+  let updateStatus = null;
+  let candidateUrl = '';
+  let candidateFw = '';
+  let candidateSha = '';
+  let candidateSize = '';
 
   function paintMain() {
     host.innerHTML = '';
@@ -74,9 +79,17 @@ export async function SystemPage(container) {
     software.append(statRow('Latest', (updates && updates.latest) || '—'));
     software.append(statRow('Status', (updates && updates.status) ? String(updates.status).replace(/_/g, ' ').toUpperCase() : 'NOT CHECKED'));
     software.append(statRow('Internet', (updates && updates.internet) || ((c && c.gateway && c.gateway.internet) || 'unknown')));
-    software.append(statRow('OTA install', 'NOT IMPLEMENTED'));
-    software.append(statRow('Apply', 'BLOCKED — PHASE 1 FOUNDATION'));
+    const ota = (updateStatus && updateStatus.commsOta) || (updates && updates.commsOta) || {};
+    const commsFw = (c && c.firmwareVersion) || ota.installed || '—';
+    software.append(statRow('OTA install', 'COMMS ONLY — not system-wide'));
+    software.append(statRow('Comms OTA', ota.state || 'IDLE'));
+    software.append(statRow('Comms firmware', commsFw + (ota.candidate ? (' → ' + ota.candidate) : '')));
+    software.append(statRow('Apply', 'UPDATE COMMS only. Other nodes still require USB.'));
     software.append(statRow('Emergency policy', (updates && updates.emergencyUpdatePolicy) || 'ONE_AT_A_TIME'));
+    if (ota.lastError) software.append(statRow('Last OTA error', ota.lastError));
+    if (ota.percent != null && ota.totalBytes) {
+      software.append(statRow('Progress', String(ota.percent) + '% (' + ota.bytesReceived + '/' + ota.totalBytes + ')'));
+    }
     if (updates && updates.releaseNotes) {
       software.append(el('p', { className: 'sub', text: updates.releaseNotes }));
     }
@@ -92,7 +105,7 @@ export async function SystemPage(container) {
           ? ((it.healthy && it.linked) ? 'HEALTHY+LINKED' : 'NOT READY')
           : (it.online ? 'ONLINE' : 'OFFLINE');
         software.append(statRow((it.id || it.role || 'node').toUpperCase(),
-          (it.firmware || '—') + ' · ' + flag));
+          (it.firmware || '—') + ' · ' + flag + (it.otaCapable ? ' · OTA' : ' · USB')));
       }
     }
     if (updateInventory && updateInventory.plan && updateInventory.plan.safetyFailed) {
@@ -123,6 +136,96 @@ export async function SystemPage(container) {
       }
     }));
     if (updateNote) software.append(el('p', { className: 'sub', text: updateNote }));
+
+    software.append(el('h3', { text: 'Comms Controller OTA' }));
+    software.append(el('p', {
+      className: 'sub',
+      text: 'Bench candidate must be HTTPS. SHA-256 proves the file matches the manifest, not publisher authenticity. Signed manifests are not implemented.'
+    }));
+    const urlInput = el('input', { className: 'field-input' });
+    urlInput.type = 'text';
+    urlInput.placeholder = 'https://…/ShowduinoS3CommsController.ino.bin';
+    urlInput.value = candidateUrl;
+    urlInput.oninput = () => { candidateUrl = urlInput.value.trim(); };
+    const fwInput = el('input', { className: 'field-input' });
+    fwInput.type = 'text';
+    fwInput.placeholder = 'Candidate firmware e.g. 0.5.1';
+    fwInput.value = candidateFw;
+    fwInput.oninput = () => { candidateFw = fwInput.value.trim(); };
+    const shaInput = el('input', { className: 'field-input' });
+    shaInput.type = 'text';
+    shaInput.placeholder = 'SHA-256 hex (64 chars)';
+    shaInput.value = candidateSha;
+    shaInput.oninput = () => { candidateSha = shaInput.value.trim(); };
+    const sizeInput = el('input', { className: 'field-input' });
+    sizeInput.type = 'text';
+    sizeInput.placeholder = 'Size in bytes';
+    sizeInput.value = candidateSize;
+    sizeInput.oninput = () => { candidateSize = sizeInput.value.trim(); };
+    software.append(statRow('Candidate URL', ''));
+    software.append(urlInput);
+    software.append(statRow('Firmware / SHA-256 / size', ''));
+    software.append(fwInput);
+    software.append(shaInput);
+    software.append(sizeInput);
+
+    const p4Ok = !!(lastSnap.p4Online);
+    const showState = String((s && s.showState) || '').toUpperCase();
+    const showRun = showState === 'RUNNING' || showState === 'PAUSED';
+    const emActive = !!(s && (s.emergencyActive || s.emergencyLocked || showState === 'EMERGENCY_STOP'));
+    const otaBusy = !!(ota.state && ota.state !== 'IDLE' && ota.state !== 'COMPLETE' && ota.state !== 'ROLLED_BACK' && ota.state !== 'FAILED');
+    const canUpdate = p4Ok && !showRun && !emActive && !updateBusy && !otaBusy &&
+      candidateUrl.startsWith('https://') && candidateFw && candidateSha.length === 64 && Number(candidateSize) > 0;
+
+    software.append(el('button', {
+      className: 'btn-primary',
+      text: otaBusy ? ('Updating Comms… ' + (ota.state || '')) : 'Update Comms',
+      disabled: !canUpdate,
+      onClick: async () => {
+        const ok = window.confirm(
+          'UPDATE COMMS — not a system-wide update.\n\n' +
+          'The show must be stopped.\n' +
+          'The system enters maintenance.\n' +
+          'Comms will reboot.\n' +
+          'Director and ESP-NOW nodes may temporarily disconnect.\n' +
+          'P4 remains running.\n' +
+          'Hardwired emergency (P4 GPIO25) remains active.\n\n' +
+          'Continue?'
+        );
+        if (!ok) return;
+        updateBusy = true;
+        updateNote = '';
+        paintMain();
+        try {
+          await setUpdateMaintenance(true);
+          const result = await applyCommsUpdate({
+            component: 'comms',
+            hardwareId: (updates && updates.hardwareId) || 'SHOWDUINO-S3-COMMS-V1',
+            firmware: candidateFw,
+            filename: 'ShowduinoS3CommsController.ino.bin',
+            sha256: candidateSha,
+            size: Number(candidateSize),
+            url: candidateUrl,
+            confirm: true
+          });
+          updateNote = (result && result.note) || 'Comms update started.';
+          for (let i = 0; i < 40; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            try { updateStatus = await fetchUpdateStatus(); } catch (_) {}
+            const st = updateStatus && updateStatus.commsOta && updateStatus.commsOta.state;
+            if (st === 'REBOOT_REQUIRED' || st === 'COMPLETE' || st === 'FAILED' ||
+                st === 'ROLLED_BACK' || st === 'INTERRUPTED_BY_EMERGENCY') break;
+          }
+        } catch (err) {
+          updateNote = err.message;
+        }
+        updateBusy = false;
+        paintMain();
+      }
+    }));
+    if (!p4Ok) software.append(el('p', { className: 'sub', text: 'P4 offline — production Comms OTA is blocked.' }));
+    if (showRun) software.append(el('p', { className: 'sub', text: 'Show running — stop the show before Update Comms.' }));
+    if (emActive) software.append(el('p', { className: 'sub', text: 'Emergency active — Comms OTA deferred.' }));
     host.append(software);
 
     const p4 = el('div', { className: 'card' });
@@ -425,6 +528,7 @@ export async function SystemPage(container) {
   });
   try { updates = await fetchUpdates(); } catch (_) { updates = null; }
   try { updateInventory = await fetchUpdateInventory(); } catch (_) { updateInventory = null; }
+  try { updateStatus = await fetchUpdateStatus(); } catch (_) { updateStatus = null; }
   paintMain();
   await pollLogs();
   const timer = setInterval(pollLogs, 5000);

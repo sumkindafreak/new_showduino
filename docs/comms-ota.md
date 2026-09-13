@@ -1,0 +1,160 @@
+# Comms Controller self-OTA (Phase 2A)
+
+```text
+Status: SOFTWARE implemented / physical proof is a separate gate
+Product: Showduino 1.0.0-rc.1
+Protocol: 1.0
+SHDO: v2 unchanged
+Comms: 0.5.0
+Hardware ID: SHOWDUINO-S3-COMMS-V1
+```
+
+This is **Comms self-OTA only**. System-wide OTA does not exist. P4, Director, Lamp, Audio, Pixel, Emergency, MOSFET, and Relay still require USB.
+
+## Why Comms first
+
+The dedicated ESP32-S3 Comms Controller already hosts GitHub discovery, the Update Manager, and the WebUI. It is the cleanest first OTA target.
+
+## Partition audit (do not change)
+
+Production FQBN:
+
+```text
+esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB
+```
+
+`default_8MB` already provides dual OTA slots:
+
+| Name | Offset | Size |
+|------|--------|------|
+| nvs | 0x9000 | 20 KB |
+| otadata | 0xe000 | 8 KB |
+| app0 / ota_0 | 0x10000 | 3,342,336 |
+| app1 / ota_1 | 0x340000 | 3,342,336 |
+| spiffs | 0x670000 | 1.5 MB |
+| coredump | 0x7F0000 | 64 KB |
+
+Studio / WebUI is compiled into firmware (`WebAssets.generated.h` / PROGMEM). Do not shrink SPIFFS or NVS for OTA.
+
+Arduino core 3.3.11. Bootloader auto-rollback (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`) is **not** enabled in this core package. Rollback uses `Update.rollBack()` plus reboot after the health gate fails. `esp_ota_mark_app_valid_cancel_rollback()` runs only after the health gate passes.
+
+## Native OTA guarantees
+
+- The active slot remains bootable until `Update.end(true)` selects the candidate.
+- Power loss during download or a partial inactive-slot write must not switch boot.
+- Power loss after `Update.end(true)` but before reboot: next boot is the candidate, which enters PENDING VALIDATION.
+- Power loss during validation: candidate is still pending; timeout or next boot retries the health gate, then rolls back if it fails.
+- SHA-256 is computed over the streamed bytes. Mismatch aborts **before** boot switch (`FIRMWARE_INTEGRITY_FAILED`).
+
+HTTPS uses the existing Comms stack (`WiFiClientSecure` + `setInsecure()`). SHA-256 proves the binary matches the supplied manifest. It does **not** prove publisher authenticity. Signed manifests are not implemented.
+
+## Lifecycle
+
+```text
+KNOWN GOOD
+    |
+download HTTPS candidate (streamed, 1 KB chunks, cooperative delay)
+    |
+SHA-256 == manifest
+    |
+write inactive OTA partition
+    |
+persist transaction (from/to/pending)
+    |
+STATE:UPDATE:COMMS:REBOOT_REQUIRED
+    |
+reboot
+    |
+PENDING VALIDATION (20 s)
+    |
+health gate
+    |
+PASS -> mark valid -> COMPLETE
+FAIL -> Update.rollBack() -> previous firmware -> ROLLED_BACK
+```
+
+Validation timeout: **20000 ms** (`SHOWDUINO_COMMS_OTA_VALIDATE_MS`). P4 link timeout is 8 s. Internet is **not** required for health.
+
+Health gate:
+
+* booted
+* UART initialised
+* fresh P4 link
+* ESP-NOW initialised
+* SoftAP / network stack up
+* WebUI alive
+* no fatal local fault
+
+Specialist nodes are not required.
+
+## Preconditions
+
+Production apply requires:
+
+* `component=comms`
+* hardware ID `SHOWDUINO-S3-COMMS-V1`
+* installed < candidate (same version needs compile-time `SHOWDUINO_OTA_ALLOW_FORCE`, not exposed in the operator UI)
+* no automatic downgrade
+* operator `confirm=true`
+* P4 alive
+* show not running
+* no global emergency
+* P4 SYSTEM MAINTENANCE observed (`UPDATE:MAINTENANCE:ON`)
+
+Generic `POST /api/updates/apply` without `component` still returns 501. P4 / Director / nodes return `OTA_UNAVAILABLE`.
+
+## Emergency
+
+* P4 GPIO25 hardwired NC remains independent of Comms.
+* Emergency during CHECK / DOWNLOAD / VERIFY / WRITE: abort, do not boot a partial candidate, state `INTERRUPTED_BY_EMERGENCY`.
+* OTA writes are chunked with `vTaskDelay` so UART / ESP-NOW keep running on the main loop.
+* Wireless nodes may **ASSERT** emergency. They must never **CLEAR**.
+* Emergency Node OTA remains disabled.
+
+## Comms reboot window
+
+During the Comms reboot, wireless specialist nodes temporarily lose the transport bridge. This is expected.
+
+* P4 remains running.
+* Hardwired P4 GPIO25 remains functional.
+* Director may lose the Comms link and should show COMMS RESTARTING / RECONNECTING from last-known state.
+* This is not an unexplained system failure.
+
+## Bench / local candidate
+
+1. Build the candidate with `tools/release/make_comms_artifact.ps1`.
+2. Host the `.bin` on a local **HTTPS** server (self-signed is accepted by the current insecure TLS client).
+3. Enter URL, firmware, SHA-256, and size on System → Update Comms.
+4. Confirm. Do not use HTTP.
+
+Example host (development only):
+
+```text
+python -m http.server 8443
+```
+
+Prefer a real HTTPS listener. The apply API rejects non-`https://` URLs.
+
+## Intentional rollback test
+
+Compile a **throwaway** candidate with:
+
+```text
+-DSHOWDUINO_OTA_TEST_FAIL_HEALTH=1
+```
+
+That image boots, fails the health gate, never marks valid, and rolls back. Do **not** leave this flag enabled on `main` or in production builds.
+
+## USB recovery
+
+OTA must never remove USB recovery.
+
+1. Hold **BOOT**, tap **RESET**, release **BOOT** (or use the board USB-CDC download mode).
+2. Flash known-good firmware with the production FQBN and `PartitionScheme=default_8MB`.
+3. Keep both OTA slots. Do not flash a single-app scheme over an OTA-capable board unless you intend to USB-migrate again.
+
+```text
+arduino-cli upload --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" --port COMx firmware/s3-comms-controller/ShowduinoS3CommsController
+```
+
+Destructive recovery is not exposed in the operator UI.

@@ -86,8 +86,21 @@ export function setGatewayMode(mode) {
 }
 export function fetchUpdates() { return request('/api/updates'); }
 export function fetchUpdateInventory() { return request('/api/updates/inventory'); }
+export function fetchUpdateStatus() { return request('/api/updates/status'); }
 export function checkUpdates() {
   return request('/api/updates/check', { method: 'POST', body: '{}' });
+}
+export function setUpdateMaintenance(on) {
+  return request('/api/updates/maintenance', {
+    method: 'POST',
+    body: JSON.stringify({ on: !!on })
+  });
+}
+export function applyCommsUpdate(payload) {
+  return request('/api/updates/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
 }
 
 function crc32Ieee(bytes) {
