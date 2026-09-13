@@ -347,7 +347,10 @@ int main() {
            "emergency node FAULT wire");
     expect(showduino_parse_state_safety_estop_fault("STATE:SAFETY:ESTOP:FAULT") == 1,
            "safety fault wire");
-    expect(showduino_update_apply_allowed(0, 0) == 0, "Phase 1 apply blocked");
+    expect(showduino_update_apply_allowed(0, 0) == 0, "system-wide apply blocked");
+    expect(showduino_update_component_ota_available("comms") != 0, "comms OTA available");
+    expect(showduino_update_component_ota_available("emergency") == 0,
+           "emergency OTA remains unavailable");
     expect(strcmp(SHOWDUINO_UPDATE_POLICY_ONE_AT_TIME,
                   SHOWDUINO_EMERGENCY_UPDATE_POLICY) == 0,
            "update manager reuses Emergency gate policy");

@@ -101,6 +101,131 @@ int main() {
   expect(strcmp(SHOWDUINO_UPDATE_POLICY_ONE_AT_TIME, SHOWDUINO_EMERGENCY_UPDATE_POLICY) == 0,
          "update policy token is the Emergency Node token");
 
+  man.components[0].ota_capable = 0;
+  ShowduinoReleaseManifest commsMan;
+  showduino_release_manifest_clear(&commsMan);
+  showduino_release_manifest_add(&commsMan, "comms", "COMMS", "0.5.0", 0);
+  showduino_release_manifest_add(&commsMan, "emergency", "ESTOP-01", "0.1.0", 1);
+  commsMan.components[0].ota_capable = 1;
+  expect(showduino_release_manifest_valid(&commsMan), "comms ota_capable is valid");
+  expect(showduino_update_component_ota_available("comms"), "comms OTA available");
+  expect(!showduino_update_component_ota_available("p4"), "p4 OTA unavailable");
+  expect(!showduino_update_component_ota_available("director"), "director OTA unavailable");
+  expect(!showduino_update_component_ota_available("lamp"), "lamp OTA unavailable");
+  expect(!showduino_update_component_ota_available("audio"), "audio OTA unavailable");
+  expect(!showduino_update_component_ota_available("pixel"), "pixel OTA unavailable");
+  expect(!showduino_update_component_ota_available("emergency"), "emergency OTA unavailable");
+  commsMan.components[1].ota_capable = 1;
+  expect(!showduino_release_manifest_valid(&commsMan), "emergency ota_capable still invalid");
+
+  static const char kSha[] =
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  ShowduinoOtaCandidate cand;
+  memset(&cand, 0, sizeof(cand));
+  showduino_update_copy(cand.role, sizeof(cand.role), "comms");
+  showduino_update_copy(cand.hardware_id, sizeof(cand.hardware_id), SHOWDUINO_COMMS_HARDWARE_ID);
+  showduino_update_copy(cand.firmware, sizeof(cand.firmware), "0.5.1");
+  showduino_update_copy(cand.sha256, sizeof(cand.sha256), kSha);
+  cand.size = 1200000;
+  cand.ota_capable = 1;
+  cand.confirm = 1;
+  expect(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1) == NULL,
+         "valid comms candidate eligible");
+
+  showduino_update_copy(cand.hardware_id, sizeof(cand.hardware_id), "SHOWDUINO-S3-WRONG");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_HARDWARE, "wrong hardware rejected");
+  showduino_update_copy(cand.hardware_id, sizeof(cand.hardware_id), SHOWDUINO_COMMS_HARDWARE_ID);
+
+  showduino_update_copy(cand.firmware, sizeof(cand.firmware), "0.5.0");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_SAME, "same version rejected");
+  cand.force = 1;
+  expect(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1) == NULL,
+         "force same version allowed in helper");
+  cand.force = 0;
+
+  showduino_update_copy(cand.firmware, sizeof(cand.firmware), "0.4.9");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_DOWNGRADE, "downgrade rejected");
+  showduino_update_copy(cand.firmware, sizeof(cand.firmware), "0.5.1");
+
+  cand.sha256[0] = 0;
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_SHA, "bad SHA-256 rejected");
+  showduino_update_copy(cand.sha256, sizeof(cand.sha256), kSha);
+
+  cand.size = SHOWDUINO_COMMS_OTA_SLOT_BYTES + 1;
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_SIZE, "oversize rejected");
+  cand.size = 1200000;
+
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 0, 1),
+             SHOWDUINO_UPDATE_BLOCK_MAINT, "maintenance required");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 1, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_SHOW, "show running rejected");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 1, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_EMERGENCY, "emergency rejected");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 0),
+             SHOWDUINO_UPDATE_BLOCK_P4, "P4 offline rejected");
+  cand.confirm = 0;
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_CONFIRM, "confirm required");
+  cand.confirm = 1;
+
+  showduino_update_copy(cand.role, sizeof(cand.role), "p4");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_COMPONENT, "generic apply cannot update P4");
+  showduino_update_copy(cand.role, sizeof(cand.role), "emergency");
+  expect_str(showduino_comms_ota_reject_reason(&cand, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID, 0, 0, 1, 1),
+             SHOWDUINO_UPDATE_BLOCK_COMPONENT, "generic apply cannot update Emergency");
+
+  expect(!showduino_ota_sha256_hex_ok("not-a-hash"), "short hash rejected");
+  expect(showduino_ota_sha256_hex_ok(kSha), "64 hex hash ok");
+  expect(!showduino_ota_hardware_match("A", "B"), "hardware mismatch");
+  expect(showduino_ota_hardware_match(SHOWDUINO_COMMS_HARDWARE_ID, SHOWDUINO_COMMS_HARDWARE_ID),
+         "hardware match");
+
+  ShowduinoCommsHealth health;
+  memset(&health, 0, sizeof(health));
+  health.booted = 1;
+  health.uart = 1;
+  health.p4_link = 1;
+  health.espnow = 1;
+  health.network = 1;
+  health.webui = 1;
+  expect(showduino_comms_health_pass(&health), "health gate pass");
+  health.p4_link = 0;
+  expect(!showduino_comms_health_pass(&health), "missing P4 link fails health");
+  health.p4_link = 1;
+  health.fatal = 1;
+  expect(!showduino_comms_health_pass(&health), "fatal fails health");
+
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_IDLE, SHOWDUINO_OTA_EVT_START),
+             SHOWDUINO_OTA_STATE_DOWNLOADING, "IDLE -> DOWNLOADING");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_DOWNLOADING, SHOWDUINO_OTA_EVT_DOWNLOAD_OK),
+             SHOWDUINO_OTA_STATE_VERIFYING, "DOWNLOADING -> VERIFYING");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_VERIFYING, SHOWDUINO_OTA_EVT_HASH_OK),
+             SHOWDUINO_OTA_STATE_INSTALLING, "VERIFYING -> INSTALLING");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_INSTALLING, SHOWDUINO_OTA_EVT_WRITE_OK),
+             SHOWDUINO_OTA_STATE_REBOOT, "INSTALLING -> REBOOT_REQUIRED");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_REBOOT, SHOWDUINO_OTA_EVT_REBOOTED),
+             SHOWDUINO_OTA_STATE_PENDING, "REBOOT -> PENDING_VALIDATION");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_PENDING, SHOWDUINO_OTA_EVT_HEALTH_OK),
+             SHOWDUINO_OTA_STATE_COMPLETE, "PENDING -> COMPLETE");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_DOWNLOADING, SHOWDUINO_OTA_EVT_DOWNLOAD_FAIL),
+             SHOWDUINO_OTA_STATE_FAILED, "DOWNLOAD FAILED");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_VERIFYING, SHOWDUINO_OTA_EVT_HASH_FAIL),
+             SHOWDUINO_OTA_STATE_FAILED, "HASH FAILED");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_INSTALLING, SHOWDUINO_OTA_EVT_WRITE_FAIL),
+             SHOWDUINO_OTA_STATE_FAILED, "WRITE FAILED");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_DOWNLOADING, SHOWDUINO_OTA_EVT_EMERGENCY),
+             SHOWDUINO_OTA_STATE_EMERGENCY, "EMERGENCY INTERRUPT");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_PENDING, SHOWDUINO_OTA_EVT_HEALTH_FAIL),
+             SHOWDUINO_OTA_STATE_FAILED, "HEALTH CHECK FAILED");
+  expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_FAILED, SHOWDUINO_OTA_EVT_ROLLBACK_DONE),
+             SHOWDUINO_OTA_STATE_ROLLED_BACK, "ROLLBACK");
+
   if (g_failures) {
     std::printf("\n%d FAILED\n", g_failures);
     return 1;

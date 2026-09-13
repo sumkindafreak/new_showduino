@@ -5,7 +5,8 @@
  * Showduino system-update manager — Phase 1 foundation.
  *
  * Release manifest + live inventory + sequential Emergency gate.
- * OTA installation is NOT implemented. Apply is always blocked.
+ * Phase 2A: Comms self-OTA eligibility only. Generic APPLY stays blocked.
+ * Other components remain otaCapable=false.
  *
  * Emergency Nodes reuse showduino_emergency_update_gate().
  * Do not invent a second, weaker safety gate.
@@ -53,6 +54,48 @@ extern "C" {
 #define SHOWDUINO_UPDATE_BLOCK_SHOW         "SHOW_RUNNING"
 #define SHOWDUINO_UPDATE_BLOCK_EMERGENCY    "EMERGENCY_ACTIVE"
 #define SHOWDUINO_UPDATE_BLOCK_GATE         "SAFETY_GATE_HOLD"
+#define SHOWDUINO_UPDATE_BLOCK_COMPONENT    "OTA_UNAVAILABLE"
+#define SHOWDUINO_UPDATE_BLOCK_HARDWARE     "WRONG_HARDWARE"
+#define SHOWDUINO_UPDATE_BLOCK_ROLE         "WRONG_ROLE"
+#define SHOWDUINO_UPDATE_BLOCK_SAME         "SAME_VERSION"
+#define SHOWDUINO_UPDATE_BLOCK_DOWNGRADE    "DOWNGRADE"
+#define SHOWDUINO_UPDATE_BLOCK_MANIFEST     "BAD_MANIFEST"
+#define SHOWDUINO_UPDATE_BLOCK_SHA          "BAD_SHA256"
+#define SHOWDUINO_UPDATE_BLOCK_SIZE         "OVERSIZE"
+#define SHOWDUINO_UPDATE_BLOCK_MAINT        "MAINTENANCE_REQUIRED"
+#define SHOWDUINO_UPDATE_BLOCK_P4           "P4_OFFLINE"
+#define SHOWDUINO_UPDATE_BLOCK_CONFIRM      "CONFIRM_REQUIRED"
+#define SHOWDUINO_UPDATE_FAULT_INTEGRITY    "FIRMWARE_INTEGRITY_FAILED"
+#define SHOWDUINO_UPDATE_FAULT_EMERGENCY    "INTERRUPTED_BY_EMERGENCY"
+
+#define SHOWDUINO_COMMS_HARDWARE_ID         "SHOWDUINO-S3-COMMS-V1"
+#define SHOWDUINO_COMMS_OTA_SLOT_BYTES      3342336u
+#define SHOWDUINO_OTA_SHA256_HEX_LEN        64
+#define SHOWDUINO_COMMS_OTA_VALIDATE_MS     20000u
+
+#define SHOWDUINO_OTA_STATE_IDLE            "IDLE"
+#define SHOWDUINO_OTA_STATE_DOWNLOADING     "DOWNLOADING"
+#define SHOWDUINO_OTA_STATE_VERIFYING       "VERIFYING"
+#define SHOWDUINO_OTA_STATE_INSTALLING      "INSTALLING"
+#define SHOWDUINO_OTA_STATE_REBOOT          "REBOOT_REQUIRED"
+#define SHOWDUINO_OTA_STATE_PENDING         "PENDING_VALIDATION"
+#define SHOWDUINO_OTA_STATE_COMPLETE        "COMPLETE"
+#define SHOWDUINO_OTA_STATE_ROLLED_BACK     "ROLLED_BACK"
+#define SHOWDUINO_OTA_STATE_FAILED          "FAILED"
+#define SHOWDUINO_OTA_STATE_EMERGENCY       "INTERRUPTED_BY_EMERGENCY"
+
+#define SHOWDUINO_OTA_EVT_START             1
+#define SHOWDUINO_OTA_EVT_DOWNLOAD_OK       2
+#define SHOWDUINO_OTA_EVT_HASH_OK           3
+#define SHOWDUINO_OTA_EVT_WRITE_OK          4
+#define SHOWDUINO_OTA_EVT_REBOOTED          5
+#define SHOWDUINO_OTA_EVT_HEALTH_OK         6
+#define SHOWDUINO_OTA_EVT_DOWNLOAD_FAIL     7
+#define SHOWDUINO_OTA_EVT_HASH_FAIL         8
+#define SHOWDUINO_OTA_EVT_WRITE_FAIL        9
+#define SHOWDUINO_OTA_EVT_EMERGENCY        10
+#define SHOWDUINO_OTA_EVT_HEALTH_FAIL      11
+#define SHOWDUINO_OTA_EVT_ROLLBACK_DONE    12
 
 #define SHOWDUINO_UPDATE_STEP_READY         "READY"
 #define SHOWDUINO_UPDATE_STEP_HOLD          "HOLD"
@@ -139,6 +182,10 @@ static inline int showduino_update_is_emergency_role(const char *role) {
   return role && strcmp(role, SHOWDUINO_UPDATE_ROLE_EMERGENCY) == 0;
 }
 
+static inline int showduino_update_is_comms_role(const char *role) {
+  return role && strcmp(role, SHOWDUINO_UPDATE_ROLE_COMMS) == 0;
+}
+
 static inline const char *showduino_update_policy_for_role(const char *role) {
   return showduino_update_is_emergency_role(role)
              ? SHOWDUINO_UPDATE_POLICY_ONE_AT_TIME
@@ -184,10 +231,17 @@ static inline int showduino_release_manifest_valid(const ShowduinoReleaseManifes
   if (m->schema_version != SHOWDUINO_UPDATE_SCHEMA_VERSION) return 0;
   if (m->shdo != SHOWDUINO_SHDO_PACKAGE_VERSION) return 0;
   if (!showduino_protocol_compatible(SHOWDUINO_PROTOCOL_VERSION_MAJOR)) return 0;
-  if (m->ota_install) return 0; /* Phase 1 forbids claiming install */
+  if (m->ota_install) return 0; /* system-wide OTA remains false */
   for (i = 0; i < m->component_count; i++) {
     if (!showduino_update_role_ok(m->components[i].role)) return 0;
-    if (m->components[i].ota_capable) return 0;
+    if (m->components[i].ota_capable &&
+        !showduino_update_is_comms_role(m->components[i].role)) {
+      return 0;
+    }
+    if (showduino_update_is_emergency_role(m->components[i].role) &&
+        m->components[i].ota_capable) {
+      return 0;
+    }
   }
   return 1;
 }
@@ -362,6 +416,119 @@ static inline void showduino_update_plan_from_inventory(ShowduinoUpdatePlan *pla
       }
     }
   }
+}
+
+static inline int showduino_ota_sha256_hex_ok(const char *hex) {
+  size_t i;
+  if (!hex) return 0;
+  for (i = 0; i < SHOWDUINO_OTA_SHA256_HEX_LEN; i++) {
+    char c = hex[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+      return 0;
+    }
+  }
+  return hex[SHOWDUINO_OTA_SHA256_HEX_LEN] == 0;
+}
+
+static inline int showduino_ota_hardware_match(const char *want, const char *have) {
+  return want && have && strcmp(want, have) == 0;
+}
+
+static inline int showduino_update_component_ota_available(const char *role) {
+  return showduino_update_is_comms_role(role);
+}
+
+typedef struct ShowduinoCommsHealth {
+  uint8_t booted;
+  uint8_t uart;
+  uint8_t p4_link;
+  uint8_t espnow;
+  uint8_t network;
+  uint8_t webui;
+  uint8_t fatal;
+} ShowduinoCommsHealth;
+
+static inline int showduino_comms_health_pass(const ShowduinoCommsHealth *h) {
+  if (!h) return 0;
+  if (h->fatal) return 0;
+  return h->booted && h->uart && h->p4_link && h->espnow && h->network && h->webui;
+}
+
+typedef struct ShowduinoOtaCandidate {
+  char role[SHOWDUINO_UPDATE_ROLE_MAX + 1];
+  char hardware_id[32];
+  char firmware[SHOWDUINO_UPDATE_FW_MAX + 1];
+  char filename[48];
+  char sha256[SHOWDUINO_OTA_SHA256_HEX_LEN + 1];
+  uint32_t size;
+  uint8_t ota_capable;
+  uint8_t force;
+  uint8_t confirm;
+} ShowduinoOtaCandidate;
+
+static inline const char *showduino_comms_ota_reject_reason(
+    const ShowduinoOtaCandidate *c,
+    const char *installed_ver,
+    const char *local_hardware,
+    int show_running,
+    int emergency_active,
+    int maintenance,
+    int p4_alive) {
+  int cmp;
+  if (!c) return SHOWDUINO_UPDATE_BLOCK_MANIFEST;
+  if (!showduino_update_is_comms_role(c->role)) {
+    if (showduino_update_role_ok(c->role)) return SHOWDUINO_UPDATE_BLOCK_COMPONENT;
+    return SHOWDUINO_UPDATE_BLOCK_ROLE;
+  }
+  if (!c->ota_capable) return SHOWDUINO_UPDATE_BLOCK_COMPONENT;
+  if (!showduino_ota_hardware_match(c->hardware_id, local_hardware)) {
+    return SHOWDUINO_UPDATE_BLOCK_HARDWARE;
+  }
+  if (!c->firmware[0] || !installed_ver) return SHOWDUINO_UPDATE_BLOCK_MANIFEST;
+  if (!showduino_ota_sha256_hex_ok(c->sha256)) return SHOWDUINO_UPDATE_BLOCK_SHA;
+  if (c->size == 0 || c->size > SHOWDUINO_COMMS_OTA_SLOT_BYTES) {
+    return SHOWDUINO_UPDATE_BLOCK_SIZE;
+  }
+  if (!c->confirm) return SHOWDUINO_UPDATE_BLOCK_CONFIRM;
+  if (!p4_alive) return SHOWDUINO_UPDATE_BLOCK_P4;
+  if (emergency_active) return SHOWDUINO_UPDATE_BLOCK_EMERGENCY;
+  if (show_running) return SHOWDUINO_UPDATE_BLOCK_SHOW;
+  if (!maintenance) return SHOWDUINO_UPDATE_BLOCK_MAINT;
+  cmp = showduino_version_compare(c->firmware, installed_ver);
+  if (cmp < 0) return SHOWDUINO_UPDATE_BLOCK_DOWNGRADE;
+  if (cmp == 0 && !c->force) return SHOWDUINO_UPDATE_BLOCK_SAME;
+  return NULL;
+}
+
+static inline const char *showduino_ota_state_after(const char *state, int event) {
+  if (!state) return SHOWDUINO_OTA_STATE_FAILED;
+  if (event == SHOWDUINO_OTA_EVT_EMERGENCY) return SHOWDUINO_OTA_STATE_EMERGENCY;
+  if (strcmp(state, SHOWDUINO_OTA_STATE_IDLE) == 0 &&
+      event == SHOWDUINO_OTA_EVT_START) {
+    return SHOWDUINO_OTA_STATE_DOWNLOADING;
+  }
+  if (strcmp(state, SHOWDUINO_OTA_STATE_DOWNLOADING) == 0) {
+    if (event == SHOWDUINO_OTA_EVT_DOWNLOAD_OK) return SHOWDUINO_OTA_STATE_VERIFYING;
+    if (event == SHOWDUINO_OTA_EVT_DOWNLOAD_FAIL) return SHOWDUINO_OTA_STATE_FAILED;
+  }
+  if (strcmp(state, SHOWDUINO_OTA_STATE_VERIFYING) == 0) {
+    if (event == SHOWDUINO_OTA_EVT_HASH_OK) return SHOWDUINO_OTA_STATE_INSTALLING;
+    if (event == SHOWDUINO_OTA_EVT_HASH_FAIL) return SHOWDUINO_OTA_STATE_FAILED;
+  }
+  if (strcmp(state, SHOWDUINO_OTA_STATE_INSTALLING) == 0) {
+    if (event == SHOWDUINO_OTA_EVT_WRITE_OK) return SHOWDUINO_OTA_STATE_REBOOT;
+    if (event == SHOWDUINO_OTA_EVT_WRITE_FAIL) return SHOWDUINO_OTA_STATE_FAILED;
+  }
+  if (strcmp(state, SHOWDUINO_OTA_STATE_REBOOT) == 0 &&
+      event == SHOWDUINO_OTA_EVT_REBOOTED) {
+    return SHOWDUINO_OTA_STATE_PENDING;
+  }
+  if (strcmp(state, SHOWDUINO_OTA_STATE_PENDING) == 0) {
+    if (event == SHOWDUINO_OTA_EVT_HEALTH_OK) return SHOWDUINO_OTA_STATE_COMPLETE;
+    if (event == SHOWDUINO_OTA_EVT_HEALTH_FAIL) return SHOWDUINO_OTA_STATE_FAILED;
+  }
+  if (event == SHOWDUINO_OTA_EVT_ROLLBACK_DONE) return SHOWDUINO_OTA_STATE_ROLLED_BACK;
+  return state;
 }
 
 #ifdef __cplusplus
