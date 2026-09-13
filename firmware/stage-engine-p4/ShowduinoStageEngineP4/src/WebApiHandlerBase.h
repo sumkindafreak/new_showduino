@@ -25,6 +25,7 @@
 #include "nodes/AudioNodeLink.h"
 #include "nodes/LampNodeLink.h"
 #include "nodes/PixelNodeLink.h"
+#include "nodes/EmergencyNodeLink.h"
 
 #ifndef SHOWDUINO_P4_STATIC_WEBUI
 #define SHOWDUINO_P4_STATIC_WEBUI 0
@@ -44,6 +45,7 @@ static const char *sourceName() {
   if (gEmergencySourceId == 2) return "physical";
   if (gEmergencySourceId == 1) return "director";
   if (gEmergencySourceId == 3) return "usb";
+  if (gEmergencySourceId == 4) return "wireless";
   return "unknown";
 }
 
@@ -335,6 +337,17 @@ static void handleApiSystem() {
   json += ",\n";
   json += "  \"emergencyActive\": " + String(emergencyLocked ? "true" : "false") + ",\n";
   json += "  \"emergencySource\": \"" + String(sourceName()) + "\",\n";
+  {
+    char sk[12] = "";
+    char sid[16] = "";
+    char sn[20] = "";
+    emergencyNodeLinkPrimarySource(sk, sizeof(sk), sid, sizeof(sid), sn, sizeof(sn));
+    json += "  \"emergencySourceId\": \"";
+    json += sid;
+    json += "\",\n  \"emergencySourceName\": \"";
+    json += sn;
+    json += "\",\n";
+  }
   json += "  \"emergencyPendingClear\": " +
          String(emergencyInputPendingClearValid(millis()) ? "true" : "false") + ",\n";
   json += "  \"emergencyButtonPressed\": " +
@@ -390,7 +403,8 @@ static void handleApiSystem() {
   json += "    \"pluginBus\": " + String(pluginBusReady() ? "true" : "false") + ",\n";
     json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
     json += "    \"lampNode\": \"" + String(lampNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
-    json += "    \"pixelNodes\": \"" + String(pixelNodeLinkOnlineCount() ? "ready" : "searching") + "\"\n";
+    json += "    \"pixelNodes\": \"" + String(pixelNodeLinkOnlineCount() ? "ready" : "searching") + "\",\n";
+    json += "    \"emergencyNodes\": \"" + String(emergencyNodeLinkOnlineCount() ? "ready" : "searching") + "\"\n";
   json += "  },\n";
   json += "  \"ethernet\": {\n";
   json += "    \"link\": \"" + String(showNetworkLive().hasIp ? "UP" : (showNetworkLive().linkUp ? "UP" : "DOWN")) + "\",\n";
@@ -422,6 +436,11 @@ static void handleApiSystem() {
   lampNodeLinkAppendJson(json);
   json += ",\n  \"pixelNodes\": ";
   pixelNodeLinkAppendJsonArray(json);
+  json += ",\n  \"emergencyNodes\": ";
+  emergencyNodeLinkAppendJsonArray(json);
+  json += ",\n  \"emergencyUpdatePolicy\": \"ONE_AT_A_TIME\"";
+  json += ",\n  \"emergencySafetyFault\": ";
+  json += emergencyNodeLinkSafetyFault() ? "true" : "false";
   json += "\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
@@ -516,6 +535,7 @@ static void handleApiDevices() {
   {
     bool more = true;
     pixelNodeLinkAppendDevicesJson(json, more);
+    emergencyNodeLinkAppendDevicesJson(json, more);
   }
   json += "\n  ]\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());

@@ -98,6 +98,9 @@ static void handleApiComms() {
   json += "  \"lampNodeSeen\": " + String(espNowTransportHaveLampNode() ? "true" : "false") + ",\n";
   json += "  \"pixelNodeSeen\": " + String(espNowTransportHavePixelNode() ? "true" : "false") + ",\n";
   json += "  \"pixelNodeCount\": " + String((unsigned)espNowTransportPixelNodeCount()) + ",\n";
+  json += "  \"emergencyNodeSeen\": " + String(espNowTransportHaveEmergencyNode() ? "true" : "false") + ",\n";
+  json += "  \"emergencyNodeCount\": " + String((unsigned)espNowTransportEmergencyNodeCount()) + ",\n";
+  json += "  \"emergencyUpdatePolicy\": \"ONE_AT_A_TIME\",\n";
   json += "  \"statusRgb\": {\n";
   json += "    \"state\": \"" + String(commsStatusRgbStateName()) + "\",\n";
   json += "    \"colour\": \"" + String(commsStatusRgbColourName()) + "\",\n";

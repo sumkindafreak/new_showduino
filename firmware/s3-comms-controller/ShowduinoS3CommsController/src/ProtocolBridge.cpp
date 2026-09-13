@@ -8,6 +8,7 @@
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_pixel_node.h"
+#include "../../../protocol/showduino_emergency_node.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,12 +25,15 @@ static bool sHadP4 = false;
 static bool sHadAudio = false;
 static bool sHadLamp = false;
 static bool sHadPixel = false;
+static bool sHadEmergency = false;
 static uint32_t sLastAudioSeenMs = 0;
 static uint32_t sLastLampSeenMs = 0;
 static uint32_t sLastPixelSeenMs = 0;
+static uint32_t sLastEmergencySeenMs = 0;
 static char sLastAudioAnnounce[96] = "";
 static char sLastLampAnnounce[96] = "";
 static char sLastPixelAnnounce[96] = "";
+static char sLastEmergencyAnnounce[96] = "";
 
 static bool isLocalDiag(const char *line) {
   return line && (!strcmp(line, "DIAG:PING") || !strcmp(line, "DIAG:PONG"));
@@ -118,6 +122,20 @@ static void noteLampDiscovery(const char *command) {
   SD_LOGI("COMMS", "  MAC: %s", mac);
 }
 
+static void noteEmergencyDiscovery(const char *command) {
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  if (!showduino_log_changed(sLastEmergencyAnnounce, sizeof(sLastEmergencyAnnounce), command)) {
+    return;
+  }
+  ShowduinoEmergencyAnnounce an{};
+  if (showduino_emergency_parse_announce(command, &an)) {
+    SD_LOGI("COMMS", "EMERGENCY NODE ONLINE %s %s",
+            an.id[0] ? an.id : "-",
+            an.name[0] ? an.name : "-");
+    SD_LOGI("COMMS", "  FW: %s", an.firmware[0] ? an.firmware : "-");
+  }
+}
+
 static void notePixelDiscovery(const char *command) {
   if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
   if (!showduino_log_changed(sLastPixelAnnounce, sizeof(sLastPixelAnnounce), command)) {
@@ -183,8 +201,32 @@ static void forwardToPixelNode(const char *id, const char *command, uint32_t seq
   }
 }
 
+static void forwardToEmergencyNode(const char *id, const char *command, uint32_t sequence) {
+  if (!id || !command || !command[0]) return;
+  if (espNowTransportSendToEmergencyNode(id, command, sequence)) {
+    SD_LOGT("COMMS", "TX -> Emergency %s seq=%lu cmd=%s", id, (unsigned long)sequence, command);
+  } else {
+    static uint32_t sHoldMs = 0;
+    if (showduino_log_rate_ok(&sHoldMs, millis(), 5000UL)) {
+      SD_LOGW("COMMS", "Emergency Node %s route held — no peer yet", id);
+    }
+  }
+}
+
 static void onNodeCommand(const char *nodeType, const char *command, uint32_t sequence) {
   if (!nodeType || !command) return;
+  char line[SHOWDUINO_COMMS_LINE_MAX + 1];
+  snprintf(line, sizeof(line), "NODE:%s:%s", nodeType, command);
+
+  /* Emergency assertions skip normal telemetry bookkeeping latency. */
+  const bool priority =
+      !strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY) &&
+      showduino_emergency_is_assert(command);
+  if (priority) {
+    commsUartWriteLine(line);
+    SD_LOGI("COMMS", "TX -> P4 PRIORITY: %s", line);
+  }
+
   if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_AUDIO)) {
     sLastAudioSeenMs = millis();
     if (!sHadAudio) sHadAudio = true;
@@ -197,11 +239,16 @@ static void onNodeCommand(const char *nodeType, const char *command, uint32_t se
     sLastPixelSeenMs = millis();
     if (!sHadPixel) sHadPixel = true;
     notePixelDiscovery(command);
+  } else if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY)) {
+    sLastEmergencySeenMs = millis();
+    if (!sHadEmergency) sHadEmergency = true;
+    noteEmergencyDiscovery(command);
   }
-  char line[SHOWDUINO_COMMS_LINE_MAX + 1];
-  snprintf(line, sizeof(line), "NODE:%s:%s", nodeType, command);
-  commsUartWriteLine(line);
-  SD_LOGT("COMMS", "TX -> P4: %s seq=%lu", line, (unsigned long)sequence);
+
+  if (!priority) {
+    commsUartWriteLine(line);
+    SD_LOGT("COMMS", "TX -> P4: %s seq=%lu", line, (unsigned long)sequence);
+  }
 }
 
 static bool handleP4Route(const char *line) {
@@ -244,6 +291,21 @@ static bool handleP4Route(const char *line) {
     }
   }
 
+  if (!strncmp(line, SHOWDUINO_LEGACY_ROUTE_EMERGENCY,
+               strlen(SHOWDUINO_LEGACY_ROUTE_EMERGENCY))) {
+    ShowduinoEmergencyRoute rt{};
+    if (showduino_emergency_parse_route(line, &rt)) {
+      if (showduino_emergency_is_clear_token(rt.command) &&
+          strcmp(rt.command, "EMERGENCY:CLEAR") != 0 &&
+          strcmp(rt.command, SHOWDUINO_ESTOP_GLOBAL_OBSERVED) != 0) {
+        SD_LOGW("COMMS", "Dropped Emergency Node clear token");
+        return true;
+      }
+      forwardToEmergencyNode(rt.id, rt.command, rt.sequence);
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -254,6 +316,12 @@ static void fanoutEmergency() {
   forwardToAudioNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   forwardToLampNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   espNowTransportSendToAllPixelNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
+  /* Observe-only for Emergency Nodes. CLEAR here means global clear observed. */
+  espNowTransportSendToAllEmergencyNodes(
+      sEmergencyActive ? SHOWDUINO_ESTOP_ACK_LATCHED : SHOWDUINO_ESTOP_GLOBAL_OBSERVED, 0);
+  if (!sEmergencyActive) {
+    espNowTransportSendToAllEmergencyNodes("EMERGENCY:CLEAR", 0);
+  }
 }
 
 static void onDirectorCommand(const char *command) {
@@ -326,6 +394,9 @@ void protocolBridgeBegin() {
   sLastLampSeenMs = 0;
   sLastAudioAnnounce[0] = '\0';
   sLastLampAnnounce[0] = '\0';
+  sHadEmergency = false;
+  sLastEmergencySeenMs = 0;
+  sLastEmergencyAnnounce[0] = '\0';
 }
 
 static void consumeWebTunnelBody() {
@@ -377,6 +448,12 @@ static void servicePresence() {
     sHadPixel = false;
     sLastPixelAnnounce[0] = '\0';
     SD_LOGW("COMMS", "Pixel Node lost");
+  }
+  if (sHadEmergency && sLastEmergencySeenMs &&
+      (now - sLastEmergencySeenMs) > SHOWDUINO_COMMS_LINK_TIMEOUT_MS) {
+    sHadEmergency = false;
+    sLastEmergencyAnnounce[0] = '\0';
+    SD_LOGW("COMMS", "EMERGENCY NODE OFFLINE");
   }
 }
 

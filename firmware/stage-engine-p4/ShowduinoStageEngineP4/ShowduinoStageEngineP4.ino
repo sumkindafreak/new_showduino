@@ -41,6 +41,7 @@
 #include "src/nodes/AudioNodeLink.h"
 #include "src/nodes/LampNodeLink.h"
 #include "src/nodes/PixelNodeLink.h"
+#include "src/nodes/EmergencyNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
@@ -63,7 +64,8 @@ static void statusLedWrite(uint8_t level) {
 enum class EmergencySource : uint8_t {
   Remote = 0, /* Director command via Comms UART */
   Physical,
-  LocalUsb     /* USB Serial maintenance console — not GPIO25 */
+  LocalUsb,    /* USB Serial maintenance console — not GPIO25 */
+  Wireless     /* Emergency Node ESTOP:ASSERT — same global latch */
 };
 
 enum class CommandSource : uint8_t {
@@ -81,7 +83,7 @@ static bool sProductionStoreReady = false;
 static uint32_t sProductionStoreRetryMs = 0;
 
 bool emergencyLocked = false;
-uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 local USB */
+uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 USB, 4 wireless */
 unsigned long lastHeartbeatMs = 0;
 
 String inputBuffer = "";
@@ -93,6 +95,7 @@ static uint16_t sUsbLen = 0;
 static bool sUsbOverflow = false;
 
 void triggerEmergency(EmergencySource source);
+void triggerEmergencyWireless();
 void clearEmergencyStop();
 void handleCommand(String command, CommandSource source);
 void handleCommand(String command);
@@ -149,7 +152,7 @@ static bool isKnownCommsCommand(const String &c) {
       c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
       c.startsWith("STORAGE:")) return true;
   if (c.startsWith("PLUGIN:")) return true;
-  if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:")) return true;
+  if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:") || c.startsWith("ESTOP:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
   if (c.startsWith(SHOWDUINO_LEGACY_ROUTE_PREFIX) || c.startsWith("STATE:") ||
@@ -350,6 +353,10 @@ void triggerEmergency(EmergencySource source) {
     Serial.println("[ESTOP] Local USB emergency triggered");
     Serial.printf("[ESTOP] TRIGGER source=USB gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
                   gpioRaw, already ? "ACTIVE" : "CLEAR");
+  } else if (source == EmergencySource::Wireless) {
+    Serial.println("[ESTOP] Wireless Emergency Node triggered");
+    Serial.printf("[ESTOP] TRIGGER source=WIRELESS gpio=%d latch=%s\n",
+                  gpioRaw, already ? "ACTIVE" : "CLEAR");
   } else {
     Serial.println("[ESTOP] Remote emergency triggered");
     Serial.printf("[ESTOP] TRIGGER source=REMOTE gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
@@ -357,20 +364,23 @@ void triggerEmergency(EmergencySource source) {
   }
 
   if (already) {
-    Serial.println("[ESTOP] already latched — extra trigger ignored");
+    Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
 
   stageLogEmergency("ACTIVATE",
                     source == EmergencySource::Physical ? "source=physical" :
-                    source == EmergencySource::LocalUsb ? "source=usb" : "source=remote");
+                    source == EmergencySource::LocalUsb ? "source=usb" :
+                    source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
 
   emergencyLocked = true;
   if (source == EmergencySource::Physical) {
     gEmergencySourceId = 2;
   } else if (source == EmergencySource::LocalUsb) {
     gEmergencySourceId = 3;
+  } else if (source == EmergencySource::Wireless) {
+    gEmergencySourceId = 4;
   } else {
     gEmergencySourceId = 1; /* director / comms */
   }
@@ -390,6 +400,7 @@ void triggerEmergency(EmergencySource source) {
   audioNodeLinkOnEmergency(true);
   lampNodeLinkOnEmergency(true);
   pixelNodeLinkOnEmergency(true);
+  emergencyNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
   /* Hard Showduino rule: every pixel-capable local output goes bright white. */
@@ -410,6 +421,10 @@ void triggerEmergency(EmergencySource source) {
   } else {
     Serial.println("[ESTOP] Emergency audio looping");
   }
+}
+
+void triggerEmergencyWireless() {
+  triggerEmergency(EmergencySource::Wireless);
 }
 
 static void rejectEmergencyClear(const char *code, const char *detail) {
@@ -444,6 +459,7 @@ static void applyEmergencyClear() {
   audioNodeLinkOnEmergency(false);
   lampNodeLinkOnEmergency(false);
   pixelNodeLinkOnEmergency(false);
+  emergencyNodeLinkOnEmergency(false);
   gRuntime.onEmergencyCleared(millis(), &gEngine);
   Serial.println("[ESTOP] Emergency cleared");
   showduino_log_emergency(false);
@@ -868,6 +884,8 @@ static void printUsbHelp() {
   Serial.println("  PIXEL:SEGMENT:<id>:START | STOP | STATUS");
   Serial.println("  PIXEL:NODE:<LED-01>:COUNT|INIT|STATUS|LOCATE|SEGMENT:...");
   Serial.println("  PIXEL:NODE:<LED-01>:ID:<new> | NAME:<friendly>");
+  Serial.println("  ESTOP:STATUS               (publish Emergency Node inventory)");
+  Serial.println("  ESTOP:CLEAR is rejected — wireless nodes cannot clear emergency");
   Serial.println("  PLUGIN:SCAN");
   Serial.println("  PLUGIN:LIST");
   Serial.println("  PLUGIN:STATUS");
@@ -1076,6 +1094,11 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("NODE:EMERGENCY:")) {
+    emergencyNodeLinkHandleReport(command.c_str());
+    return;
+  }
+
   if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
     static uint32_t sLastUnhandledNodeMs = 0;
     if ((int32_t)(millis() - sLastUnhandledNodeMs) >= 5000) {
@@ -1099,6 +1122,14 @@ static void dispatchCommand(const String &command) {
 
   if (command.startsWith("DMX:")) {
     sendCommandReply("UNSUPPORTED:DMX");
+    return;
+  }
+
+  if (command.startsWith("ESTOP:") || command.startsWith("EMERGENCY:NODE:")) {
+    char reply[80];
+    if (emergencyNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply))) {
+      if (reply[0]) sendCommandReply(reply);
+    }
     return;
   }
 
@@ -1517,6 +1548,7 @@ void setup() {
   audioNodeLinkBegin();
   lampNodeLinkBegin();
   pixelNodeLinkBegin();
+  emergencyNodeLinkBegin();
 
   stageStoreBegin();
   webApiBegin(bootMs);
@@ -1549,6 +1581,7 @@ void loop() {
   audioNodeLinkLoop();
   lampNodeLinkLoop();
   pixelNodeLinkLoop();
+  emergencyNodeLinkLoop();
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);

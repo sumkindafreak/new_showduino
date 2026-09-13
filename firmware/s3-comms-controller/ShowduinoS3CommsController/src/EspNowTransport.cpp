@@ -3,6 +3,7 @@
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_pixel_node.h"
+#include "../../../protocol/showduino_emergency_node.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +27,14 @@ struct CommsPixelPeer {
   uint32_t lastMs;
 };
 static CommsPixelPeer sPixel[SHOWDUINO_PIXEL_NODE_MAX_NODES];
+
+struct CommsEmergencyPeer {
+  bool have;
+  uint8_t mac[6];
+  char id[SHOWDUINO_EMERGENCY_ID_MAX + 1];
+  uint32_t lastMs;
+};
+static CommsEmergencyPeer sEmergency[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
 static uint16_t sTxSequence = 1;
 static uint32_t sRxCount = 0;
 static uint32_t sTxCount = 0;
@@ -135,6 +144,50 @@ static void notePixelPeer(const uint8_t *mac, const char *command) {
   addPeer(mac);
 }
 
+static void noteEmergencyPeer(const uint8_t *mac, const char *command) {
+  if (!mac) return;
+  char id[SHOWDUINO_EMERGENCY_ID_MAX + 1] = "";
+  if (command && !strncmp(command, "ANNOUNCE:", 9)) {
+    ShowduinoEmergencyAnnounce an{};
+    if (showduino_emergency_parse_announce(command, &an) && an.id[0]) {
+      strncpy(id, an.id, sizeof(id) - 1);
+    }
+  } else if (command && showduino_emergency_is_assert(command)) {
+    char name[24] = "";
+    showduino_emergency_parse_assert(command, id, sizeof(id), name, sizeof(name));
+  }
+  CommsEmergencyPeer *slot = nullptr;
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (sEmergency[i].have && memcmp(sEmergency[i].mac, mac, 6) == 0) {
+      slot = &sEmergency[i];
+      break;
+    }
+  }
+  if (!slot && id[0]) {
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (sEmergency[i].have && showduino_emergency_id_equal(sEmergency[i].id, id)) {
+        slot = &sEmergency[i];
+        break;
+      }
+    }
+  }
+  if (!slot) {
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (!sEmergency[i].have) {
+        slot = &sEmergency[i];
+        break;
+      }
+    }
+  }
+  if (slot) {
+    memcpy(slot->mac, mac, 6);
+    slot->have = true;
+    slot->lastMs = millis();
+    if (id[0]) strncpy(slot->id, id, sizeof(slot->id) - 1);
+  }
+  addPeer(mac);
+}
+
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 static void onEspNowReceive(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData, int len) {
 #else
@@ -171,6 +224,8 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
         addPeer(sLampNodeMac);
       } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_PIXEL) == 0) {
         notePixelPeer(recvInfo->src_addr, np.command);
+      } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY) == 0) {
+        noteEmergencyPeer(recvInfo->src_addr, np.command);
       }
     }
 #else
@@ -180,6 +235,8 @@ static void onEspNowReceive(const uint8_t *macAddr, const uint8_t *incomingData,
       sLastLampNodeMs = millis();
     } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_PIXEL) == 0) {
       notePixelPeer(macAddr, np.command);
+    } else if (strcmp(np.nodeType, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY) == 0) {
+      noteEmergencyPeer(macAddr, np.command);
     }
 #endif
     SD_LOGT("COMMS", "RX <- Node %s seq=%lu cmd=%s",
@@ -377,6 +434,58 @@ uint8_t espNowTransportPixelNodeCount() {
   uint8_t n = 0;
   for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) {
     if (sPixel[i].have) n++;
+  }
+  return n;
+}
+
+bool espNowTransportSendToEmergencyNode(const char *id, const char *command, uint32_t sequence) {
+  if (!sReady || !id || !id[0] || !command || !command[0]) return false;
+  CommsEmergencyPeer *slot = nullptr;
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (sEmergency[i].have && showduino_emergency_id_equal(sEmergency[i].id, id)) {
+      slot = &sEmergency[i];
+      break;
+    }
+  }
+  if (!slot) return false;
+  ShowduinoNodePacket packet = {};
+  showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY, sequence);
+  if (showduino_node_set_command(&packet, command) != 0) {
+    sRejected++;
+    return false;
+  }
+  if (!addPeer(slot->mac)) return false;
+  if (esp_now_send(slot->mac, (uint8_t *)&packet, sizeof(packet)) != ESP_OK) return false;
+  sTxCount++;
+  return true;
+}
+
+void espNowTransportSendToAllEmergencyNodes(const char *command, uint32_t sequence) {
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (!sEmergency[i].have) continue;
+    if (sEmergency[i].id[0]) {
+      (void)espNowTransportSendToEmergencyNode(sEmergency[i].id, command, sequence);
+    } else {
+      ShowduinoNodePacket packet = {};
+      showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY, sequence);
+      if (showduino_node_set_command(&packet, command) != 0) continue;
+      if (!addPeer(sEmergency[i].mac)) continue;
+      if (esp_now_send(sEmergency[i].mac, (uint8_t *)&packet, sizeof(packet)) == ESP_OK) sTxCount++;
+    }
+  }
+}
+
+bool espNowTransportHaveEmergencyNode() {
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (sEmergency[i].have) return true;
+  }
+  return false;
+}
+
+uint8_t espNowTransportEmergencyNodeCount() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (sEmergency[i].have) n++;
   }
   return n;
 }
