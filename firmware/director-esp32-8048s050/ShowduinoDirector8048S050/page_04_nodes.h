@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../../../protocol/showduino_lamp_director_desk.h"
+#include "../../../protocol/showduino_emergency_director_desk.h"
 
 /**
  * Page 04 - Nodes
@@ -29,6 +30,8 @@ extern "C" {
 #define PAGE04_CMD_LAMP_EXTINGUISH "PAGE04:LAMP:EXTINGUISH"
 #define PAGE04_CMD_LAMP_FLARE      "PAGE04:LAMP:FLARE"
 #define PAGE04_CMD_LAMP_STATUS     "PAGE04:LAMP:STATUS"
+#define PAGE04_CMD_EMERGENCY       "PAGE04:EMERGENCY"
+#define PAGE04_CMD_EMERGENCY_STATUS "PAGE04:EMERGENCY:STATUS"
 
 typedef enum Page04Role {
   PAGE04_ROLE_AUDIO = 0,
@@ -55,6 +58,8 @@ void page_04_nodes_set_lock(bool emergency);
 void page_04_nodes_close_sheet(void);
 bool page_04_nodes_sheet_open(void);
 void page_04_nodes_set_lamp_sheet(const ShowduinoLampDirectorSheet *model);
+void page_04_nodes_set_emergency_sheet(const ShowduinoEmergencyDirectorSheet *model);
+void page_04_nodes_set_emergency_strip(const char *text, uint32_t color, bool fault);
 
 #ifdef __cplusplus
 }

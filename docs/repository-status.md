@@ -10,6 +10,7 @@ Related:
 - [Final hardware architecture](final-hardware-architecture.md)
 - [Audio and Pixel Engine](audio-pixel-engine.md)
 - [Specialist Node Roadmap](node-roadmap.md)
+- [Wireless Emergency Node](emergency-node.md)
 
 **Roadmap note:** the active P4 now owns authoritative runtime/safety, persistent TEST/LOG production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL` cue types and broader logical target routing remain follow-up work.
 
@@ -30,7 +31,7 @@ The supported current stack also includes the first specialist **Audio Node**.
 Current specialist-node rollout order:
 
 ```text
-Audio Node → S3 Lamp Node → C3 Pixel Node → MOSFET Node
+Audio Node → S3 Lamp Node → C3 Pixel Node → C3 Emergency Node → MOSFET Node
 ```
 
 The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. DMX remains parked until explicitly reopened.
@@ -46,6 +47,8 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/stage-engine-p4/` | Show Engine on Stage Controller |
 | `firmware/audio-node-esp32-a1s/` | First specialist Audio Node — implemented, hardware test required |
 | `firmware/s3-lamp-node/` | S3 Lamp Node — ACTIVE carbide simulator (physical GPIOs confirmed) |
+| `firmware/c3-pixel-node/` | C3 Pixel Node — remote pixel specialist |
+| `firmware/c3-emergency-node/` | C3 Emergency Node — wireless assert-only E-stop (GPIO unconfirmed) |
 | `firmware/c3-lamp-node/` | Historical C3 lamp — SUPERSEDED / reference |
 
 ---
@@ -59,6 +62,8 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Authoritative Show Engine | Current platform focus includes P4 pixel bench commissioning |
 | `firmware/audio-node-esp32-a1s/` | **ACTIVE / HARDWARE TEST REQUIRED** | Ai-Thinker ESP32-A1S / ES8388 | Attraction/programme audio node | Bench commission before claiming hardware-complete |
 | `firmware/s3-lamp-node/` | **ACTIVE / PHYSICAL PINS CONFIRMED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node firmware 0.4.0 |
+| `firmware/c3-pixel-node/` | **ACTIVE / HARDWARE TEST REQUIRED** | ESP32-C3 | Remote pixel specialist | Same FX/emergency-white model as P4 GPIO23 |
+| `firmware/c3-emergency-node/` | **ACTIVE / GPIO UNCONFIRMED** | ESP32-C3 Super Mini class | Wireless emergency station (ASSERT ONLY) | Do not flash until NC GPIO is commissioned. Sequential ESTOP-01 → reboot → healthy+linked → ESTOP-02 |
 | `firmware/c3-lamp-node/` | **SUPERSEDED** | ESP32-C3 Super Mini OLED | Historical lamp FX firmware | Retained as reference; not the physical lamp |
 | `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output / PWM specialist | Comes after C3 Pixel Node; no implementation yet |
 | `firmware/relay-node-esp32/` | **LEGACY / RETIRED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; not a production Node |

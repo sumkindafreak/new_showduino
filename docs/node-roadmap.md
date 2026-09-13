@@ -26,7 +26,8 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 1. Audio Node
 2. S3 Lamp Node
 3. C3 Pixel Node
-4. MOSFET Node
+4. C3 Emergency Node
+5. MOSFET Node
 ```
 
 ### 1. Audio Node
@@ -55,7 +56,13 @@ Every pixel-capable node implements the global Showduino emergency rule:
 
 No local FX, segment, Locate, or WebUI test may override it.
 
-### 4. MOSFET Node
+### 4. C3 Emergency Node
+
+**Classification:** firmware implemented / GPIO unconfirmed / do not flash yet.
+
+Distributed wireless E-stop stations (`ESTOP-01` …). ASSERT ONLY. Never clear. P4 GPIO25 remains the independent hardwired path. Offline in V1 is a safety fault, not automatic global emergency. Update one station at a time: ESTOP-01 → reboot → healthy+linked → ESTOP-02. See [`emergency-node.md`](emergency-node.md).
+
+### 5. MOSFET Node
 
 Digital on/off and PWM / dimming specialist. Not a revival of the Relay Node product.
 

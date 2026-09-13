@@ -42,7 +42,8 @@ const char *DirectorEmergencyScreen::sourceText(Source source) {
   switch (source) {
     case Source::Director: return "TRIGGERED BY: DIRECTOR";
     case Source::Physical: return "TRIGGERED BY: PHYSICAL E-STOP";
-    default: return "TRIGGERED BY: STAGE";
+    case Source::Wireless: return "WIRELESS EMERGENCY STATION ACTIVATED";
+    default: return "EMERGENCY STOP ACTIVE";
   }
 }
 
@@ -105,6 +106,22 @@ void DirectorEmergencyScreen::setLatchActive(bool active, uint32_t nowMs) {
 
 void DirectorEmergencyScreen::setSource(Source source) {
   source_ = source;
+  if (visible_) refreshCopy();
+}
+
+void DirectorEmergencyScreen::setWirelessStation(const char *id, const char *name) {
+  if (id && id[0]) {
+    strncpy(stationId_, id, sizeof(stationId_) - 1);
+    stationId_[sizeof(stationId_) - 1] = '\0';
+  } else {
+    stationId_[0] = '\0';
+  }
+  if (name && name[0]) {
+    strncpy(stationName_, name, sizeof(stationName_) - 1);
+    stationName_[sizeof(stationName_) - 1] = '\0';
+  } else {
+    stationName_[0] = '\0';
+  }
   if (visible_) refreshCopy();
 }
 
@@ -415,11 +432,27 @@ void DirectorEmergencyScreen::refreshCopy() {
     return;
   }
 
-  lv_label_set_text(title_, "EMERGENCY");
-  lv_label_set_text(subtitle_, "SHOW STOPPED");
+  lv_label_set_text(title_, "EMERGENCY STOP");
   lv_obj_set_style_text_color(subtitle_, lv_color_hex(COL_DANGER), 0);
-  lv_label_set_text(explain_, "All show outputs have been placed into their emergency state.");
-  lv_label_set_text(sourceLabel_, sourceText(source_));
+  if (source_ == Source::Wireless) {
+    lv_label_set_text(subtitle_,
+                      stationName_[0] ? stationName_
+                      : (stationId_[0] ? stationId_ : "WIRELESS"));
+    lv_label_set_text(explain_, "WIRELESS EMERGENCY STATION ACTIVATED");
+    lv_label_set_text(sourceLabel_, stationId_[0] ? stationId_ : "WIRELESS E-STOP");
+  } else if (source_ == Source::Physical) {
+    lv_label_set_text(subtitle_, "HARDWIRED E-STOP");
+    lv_label_set_text(explain_, "All show outputs have been placed into their emergency state.");
+    lv_label_set_text(sourceLabel_, sourceText(source_));
+  } else if (source_ == Source::Unknown) {
+    lv_label_set_text(subtitle_, "ACTIVE");
+    lv_label_set_text(explain_, "All show outputs have been placed into their emergency state.");
+    lv_label_set_text(sourceLabel_, "EMERGENCY STOP ACTIVE");
+  } else {
+    lv_label_set_text(subtitle_, "SHOW STOPPED");
+    lv_label_set_text(explain_, "All show outputs have been placed into their emergency state.");
+    lv_label_set_text(sourceLabel_, sourceText(source_));
+  }
 }
 
 void DirectorEmergencyScreen::refreshStatus() {

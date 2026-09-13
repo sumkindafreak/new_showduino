@@ -8,14 +8,16 @@
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
+#include "../../../protocol/showduino_emergency_director_desk.h"
 
 static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
 static const int16_t kHeaderH = OS_TITLE_H;
 static const int16_t kGridX = 20;
 static const int16_t kGridY = (int16_t)(kHeaderY + kHeaderH + OS_GAP);
 static const int16_t kCardW = 248;
-static const int16_t kCardH = 140;
+static const int16_t kCardH = 118;
 static const int16_t kCardGap = 8;
+static const int16_t kStripH = 44;
 static const int16_t kSheetW = 760;
 static const int16_t kSheetH = 360;
 static const uint8_t kActionMax = 4;
@@ -69,6 +71,13 @@ static lv_obj_t *s_lamp_live_v[4] = {};
 static lv_obj_t *s_lamp_health_k[5] = {};
 static lv_obj_t *s_lamp_health_v[5] = {};
 static ShowduinoLampDirectorSheet s_lamp_sheet;
+static ShowduinoEmergencyDirectorSheet s_estop_sheet;
+static lv_obj_t *s_estop_strip = nullptr;
+static lv_obj_t *s_estop_strip_title = nullptr;
+static lv_obj_t *s_estop_strip_status = nullptr;
+static lv_obj_t *s_estop_warn = nullptr;
+static lv_obj_t *s_estop_rows[SHOWDUINO_ESTOP_DESK_MAX_STATIONS] = {};
+static bool s_estop_open = false;
 
 static void emit(const char *cmd) {
   if (s_command_cb != nullptr && cmd != nullptr) {
@@ -101,11 +110,13 @@ static void style_card(lv_obj_t *panel, bool present) {
 
 static void close_sheet(void);
 static void open_sheet(Page04Role role);
+static void open_emergency_sheet(void);
 static void fill_sheet(void);
+static void fill_emergency_sheet(void);
 
 static void back_event(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-  if (s_open >= 0) {
+  if (s_open >= 0 || s_estop_open) {
     Serial.println("[Page04] Close node settings");
     close_sheet();
     return;
@@ -177,7 +188,7 @@ static void card_event(lv_event_t *e) {
 static void build_card(Page04Role role, int16_t col, int16_t row) {
   Page04Card *c = &s_cards[role];
   const int16_t x = (int16_t)(kGridX + col * (kCardW + kCardGap));
-  const int16_t y = (int16_t)(kGridY + row * (kCardH + kCardGap));
+  const int16_t y = (int16_t)(kGridY + kStripH + 8 + row * (kCardH + kCardGap));
 
   c->panel = lv_obj_create(s_root);
   lv_obj_remove_style_all(c->panel);
@@ -236,7 +247,7 @@ static void build_card(Page04Role role, int16_t col, int16_t row) {
 
   c->open_hint = lv_label_create(c->panel);
   lv_label_set_text(c->open_hint, "SETTINGS  >");
-  lv_obj_set_pos(c->open_hint, 12, 118);
+  lv_obj_set_pos(c->open_hint, 12, 96);
   lv_obj_set_style_text_font(c->open_hint, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(c->open_hint, lv_color_hex(ShowduinoPalette::Accent), 0);
 }
@@ -392,6 +403,10 @@ static void apply_lamp_sheet_widgets(void) {
 
 static void fill_sheet(void) {
   if (!s_sheet || s_open < 0 || s_open >= PAGE04_ROLE_COUNT) return;
+  s_estop_open = false;
+  for (uint8_t i = 0; i < SHOWDUINO_ESTOP_DESK_MAX_STATIONS; i++) {
+    if (s_estop_rows[i]) lv_obj_add_flag(s_estop_rows[i], LV_OBJ_FLAG_HIDDEN);
+  }
   const Page04Card *c = &s_cards[s_open];
   const bool live = c->present && !s_emergency;
   const bool lamp = (s_open == (int)PAGE04_ROLE_LAMP);
@@ -480,6 +495,62 @@ static void set_grid_visible(bool show) {
     if (show) lv_obj_clear_flag(s_cards[i].panel, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(s_cards[i].panel, LV_OBJ_FLAG_HIDDEN);
   }
+  if (s_estop_strip) {
+    if (show) lv_obj_clear_flag(s_estop_strip, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_estop_strip, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void fill_emergency_sheet(void) {
+  if (!s_sheet || !s_estop_open) return;
+  set_lamp_body_visible(false);
+  set_hidden(s_sheet_status, false);
+  set_hidden(s_sheet_detail, false);
+  set_hidden(s_sheet_hint, true);
+  set_hidden(s_sheet_avail, false);
+  hide_actions();
+  if (s_title) lv_label_set_text(s_title, "EMERGENCY");
+  if (s_sheet_title) lv_label_set_text(s_sheet_title, s_estop_sheet.title);
+  if (s_sheet_status) {
+    lv_label_set_text(s_sheet_status,
+                      s_estop_sheet.summary[0] ? s_estop_sheet.summary : "0 ONLINE");
+    lv_obj_set_style_text_color(s_sheet_status,
+        lv_color_hex(s_estop_sheet.safety_fault ? ShowduinoPalette::Warn
+                                                : ShowduinoPalette::Accent), 0);
+  }
+  if (s_sheet_detail) {
+    lv_label_set_text(s_sheet_detail,
+                      "Update ESTOP-01, reboot, wait healthy+linked, then ESTOP-02. This sheet cannot clear emergency.");
+  }
+  if (s_sheet_avail) {
+    lv_label_set_text(s_sheet_avail,
+                      s_estop_sheet.warning[0] ? s_estop_sheet.warning : "");
+    lv_obj_set_style_text_color(s_sheet_avail,
+        lv_color_hex(s_estop_sheet.safety_fault ? ShowduinoPalette::Warn
+                                                : ShowduinoPalette::Muted), 0);
+  }
+  for (uint8_t i = 0; i < SHOWDUINO_ESTOP_DESK_MAX_STATIONS; i++) {
+    if (!s_estop_rows[i]) continue;
+    const ShowduinoEmergencyDeskStation *st = &s_estop_sheet.stations[i];
+    if (st->used && st->id[0]) {
+      lv_label_set_text(s_estop_rows[i], st->line[0] ? st->line : st->id);
+      lv_obj_clear_flag(s_estop_rows[i], LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_style_text_color(s_estop_rows[i],
+          lv_color_hex(st->online ? ShowduinoPalette::Text : ShowduinoPalette::Warn), 0);
+    } else {
+      lv_obj_add_flag(s_estop_rows[i], LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  set_action(0, "REFRESH", PAGE04_CMD_EMERGENCY_STATUS, true, false);
+}
+
+static void open_emergency_sheet(void) {
+  s_estop_open = true;
+  s_open = -1;
+  set_grid_visible(false);
+  if (s_sheet) lv_obj_clear_flag(s_sheet, LV_OBJ_FLAG_HIDDEN);
+  fill_emergency_sheet();
+  Serial.println("[Page04] Open Emergency stations");
 }
 
 static void open_sheet(Page04Role role) {
@@ -492,8 +563,12 @@ static void open_sheet(Page04Role role) {
 
 static void close_sheet(void) {
   s_open = -1;
+  s_estop_open = false;
   if (s_sheet) lv_obj_add_flag(s_sheet, LV_OBJ_FLAG_HIDDEN);
   if (s_title) lv_label_set_text(s_title, "NODES");
+  for (uint8_t i = 0; i < SHOWDUINO_ESTOP_DESK_MAX_STATIONS; i++) {
+    if (s_estop_rows[i]) lv_obj_add_flag(s_estop_rows[i], LV_OBJ_FLAG_HIDDEN);
+  }
   set_grid_visible(true);
 }
 
@@ -642,6 +717,17 @@ static void build_sheet(lv_obj_t *parent) {
 
   set_lamp_body_visible(false);
 
+  for (uint8_t i = 0; i < SHOWDUINO_ESTOP_DESK_MAX_STATIONS; i++) {
+    s_estop_rows[i] = lv_label_create(s_sheet);
+    lv_label_set_text(s_estop_rows[i], "");
+    lv_obj_set_pos(s_estop_rows[i], 16, (int16_t)(118 + i * 16));
+    lv_obj_set_width(s_estop_rows[i], kSheetW - 32);
+    lv_label_set_long_mode(s_estop_rows[i], LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_font(s_estop_rows[i], &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_estop_rows[i], lv_color_hex(ShowduinoPalette::Text), 0);
+    lv_obj_add_flag(s_estop_rows[i], LV_OBJ_FLAG_HIDDEN);
+  }
+
   for (uint8_t i = 0; i < kActionMax; i++) {
     lv_obj_t *btn = lv_button_create(s_sheet);
     lv_obj_remove_style_all(btn);
@@ -696,6 +782,40 @@ void page_04_nodes_create(lv_obj_t *parent, page04_command_fn command_cb) {
 
   Serial.println("[Page04] creating Nodes page...");
   build_header(parent);
+
+  s_estop_strip = lv_obj_create(parent);
+  lv_obj_remove_style_all(s_estop_strip);
+  lv_obj_set_pos(s_estop_strip, kGridX, kGridY);
+  lv_obj_set_size(s_estop_strip, kSheetW, kStripH);
+  lv_obj_set_style_bg_opa(s_estop_strip, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(s_estop_strip, lv_color_hex(ShowduinoPalette::PanelRaised), 0);
+  lv_obj_set_style_border_width(s_estop_strip, 2, 0);
+  lv_obj_set_style_radius(s_estop_strip, OS_PANEL_RADIUS, 0);
+  lv_obj_add_flag(s_estop_strip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(s_estop_strip, [](lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    open_emergency_sheet();
+  }, LV_EVENT_CLICKED, nullptr);
+  showduino_theme_register(s_estop_strip, SHOWDUINO_THEME_ROLE_BORDER);
+  s_estop_strip_title = lv_label_create(s_estop_strip);
+  lv_label_set_text(s_estop_strip_title, "EMERGENCY");
+  lv_obj_set_pos(s_estop_strip_title, 12, 12);
+  lv_obj_set_style_text_font(s_estop_strip_title, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_estop_strip_title, lv_color_hex(ShowduinoPalette::Text), 0);
+  s_estop_strip_status = lv_label_create(s_estop_strip);
+  lv_label_set_text(s_estop_strip_status, "E-STOP  0 ONLINE");
+  lv_obj_set_pos(s_estop_strip_status, 160, 12);
+  lv_obj_set_width(s_estop_strip_status, 400);
+  lv_obj_set_style_text_font(s_estop_strip_status, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_estop_strip_status, lv_color_hex(ShowduinoPalette::Muted), 0);
+  s_estop_warn = lv_label_create(s_estop_strip);
+  lv_label_set_text(s_estop_warn, "");
+  lv_obj_set_pos(s_estop_warn, 520, 12);
+  lv_obj_set_width(s_estop_warn, 230);
+  lv_label_set_long_mode(s_estop_warn, LV_LABEL_LONG_CLIP);
+  lv_obj_set_style_text_font(s_estop_warn, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(s_estop_warn, lv_color_hex(ShowduinoPalette::Warn), 0);
+
   build_card(PAGE04_ROLE_AUDIO, 0, 0);
   build_card(PAGE04_ROLE_LAMP, 1, 0);
   build_card(PAGE04_ROLE_MOSFET, 2, 0);
@@ -709,6 +829,7 @@ void page_04_nodes_create(lv_obj_t *parent, page04_command_fn command_cb) {
     lampIn.offline = 1;
     showduino_lamp_director_build_sheet(&lampIn, &s_lamp_sheet);
   }
+  showduino_emergency_desk_reset(&s_estop_sheet);
   page_04_nodes_apply_theme();
 
   s_active = true;
@@ -723,6 +844,7 @@ void page_04_nodes_destroy(void) {
   showduino_theme_unregister(s_btn_back);
   showduino_theme_unregister(s_sheet);
   showduino_theme_unregister(s_btn_close);
+  showduino_theme_unregister(s_estop_strip);
   for (int i = 0; i < PAGE04_ROLE_COUNT; i++) {
     showduino_theme_unregister(s_cards[i].panel);
     showduino_theme_unregister(s_cards[i].accent);
@@ -737,6 +859,10 @@ void page_04_nodes_destroy(void) {
   s_sheet = s_sheet_title = s_sheet_dot = s_sheet_status = nullptr;
   s_sheet_detail = s_sheet_hint = s_sheet_avail = s_btn_close = nullptr;
   s_lamp_id = s_lamp_presence = s_lamp_banner = nullptr;
+  s_estop_strip = s_estop_strip_title = s_estop_strip_status = s_estop_warn = nullptr;
+  memset(s_estop_rows, 0, sizeof(s_estop_rows));
+  memset(&s_estop_sheet, 0, sizeof(s_estop_sheet));
+  s_estop_open = false;
   memset(s_lamp_live_k, 0, sizeof(s_lamp_live_k));
   memset(s_lamp_live_v, 0, sizeof(s_lamp_live_v));
   memset(s_lamp_health_k, 0, sizeof(s_lamp_health_k));
@@ -751,7 +877,7 @@ void page_04_nodes_destroy(void) {
 }
 
 bool page_04_nodes_is_active(void) { return s_active; }
-bool page_04_nodes_sheet_open(void) { return s_open >= 0; }
+bool page_04_nodes_sheet_open(void) { return s_open >= 0 || s_estop_open; }
 
 void page_04_nodes_close_sheet(void) {
   if (s_open >= 0) close_sheet();
@@ -802,4 +928,27 @@ void page_04_nodes_set_card(Page04Role role, bool present,
 void page_04_nodes_set_lamp_sheet(const ShowduinoLampDirectorSheet *model) {
   if (model) s_lamp_sheet = *model;
   if (s_open == (int)PAGE04_ROLE_LAMP) fill_sheet();
+}
+
+void page_04_nodes_set_emergency_sheet(const ShowduinoEmergencyDirectorSheet *model) {
+  if (model) s_estop_sheet = *model;
+  if (s_estop_strip_status) {
+    lv_label_set_text(s_estop_strip_status,
+                      s_estop_sheet.strip[0] ? s_estop_sheet.strip : "E-STOP  0 ONLINE");
+  }
+  if (s_estop_warn) {
+    lv_label_set_text(s_estop_warn,
+                      s_estop_sheet.safety_fault ? "SAFETY STATION FAULT" : "");
+  }
+  if (s_estop_open) fill_emergency_sheet();
+}
+
+void page_04_nodes_set_emergency_strip(const char *text, uint32_t color, bool fault) {
+  if (s_estop_strip_status && text) {
+    lv_label_set_text(s_estop_strip_status, text);
+    lv_obj_set_style_text_color(s_estop_strip_status, lv_color_hex(color), 0);
+  }
+  if (s_estop_warn) {
+    lv_label_set_text(s_estop_warn, fault ? "SAFETY STATION FAULT" : "");
+  }
 }

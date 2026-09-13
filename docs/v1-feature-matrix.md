@@ -31,6 +31,7 @@ Legend:
 | Host compile/tests | n/a | n/a | Format/store/SHDO/WEB-BODY/version | n/a | Headers host-tested | n/a | **YES** after `run_tests.ps1` |
 | Firmware compile | Director 0.9.2 | Comms 0.4.0 | P4 0.6.0 | Embedded WebUI (regenerated this pass) | n/a | Audio 0.4.2, Lamp 0.4.0, Pixel 0.1.0 | **YES** after this compile pass |
 | C3 Pixel Node | Page 04 PIXEL NODE card | Multi-peer `ROUTE:PIXEL:` | `PixelNodeLink` 8 slots | Outputs per-node cards | `showduino_pixel_node.h` / SHDO `pixel-node` | C3 GPIO2 line, OLED 5/6 | **NEEDS HARDWARE TEST** |
+| C3 Emergency Node | Page 04 Emergency strip + sheet | Multi-peer `ROUTE:EMERGENCY:` priority UART | Same global latch as GPIO25; no wireless clear | Inventory only; no timeline cue | `showduino_emergency_node.h` Protocol 1.0 additive | C3 NC input GPIO unconfirmed | **NEEDS HARDWARE TEST** |
 | Physical-test checklist | `docs/physical-test-checklist.md` | same | same | same | same | same | **NEEDS HARDWARE TEST** |
 
 ## Shipping tonight (operator path)

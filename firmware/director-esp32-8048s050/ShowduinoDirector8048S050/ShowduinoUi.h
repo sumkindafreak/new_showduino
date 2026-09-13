@@ -12,6 +12,7 @@
 #include "../../../protocol/showduino_show_runtime.h"
 #include "../../../protocol/showduino_version.h"
 #include "../../../protocol/showduino_gateway_wire.h"
+#include "../../../protocol/showduino_emergency_director_desk.h"
 #include "src/StorageConfig.h"
 #include "DirectorStatusBar.h"
 #include "DirectorAudioModel.h"
@@ -184,9 +185,7 @@ public:
         pageBeforeEmergency = displayManager_.currentPage();
       }
       captureEmergencySnapshot();
-      gDirectorEmergencyScreen.setSource(emergencyTriggeredByDirector_
-                                             ? DirectorEmergencyScreen::Source::Director
-                                             : DirectorEmergencyScreen::Source::Physical);
+      applyEmergencyScreenSource();
       emergencyTriggeredByDirector_ = false;
       gDirectorEmergencyScreen.setShowName(estopShowName);
       gDirectorEmergencyScreen.setActiveSince(emergencyActiveSinceMs);
@@ -217,6 +216,66 @@ public:
   }
 
   void noteEmergencyTriggeredByDirector() { emergencyTriggeredByDirector_ = true; }
+
+  void applyEmergencyScreenSource() {
+    if (emergencyTriggeredByDirector_) {
+      gDirectorEmergencyScreen.setSource(DirectorEmergencyScreen::Source::Director);
+      return;
+    }
+    if (!strcmp(emergencySourceKind_, "HARDWIRED") ||
+        !strcmp(emergencySourceKind_, "physical")) {
+      gDirectorEmergencyScreen.setSource(DirectorEmergencyScreen::Source::Physical);
+      return;
+    }
+    if (!strcmp(emergencySourceKind_, "WIRELESS") ||
+        !strcmp(emergencySourceKind_, "wireless")) {
+      gDirectorEmergencyScreen.setSource(DirectorEmergencyScreen::Source::Wireless);
+      gDirectorEmergencyScreen.setWirelessStation(emergencySourceId_, emergencySourceName_);
+      return;
+    }
+    if (!strcmp(emergencySourceKind_, "REMOTE") ||
+        !strcmp(emergencySourceKind_, "director")) {
+      gDirectorEmergencyScreen.setSource(DirectorEmergencyScreen::Source::Director);
+      return;
+    }
+    gDirectorEmergencyScreen.setSource(DirectorEmergencyScreen::Source::Unknown);
+  }
+
+  void applyEmergencySourceWire(const ShowduinoEmergencySourceWire &src) {
+    strncpy(emergencySourceKind_, src.kind, sizeof(emergencySourceKind_) - 1);
+    strncpy(emergencySourceId_, src.id, sizeof(emergencySourceId_) - 1);
+    strncpy(emergencySourceName_, src.name, sizeof(emergencySourceName_) - 1);
+    if (emergencyLocked) applyEmergencyScreenSource();
+  }
+
+  void setSafetyEstopFault(bool fault) {
+    if (safetyEstopFault_ == fault) return;
+    safetyEstopFault_ = fault;
+    estopSheet_.safety_fault = fault ? 1 : 0;
+    showduino_emergency_desk_rebuild(&estopSheet_);
+    updatePersistentBanner();
+    if (page_04_nodes_is_active()) refreshNodesPage();
+  }
+
+  void applyEmergencyNodeWire(ShowduinoEmergencyNodeWire wire) {
+    emergencyNodeWire_ = wire;
+    recountSpecialistNodes();
+    if (page_04_nodes_is_active()) refreshNodesPage();
+  }
+
+  void applyEmergencyNodeDetail(const ShowduinoEmergencyDetailWire &d) {
+    showduino_emergency_desk_apply_detail(&estopSheet_, &d);
+    estopSheet_.global_emergency = emergencyLocked ? 1 : 0;
+    showduino_emergency_desk_rebuild(&estopSheet_);
+    recountSpecialistNodes();
+    if (page_04_nodes_is_active()) refreshNodesPage();
+  }
+
+  void applyEmergencyStationWire(const ShowduinoEmergencyStationWire &st) {
+    showduino_emergency_desk_apply_station(&estopSheet_, &st);
+    estopSheet_.global_emergency = emergencyLocked ? 1 : 0;
+    if (page_04_nodes_is_active()) refreshNodesPage();
+  }
 
   void noteEmergencyClearRejected() {
     gDirectorEmergencyScreen.noteClearRejected(millis());
@@ -1356,6 +1415,7 @@ private:
         pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
       n = (uint8_t)(n + (pixelDetail_.online ? pixelDetail_.online : 1));
     }
+    if (estopSheet_.online) n = (uint8_t)(n + estopSheet_.online);
     setNodeCount(n);
   }
 
@@ -1426,6 +1486,9 @@ private:
     page_04_nodes_set_card(PAGE04_ROLE_AUDIO, audioOn, audioNodeStatusWord(),
                            audioDetail, audioCol);
     page_04_nodes_set_lock(emergencyLocked);
+    estopSheet_.global_emergency = emergencyLocked ? 1 : 0;
+    showduino_emergency_desk_rebuild(&estopSheet_);
+    page_04_nodes_set_emergency_sheet(&estopSheet_);
     refreshAudioNodePage();
 
     const bool lampOn = (lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
@@ -1618,6 +1681,12 @@ private:
   ShowduinoPixelDetailWire pixelDetail_{};
   ShowduinoAudioNodeWire audioNodeWire_ = SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
   DirectorAudioNodeControl audioNodeCtrl_;
+  ShowduinoEmergencyNodeWire emergencyNodeWire_ = SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID;
+  ShowduinoEmergencyDirectorSheet estopSheet_{};
+  bool safetyEstopFault_ = false;
+  char emergencySourceKind_[12] = "";
+  char emergencySourceId_[16] = "";
+  char emergencySourceName_[20] = "";
   uint16_t sessionEmergencyCount = 0;
   uint16_t sessionWarningCount = 0;
   uint16_t sessionErrorCount = 0;
@@ -1999,6 +2068,10 @@ private:
     }
     if (command == PAGE04_CMD_LAMP_STATUS) {
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+      return;
+    }
+    if (command == PAGE04_CMD_EMERGENCY || command == PAGE04_CMD_EMERGENCY_STATUS) {
+      if (commandCallback) commandCallback("ESTOP:STATUS");
       return;
     }
     if (command == PAGE05_CMD_BACK) {
@@ -2740,7 +2813,12 @@ private:
                estopShowName[0] ? estopShowName : (loadedShowNameBuf[0] ? loadedShowNameBuf : "-"),
                liveStateName[0] ? liveStateName : "EMERGENCY_STOP",
                et);
-      if (persistentBannerLabel) lv_label_set_text(persistentBannerLabel, line);
+      if (persistentBannerLabel) {
+        lv_label_set_text(persistentBannerLabel, line);
+        lv_obj_set_style_text_color(persistentBannerLabel,
+                                    lv_color_hex(ShowduinoPalette::DangerText), 0);
+      }
+      lv_obj_set_style_border_color(persistentBannerRoot, lv_color_hex(ShowduinoPalette::Danger), 0);
       lv_obj_clear_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
       lv_obj_move_foreground(persistentBannerRoot);
       if (statusBar_.root()) lv_obj_move_foreground(statusBar_.root());
@@ -2748,7 +2826,23 @@ private:
         lv_obj_move_foreground(abortConfirmRoot);
       }
       gDirectorEmergencyClearDialog.raise();
+    } else if (safetyEstopFault_ && !emergencyLocked) {
+      if (persistentBannerLabel) {
+        lv_label_set_text(persistentBannerLabel,
+                          estopSheet_.warning[0] ? estopSheet_.warning
+                          : "SAFETY NODE FAULT  EMERGENCY STATION OFFLINE");
+        lv_obj_set_style_text_color(persistentBannerLabel,
+                                    lv_color_hex(ShowduinoPalette::Warn), 0);
+      }
+      lv_obj_set_style_border_color(persistentBannerRoot, lv_color_hex(ShowduinoPalette::Warn), 0);
+      lv_obj_clear_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(persistentBannerRoot);
     } else {
+      lv_obj_set_style_border_color(persistentBannerRoot, lv_color_hex(ShowduinoPalette::Danger), 0);
+      if (persistentBannerLabel) {
+        lv_obj_set_style_text_color(persistentBannerLabel,
+                                    lv_color_hex(ShowduinoPalette::DangerText), 0);
+      }
       lv_obj_add_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN);
     }
   }

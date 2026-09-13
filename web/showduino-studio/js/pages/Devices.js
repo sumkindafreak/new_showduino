@@ -95,13 +95,16 @@ export async function DevicesPage(container) {
     const ln = (lastSnap.system && lastSnap.system.lampNode) || {};
     const pns = (lastSnap.system && Array.isArray(lastSnap.system.pixelNodes))
       ? lastSnap.system.pixelNodes : [];
+    const ens = (lastSnap.system && Array.isArray(lastSnap.system.emergencyNodes))
+      ? lastSnap.system.emergencyNodes : [];
     const audioSeen = an.seen || an.online;
     const lampSeen = ln.seen || ln.online;
     const pixelSeen = pns.length > 0;
+    const estopSeen = ens.length > 0;
     if (!lastSnap.p4Online) {
       nodes.append(emptyState('P4 OFFLINE', 'Node presence is owned by the Show Engine.'));
-    } else if (!audioSeen && !lampSeen && !pixelSeen) {
-      nodes.append(emptyState('No Showduino Nodes detected', 'Audio, Lamp and Pixel Nodes appear here after ESP-NOW announce.'));
+    } else if (!audioSeen && !lampSeen && !pixelSeen && !estopSeen) {
+      nodes.append(emptyState('No Showduino Nodes detected', 'Audio, Lamp, Pixel and Emergency Nodes appear here after ESP-NOW announce.'));
     } else {
       if (audioSeen) {
         nodes.append(statRow('Audio Node', an.online ? 'ONLINE' : 'OFFLINE'));
@@ -170,8 +173,27 @@ export async function DevicesPage(container) {
           nodes.append(pixDetails);
         }
       }
+      if (estopSeen) {
+        nodes.append(el('h3', { text: 'Emergency Nodes' }));
+        for (const en of ens) {
+          nodes.append(statRow(en.id || 'ESTOP', en.online ? (en.state || 'ONLINE') : 'OFFLINE'));
+          nodes.append(statRow('Name', en.name || '—'));
+          nodes.append(statRow('Input', en.input || '—'));
+          nodes.append(statRow('Latch', en.latch || '—'));
+          const estopDetails = el('details', {});
+          estopDetails.append(el('summary', { text: (en.id || 'ESTOP') + ' commissioning' }));
+          estopDetails.append(statRow('MAC', en.mac || '—'));
+          estopDetails.append(statRow('Firmware', en.firmware || '—'));
+          estopDetails.append(statRow('Last contact', en.lastContactMs != null ? (en.lastContactMs + ' ms') : '—'));
+          estopDetails.append(el('p', {
+            className: 'sub',
+            text: 'ASSERT ONLY. This card cannot clear global emergency. Update one station at a time: ESTOP-01, reboot, wait healthy+linked, then ESTOP-02.'
+          }));
+          nodes.append(estopDetails);
+        }
+      }
     }
-    nodes.append(plannedNote('Planned next: ' + FUTURE_NODES.join(', ') + '. Relay Node is retired. DMX is parked.'));
+    nodes.append(plannedNote('Planned next: ' + FUTURE_NODES.join(', ') + '. Relay Node is retired. DMX is parked. Emergency is inventory only — never a timeline cue.'));
     host.append(nodes);
   }
 

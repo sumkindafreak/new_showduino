@@ -423,6 +423,27 @@ void handleStageLine(String line) {
     gDirectorEmergencyClearDialog.hide();
   }
 
+  {
+    ShowduinoEmergencySourceWire src{};
+    if (showduino_parse_state_emergency_source(line.c_str(), &src)) {
+      ui.applyEmergencySourceWire(src);
+    }
+    const int safety = showduino_parse_state_safety_estop_fault(line.c_str());
+    if (safety >= 0) ui.setSafetyEstopFault(safety == 1);
+    const ShowduinoEmergencyNodeWire enW = showduino_parse_state_node_emergency(line.c_str());
+    if (enW != SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID) {
+      ui.applyEmergencyNodeWire(enW);
+    }
+    ShowduinoEmergencyDetailWire ed{};
+    if (showduino_parse_state_node_emergency_detail(line.c_str(), &ed)) {
+      ui.applyEmergencyNodeDetail(ed);
+    }
+    ShowduinoEmergencyStationWire es{};
+    if (showduino_parse_state_node_emergency_station(line.c_str(), &es)) {
+      ui.applyEmergencyStationWire(es);
+    }
+  }
+
   ShowduinoEmergencyWire emW = showduino_parse_state_emergency(line.c_str());
   if (emW != SHOWDUINO_EMERGENCY_WIRE_INVALID) {
     bool nowLocked = (emW == SHOWDUINO_EMERGENCY_WIRE_ACTIVE);

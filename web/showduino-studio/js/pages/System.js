@@ -278,6 +278,34 @@ export async function SystemPage(container) {
     }
     host.append(lampNode);
 
+    const ens = (s && Array.isArray(s.emergencyNodes)) ? s.emergencyNodes : [];
+    const emergencyNodes = el('div', { className: 'card' });
+    emergencyNodes.append(el('h2', { text: 'Emergency Nodes' }));
+    if (lastSnap.p4Online && ens.length) {
+      for (const en of ens) {
+        emergencyNodes.append(el('h3', { text: en.id || 'ESTOP' }));
+        emergencyNodes.append(statRow('Name', en.name || '—'));
+        emergencyNodes.append(statRow('Presence', en.online ? 'ONLINE' : 'OFFLINE'));
+        emergencyNodes.append(statRow('Input', en.input || '—'));
+        emergencyNodes.append(statRow('Latch', en.latch || 'CLEAR'));
+        emergencyNodes.append(statRow('MAC', en.mac || '—'));
+        emergencyNodes.append(statRow('Firmware', en.firmware || '—'));
+        emergencyNodes.append(statRow('Last contact', en.lastContactMs != null ? (en.lastContactMs + ' ms') : '—'));
+      }
+      emergencyNodes.append(el('p', {
+        className: 'sub',
+        text: 'ASSERT ONLY. This page cannot clear global emergency. Update one station at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.'
+      }));
+    } else {
+      emergencyNodes.append(el('p', {
+        className: 'sub',
+        text: lastSnap.p4Online
+          ? 'No Emergency Node announced yet. Sequential commissioning: ESTOP-01 first, then ESTOP-02 after it is healthy and linked.'
+          : 'Emergency Node diagnostics withheld while P4 is offline.'
+      }));
+    }
+    host.append(emergencyNodes);
+
     const caps = el('div', { className: 'card' });
     caps.append(el('h2', { text: 'Engine capabilities' }));
     const chips = el('div', { className: 'cap-chips' });
@@ -293,7 +321,8 @@ export async function SystemPage(container) {
       ['dmx', 'PARKED'],
       ['audio-node', lastSnap.p4Online ? ((an && an.online) ? 'READY' : 'SEARCHING') : 'OFFLINE'],
       ['lamp-node', lastSnap.p4Online ? ((ln && ln.online) ? 'READY' : 'SEARCHING') : 'OFFLINE'],
-      ['espnow-nodes', lastSnap.p4Online ? (((an && an.seen) || (ln && ln.seen)) ? 'READY' : 'SEARCHING') : 'OFFLINE']
+      ['emergency-node', lastSnap.p4Online ? (ens.some((en) => en.online) ? 'READY' : 'SEARCHING') : 'OFFLINE'],
+      ['espnow-nodes', lastSnap.p4Online ? (((an && an.seen) || (ln && ln.seen) || ens.length) ? 'READY' : 'SEARCHING') : 'OFFLINE']
     ];
     for (const [name, state] of rows) {
       chips.append(el('span', { className: 'cap-chip', text: `${name}: ${state}` }));

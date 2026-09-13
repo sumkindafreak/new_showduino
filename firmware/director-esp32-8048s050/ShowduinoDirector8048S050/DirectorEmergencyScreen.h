@@ -21,7 +21,8 @@ public:
   enum class Source : uint8_t {
     Unknown = 0,
     Director,
-    Physical
+    Physical,
+    Wireless
   };
 
   using ClearRequestFn = void (*)();
@@ -39,6 +40,7 @@ public:
 
   void setLatchActive(bool active, uint32_t nowMs);
   void setSource(Source source);
+  void setWirelessStation(const char *id, const char *name);
   void setShowName(const char *name);
   void setActiveSince(uint32_t startedMs);
   void noteClearRequested(uint32_t nowMs);
@@ -81,6 +83,8 @@ private:
   uint32_t lastClearMs_ = 0;
   uint32_t clearedSinceMs_ = 0;
   char showName_[64] = "-";
+  char stationId_[16] = "";
+  char stationName_[20] = "";
 
   ClearRequestFn clearRequestFn_ = nullptr;
   FinishedFn finishedFn_ = nullptr;

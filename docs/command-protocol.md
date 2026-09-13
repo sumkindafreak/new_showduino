@@ -111,6 +111,17 @@ STATE:EMERGENCY:CLEAR
 
 Emergency clear does not automatically restart/resume the show.
 
+Wireless Emergency Nodes (logical IDs `ESTOP-01` …) may assert the same global latch:
+
+```text
+ESTOP:ASSERT:<ESTOP-xx>:<friendly>
+ESTOP:ACK:LATCHED
+ESTOP:GLOBAL:OBSERVED
+```
+
+There is no wireless `ESTOP:CLEAR`. An Emergency Node must never clear P4 emergency.
+Update/commission stations one at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.
+
 ### Global pixel emergency law
 
 Every pixel-capable output must implement:
