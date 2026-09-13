@@ -28,13 +28,20 @@
  * FUTURE / RESERVED / NOT IMPLEMENTED on this firmware:
  *   - Bluetooth LE
  *   - Bluetooth Classic
- *   - OTA installation / rollback
  *   - Ethernet / E1.31
- * GitHub update discovery is implemented. Firmware install is not.
- * Do not initialise Bluetooth libraries here.
+ *   - OTA for any component other than this Comms Controller
+ * Comms self-OTA (Phase 2A) writes the inactive OTA slot only.
+ * System-wide OTA does not exist. Do not initialise Bluetooth libraries here.
  */
 
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.4.2"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.0"
+
+#ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
+#define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0
+#endif
+#ifndef SHOWDUINO_OTA_ALLOW_FORCE
+#define SHOWDUINO_OTA_ALLOW_FORCE 0
+#endif
 
 #ifndef SHOWDUINO_WEBUI_ENABLED
 #define SHOWDUINO_WEBUI_ENABLED 1

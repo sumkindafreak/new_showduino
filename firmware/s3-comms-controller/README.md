@@ -55,7 +55,7 @@ USB CDC must remain enabled so this board stays directly programmable and debugg
 arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-comms-controller/ShowduinoS3CommsController
 ```
 
-Do **not** flash from this task's report until the UART pin choice is approved.
+USB recovery uses this same FQBN. Hold BOOT, tap RESET, release BOOT, then `arduino-cli upload` to the CDC port. Always keep `PartitionScheme=default_8MB` so both OTA slots remain.
 
 ## UART pins
 
@@ -140,10 +140,20 @@ If the P4 UART is down the UI still loads and shows **P4 OFFLINE**. S3 does not 
 
 Navigation: Home, Productions, Live, Outputs, Devices, Network, System, Settings. Page map: `web/showduino-studio/README.md`.
 
+## Comms self-OTA (Phase 2A)
+
+Comms 0.5.0 can install **its own** image into the inactive `default_8MB` OTA slot. See `docs/comms-ota.md`.
+
+- Operator action is **Update Comms**, never Update System
+- P4 must authorise maintenance; a running show or emergency blocks apply
+- SHA-256 is required; HTTPS is required; signed manifests are not implemented
+- During the Comms reboot, Director and ESP-NOW nodes briefly disconnect. P4 and GPIO25 stay up
+- Other components still require USB
+
 ## FUTURE / RESERVED / NOT IMPLEMENTED
 
 - Bluetooth LE
-- OTA
+- OTA for P4, Director, or specialist nodes
 - Ethernet / E1.31 (next P4 work; not this firmware)
 
 Intended later topology:

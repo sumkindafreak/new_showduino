@@ -4,8 +4,9 @@
   Role: communications processor only.
     Director --ESP-NOW--> this S3 --UART 115200 8N1--> ESP32-P4 Stage Engine
 
-  ESP-NOW <-> UART bridge, PROGMEM WebUI host, and P4 API proxy.
-  No BLE, OTA, Ethernet, or show authority.
+  ESP-NOW <-> UART bridge, PROGMEM WebUI host, P4 API proxy,
+  and Comms-only self-OTA. No BLE, Ethernet, or show authority.
+  Other nodes still require USB. System-wide OTA does not exist.
 */
 
 #include <Arduino.h>
@@ -23,6 +24,7 @@
 #include "src/web/CommsWebServer.h"
 #include "src/status/CommsStatusRgb.h"
 #include "src/network/CommsGateway.h"
+#include "src/update/CommsOta.h"
 
 static void commsLogFlush(const char *line) {
   Serial.println(line);
@@ -105,6 +107,7 @@ void setup() {
   commsWebBegin();
 #endif
   commsGatewayBegin();
+  commsOtaBegin();
 
   Serial.println("[COMMS] Waiting for Director");
   Serial.println("[COMMS] Waiting for P4");
@@ -120,6 +123,7 @@ void loop() {
   commsWebLoop();
 #endif
   commsGatewayLoop();
+  commsOtaLoop();
   commsStatusRgbLoop();
   delay(2);
 }

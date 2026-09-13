@@ -2,6 +2,10 @@
 #include "../../../protocol/showduino_web_timeline_upload_policy.h"
 #include "../../../protocol/showduino_deploy.h"
 #include "../network/CommsGateway.h"
+#include "../update/CommsOta.h"
+#include "../ProtocolBridge.h"
+#include "../CommsUart.h"
+#include "../../../protocol/showduino_update_manager.h"
 
 /* Preserve the current S3 WebUI server unchanged and add only extra routes
  * after the normal server has been initialised. */
@@ -91,7 +95,8 @@ static void handleUpdatesGet() {
 
 static void handleUpdatesCheck() {
   commsGatewayRequestUpdateCheck();
-  sendJson(202, "{\"ok\":true,\"state\":\"checking\",\"otaInstall\":false,\"applyImplemented\":false}\n");
+  sendJson(202, "{\"ok\":true,\"state\":\"checking\",\"otaInstall\":false,"
+                "\"applyImplemented\":false,\"commsApplyImplemented\":true}\n");
 }
 
 static void handleUpdatesInventory() {
@@ -101,11 +106,95 @@ static void handleUpdatesInventory() {
            "\"note\":\"P4 inventory unavailable. Product check remains on Comms.\"}\n");
 }
 
+static void handleUpdatesStatus() {
+  String json = "{\n";
+  json += "  \"otaInstall\": false,\n";
+  json += "  \"applyImplemented\": false,\n";
+  json += "  \"commsApplyImplemented\": true,\n";
+  commsOtaAppendStatusJson(json);
+  json += ",\n  \"p4Online\": ";
+  json += protocolBridgeP4Alive() ? "true" : "false";
+  json += ",\n  \"showRunning\": ";
+  json += protocolBridgeShowRunning() ? "true" : "false";
+  json += ",\n  \"emergencyActive\": ";
+  json += protocolBridgeEmergencyActive() ? "true" : "false";
+  json += ",\n  \"maintenance\": ";
+  json += protocolBridgeMaintenanceObserved() ? "true" : "false";
+  json += "\n}\n";
+  sendJson(200, json);
+}
+
+static void handleUpdatesMaintenance() {
+  const String body = sServer.arg("plain");
+  if (!protocolBridgeP4Alive() || !commsUartReady()) {
+    sendJson(503, "{\"ok\":false,\"error\":\"p4_offline\",\"reason\":\"P4_OFFLINE\"}\n");
+    return;
+  }
+  const bool enable = !(body.indexOf("\"on\":false") >= 0 || body.indexOf("\"on\": false") >= 0 ||
+                        body.indexOf("\"on\":\"false\"") >= 0);
+  commsUartWriteLine(enable ? "UPDATE:MAINTENANCE:ON" : "UPDATE:MAINTENANCE:OFF");
+  const uint32_t t0 = millis();
+  while ((millis() - t0) < 1600UL) {
+    protocolBridgeLoop();
+    if (enable == protocolBridgeMaintenanceObserved()) break;
+    delay(15);
+  }
+  if (enable) protocolBridgeNoteMaintenance(protocolBridgeMaintenanceObserved());
+  else protocolBridgeNoteMaintenance(false);
+  String json = "{\"ok\":true,\"maintenance\":";
+  json += protocolBridgeMaintenanceObserved() ? "true" : "false";
+  json += "}\n";
+  sendJson(200, json);
+}
+
+static void sendOtaUnavailable(const char *component) {
+  String json = "{\"ok\":false,\"error\":\"ota_unavailable\",\"otaInstall\":false,";
+  json += "\"applyImplemented\":false,\"reason\":\"OTA_UNAVAILABLE\",";
+  json += "\"component\":\"";
+  json += component && component[0] ? component : "unknown";
+  json += "\",\"note\":\"Phase 2A installs Comms only. This component still requires USB.\"}\n";
+  sendJson(501, json);
+}
+
 static void handleUpdatesApply() {
-  sendJson(501,
-           "{\"ok\":false,\"error\":\"ota_not_implemented\",\"otaInstall\":false,"
-           "\"applyImplemented\":false,\"reason\":\"OTA_NOT_IMPLEMENTED\","
-           "\"note\":\"Phase 1 foundation only. System-wide OTA is not physically proven.\"}\n");
+  const String body = sServer.arg("plain");
+  const String component = jsonField(body, "component");
+  if (component.length() && component != "comms") {
+    sendOtaUnavailable(component.c_str());
+    return;
+  }
+  if (!component.length()) {
+    sendJson(501,
+             "{\"ok\":false,\"error\":\"ota_not_implemented\",\"otaInstall\":false,"
+             "\"applyImplemented\":false,\"reason\":\"OTA_NOT_IMPLEMENTED\","
+             "\"note\":\"Generic APPLY does not update the system. Use component=comms.\"}\n");
+    return;
+  }
+  ShowduinoOtaCandidate cand;
+  String url;
+  if (!commsOtaParseApply(body, &cand, url)) {
+    sendJson(400, "{\"ok\":false,\"error\":\"bad_manifest\",\"reason\":\"BAD_MANIFEST\"}\n");
+    return;
+  }
+  String err;
+  if (!commsOtaRequestApply(cand, url.c_str(), err)) {
+    int code = 409;
+    if (err == SHOWDUINO_UPDATE_BLOCK_P4) code = 503;
+    else if (err == SHOWDUINO_UPDATE_BLOCK_MANIFEST || err == SHOWDUINO_UPDATE_BLOCK_SHA ||
+             err == SHOWDUINO_UPDATE_BLOCK_HARDWARE || err == SHOWDUINO_UPDATE_BLOCK_ROLE) {
+      code = 400;
+    } else if (err == SHOWDUINO_UPDATE_BLOCK_COMPONENT) {
+      code = 501;
+    }
+    String json = "{\"ok\":false,\"error\":\"rejected\",\"reason\":\"";
+    json += err;
+    json += "\",\"otaInstall\":false}\n";
+    sendJson(code, json);
+    return;
+  }
+  sendJson(202,
+           "{\"ok\":true,\"component\":\"comms\",\"state\":\"DOWNLOADING\","
+           "\"otaInstall\":false,\"note\":\"Updating Comms only. P4 stays running.\"}\n");
 }
 
 static void proxyDeploy(const char *path) {
@@ -201,11 +290,17 @@ void commsWebBegin() {
   sServer.on("/api/updates/plan", HTTP_GET, handleUpdatesInventory);
   sServer.on("/api/updates/plan", HTTP_POST, handleUpdatesInventory);
   sServer.on("/api/updates/apply", HTTP_POST, handleUpdatesApply);
+  sServer.on("/api/updates/comms/apply", HTTP_POST, handleUpdatesApply);
+  sServer.on("/api/updates/status", HTTP_GET, handleUpdatesStatus);
+  sServer.on("/api/updates/maintenance", HTTP_POST, handleUpdatesMaintenance);
   sServer.on("/api/updates", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates/check", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates/inventory", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates/plan", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates/apply", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/comms/apply", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/status", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/maintenance", HTTP_OPTIONS, sendCors);
 
   sServer.on("/api/productions/deploy/begin", HTTP_POST, handleDeployBegin);
   sServer.on("/api/productions/deploy/chunk", HTTP_POST, handleDeployChunk);

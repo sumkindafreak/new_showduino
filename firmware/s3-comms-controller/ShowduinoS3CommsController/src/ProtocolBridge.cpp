@@ -4,6 +4,7 @@
 #include "web/CommsWebTunnel.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_gateway_wire.h"
 #include "../../../protocol/showduino_show_runtime.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
@@ -15,6 +16,8 @@
 
 static bool sEmergencyActive = false;
 static bool sEmergencyWasActive = false;
+static bool sShowRunning = false;
+static bool sMaintenance = false;
 
 static bool sPingPending = false;
 static bool sLastPingOk = false;
@@ -361,13 +364,21 @@ static void observeP4Emergency(const char *line) {
     if (!strcmp(name, "EMERGENCY_STOP") || !strcmp(name, "EMERGENCY")) {
       sEmergencyActive = true;
     }
+    if (!strcmp(name, "RUNNING") || !strcmp(name, "PAUSED")) sShowRunning = true;
+    else if (!strcmp(name, "IDLE") || !strcmp(name, "SHOW_LOADED") ||
+             !strcmp(name, "FINISHED") || !strcmp(name, "BOOTING")) {
+      sShowRunning = false;
+    }
     return;
   }
 
   const ShowduinoShowRuntimeWire show = showduino_parse_state_show(line);
   if (show == SHOWDUINO_SHOW_WIRE_EMERGENCY) {
     sEmergencyActive = true;
-    return;
+  } else if (show == SHOWDUINO_SHOW_WIRE_PLAYING || show == SHOWDUINO_SHOW_WIRE_PAUSED) {
+    sShowRunning = true;
+  } else if (show == SHOWDUINO_SHOW_WIRE_IDLE || show == SHOWDUINO_SHOW_WIRE_STOPPING) {
+    sShowRunning = false;
   }
 
   if (!strcmp(line, SHOWDUINO_LEGACY_STATUS_ELOCKED)) {
@@ -377,6 +388,13 @@ static void observeP4Emergency(const char *line) {
   if (!strcmp(line, SHOWDUINO_LEGACY_STATUS_ECLEARED) ||
       !strcmp(line, SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK)) {
     sEmergencyActive = false;
+  }
+
+  if (!strncmp(line, SHOWDUINO_WIRE_STATE_UPDATE_PREFIX,
+               strlen(SHOWDUINO_WIRE_STATE_UPDATE_PREFIX))) {
+    const char *st = line + strlen(SHOWDUINO_WIRE_STATE_UPDATE_PREFIX);
+    if (!strcmp(st, "MAINTENANCE")) sMaintenance = true;
+    else if (!strcmp(st, "READY")) sMaintenance = false;
   }
 }
 
@@ -551,4 +569,16 @@ bool protocolBridgeDirectorOnline() {
 bool protocolBridgeEmergencyActive() {
   if (!protocolBridgeP4Alive()) return false;
   return sEmergencyActive;
+}
+
+bool protocolBridgeShowRunning() {
+  return sShowRunning;
+}
+
+bool protocolBridgeMaintenanceObserved() {
+  return sMaintenance;
+}
+
+void protocolBridgeNoteMaintenance(bool on) {
+  sMaintenance = on;
 }

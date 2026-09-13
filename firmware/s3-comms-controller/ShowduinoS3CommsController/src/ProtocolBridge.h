@@ -11,5 +11,8 @@ bool protocolBridgeLastPingOk();
 bool protocolBridgeP4Alive();
 bool protocolBridgeDirectorOnline();
 bool protocolBridgeEmergencyActive();
+bool protocolBridgeShowRunning();
+bool protocolBridgeMaintenanceObserved();
+void protocolBridgeNoteMaintenance(bool on);
 
 #endif

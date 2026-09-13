@@ -9,6 +9,7 @@
 #include "../../../protocol/showduino_gateway_wire.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_update_manager.h"
+#include "../update/CommsOta.h"
 
 #include <Preferences.h>
 #include <WiFi.h>
@@ -323,6 +324,10 @@ static void doGithubJob() {
 
 static void netTask(void *) {
   for (;;) {
+    if (commsOtaWantsNetJob()) {
+      commsOtaRunNetJob();
+      continue;
+    }
     const uint8_t job = sNetJob;
     if (job == 1) {
       doProbeJob();
@@ -396,6 +401,11 @@ void commsGatewayPushDirectorWires() {
     case COMMS_UPDATE_NEVER: st = SHOWDUINO_UPDATE_NONE; break;
     default: break;
   }
+  if (commsOtaBusy() ||
+      strcmp(commsOtaState(), SHOWDUINO_OTA_STATE_IDLE) != 0) {
+    commsOtaPushDirector();
+    return;
+  }
   if (showduino_update_format(line, sizeof(line), st, latest)) {
     espNowTransportSendToDirector(line);
   }
@@ -404,7 +414,7 @@ void commsGatewayPushDirectorWires() {
 void commsGatewayBegin() {
   loadPrefs();
   WiFi.onEvent(onWiFiEvent);
-  xTaskCreatePinnedToCore(netTask, "sdnet", 12288, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(netTask, "sdnet", 20480, nullptr, 1, nullptr, 1);
   if (sStaWanted) beginSta();
   commsGatewayLogRadio("boot");
 }
@@ -606,9 +616,13 @@ void commsGatewayUpdatesJson(String &json) {
   json += sLatestUrl;
   json += "\",\n  \"otaInstall\": false,\n";
   json += "  \"applyImplemented\": false,\n";
+  json += "  \"commsApplyImplemented\": true,\n";
+  json += "  \"systemWideOta\": false,\n";
+  json += "  \"hardwareId\": \"" SHOWDUINO_COMMS_HARDWARE_ID "\",\n";
   json += "  \"schema\": \"" SHOWDUINO_UPDATE_SCHEMA_NAME "\",\n";
   json += "  \"schemaVersion\": " + String(SHOWDUINO_UPDATE_SCHEMA_VERSION) + ",\n";
   json += "  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
-  json += "  \"note\": \"Phase 1: discovery and inventory only. Installation is not performed. Emergency Nodes update one at a time. Internet is optional.\"\n";
+  commsOtaAppendStatusJson(json);
+  json += ",\n  \"note\": \"Phase 2A: Comms self-OTA only. System-wide OTA is not implemented. Emergency Nodes remain USB. Internet is optional.\"\n";
   json += "}\n";
 }
