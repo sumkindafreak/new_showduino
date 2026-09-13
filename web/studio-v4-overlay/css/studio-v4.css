@@ -477,6 +477,20 @@ body.studio-v4::before {
   box-shadow: var(--studio-v4-shadow);
 }
 .studio-v4 .timeline-editor * { scrollbar-color: #344955 #0a1014; }
+
+.studio-v4 .v4-add-cue-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 108px;
+  margin-right: 4px;
+  color: #e7eef1;
+  line-height: 1.05;
+}
+
+.studio-v4 .v4-add-cue-label strong { font-size: 12px; }
+.studio-v4 .v4-add-cue-label small { margin-top: 3px; color: #78909b; font-size: 9px; }
+.studio-v4 .v4-add-cue-button { min-height: 30px; border-color: #3d5965 !important; background: #142028 !important; }
+.studio-v4 .v4-add-cue-button:hover { border-color: #00ffc8 !important; color: #00ffc8 !important; }
 .studio-v4 .timeline-toolbar,
 .studio-v4 .tl-toolbar { background: #0e151a !important; border-bottom-color: var(--studio-v4-border) !important; padding: 7px 8px !important; }
 .studio-v4 .btn-toolbar {

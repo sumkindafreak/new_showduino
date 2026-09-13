@@ -639,14 +639,40 @@
       });
 
       const trackGroup = [...bar.children].find((child) => [...child.querySelectorAll('button')].some((button) => button.textContent.toLowerCase().includes('relay')));
-      if (trackGroup && ![...trackGroup.querySelectorAll('button')].some((button) => button.textContent.includes('MOSFET'))) {
-        const relayButton = [...trackGroup.querySelectorAll('button')].find((button) => button.textContent.toLowerCase().includes('relay'));
-        const mosfet = this._toolbarBtn('▰ MOSFET', () => this.addTrack('mosfet'));
-        mosfet.title = 'Add MOSFET output track';
-        if (relayButton?.nextSibling) trackGroup.insertBefore(mosfet, relayButton.nextSibling);
-        else trackGroup.appendChild(mosfet);
+      if (trackGroup) {
+        trackGroup.replaceChildren();
+        const label = document.createElement('span');
+        label.className = 'v4-add-cue-label';
+        label.innerHTML = '<strong>Add cue</strong><small>Creates it at the red playhead</small>';
+        trackGroup.appendChild(label);
+
+        const cueTypes = [
+          ['audio', '♪ Sound'],
+          ['relay', '↯ Prop / switch'],
+          ['mosfet', '☀ Standard light'],
+          ['pixel', '✦ Pixel light'],
+          ['fx', '◈ Other FX'],
+          ['trigger', '◎ Trigger']
+        ];
+        cueTypes.forEach(([type, text]) => {
+          const button = this._toolbarBtn(text, () => this.addCueAtPlayhead(type));
+          button.classList.add('v4-add-cue-button');
+          button.title = `Add ${text.replace(/^\S+\s*/, '')} cue at the current playhead`;
+          trackGroup.appendChild(button);
+        });
       }
       return bar;
+    };
+
+    proto.addCueAtPlayhead = function (type) {
+      const currentTime = Math.max(0, Number(this._playOffset || 0));
+      let track = this._tracks().find((item) => item.type === type && !item.locked);
+      if (!track) track = this.addTrack(type, type === 'mosfet' ? 'Standard Lights' : type === 'pixel' ? 'Pixel Lights' : null);
+      const duration = type === 'audio' ? 5000 : type === 'pixel' ? 3000 : type === 'relay' ? 500 : type === 'trigger' ? 250 : 1000;
+      const clip = this._addClip(track.id, type, currentTime, duration);
+      this._selectedTrackId = track.id;
+      this._log(`Cue added at ${Math.round(currentTime)}ms: ${clip.label}`, 'INFO');
+      return clip;
     };
 
     if (typeof proto._buildProfessionalTypeInspector === 'function') {

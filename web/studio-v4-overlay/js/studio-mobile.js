@@ -14,8 +14,8 @@
   const TYPE_META = Object.freeze({
     audio:   { icon: '♪', name: 'Sound', subtitle: 'Play an audio file', duration: 5000 },
     relay:   { icon: '↯', name: 'Relay', subtitle: 'Switch or pulse an output', duration: 500 },
-    mosfet:  { icon: '▰', name: 'Powered output', subtitle: 'MOSFET / PWM output', duration: 1000 },
-    pixel:   { icon: '✦', name: 'Pixels', subtitle: 'Run a segmented pixel effect', duration: 3000 },
+    mosfet:  { icon: '☀', name: 'Standard light', subtitle: 'Plug-in or low-voltage light', duration: 1000 },
+    pixel:   { icon: '✦', name: 'Addressable pixels', subtitle: 'Colour and animated pixel effects', duration: 3000 },
     trigger: { icon: '◎', name: 'Trigger', subtitle: 'Fire a logical event', duration: 250 },
     fx:      { icon: '◈', name: 'Other FX', subtitle: 'Fog, air, motor, servo and more', duration: 1500 }
   });
@@ -34,6 +34,7 @@
   let root = null;
   let activeTab = 'build';
   let pickerOpen = false;
+  let pickerCategory = 'main';
   let editorOpen = false;
   let editorDraft = null;
   let editorExistingId = null;
@@ -330,15 +331,25 @@
   }
 
   function pickerHtml() {
+    const primaryTypes = ['audio', 'relay', 'trigger', 'fx'];
+    const lightingTypes = ['mosfet', 'pixel'];
+    const typeButton = (type) => {
+      const meta = TYPE_META[type];
+      return `<button class="sm-type" type="button" data-sm-add="${type}"><b>${meta.icon}</b><strong>${meta.name}</strong><span>${meta.subtitle}</span></button>`;
+    };
+    const content = pickerCategory === 'lighting'
+      ? `<button class="sm-btn ghost sm-picker-back" type="button" data-sm-picker-back>← All cue types</button>
+        <p class="sm-picker-help">What kind of light are you controlling?</p>
+        <div class="sm-type-grid">${lightingTypes.map(typeButton).join('')}</div>`
+      : `<div class="sm-type-grid">
+          ${typeButton('audio')}
+          <button class="sm-type sm-type-featured" type="button" data-sm-category="lighting"><b>☀</b><strong>Lighting</strong><span>Standard lights or addressable pixels</span></button>
+          ${primaryTypes.slice(1).map(typeButton).join('')}
+        </div>`;
     return `<section class="sm-picker" ${pickerOpen ? '' : 'hidden'} aria-modal="true" role="dialog">
       <div class="sm-picker-sheet">
-        <div class="sm-picker-head"><strong>What should happen?</strong><button type="button" data-sm-picker-close aria-label="Close">×</button></div>
-        <div class="sm-type-grid">
-          ${CURRENT_TYPES.map((type) => {
-            const meta = TYPE_META[type];
-            return `<button class="sm-type" type="button" data-sm-add="${type}"><b>${meta.icon}</b><strong>${meta.name}</strong><span>${meta.subtitle}</span></button>`;
-          }).join('')}
-        </div>
+        <div class="sm-picker-head"><strong>${pickerCategory === 'lighting' ? 'Add lighting' : 'What should happen?'}</strong><button type="button" data-sm-picker-close aria-label="Close">×</button></div>
+        ${content}
         <button class="sm-btn" style="width:100%;margin-top:.55rem;" type="button" data-sm-exit-template>10-pixel exit sign pattern</button>
       </div>
     </section>`;
@@ -395,7 +406,7 @@
     }
 
     if (draft.type === 'mosfet') {
-      return `<section class="sm-form-section"><h3>Powered output</h3>
+      return `<section class="sm-form-section"><h3>Standard light</h3>
         <div class="sm-grid"><div class="sm-field"><label>OUTPUT</label><select class="sm-select" id="sm-mosfet-out">${Array.from({length:8},(_,i) => `<option value="out${i+1}" ${(p.out || 'out1') === `out${i+1}` ? 'selected' : ''}>OUT${i+1}</option>`).join('')}</select></div>
         <div class="sm-field"><label>ACTION</label><select class="sm-select" id="sm-mosfet-mode"><option value="hold" ${(p.mode || 'hold') === 'hold' ? 'selected' : ''}>Hold</option><option value="pulse" ${p.mode === 'pulse' ? 'selected' : ''}>Pulse</option></select></div></div>
         <div class="sm-field"><label>POWER · <span id="sm-mosfet-duty-value">${clamp(p.duty,0,100,100)}</span>%</label><input class="sm-input" id="sm-mosfet-duty" type="range" min="0" max="100" value="${clamp(p.duty,0,100,100)}"></div>
@@ -904,8 +915,12 @@
       return;
     }
 
-    if (event.target.closest('[data-sm-picker-open]')) { pickerOpen = true; render(); return; }
-    if (event.target.closest('[data-sm-picker-close]')) { pickerOpen = false; render(); return; }
+    if (event.target.closest('[data-sm-picker-open]')) { pickerCategory = 'main'; pickerOpen = true; render(); return; }
+    if (event.target.closest('[data-sm-picker-close]')) { pickerCategory = 'main'; pickerOpen = false; render(); return; }
+    if (event.target.closest('[data-sm-picker-back]')) { pickerCategory = 'main'; render(); return; }
+
+    const category = event.target.closest('[data-sm-category]');
+    if (category) { pickerCategory = category.dataset.smCategory; render(); return; }
 
     const add = event.target.closest('[data-sm-add]');
     if (add) { openEditor(add.dataset.smAdd,null,false); return; }

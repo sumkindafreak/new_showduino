@@ -326,3 +326,14 @@
     font-weight:850;
   }
 }
+.sm-picker-help {
+  margin: .15rem 0 .65rem;
+  color: #91a4ad;
+  font-size: .7rem;
+}
+
+.sm-picker-back { margin: 0 0 .55rem; }
+.sm-type-featured {
+  border-color: rgba(0, 255, 200, .48) !important;
+  background: linear-gradient(145deg, rgba(0, 255, 200, .1), rgba(13, 24, 30, .96)) !important;
+}
