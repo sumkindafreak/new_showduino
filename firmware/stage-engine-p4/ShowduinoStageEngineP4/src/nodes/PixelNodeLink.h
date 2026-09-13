@@ -33,6 +33,7 @@ void pixelNodeLinkPublishToDirector();
 uint8_t pixelNodeLinkOnlineCount();
 uint8_t pixelNodeLinkSeenCount();
 const PixelNodeStatus *pixelNodeLinkFind(const char *id);
+const PixelNodeStatus *pixelNodeLinkSlot(uint8_t i);
 void pixelNodeLinkAppendJsonArray(String &json);
 void pixelNodeLinkAppendDevicesJson(String &json, bool &first);
 

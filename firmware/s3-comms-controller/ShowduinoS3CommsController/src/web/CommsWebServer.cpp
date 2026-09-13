@@ -91,7 +91,21 @@ static void handleUpdatesGet() {
 
 static void handleUpdatesCheck() {
   commsGatewayRequestUpdateCheck();
-  sendJson(202, "{\"ok\":true,\"state\":\"checking\",\"otaInstall\":false}\n");
+  sendJson(202, "{\"ok\":true,\"state\":\"checking\",\"otaInstall\":false,\"applyImplemented\":false}\n");
+}
+
+static void handleUpdatesInventory() {
+  if (proxyGetToP4("/api/updates", 2500)) return;
+  sendJson(503,
+           "{\"error\":\"p4_offline\",\"otaInstall\":false,\"applyImplemented\":false,"
+           "\"note\":\"P4 inventory unavailable. Product check remains on Comms.\"}\n");
+}
+
+static void handleUpdatesApply() {
+  sendJson(501,
+           "{\"ok\":false,\"error\":\"ota_not_implemented\",\"otaInstall\":false,"
+           "\"applyImplemented\":false,\"reason\":\"OTA_NOT_IMPLEMENTED\","
+           "\"note\":\"Phase 1 foundation only. System-wide OTA is not physically proven.\"}\n");
 }
 
 static void proxyDeploy(const char *path) {
@@ -183,8 +197,15 @@ void commsWebBegin() {
   sServer.on("/api/gateway/mode", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates", HTTP_GET, handleUpdatesGet);
   sServer.on("/api/updates/check", HTTP_POST, handleUpdatesCheck);
+  sServer.on("/api/updates/inventory", HTTP_GET, handleUpdatesInventory);
+  sServer.on("/api/updates/plan", HTTP_GET, handleUpdatesInventory);
+  sServer.on("/api/updates/plan", HTTP_POST, handleUpdatesInventory);
+  sServer.on("/api/updates/apply", HTTP_POST, handleUpdatesApply);
   sServer.on("/api/updates", HTTP_OPTIONS, sendCors);
   sServer.on("/api/updates/check", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/inventory", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/plan", HTTP_OPTIONS, sendCors);
+  sServer.on("/api/updates/apply", HTTP_OPTIONS, sendCors);
 
   sServer.on("/api/productions/deploy/begin", HTTP_POST, handleDeployBegin);
   sServer.on("/api/productions/deploy/chunk", HTTP_POST, handleDeployChunk);

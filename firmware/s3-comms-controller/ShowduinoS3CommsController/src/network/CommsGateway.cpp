@@ -8,6 +8,7 @@
 #include "../../../protocol/showduino_radio.h"
 #include "../../../protocol/showduino_gateway_wire.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_update_manager.h"
 
 #include <Preferences.h>
 #include <WiFi.h>
@@ -604,6 +605,10 @@ void commsGatewayUpdatesJson(String &json) {
   json += "\",\n  \"htmlUrl\": \"";
   json += sLatestUrl;
   json += "\",\n  \"otaInstall\": false,\n";
-  json += "  \"note\": \"Update discovery only. Installation is not performed automatically. Internet is optional.\"\n";
+  json += "  \"applyImplemented\": false,\n";
+  json += "  \"schema\": \"" SHOWDUINO_UPDATE_SCHEMA_NAME "\",\n";
+  json += "  \"schemaVersion\": " + String(SHOWDUINO_UPDATE_SCHEMA_VERSION) + ",\n";
+  json += "  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
+  json += "  \"note\": \"Phase 1: discovery and inventory only. Installation is not performed. Emergency Nodes update one at a time. Internet is optional.\"\n";
   json += "}\n";
 }

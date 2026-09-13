@@ -8,6 +8,7 @@
 #include "../ShowRuntimeOwner.h"
 #include "../../../protocol/showduino_web_tunnel.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_update_manager.h"
 #include "StageStorage.h"
 #include "StageAudio.h"
 #include "StageDiagnostics.h"
@@ -47,6 +48,106 @@ static const char *sourceName() {
   if (gEmergencySourceId == 3) return "usb";
   if (gEmergencySourceId == 4) return "wireless";
   return "unknown";
+}
+
+bool stageCommsLinkUp();
+
+static void fillUpdateInventory(ShowduinoUpdateInventory *inv) {
+  showduino_update_inventory_clear(inv);
+  showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_P4, "P4", "P4",
+                                 SHOWDUINO_P4_FIRMWARE_VERSION, 1, 1, 1, 1, 0);
+  const bool comms = stageCommsLinkUp();
+  showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_COMMS, "COMMS", "COMMS",
+                                 "", comms ? 1 : 0, comms ? 1 : 0, comms ? 1 : 0,
+                                 comms ? 1 : 0, 0);
+  const AudioNodeStatus &an = audioNodeLinkStatus();
+  if (an.seen) {
+    showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_AUDIO, "AUDIO", "AUDIO",
+                                   an.firmware, 1, an.online ? 1 : 0, an.online ? 1 : 0,
+                                   an.online ? 1 : 0, 0);
+  }
+  const LampNodeStatus &ln = lampNodeLinkStatus();
+  if (ln.seen) {
+    showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_LAMP, "LAMP", "LAMP",
+                                   ln.firmware, 1, ln.online ? 1 : 0, ln.online ? 1 : 0,
+                                   ln.online ? 1 : 0, 0);
+  }
+  for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; i++) {
+    const PixelNodeStatus *pn = pixelNodeLinkSlot(i);
+    if (!pn) continue;
+    showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_PIXEL, pn->id, pn->name,
+                                   pn->firmware, 1, pn->online ? 1 : 0, pn->online ? 1 : 0,
+                                   pn->online ? 1 : 0, 0);
+  }
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; i++) {
+    const EmergencyNodeStatus *en = emergencyNodeLinkSlot(i);
+    if (!en) continue;
+    const int ready = en->online ? 1 : 0;
+    showduino_update_inventory_add(inv, SHOWDUINO_UPDATE_ROLE_EMERGENCY, en->id, en->name,
+                                   en->firmware, 1, ready, ready, ready, 1);
+  }
+}
+
+static void appendUpdateInventoryJson(String &json, const ShowduinoUpdateInventory &inv) {
+  json += "[\n";
+  for (uint8_t i = 0; i < inv.count; i++) {
+    const ShowduinoUpdateInventoryItem &it = inv.items[i];
+    if (i) json += ",\n";
+    json += "    {\"role\":\"";
+    json += it.role;
+    json += "\",\"id\":\"";
+    json += it.id;
+    json += "\",\"name\":\"";
+    json += it.name;
+    json += "\",\"firmware\":\"";
+    json += it.firmware;
+    json += "\",\"present\":";
+    json += it.present ? "true" : "false";
+    json += ",\"online\":";
+    json += it.online ? "true" : "false";
+    json += ",\"healthy\":";
+    json += it.healthy ? "true" : "false";
+    json += ",\"linked\":";
+    json += it.linked ? "true" : "false";
+    json += ",\"otaCapable\":false,\"safetyClass\":";
+    json += it.safety_class ? "true" : "false";
+    json += ",\"updatePolicy\":\"";
+    json += showduino_update_policy_for_role(it.role);
+    json += "\"}";
+  }
+  json += "\n  ]";
+}
+
+static void appendUpdatePlanJson(String &json, const ShowduinoUpdatePlan &plan) {
+  json += "{\n";
+  json += "    \"applyImplemented\": false,\n";
+  json += "    \"blocked\": true,\n";
+  json += "    \"blockedReason\": \"";
+  json += plan.blocked_reason;
+  json += "\",\n    \"safetyFailed\": ";
+  json += plan.safety_failed ? "true" : "false";
+  json += ",\n    \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
+  json += "    \"steps\": [\n";
+  for (uint8_t i = 0; i < plan.count; i++) {
+    const ShowduinoUpdatePlanStep &st = plan.steps[i];
+    if (i) json += ",\n";
+    json += "      {\"role\":\"";
+    json += st.role;
+    json += "\",\"id\":\"";
+    json += st.id;
+    json += "\",\"state\":\"";
+    json += st.state;
+    json += "\",\"allowed\":";
+    json += st.allowed ? "true" : "false";
+    json += ",\"oneAtATime\":";
+    json += st.one_at_a_time ? "true" : "false";
+    json += ",\"holdReason\":\"";
+    json += st.hold_reason;
+    json += "\",\"fault\":\"";
+    json += st.fault;
+    json += "\"}";
+  }
+  json += "\n    ]\n  }";
 }
 
 #if SHOWDUINO_P4_STATIC_WEBUI
@@ -441,8 +542,53 @@ static void handleApiSystem() {
   json += ",\n  \"emergencyUpdatePolicy\": \"ONE_AT_A_TIME\"";
   json += ",\n  \"emergencySafetyFault\": ";
   json += emergencyNodeLinkSafetyFault() ? "true" : "false";
+  json += ",\n  \"otaInstall\": false";
+  {
+    ShowduinoUpdateInventory inv;
+    ShowduinoUpdatePlan plan;
+    fillUpdateInventory(&inv);
+    showduino_update_plan_from_inventory(&plan, &inv, gRuntime.rt.running ? 1 : 0,
+                                         emergencyLocked ? 1 : 0, 0);
+    json += ",\n  \"updateInventory\": ";
+    appendUpdateInventoryJson(json, inv);
+    json += ",\n  \"updatePlan\": ";
+    appendUpdatePlanJson(json, plan);
+  }
   json += "\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());
+}
+
+static void handleApiUpdates() {
+  gWebApiLogger.logHttpRequest("GET", "/api/updates");
+  ShowduinoUpdateInventory inv;
+  ShowduinoUpdatePlan plan;
+  fillUpdateInventory(&inv);
+  showduino_update_plan_from_inventory(&plan, &inv, gRuntime.rt.running ? 1 : 0,
+                                       emergencyLocked ? 1 : 0, 0);
+  String json = "{\n";
+  json += "  \"schema\": \"" SHOWDUINO_UPDATE_SCHEMA_NAME "\",\n";
+  json += "  \"schemaVersion\": " + String(SHOWDUINO_UPDATE_SCHEMA_VERSION) + ",\n";
+  json += "  \"productName\": \"" SHOWDUINO_PRODUCT_NAME "\",\n";
+  json += "  \"productVersion\": \"" SHOWDUINO_PLATFORM_VERSION "\",\n";
+  json += "  \"firmwareVersion\": \"" SHOWDUINO_P4_FIRMWARE_VERSION "\",\n";
+  json += "  \"otaInstall\": false,\n";
+  json += "  \"applyImplemented\": false,\n";
+  json += "  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
+  json += "  \"inventory\": ";
+  appendUpdateInventoryJson(json, inv);
+  json += ",\n  \"plan\": ";
+  appendUpdatePlanJson(json, plan);
+  json += ",\n  \"note\": \"Phase 1 inventory and plan only. OTA install is not implemented.\"\n}\n";
+  sendWebr(200, "application/json", json.c_str(), json.length());
+}
+
+static void handleApiUpdatesApply() {
+  gWebApiLogger.logHttpRequest("POST", "/api/updates/apply");
+  const char *body =
+      "{\"ok\":false,\"error\":\"ota_not_implemented\",\"otaInstall\":false,"
+      "\"applyImplemented\":false,\"reason\":\"OTA_NOT_IMPLEMENTED\","
+      "\"note\":\"Phase 1 foundation only. System-wide OTA is not physically proven.\"}\n";
+  sendWebr(501, "application/json", body, strlen(body));
 }
 
 static void handleApiLogs() {
@@ -990,6 +1136,14 @@ bool webApiDispatch(const char *method, const char *pathIn, const char *body) {
       handleApiCommand(cmd);
       return true;
     }
+    if (path.startsWith("/api/updates/apply")) {
+      handleApiUpdatesApply();
+      return true;
+    }
+    if (path.startsWith("/api/updates/plan") || path.startsWith("/api/updates")) {
+      handleApiUpdates();
+      return true;
+    }
     const char *err = "{\"error\":\"not_found\"}\n";
     sendWebr(404, "application/json", err, strlen(err));
     return true;
@@ -1001,6 +1155,7 @@ bool webApiDispatch(const char *method, const char *pathIn, const char *body) {
     return true;
   }
 
+  if (path.startsWith("/api/updates")) { handleApiUpdates(); return true; }
   if (path.startsWith("/api/system")) { handleApiSystem(); return true; }
   if (path.startsWith("/api/logs")) { handleApiLogs(); return true; }
   if (path.startsWith("/api/devices")) { handleApiDevices(); return true; }

@@ -227,6 +227,12 @@ bool emergencyNodeLinkSafetyFault() {
 
 const EmergencyNodeStatus *emergencyNodeLinkFind(const char *id) { return findById(id); }
 
+const EmergencyNodeStatus *emergencyNodeLinkSlot(uint8_t i) {
+  if (i >= SHOWDUINO_EMERGENCY_NODE_MAX_NODES) return nullptr;
+  if (!sNodes[i].used) return nullptr;
+  return &sNodes[i];
+}
+
 void emergencyNodeLinkPrimarySource(char *kind, size_t kindn,
                                     char *id, size_t idn,
                                     char *name, size_t namen) {

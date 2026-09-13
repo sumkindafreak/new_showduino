@@ -31,6 +31,7 @@ uint8_t emergencyNodeLinkOfflineCount();
 uint8_t emergencyNodeLinkAssertingCount();
 bool emergencyNodeLinkSafetyFault();
 const EmergencyNodeStatus *emergencyNodeLinkFind(const char *id);
+const EmergencyNodeStatus *emergencyNodeLinkSlot(uint8_t i);
 void emergencyNodeLinkAppendJsonArray(String &json);
 void emergencyNodeLinkAppendDevicesJson(String &json, bool &first);
 void emergencyNodeLinkPrimarySource(char *kind, size_t kindn,

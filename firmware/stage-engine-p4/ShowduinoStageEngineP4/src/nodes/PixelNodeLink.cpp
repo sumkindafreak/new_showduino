@@ -125,6 +125,12 @@ uint8_t pixelNodeLinkSeenCount() {
 
 const PixelNodeStatus *pixelNodeLinkFind(const char *id) { return findById(id); }
 
+const PixelNodeStatus *pixelNodeLinkSlot(uint8_t i) {
+  if (i >= SHOWDUINO_PIXEL_NODE_MAX_NODES) return nullptr;
+  if (!sNodes[i].used) return nullptr;
+  return &sNodes[i];
+}
+
 void pixelNodeLinkBegin() {
   for (uint8_t i = 0; i < SHOWDUINO_PIXEL_NODE_MAX_NODES; ++i) sNodes[i] = PixelNodeStatus();
   sLastWire[0] = '\0';
