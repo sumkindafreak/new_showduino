@@ -52,10 +52,12 @@ USB CDC must remain enabled so this board stays directly programmable and debugg
 ### Compile (Arduino core 3.3.11)
 
 ```text
-arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-comms-controller/ShowduinoS3CommsController
+arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB" firmware/s3-comms-controller/ShowduinoS3CommsController
 ```
 
 USB recovery uses this same FQBN. Hold BOOT, tap RESET, release BOOT, then `arduino-cli upload` to the CDC port. Always keep `PartitionScheme=default_8MB` so both OTA slots remain.
+
+Arduino IDE: **PSRAM = OPI PSRAM** (DevKitC-1 N8R8 / 8 MB). Use **QSPI PSRAM** only on an N8R2 2 MB module. Disabled is wrong for this board.
 
 ## UART pins
 
@@ -142,7 +144,7 @@ Navigation: Home, Productions, Live, Outputs, Devices, Network, System, Settings
 
 ## Comms self-OTA (Phase 2A)
 
-Comms 0.5.0 can install **its own** image into the inactive `default_8MB` OTA slot. See `docs/comms-ota.md`.
+Comms 0.5.1 can install **its own** image into the inactive `default_8MB` OTA slot from a GitHub Release. See `docs/comms-ota.md`.
 
 - Operator action is **Update Comms**, never Update System
 - P4 must authorise maintenance; a running show or emergency blocks apply

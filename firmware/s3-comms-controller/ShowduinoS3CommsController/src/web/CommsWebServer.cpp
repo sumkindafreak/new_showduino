@@ -95,6 +95,14 @@ static void handleUpdatesGet() {
 
 static void handleUpdatesCheck() {
   commsGatewayRequestUpdateCheck();
+  if (!commsGatewayStaHasIp()) {
+    sendJson(503, "{\"ok\":false,\"state\":\"offline\",\"error\":\"internet_unavailable\","
+                  "\"reason\":\"INTERNET_UNAVAILABLE\","
+                  "\"checkError\":\"Internet connection unavailable\","
+                  "\"otaInstall\":false,\"applyImplemented\":false,"
+                  "\"commsApplyImplemented\":true}\n");
+    return;
+  }
   sendJson(202, "{\"ok\":true,\"state\":\"checking\",\"otaInstall\":false,"
                 "\"applyImplemented\":false,\"commsApplyImplemented\":true}\n");
 }
@@ -179,7 +187,7 @@ static void handleUpdatesApply() {
   String err;
   if (!commsOtaRequestApply(cand, url.c_str(), err)) {
     int code = 409;
-    if (err == SHOWDUINO_UPDATE_BLOCK_P4) code = 503;
+    if (err == SHOWDUINO_UPDATE_BLOCK_P4 || err == SHOWDUINO_UPDATE_BLOCK_INTERNET) code = 503;
     else if (err == SHOWDUINO_UPDATE_BLOCK_MANIFEST || err == SHOWDUINO_UPDATE_BLOCK_SHA ||
              err == SHOWDUINO_UPDATE_BLOCK_HARDWARE || err == SHOWDUINO_UPDATE_BLOCK_ROLE) {
       code = 400;

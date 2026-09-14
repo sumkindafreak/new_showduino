@@ -77,7 +77,7 @@ export async function NetworkPage(container) {
     const gw = (c && c.gateway) || {};
     const gateway = el('div', { className: 'card' });
     gateway.append(el('h2', { text: 'Showduino network' }));
-    gateway.append(el('p', { className: 'sub', text: 'SoftAP SSID Showduino stays up. Home/venue STA is optional. Passwords are never displayed.' }));
+    gateway.append(el('p', { className: 'sub', text: 'SoftAP SSID Showduino stays up. Home/venue STA is optional. Passwords are never displayed. GitHub Comms OTA needs STA + internet. ESP-NOW channel follow stays with the radio manager.' }));
     gateway.append(statRow('Product', `${(c && c.productName) || 'Showduino'} ${(c && c.productVersion) || '1.0.0-rc.1'}`));
     gateway.append(statRow('AP', gw.apOnline ? (gw.apSsid || 'Showduino') : 'OFF'));
     gateway.append(statRow('AP IP', gw.apIp || (c && c.ip) || '192.168.4.1'));

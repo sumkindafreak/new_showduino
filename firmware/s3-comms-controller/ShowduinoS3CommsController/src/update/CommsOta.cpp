@@ -265,6 +265,31 @@ bool commsOtaParseApply(const String &body, ShowduinoOtaCandidate *c, String &ur
   (void)force;
   c->force = 0;
 #endif
+  if (!c->firmware[0] || !c->sha256[0] || !c->size || !url.length() || !c->hardware_id[0] ||
+      !c->filename[0]) {
+    ShowduinoOtaCandidate cached;
+    char cachedUrl[192];
+    if (commsGatewayCommsCandidate(&cached, cachedUrl, sizeof(cachedUrl))) {
+      if (!c->role[0]) {
+        showduino_update_copy(c->role, sizeof(c->role), cached.role);
+      }
+      if (!c->hardware_id[0]) {
+        showduino_update_copy(c->hardware_id, sizeof(c->hardware_id), cached.hardware_id);
+      }
+      if (!c->firmware[0]) {
+        showduino_update_copy(c->firmware, sizeof(c->firmware), cached.firmware);
+      }
+      if (!c->sha256[0]) {
+        showduino_update_copy(c->sha256, sizeof(c->sha256), cached.sha256);
+      }
+      if (!c->filename[0]) {
+        showduino_update_copy(c->filename, sizeof(c->filename), cached.filename);
+      }
+      if (!c->size) c->size = cached.size;
+      if (!url.length()) url = cachedUrl;
+      c->ota_capable = 1;
+    }
+  }
   return c->role[0] != 0;
 }
 
@@ -280,6 +305,10 @@ bool commsOtaRequestApply(const ShowduinoOtaCandidate &c, const char *url, Strin
       protocolBridgeP4Alive() ? 1 : 0);
   if (why) {
     err = why;
+    return false;
+  }
+  if (!commsGatewayStaHasIp()) {
+    err = SHOWDUINO_UPDATE_BLOCK_INTERNET;
     return false;
   }
   if (!url || !url[0] || strncmp(url, "https://", 8) != 0) {

@@ -2,6 +2,7 @@
 #define SHOWDUINO_COMMS_GATEWAY_H
 
 #include <Arduino.h>
+#include "../../../protocol/showduino_update_manager.h"
 
 enum CommsWifiMode : uint8_t {
   COMMS_WIFI_AP_ONLY = 0,
@@ -21,6 +22,7 @@ void commsGatewayBegin();
 void commsGatewayLoop();
 
 bool commsGatewayStaAssociated();
+bool commsGatewayStaHasIp();
 uint8_t commsGatewayTargetChannel();
 uint8_t commsGatewayRadioChannel();
 bool commsGatewayApOnline();
@@ -44,5 +46,6 @@ void commsGatewayAppendStatusJson(String &json);
 void commsGatewayUpdatesJson(String &json);
 void commsGatewayLogRadio(const char *reason);
 void commsGatewayPushDirectorWires();
+bool commsGatewayCommsCandidate(ShowduinoOtaCandidate *c, char *url, size_t url_cap);
 
 #endif

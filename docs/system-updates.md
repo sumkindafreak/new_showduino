@@ -21,7 +21,7 @@ Phase 2A does **not** implement `UPDATE SYSTEM`. The only install action is **UP
 |-------|------|
 | Release manifest | `releases/showduino-1.0.0-rc.1.manifest.json` + `showduino_update_manager.h` |
 | Live inventory | P4 `/api/updates` and `/api/system` `updateInventory` |
-| Product check | Existing Comms GitHub Releases discovery |
+| Product check | Comms GitHub Releases + `showduino-release-v1` manifest |
 | Comms self-OTA | Streamed HTTPS write to the inactive OTA slot, SHA-256, health gate, rollback |
 | Maintenance | P4 `UPDATE:MAINTENANCE:ON` / `OFF`. New shows cannot start. Emergency stays live |
 | Emergency gate | Existing `showduino_emergency_update_gate()` — unchanged and still locked |

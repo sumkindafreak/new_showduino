@@ -1,20 +1,67 @@
-{
-  "schema": "showduino-release-v1",
-  "schemaVersion": 1,
-  "product": "Showduino",
-  "version": "1.0.0-rc.1",
-  "protocol": "1.0",
-  "shdo": 2,
-  "otaInstall": false,
-  "note": "Phase 2A: Comms self-OTA only. System-wide OTA is false. Comms sha256/size match the built 0.5.0 binary.",
-  "emergencyUpdatePolicy": "ONE_AT_A_TIME",
-  "components": [
-    { "role": "p4", "id": "P4", "firmware": "0.6.3", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "comms", "id": "COMMS", "firmware": "0.5.0", "otaCapable": true, "hardwareId": "SHOWDUINO-S3-COMMS-V1", "filename": "ShowduinoS3CommsController.ino.bin", "size": 1357520, "sha256": "080d27e7a3ed59916f93180b5e068f2bd87b0da30d688c2c5964685cab3800d1", "updatePolicy": "INDEPENDENT" },
-    { "role": "director", "id": "DIRECTOR", "firmware": "0.9.7-director", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "audio", "id": "AUDIO", "firmware": "0.4.2", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "lamp", "id": "LAMP", "firmware": "0.4.0", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "pixel", "id": "LED-01", "firmware": "0.1.0", "otaCapable": false, "updatePolicy": "INDEPENDENT" },
-    { "role": "emergency", "id": "ESTOP-01", "firmware": "0.1.0", "otaCapable": false, "updatePolicy": "ONE_AT_A_TIME" }
-  ]
+﻿{
+    "schema":  "showduino-release-v1",
+    "schemaVersion":  1,
+    "product":  "Showduino",
+    "version":  "1.0.0-rc.1",
+    "protocol":  "1.0",
+    "shdo":  2,
+    "otaInstall":  false,
+    "note":  "Phase 2A: Comms self-OTA only. System-wide OTA is false. SHA-256 matches the built Comms 0.5.1 binary.",
+    "emergencyUpdatePolicy":  "ONE_AT_A_TIME",
+    "components":  [
+                       {
+                           "role":  "p4",
+                           "id":  "P4",
+                           "firmware":  "0.6.3",
+                           "otaCapable":  false,
+                           "updatePolicy":  "INDEPENDENT"
+                       },
+                       {
+                           "role":  "comms",
+                           "id":  "COMMS",
+                           "firmware":  "0.5.1",
+                           "otaCapable":  true,
+                           "updatePolicy":  "INDEPENDENT",
+                           "hardwareId":  "SHOWDUINO-S3-COMMS-V1",
+                           "filename":  "ShowduinoS3CommsController.ino.bin",
+                           "size":  1369936,
+                           "sha256":  "c2e7e4fdf2efd3d6dab9585606b1836741a51966ed21ed745baae52b9cacdf71"
+                       },
+                       {
+                           "role":  "director",
+                           "id":  "DIRECTOR",
+                           "firmware":  "0.9.7-director",
+                           "otaCapable":  false,
+                           "updatePolicy":  "INDEPENDENT"
+                       },
+                       {
+                           "role":  "audio",
+                           "id":  "AUDIO",
+                           "firmware":  "0.4.2",
+                           "otaCapable":  false,
+                           "updatePolicy":  "INDEPENDENT"
+                       },
+                       {
+                           "role":  "lamp",
+                           "id":  "LAMP",
+                           "firmware":  "0.4.0",
+                           "otaCapable":  false,
+                           "updatePolicy":  "INDEPENDENT"
+                       },
+                       {
+                           "role":  "pixel",
+                           "id":  "LED-01",
+                           "firmware":  "0.1.0",
+                           "otaCapable":  false,
+                           "updatePolicy":  "INDEPENDENT"
+                       },
+                       {
+                           "role":  "emergency",
+                           "id":  "ESTOP-01",
+                           "firmware":  "0.1.0",
+                           "otaCapable":  false,
+                           "updatePolicy":  "ONE_AT_A_TIME"
+                       }
+                   ]
 }
+

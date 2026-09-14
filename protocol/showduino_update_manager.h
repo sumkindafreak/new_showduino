@@ -65,8 +65,12 @@ extern "C" {
 #define SHOWDUINO_UPDATE_BLOCK_MAINT        "MAINTENANCE_REQUIRED"
 #define SHOWDUINO_UPDATE_BLOCK_P4           "P4_OFFLINE"
 #define SHOWDUINO_UPDATE_BLOCK_CONFIRM      "CONFIRM_REQUIRED"
+#define SHOWDUINO_UPDATE_BLOCK_INTERNET     "INTERNET_UNAVAILABLE"
+#define SHOWDUINO_UPDATE_BLOCK_PROTOCOL     "PROTOCOL_INCOMPATIBLE"
 #define SHOWDUINO_UPDATE_FAULT_INTEGRITY    "FIRMWARE_INTEGRITY_FAILED"
 #define SHOWDUINO_UPDATE_FAULT_EMERGENCY    "INTERRUPTED_BY_EMERGENCY"
+#define SHOWDUINO_UPDATE_CHECK_NO_INTERNET  "Internet connection unavailable"
+#define SHOWDUINO_COMMS_BIN_FILENAME        "ShowduinoS3CommsController.ino.bin"
 
 #define SHOWDUINO_COMMS_HARDWARE_ID         "SHOWDUINO-S3-COMMS-V1"
 #define SHOWDUINO_COMMS_OTA_SLOT_BYTES      3342336u
@@ -106,8 +110,12 @@ typedef struct ShowduinoReleaseComponent {
   char role[SHOWDUINO_UPDATE_ROLE_MAX + 1];
   char id[SHOWDUINO_UPDATE_ID_MAX + 1];
   char firmware[SHOWDUINO_UPDATE_FW_MAX + 1];
-  uint8_t ota_capable;      /* Phase 1: always 0 */
+  uint8_t ota_capable;      /* Phase 2A: comms may be 1 */
   uint8_t one_at_a_time;    /* Emergency stations */
+  char hardware_id[32];
+  char filename[48];
+  char sha256[SHOWDUINO_OTA_SHA256_HEX_LEN + 1];
+  uint32_t size;
 } ShowduinoReleaseComponent;
 
 typedef struct ShowduinoReleaseManifest {
@@ -230,7 +238,16 @@ static inline int showduino_release_manifest_valid(const ShowduinoReleaseManifes
   if (strcmp(m->schema, SHOWDUINO_UPDATE_SCHEMA_NAME) != 0) return 0;
   if (m->schema_version != SHOWDUINO_UPDATE_SCHEMA_VERSION) return 0;
   if (m->shdo != SHOWDUINO_SHDO_PACKAGE_VERSION) return 0;
-  if (!showduino_protocol_compatible(SHOWDUINO_PROTOCOL_VERSION_MAJOR)) return 0;
+  {
+    int proto_major = 0;
+    const char *ps = m->protocol;
+    if (!ps || *ps < '0' || *ps > '9') return 0;
+    while (*ps >= '0' && *ps <= '9') {
+      proto_major = proto_major * 10 + (*ps - '0');
+      ++ps;
+    }
+    if (!showduino_protocol_compatible(proto_major)) return 0;
+  }
   if (m->ota_install) return 0; /* system-wide OTA remains false */
   for (i = 0; i < m->component_count; i++) {
     if (!showduino_update_role_ok(m->components[i].role)) return 0;
@@ -497,6 +514,32 @@ static inline const char *showduino_comms_ota_reject_reason(
   cmp = showduino_version_compare(c->firmware, installed_ver);
   if (cmp < 0) return SHOWDUINO_UPDATE_BLOCK_DOWNGRADE;
   if (cmp == 0 && !c->force) return SHOWDUINO_UPDATE_BLOCK_SAME;
+  return NULL;
+}
+
+/* Discovery eligibility: same as apply, without live show/maintenance/confirm. */
+static inline const char *showduino_comms_discover_reason(
+    const ShowduinoOtaCandidate *c,
+    const char *installed_ver,
+    const char *local_hardware) {
+  int cmp;
+  if (!c) return SHOWDUINO_UPDATE_BLOCK_MANIFEST;
+  if (!showduino_update_is_comms_role(c->role)) {
+    if (showduino_update_role_ok(c->role)) return SHOWDUINO_UPDATE_BLOCK_COMPONENT;
+    return SHOWDUINO_UPDATE_BLOCK_ROLE;
+  }
+  if (!c->ota_capable) return SHOWDUINO_UPDATE_BLOCK_COMPONENT;
+  if (!showduino_ota_hardware_match(c->hardware_id, local_hardware)) {
+    return SHOWDUINO_UPDATE_BLOCK_HARDWARE;
+  }
+  if (!c->firmware[0] || !installed_ver) return SHOWDUINO_UPDATE_BLOCK_MANIFEST;
+  if (!showduino_ota_sha256_hex_ok(c->sha256)) return SHOWDUINO_UPDATE_BLOCK_SHA;
+  if (c->size == 0 || c->size > SHOWDUINO_COMMS_OTA_SLOT_BYTES) {
+    return SHOWDUINO_UPDATE_BLOCK_SIZE;
+  }
+  cmp = showduino_version_compare(c->firmware, installed_ver);
+  if (cmp < 0) return SHOWDUINO_UPDATE_BLOCK_DOWNGRADE;
+  if (cmp == 0) return SHOWDUINO_UPDATE_BLOCK_SAME;
   return NULL;
 }
 

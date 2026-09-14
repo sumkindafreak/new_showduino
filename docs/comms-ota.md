@@ -5,7 +5,7 @@ Status: SOFTWARE implemented / physical proof is a separate gate
 Product: Showduino 1.0.0-rc.1
 Protocol: 1.0
 SHDO: v2 unchanged
-Comms: 0.5.0
+Comms: 0.5.1
 Hardware ID: SHOWDUINO-S3-COMMS-V1
 ```
 
@@ -20,7 +20,7 @@ The dedicated ESP32-S3 Comms Controller already hosts GitHub discovery, the Upda
 Production FQBN:
 
 ```text
-esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB
+esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB
 ```
 
 `default_8MB` already provides dual OTA slots:
@@ -120,20 +120,22 @@ During the Comms reboot, wireless specialist nodes temporarily lose the transpor
 * Director may lose the Comms link and should show COMMS RESTARTING / RECONNECTING from last-known state.
 * This is not an unexplained system failure.
 
-## Bench / local candidate
+## Bench / GitHub candidate
 
-1. Build the candidate with `tools/release/make_comms_artifact.ps1`.
-2. Host the `.bin` on a local **HTTPS** server (self-signed is accepted by the current insecure TLS client).
-3. Enter URL, firmware, SHA-256, and size on System → Update Comms.
-4. Confirm. Do not use HTTP.
+Normal delivery is a GitHub Release, not a local HTTPS server.
 
-Example host (development only):
+1. Bump `SHOWDUINO_COMMS_FIRMWARE_VERSION` in `BoardConfig.h`.
+2. Build with `tools/release/make_comms_artifact.ps1` (reads the version, writes size/SHA-256 into the manifest and `releases/artifacts/comms-artifact.json`).
+3. Publish the generated `.bin` and `showduino-1.0.0-rc.1.manifest.json` with `tools/release/publish_comms_github_release.ps1`.
+4. On the bench: Network → connect venue Wi-Fi (AP+STA). SoftAP and ESP-NOW stay up.
+5. Diagnostics → SHOWDUINO SOFTWARE → Check for Updates.
+6. Confirm Communications Controller available > installed, then INSTALL UPDATE / Update Comms.
 
-```text
-python -m http.server 8443
-```
+Check for Updates reads GitHub Releases, downloads the Showduino manifest, maps `ShowduinoS3CommsController.ino.bin`, and fills firmware / size / SHA-256. Apply still requires operator confirmation, P4 maintenance, and the existing safety gates.
 
-Prefer a real HTTPS listener. The apply API rejects non-`https://` URLs.
+A board that is still running Comms 0.5.0 cannot yet auto-fill those fields (discovery of the comms component landed in 0.5.1). Use the GitHub `browser_download_url` plus the printed SIZE / SHA256 on that board's existing Update Comms form. Do not USB-flash Comms for the 0.5.0 → 0.5.1 proof.
+
+The apply API rejects non-`https://` URLs.
 
 ## Intentional rollback test
 
@@ -154,7 +156,7 @@ OTA must never remove USB recovery.
 3. Keep both OTA slots. Do not flash a single-app scheme over an OTA-capable board unless you intend to USB-migrate again.
 
 ```text
-arduino-cli upload --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" --port COMx firmware/s3-comms-controller/ShowduinoS3CommsController
+arduino-cli upload --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB" --port COMx firmware/s3-comms-controller/ShowduinoS3CommsController
 ```
 
 Destructive recovery is not exposed in the operator UI.

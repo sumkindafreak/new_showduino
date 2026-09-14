@@ -21,6 +21,9 @@
  * Current product path:
  *   Director ESP32-S3 --ESP-NOW--> this board --UART--> ESP32-P4 Stage Engine
  *
+ * Hardware: ESP32-S3-DevKitC-1 style with OPI PSRAM (N8R8 / 8 MB PSRAM).
+ * Arduino: PSRAM = OPI PSRAM. Do not compile with PSRAM disabled.
+ *
  * This board is a communications processor only. It must not become the
  * Stage Engine. It must not host show state, audio, pixels, SD, or plugins.
  * It may serve the browser WebUI from PROGMEM and proxy /api GETs to the P4.
@@ -34,7 +37,7 @@
  * System-wide OTA does not exist. Do not initialise Bluetooth libraries here.
  */
 
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.0"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.1"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
 #define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0

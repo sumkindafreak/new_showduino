@@ -59,6 +59,7 @@ void setup() {
   Serial.println("[COMMS] Arduino: (version macro unavailable)");
 #endif
   Serial.printf("[COMMS] IDF: %s\n", ESP.getSdkVersion());
+  Serial.printf("[COMMS] PSRAM: %lu bytes\n", (unsigned long)ESP.getPsramSize());
   Serial.printf("[COMMS] UART RX=%d TX=%d baud=%u\n",
                 SHOWDUINO_COMMS_UART_RX_PIN, SHOWDUINO_COMMS_UART_TX_PIN,
                 (unsigned)SHOWDUINO_COMMS_UART_BAUD);

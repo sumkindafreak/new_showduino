@@ -15,7 +15,7 @@ async function request(path, options = {}) {
     if (data && (data.error === 'p4_offline' || data.p4Online === false)) {
       return data;
     }
-    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}`);
+    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}${data && data.reason ? ' ' + data.reason : ''}`);
   }
   if (res.status === 204) return null;
   return res.json();

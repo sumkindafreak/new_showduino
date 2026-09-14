@@ -1,0 +1,15 @@
+{
+    "role":  "comms",
+    "firmware":  "0.5.1",
+    "hardwareId":  "SHOWDUINO-S3-COMMS-V1",
+    "filename":  "ShowduinoS3CommsController.ino.bin",
+    "size":  1369936,
+    "sha256":  "c2e7e4fdf2efd3d6dab9585606b1836741a51966ed21ed745baae52b9cacdf71",
+    "product":  "1.0.0-rc.1",
+    "tag":  "v1.0.0-rc.1",
+    "bin":  "releases/artifacts/ShowduinoS3CommsController.ino.bin",
+    "manifest":  "releases/showduino-1.0.0-rc.1.manifest.json",
+    "githubBin":  "https://github.com/sumkindafreak/new_showduino/releases/download/v1.0.0-rc.1/ShowduinoS3CommsController.ino.bin",
+    "githubManifest":  "https://github.com/sumkindafreak/new_showduino/releases/download/v1.0.0-rc.1/showduino-1.0.0-rc.1.manifest.json"
+}
+

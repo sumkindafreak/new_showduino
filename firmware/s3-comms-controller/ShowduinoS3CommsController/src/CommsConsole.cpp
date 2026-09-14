@@ -42,6 +42,9 @@ static void printStatus() {
   Serial.printf("IDF: %s\n", ESP.getSdkVersion());
   Serial.printf("Uptime: %lu ms\n", (unsigned long)millis());
   Serial.printf("Heap: %lu\n", (unsigned long)ESP.getFreeHeap());
+  Serial.printf("PSRAM: %lu free / %lu\n",
+                (unsigned long)ESP.getFreePsram(),
+                (unsigned long)ESP.getPsramSize());
   Serial.printf("ESP-NOW: %s\n", espNowTransportReady() ? "initialised" : "FAILED");
   Serial.printf("Director: %s\n",
                 protocolBridgeDirectorOnline() ? "ONLINE" :

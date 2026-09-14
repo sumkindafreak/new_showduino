@@ -3,6 +3,7 @@
 #include <cstdlib>
 
 #include "showduino_update_manager.h"
+#include "showduino_update_github.h"
 
 static int g_failures = 0;
 
@@ -225,6 +226,104 @@ int main() {
              SHOWDUINO_OTA_STATE_FAILED, "HEALTH CHECK FAILED");
   expect_str(showduino_ota_state_after(SHOWDUINO_OTA_STATE_FAILED, SHOWDUINO_OTA_EVT_ROLLBACK_DONE),
              SHOWDUINO_OTA_STATE_ROLLED_BACK, "ROLLBACK");
+
+  {
+    static const char kManifest[] =
+        "{"
+        "\"schema\":\"showduino-release-v1\","
+        "\"schemaVersion\":1,"
+        "\"product\":\"Showduino\","
+        "\"version\":\"1.0.0-rc.1\","
+        "\"protocol\":\"1.0\","
+        "\"shdo\":2,"
+        "\"otaInstall\":false,"
+        "\"components\":["
+        "{\"role\":\"p4\",\"id\":\"P4\",\"firmware\":\"0.6.3\",\"otaCapable\":false},"
+        "{\"role\":\"comms\",\"id\":\"COMMS\",\"firmware\":\"0.5.1\",\"otaCapable\":true,"
+        "\"hardwareId\":\"SHOWDUINO-S3-COMMS-V1\","
+        "\"filename\":\"ShowduinoS3CommsController.ino.bin\","
+        "\"size\":1362624,"
+        "\"sha256\":\"6a46e2680a681f57736bd6310d37804fe0131113c9a0eefab4f96307a2f6ad05\"},"
+        "{\"role\":\"emergency\",\"id\":\"ESTOP-01\",\"firmware\":\"0.1.0\",\"otaCapable\":false,"
+        "\"updatePolicy\":\"ONE_AT_A_TIME\"}"
+        "]}";
+    ShowduinoReleaseManifest parsed;
+    expect(showduino_release_manifest_parse_json(kManifest, &parsed), "parse GitHub-style release manifest");
+    expect_str(parsed.product_version, "1.0.0-rc.1", "manifest product version");
+    expect_str(parsed.protocol, "1.0", "manifest protocol 1.0");
+    expect(parsed.shdo == 2, "manifest SHDO 2");
+    expect(parsed.ota_install == 0, "manifest otaInstall false");
+    const ShowduinoReleaseComponent *cc = showduino_release_find_comms(&parsed);
+    expect(cc && cc->ota_capable == 1, "parsed comms otaCapable");
+    expect_str(cc->firmware, "0.5.1", "parsed comms firmware 0.5.1");
+    expect_str(cc->hardware_id, SHOWDUINO_COMMS_HARDWARE_ID, "parsed comms hardwareId");
+    expect(cc->size == 1362624u, "parsed comms size");
+    expect_str(cc->sha256, "6a46e2680a681f57736bd6310d37804fe0131113c9a0eefab4f96307a2f6ad05",
+               "parsed comms sha256");
+
+    ShowduinoOtaCandidate fromMan;
+    expect(showduino_comms_candidate_from_component(cc, &fromMan), "candidate from manifest component");
+    expect(showduino_comms_discover_reason(&fromMan, "0.5.0", SHOWDUINO_COMMS_HARDWARE_ID) == NULL,
+           "0.5.1 is discoverable over 0.5.0");
+    expect_str(showduino_comms_discover_reason(&fromMan, "0.5.1", SHOWDUINO_COMMS_HARDWARE_ID),
+               SHOWDUINO_UPDATE_BLOCK_SAME, "same comms version is not an update");
+    expect_str(showduino_comms_discover_reason(&fromMan, "0.5.2", SHOWDUINO_COMMS_HARDWARE_ID),
+               SHOWDUINO_UPDATE_BLOCK_DOWNGRADE, "older candidate is a downgrade");
+
+    static const char kReleases[] =
+        "[{\"draft\":true,\"tag_name\":\"v9.9.9\",\"name\":\"draft\"},"
+        "{\"tag_name\":\"v1.0.0-rc.1\",\"name\":\"Showduino 1.0.0-rc.1\","
+        "\"draft\":false,\"prerelease\":true,"
+        "\"html_url\":\"https://github.com/sumkindafreak/new_showduino/releases/tag/v1.0.0-rc.1\","
+        "\"assets\":["
+        "{\"name\":\"showduino-1.0.0-rc.1.manifest.json\","
+        "\"browser_download_url\":\"https://github.com/sumkindafreak/new_showduino/releases/download/v1.0.0-rc.1/showduino-1.0.0-rc.1.manifest.json\"},"
+        "{\"name\":\"ShowduinoS3CommsController.ino.bin\","
+        "\"browser_download_url\":\"https://github.com/sumkindafreak/new_showduino/releases/download/v1.0.0-rc.1/ShowduinoS3CommsController.ino.bin\"}"
+        "]}]";
+    ShowduinoGithubReleaseMeta rel;
+    expect(showduino_github_first_release(kReleases, &rel), "skip draft GitHub release");
+    expect_str(rel.tag, "v1.0.0-rc.1", "first published tag keeps v prefix");
+    expect_str(rel.tag_norm, "1.0.0-rc.1", "normalized tag");
+    ShowduinoGithubAssetList assets;
+    expect(showduino_github_parse_assets(kReleases, &assets), "parse GitHub assets");
+    expect(assets.count == 2, "two release assets");
+    const char *manName = NULL;
+    const char *manUrl = showduino_github_find_manifest_asset(&assets, &manName);
+    expect(manUrl && strstr(manUrl, "manifest.json") != NULL, "manifest asset URL");
+    expect(manName && strstr(manName, "manifest.json") != NULL, "manifest asset name");
+    const char *binUrl = showduino_github_find_asset(&assets, SHOWDUINO_COMMS_BIN_FILENAME);
+    expect(binUrl && strstr(binUrl, SHOWDUINO_COMMS_BIN_FILENAME) != NULL, "bin asset URL from GitHub");
+
+    char resolved[192];
+    expect(showduino_comms_resolve_bin_url(&fromMan, &assets, rel.tag, resolved, sizeof(resolved)),
+           "resolve bin URL from assets");
+    expect_str(resolved, binUrl, "resolved URL matches GitHub asset");
+
+    ShowduinoGithubAssetList emptyAssets;
+    memset(&emptyAssets, 0, sizeof(emptyAssets));
+    expect(showduino_comms_resolve_bin_url(&fromMan, &emptyAssets, rel.tag, resolved, sizeof(resolved)),
+           "construct download URL when assets missing");
+    expect(strstr(resolved, SHOWDUINO_COMMS_BIN_FILENAME) != NULL, "constructed URL has bin name");
+    expect(strstr(resolved, "v1.0.0-rc.1") != NULL, "constructed URL has tag");
+
+    char tagApi[192];
+    expect(showduino_github_tag_api_url(rel.tag, tagApi, sizeof(tagApi)), "tag API URL");
+    expect(strstr(tagApi, "/releases/tags/v1.0.0-rc.1") != NULL, "tag API path");
+
+    static const char kBadProto[] =
+        "{\"schema\":\"showduino-release-v1\",\"schemaVersion\":1,\"product\":\"Showduino\","
+        "\"version\":\"1.0.0-rc.1\",\"protocol\":\"2.0\",\"shdo\":2,\"otaInstall\":false,"
+        "\"components\":[{\"role\":\"comms\",\"id\":\"COMMS\",\"firmware\":\"0.5.1\","
+        "\"otaCapable\":true,\"hardwareId\":\"SHOWDUINO-S3-COMMS-V1\","
+        "\"filename\":\"ShowduinoS3CommsController.ino.bin\",\"size\":100,"
+        "\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}]}";
+    ShowduinoReleaseManifest bad;
+    expect(!showduino_release_manifest_parse_json(kBadProto, &bad),
+           "protocol 2.0 manifest rejected");
+    expect_str(SHOWDUINO_UPDATE_CHECK_NO_INTERNET, "Internet connection unavailable",
+               "offline check copy");
+  }
 
   if (g_failures) {
     std::printf("\n%d FAILED\n", g_failures);

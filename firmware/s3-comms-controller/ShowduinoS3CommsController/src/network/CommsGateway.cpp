@@ -9,6 +9,7 @@
 #include "../../../protocol/showduino_gateway_wire.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_update_manager.h"
+#include "../../../protocol/showduino_update_github.h"
 #include "../update/CommsOta.h"
 
 #include <Preferences.h>
@@ -45,6 +46,12 @@ static char sLatestTag[32] = "";
 static char sLatestName[48] = "";
 static char sLatestNotes[512] = "";
 static char sLatestUrl[128] = "";
+static char sReleaseTag[32] = "";
+static ShowduinoOtaCandidate sCommsCand;
+static char sCommsCandUrl[192] = "";
+static bool sCommsCandOk = false;
+static char sCheckError[80] = "";
+static char sCommsAvailable[24] = "";
 static CommsUpdateStatus sUpdateStatus = COMMS_UPDATE_NEVER;
 static uint32_t sLastCheckMs = 0;
 static bool sLastCheckOk = false;
@@ -227,99 +234,201 @@ static void doProbeJob() {
   Serial.printf("[NET] internet %s\n", sInternet ? "ONLINE" : "OFFLINE");
 }
 
-static bool extractRelease(const String &payload) {
-  int pos = 0;
-  while (true) {
-    int tagAt = payload.indexOf("\"tag_name\"", pos);
-    if (tagAt < 0) return false;
-    String obj = payload.substring(tagAt, tagAt + 1800);
-    if (obj.indexOf("\"draft\":true") >= 0 || obj.indexOf("\"draft\": true") >= 0) {
-      pos = tagAt + 10;
-      continue;
+static void clearCommsCandidate() {
+  memset(&sCommsCand, 0, sizeof(sCommsCand));
+  sCommsCandUrl[0] = 0;
+  sCommsCandOk = false;
+  sCommsAvailable[0] = 0;
+  sCheckError[0] = 0;
+}
+
+static void setCheckError(const char *e) {
+  showduino_update_copy(sCheckError, sizeof(sCheckError), e);
+}
+
+static bool httpsGet(const char *url, String &body, int maxBytes, int timeoutMs, int *codeOut) {
+  body = "";
+  if (codeOut) *codeOut = 0;
+  if (!url || strncmp(url, "https://", 8) != 0) return false;
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setHandshakeTimeout(timeoutMs > 1000 ? timeoutMs / 1000 : 4);
+  HTTPClient http;
+  http.setTimeout(timeoutMs);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  if (!http.begin(client, url)) return false;
+  http.addHeader("User-Agent", "Showduino/" SHOWDUINO_PLATFORM_VERSION);
+  http.addHeader("Accept", "application/vnd.github+json, application/json, application/octet-stream");
+  const int code = http.GET();
+  if (codeOut) *codeOut = code;
+  if (code == 200) {
+    WiFiClient *stream = http.getStreamPtr();
+    body.reserve((unsigned)maxBytes + 8);
+    const uint32_t deadline = millis() + (uint32_t)timeoutMs;
+    while (http.connected() && (int)body.length() < maxBytes &&
+           (int32_t)(millis() - deadline) < 0) {
+      while (stream && stream->available() && (int)body.length() < maxBytes) {
+        body += (char)stream->read();
+      }
+      vTaskDelay(pdMS_TO_TICKS(1));
     }
-    String tag, name, body, url;
-    if (!jsonGetString(obj, "tag_name", tag)) {
-      pos = tagAt + 10;
-      continue;
-    }
-    jsonGetString(obj, "name", name);
-    jsonGetString(obj, "body", body);
-    jsonGetString(obj, "html_url", url);
-    strncpy(sLatestTag, showduino_version_skip_v(tag.c_str()), sizeof(sLatestTag) - 1);
-    strncpy(sLatestName, name.length() ? name.c_str() : tag.c_str(), sizeof(sLatestName) - 1);
-    strncpy(sLatestUrl, url.c_str(), sizeof(sLatestUrl) - 1);
-    body.replace("\r", " ");
-    body.replace("\n", " ");
-    if (body.length() > 480) body = body.substring(0, 480);
-    strncpy(sLatestNotes, body.c_str(), sizeof(sLatestNotes) - 1);
-    return true;
   }
+  http.end();
+  return code == 200;
+}
+
+static void finishGithubOffline() {
+  sUpdateStatus = COMMS_UPDATE_OFFLINE;
+  sInternet = false;
+  sInternetKnown = true;
+  sLastCheckOk = false;
+  setCheckError(SHOWDUINO_UPDATE_CHECK_NO_INTERNET);
+  sChecking = false;
 }
 
 static void doGithubJob() {
   sChecking = true;
+  clearCommsCandidate();
   if (!sGotIp) {
-    sUpdateStatus = COMMS_UPDATE_OFFLINE;
-    sChecking = false;
-    sInternet = false;
-    sInternetKnown = true;
+    finishGithubOffline();
     return;
   }
-  WiFiClientSecure client;
-  client.setInsecure();
-  client.setHandshakeTimeout(4);
-  HTTPClient http;
-  http.setTimeout(4000);
-  if (!http.begin(client, SHOWDUINO_GITHUB_RELEASES_API)) {
-    sUpdateStatus = COMMS_UPDATE_FAILED;
-    sChecking = false;
-    return;
-  }
-  http.addHeader("User-Agent", "Showduino/" SHOWDUINO_PLATFORM_VERSION);
-  http.addHeader("Accept", "application/vnd.github+json");
-  const int code = http.GET();
-  String payload;
-  if (code > 0) {
-    WiFiClient *stream = http.getStreamPtr();
-    payload.reserve(12288);
-    const uint32_t deadline = millis() + 4000;
-    while (http.connected() && payload.length() < 12000 &&
-           (int32_t)(millis() - deadline) < 0) {
-      while (stream && stream->available() && payload.length() < 12000) {
-        payload += (char)stream->read();
-      }
-      delay(1);
-    }
-  }
-  http.end();
-  sLastCheckMs = millis();
-  if (code != 200) {
+  int code = 0;
+  String listBody;
+  if (!httpsGet(SHOWDUINO_GITHUB_RELEASES_API, listBody, 16384, 6000, &code)) {
+    sLastCheckMs = millis();
     sLastCheckOk = false;
     if (code < 0) {
-      sInternet = false;
-      sInternetKnown = true;
-      sUpdateStatus = COMMS_UPDATE_OFFLINE;
-    } else {
-      sUpdateStatus = COMMS_UPDATE_FAILED;
+      finishGithubOffline();
+      Serial.printf("[UPDATE] GitHub HTTP %d\n", code);
+      return;
     }
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError("check_failed");
     sChecking = false;
     Serial.printf("[UPDATE] GitHub HTTP %d\n", code);
     return;
   }
   sInternet = true;
   sInternetKnown = true;
+  sLastCheckMs = millis();
   sLastCheckOk = true;
-  if (!extractRelease(payload)) {
+
+  ShowduinoGithubReleaseMeta meta;
+  if (!showduino_github_first_release(listBody.c_str(), &meta) || !meta.tag[0]) {
     sUpdateStatus = COMMS_UPDATE_NONE;
+    setCheckError("no_releases");
     sChecking = false;
     Serial.println("[UPDATE] no GitHub Releases published");
     return;
   }
-  const int cmp = showduino_version_compare(sLatestTag, SHOWDUINO_PLATFORM_VERSION);
-  sUpdateStatus = (cmp > 0) ? COMMS_UPDATE_AVAILABLE : COMMS_UPDATE_CURRENT;
+  strncpy(sReleaseTag, meta.tag, sizeof(sReleaseTag) - 1);
+  strncpy(sLatestTag, meta.tag_norm[0] ? meta.tag_norm : showduino_version_skip_v(meta.tag),
+          sizeof(sLatestTag) - 1);
+  strncpy(sLatestName, meta.name[0] ? meta.name : meta.tag, sizeof(sLatestName) - 1);
+  strncpy(sLatestUrl, meta.html_url, sizeof(sLatestUrl) - 1);
+
+  char tagApi[192];
+  String tagBody;
+  ShowduinoGithubAssetList assets;
+  memset(&assets, 0, sizeof(assets));
+  if (showduino_github_tag_api_url(meta.tag, tagApi, sizeof(tagApi)) &&
+      httpsGet(tagApi, tagBody, 16384, 6000, &code)) {
+    showduino_github_parse_assets(tagBody.c_str(), &assets);
+    String notes;
+    if (jsonGetString(tagBody, "body", notes)) {
+      notes.replace("\r", " ");
+      notes.replace("\n", " ");
+      if (notes.length() > 480) notes = notes.substring(0, 480);
+      strncpy(sLatestNotes, notes.c_str(), sizeof(sLatestNotes) - 1);
+    }
+  } else {
+    showduino_github_parse_assets(listBody.c_str(), &assets);
+  }
+
+  const char *manifestName = nullptr;
+  const char *manifestUrl = showduino_github_find_manifest_asset(&assets, &manifestName);
+  char constructedManifest[192];
+  if ((!manifestUrl || !manifestUrl[0]) && meta.tag[0]) {
+    char manFile[64];
+    snprintf(manFile, sizeof(manFile), "showduino-%s.manifest.json",
+             meta.tag_norm[0] ? meta.tag_norm : sLatestTag);
+    if (showduino_github_download_url(meta.tag, manFile, constructedManifest,
+                                      sizeof(constructedManifest))) {
+      manifestUrl = constructedManifest;
+    }
+  }
+  if (!manifestUrl || !manifestUrl[0]) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_MANIFEST);
+    sChecking = false;
+    Serial.println("[UPDATE] release has no manifest asset");
+    return;
+  }
+
+  String manBody;
+  if (!httpsGet(manifestUrl, manBody, 4096, 8000, &code)) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_MANIFEST);
+    sChecking = false;
+    Serial.printf("[UPDATE] manifest HTTP %d\n", code);
+    return;
+  }
+
+  ShowduinoReleaseManifest parsed;
+  if (!showduino_release_manifest_parse_json(manBody.c_str(), &parsed)) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_MANIFEST);
+    sChecking = false;
+    Serial.println("[UPDATE] BAD_MANIFEST");
+    return;
+  }
+  const ShowduinoReleaseComponent *comp = showduino_release_find_comms(&parsed);
+  if (!comp) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_ROLE);
+    sChecking = false;
+    Serial.println("[UPDATE] manifest has no comms component");
+    return;
+  }
+  if (!showduino_comms_candidate_from_component(comp, &sCommsCand)) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_MANIFEST);
+    sChecking = false;
+    return;
+  }
+  if (!showduino_comms_resolve_bin_url(&sCommsCand, &assets, meta.tag, sCommsCandUrl,
+                                       sizeof(sCommsCandUrl)) ||
+      strncmp(sCommsCandUrl, "https://", 8) != 0) {
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(SHOWDUINO_UPDATE_BLOCK_MANIFEST);
+    sChecking = false;
+    Serial.println("[UPDATE] comms binary URL missing");
+    return;
+  }
+
+  const char *why = showduino_comms_discover_reason(
+      &sCommsCand, SHOWDUINO_COMMS_FIRMWARE_VERSION, SHOWDUINO_COMMS_HARDWARE_ID);
+  strncpy(sCommsAvailable, sCommsCand.firmware, sizeof(sCommsAvailable) - 1);
+  if (!why) {
+    sCommsCandOk = true;
+    sUpdateStatus = COMMS_UPDATE_AVAILABLE;
+    Serial.printf("[UPDATE] comms installed=%s available=%s url=%s\n",
+                  SHOWDUINO_COMMS_FIRMWARE_VERSION, sCommsAvailable, sCommsCandUrl);
+  } else if (strcmp(why, SHOWDUINO_UPDATE_BLOCK_SAME) == 0 ||
+             strcmp(why, SHOWDUINO_UPDATE_BLOCK_DOWNGRADE) == 0) {
+    sCommsCandOk = false;
+    sUpdateStatus = COMMS_UPDATE_CURRENT;
+    setCheckError(why);
+    Serial.printf("[UPDATE] comms installed=%s latest=%s status=current (%s)\n",
+                  SHOWDUINO_COMMS_FIRMWARE_VERSION, sCommsAvailable, why);
+  } else {
+    sCommsCandOk = false;
+    sUpdateStatus = COMMS_UPDATE_FAILED;
+    setCheckError(why);
+    Serial.printf("[UPDATE] comms candidate rejected %s\n", why);
+  }
   sChecking = false;
-  Serial.printf("[UPDATE] installed=%s latest=%s status=%d\n",
-                SHOWDUINO_PLATFORM_VERSION, sLatestTag, (int)sUpdateStatus);
 }
 
 static void netTask(void *) {
@@ -394,7 +503,7 @@ void commsGatewayPushDirectorWires() {
     case COMMS_UPDATE_CURRENT: st = SHOWDUINO_UPDATE_CURRENT; break;
     case COMMS_UPDATE_AVAILABLE:
       st = SHOWDUINO_UPDATE_AVAILABLE;
-      latest = sLatestTag;
+      latest = sCommsAvailable[0] ? sCommsAvailable : sLatestTag;
       break;
     case COMMS_UPDATE_OFFLINE: st = SHOWDUINO_UPDATE_OFFLINE; break;
     case COMMS_UPDATE_FAILED: st = SHOWDUINO_UPDATE_FAILED; break;
@@ -449,6 +558,7 @@ void commsGatewayLoop() {
 }
 
 bool commsGatewayStaAssociated() { return sStaAssociated; }
+bool commsGatewayStaHasIp() { return sGotIp; }
 uint8_t commsGatewayRadioChannel() { return currentRadioChannel(); }
 uint8_t commsGatewayTargetChannel() {
   if (sStaAssociated) return currentRadioChannel();
@@ -535,6 +645,16 @@ bool commsGatewayScanStart() {
 const char *commsGatewayScanJson() { return sScanJson; }
 
 void commsGatewayRequestUpdateCheck() {
+  if (!sGotIp) {
+    sUpdateStatus = COMMS_UPDATE_OFFLINE;
+    sInternet = false;
+    sInternetKnown = true;
+    setCheckError(SHOWDUINO_UPDATE_CHECK_NO_INTERNET);
+    sChecking = false;
+    sLastCheckMs = millis();
+    sLastCheckOk = false;
+    return;
+  }
   if (sNetJob == 0) sNetJob = 2;
 }
 
@@ -622,7 +742,51 @@ void commsGatewayUpdatesJson(String &json) {
   json += "  \"schema\": \"" SHOWDUINO_UPDATE_SCHEMA_NAME "\",\n";
   json += "  \"schemaVersion\": " + String(SHOWDUINO_UPDATE_SCHEMA_VERSION) + ",\n";
   json += "  \"emergencyUpdatePolicy\": \"" SHOWDUINO_EMERGENCY_UPDATE_POLICY "\",\n";
+  json += "  \"commsInstalled\": \"" SHOWDUINO_COMMS_FIRMWARE_VERSION "\",\n";
+  json += "  \"commsAvailable\": ";
+  if (sCommsAvailable[0]) {
+    json += "\"";
+    json += sCommsAvailable;
+    json += "\"";
+  } else {
+    json += "null";
+  }
+  json += ",\n  \"checkError\": \"";
+  {
+    char errEsc[96];
+    jsonEscape(sCheckError, errEsc, sizeof(errEsc));
+    json += errEsc;
+  }
+  json += "\",\n  \"commsCandidate\": ";
+  if (sCommsCandOk && sCommsCandUrl[0]) {
+    json += "{\n";
+    json += "    \"role\": \"comms\",\n";
+    json += "    \"hardwareId\": \"";
+    json += sCommsCand.hardware_id;
+    json += "\",\n    \"firmware\": \"";
+    json += sCommsCand.firmware;
+    json += "\",\n    \"filename\": \"";
+    json += sCommsCand.filename;
+    json += "\",\n    \"size\": ";
+    json += String((unsigned long)sCommsCand.size);
+    json += ",\n    \"sha256\": \"";
+    json += sCommsCand.sha256;
+    json += "\",\n    \"url\": \"";
+    json += sCommsCandUrl;
+    json += "\",\n    \"otaCapable\": true\n";
+    json += "  }";
+  } else {
+    json += "null";
+  }
+  json += ",\n";
   commsOtaAppendStatusJson(json);
-  json += ",\n  \"note\": \"Phase 2A: Comms self-OTA only. System-wide OTA is not implemented. Emergency Nodes remain USB. Internet is optional.\"\n";
+  json += ",\n  \"note\": \"Phase 2A: Comms self-OTA from GitHub Releases. System-wide OTA is not implemented.\"\n";
   json += "}\n";
+}
+
+bool commsGatewayCommsCandidate(ShowduinoOtaCandidate *c, char *url, size_t url_cap) {
+  if (!sCommsCandOk || !sCommsCandUrl[0] || !c) return false;
+  *c = sCommsCand;
+  if (url && url_cap) showduino_update_copy(url, url_cap, sCommsCandUrl);
+  return true;
 }

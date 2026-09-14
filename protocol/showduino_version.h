@@ -38,6 +38,10 @@
 #define SHOWDUINO_GITHUB_REPO "new_showduino"
 #define SHOWDUINO_GITHUB_RELEASES_API \
   "https://api.github.com/repos/sumkindafreak/new_showduino/releases?per_page=8"
+#define SHOWDUINO_GITHUB_RELEASE_TAG_API_PREFIX \
+  "https://api.github.com/repos/sumkindafreak/new_showduino/releases/tags/"
+#define SHOWDUINO_GITHUB_DOWNLOAD_PREFIX \
+  "https://github.com/sumkindafreak/new_showduino/releases/download/"
 
 #ifdef __cplusplus
 extern "C" {
