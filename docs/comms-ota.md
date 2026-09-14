@@ -137,6 +137,27 @@ A board that is still running Comms 0.5.0 cannot yet auto-fill those fields (dis
 
 The apply API rejects non-`https://` URLs.
 
+## Firmware version reuse
+
+Keep `SHOWDUINO_COMMS_FIRMWARE_VERSION` unique per accepted binary.
+
+* A prerelease candidate that has **never** been physically installed may be replaced under the same version (this 0.5.1 Network-page fix is that case).
+* Once a firmware version has been physically installed, or otherwise distributed as an accepted build, **never** replace it with a different binary under the same version string.
+* The next post-install firmware change must be `0.5.2` or later.
+
+## Network page (venue Wi-Fi)
+
+The Network page keeps SSID/password in transient page draft state so status polling cannot wipe the form. Connect captures credentials **before** any busy/repaint. Scan selection writes the draft, not a throwaway DOM node. Passwords stay in the password input / draft only: never in status JSON, logs, or `localStorage`.
+
+Manual check after a corrected 0.5.1 OTA:
+
+1. Join Showduino AP and open Network.
+2. Type an SSID and password; wait through several status refreshes. Text must remain.
+3. Scan, tap a network, wait through a refresh. SSID must remain; password field should take focus.
+4. Connect. SoftAP stays up. Failure must show the API error. Success may clear the typed password; SSID remains.
+
+Live 0.5.0 still has the old form bug. Do not expect that board's WebUI to keep typed credentials.
+
 ## Intentional rollback test
 
 Compile a **throwaway** candidate with:

@@ -57,6 +57,8 @@ arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,Flas
 
 USB recovery uses this same FQBN. Hold BOOT, tap RESET, release BOOT, then `arduino-cli upload` to the CDC port. Always keep `PartitionScheme=default_8MB` so both OTA slots remain.
 
+Do not reuse a firmware version string after that build has been physically installed or accepted. Uninstalled 0.5.1 prerelease assets may be replaced; the next installed change must be 0.5.2 or later. See `docs/comms-ota.md`.
+
 Arduino IDE: **PSRAM = OPI PSRAM** (DevKitC-1 N8R8 / 8 MB). Use **QSPI PSRAM** only on an N8R2 2 MB module. Disabled is wrong for this board.
 
 ## UART pins

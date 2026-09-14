@@ -37,6 +37,10 @@
  * System-wide OTA does not exist. Do not initialise Bluetooth libraries here.
  */
 
+/* Once a version has been physically installed or accepted as a distributed
+ * build, never replace that same version string with a different binary.
+ * The next post-install firmware change must bump this (0.5.2 or later).
+ * 0.5.1 may still be replaced only while it remains an uninstalled prerelease. */
 #define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.1"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH

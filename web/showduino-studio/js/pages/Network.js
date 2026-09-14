@@ -2,6 +2,17 @@ import { fetchE131, fetchE131Channels, fetchNetwork, isP4Offline, postCommand, s
 import { subscribeStore } from '../store.js';
 import { el, p4OfflineBanner, statRow } from '../utils.js';
 import { linkWord } from '../status.js';
+import {
+  createGatewayDraft,
+  applySsidInput,
+  applyPasswordInput,
+  applyScanSelection,
+  ssidForField,
+  passwordForField,
+  captureConnectCredentials,
+  afterConnectSuccess,
+  afterForget
+} from './networkGatewayDraft.js';
 
 function field(label, attrs) {
   return el('label', { className: 'cmd-field' }, [
@@ -29,6 +40,18 @@ export async function NetworkPage(container) {
   let scan = { state: 'idle', networks: [] };
   let gwBusy = '';
   let gwResult = '';
+  let gatewayDraft = createGatewayDraft();
+  let gwFocusHint = '';
+  let gwForm = null;
+  let gwSsidIn = null;
+  let gwPassIn = null;
+  let gwConnectBtn = null;
+  let gwDisconnectBtn = null;
+  let gwForgetBtn = null;
+  let gwScanBtn = null;
+  let gwApOnlyBtn = null;
+  let gwScanList = null;
+  let gwResultEl = null;
 
   async function applyNet() {
     if (!p4net || !p4net.saved) return;
@@ -69,8 +92,191 @@ export async function NetworkPage(container) {
     await pollNet();
   }
 
+  function snapshotGwFocus() {
+    if (gwFocusHint) return { id: gwFocusHint };
+    const a = document.activeElement;
+    if (a === gwSsidIn || a === gwPassIn) {
+      return {
+        id: a.id,
+        start: typeof a.selectionStart === 'number' ? a.selectionStart : null,
+        end: typeof a.selectionEnd === 'number' ? a.selectionEnd : null
+      };
+    }
+    return null;
+  }
+
+  function restoreGwFocus(snap) {
+    gwFocusHint = '';
+    if (!snap || !snap.id) return;
+    const node = snap.id === 'gw-ssid' ? gwSsidIn : snap.id === 'gw-pass' ? gwPassIn : null;
+    if (!node) return;
+    node.focus();
+    if (typeof snap.start === 'number' && typeof node.setSelectionRange === 'function') {
+      try { node.setSelectionRange(snap.start, snap.end); } catch (_) { /* ignore */ }
+    }
+  }
+
+  function ensureGwForm() {
+    if (gwForm) return gwForm;
+
+    gwSsidIn = el('input', { id: 'gw-ssid', placeholder: 'Home / venue SSID', autocomplete: 'off' });
+    gwPassIn = el('input', { id: 'gw-pass', type: 'password', placeholder: 'Password (never shown again)', autocomplete: 'off' });
+    gwSsidIn.addEventListener('input', () => applySsidInput(gatewayDraft, gwSsidIn.value));
+    gwSsidIn.addEventListener('change', () => applySsidInput(gatewayDraft, gwSsidIn.value));
+    gwPassIn.addEventListener('input', () => applyPasswordInput(gatewayDraft, gwPassIn.value));
+
+    gwConnectBtn = el('button', { className: 'btn-primary', text: 'Connect' });
+    gwConnectBtn.addEventListener('click', async () => {
+      applySsidInput(gatewayDraft, gwSsidIn.value);
+      applyPasswordInput(gatewayDraft, gwPassIn.value);
+      const creds = captureConnectCredentials(gatewayDraft);
+      if (!creds.ok) {
+        gwResult = creds.error === 'missing_ssid' ? 'SSID is required.' : (creds.error || 'invalid');
+        paint();
+        return;
+      }
+      const ssid = creds.ssid;
+      const password = creds.password;
+      gwBusy = 'connect';
+      gwResult = '';
+      paint();
+      try {
+        const data = await connectGateway(ssid, password);
+        if (data && data.ok === false) {
+          gwResult = data.error || 'connect failed';
+        } else {
+          gwResult = 'Connecting — SoftAP remains available.';
+          afterConnectSuccess(gatewayDraft);
+          gwPassIn.value = '';
+        }
+      } catch (err) {
+        gwResult = err.message;
+      }
+      gwBusy = '';
+      paint();
+    });
+
+    gwDisconnectBtn = el('button', { className: 'btn-cancel', text: 'Disconnect' });
+    gwDisconnectBtn.addEventListener('click', async () => {
+      gwBusy = 'disconnect';
+      paint();
+      try {
+        await disconnectGateway();
+        gwResult = 'AP-only. Saved credentials kept.';
+      } catch (err) {
+        gwResult = err.message;
+      }
+      gwBusy = '';
+      paint();
+    });
+
+    gwForgetBtn = el('button', { className: 'btn-cancel', text: 'Forget' });
+    gwForgetBtn.addEventListener('click', async () => {
+      gwBusy = 'forget';
+      paint();
+      try {
+        await forgetGateway();
+        afterForget(gatewayDraft);
+        gwSsidIn.value = '';
+        gwPassIn.value = '';
+        gwResult = 'Credentials forgotten.';
+      } catch (err) {
+        gwResult = err.message;
+      }
+      gwBusy = '';
+      paint();
+    });
+
+    gwScanBtn = el('button', { className: 'btn-cancel', text: 'Scan' });
+    gwScanBtn.addEventListener('click', async () => {
+      gwBusy = 'scan';
+      paint();
+      try {
+        await startGatewayScan();
+        for (let i = 0; i < 8; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          scan = await fetchGatewayScan();
+          if (scan && scan.state === 'ready') break;
+        }
+        gwResult = scan && scan.networks && scan.networks.length
+          ? `Found ${scan.networks.length} networks.`
+          : 'Scan finished.';
+      } catch (err) {
+        gwResult = err.message;
+      }
+      gwBusy = '';
+      paint();
+    });
+
+    gwApOnlyBtn = el('button', { className: 'btn-cancel', text: 'AP only' });
+    gwApOnlyBtn.addEventListener('click', async () => {
+      try { await setGatewayMode('ap_only'); gwResult = 'Mode AP only.'; }
+      catch (err) { gwResult = err.message; }
+      paint();
+    });
+
+    gwScanList = el('div', { className: 'gw-scan-list' });
+    gwResultEl = el('p', { className: 'sub' });
+
+    gwForm = el('div', { className: 'gw-form' }, [
+      el('label', { className: 'cmd-field' }, [el('span', { text: 'SSID' }), gwSsidIn]),
+      el('label', { className: 'cmd-field' }, [el('span', { text: 'Password' }), gwPassIn]),
+      el('div', { className: 'filter-row' }, [
+        gwConnectBtn, gwDisconnectBtn, gwForgetBtn, gwScanBtn, gwApOnlyBtn
+      ]),
+      gwScanList,
+      gwResultEl
+    ]);
+    return gwForm;
+  }
+
+  function syncGwForm(gw) {
+    ensureGwForm();
+    const busy = !!gwBusy;
+    if (document.activeElement !== gwSsidIn) {
+      const shown = ssidForField(gatewayDraft, gw.staSsid);
+      if (gwSsidIn.value !== shown) gwSsidIn.value = shown;
+    }
+    if (document.activeElement !== gwPassIn) {
+      const shownPass = passwordForField(gatewayDraft);
+      if (gwPassIn.value !== shownPass) gwPassIn.value = shownPass;
+    }
+    gwConnectBtn.textContent = gwBusy === 'connect' ? 'Connecting…' : 'Connect';
+    gwScanBtn.textContent = scan.state === 'scanning' || gwBusy === 'scan' ? 'Scanning…' : 'Scan';
+    gwConnectBtn.disabled = busy;
+    gwDisconnectBtn.disabled = busy;
+    gwForgetBtn.disabled = busy;
+    gwScanBtn.disabled = busy;
+    gwApOnlyBtn.disabled = busy;
+
+    gwScanList.replaceChildren();
+    if (scan && Array.isArray(scan.networks) && scan.networks.length) {
+      for (const net of scan.networks) {
+        gwScanList.append(el('button', {
+          className: 'btn-cancel',
+          text: `${net.ssid || '(hidden)'}  ch${net.channel}  ${net.rssi} dBm`,
+          onClick: () => {
+            if (applyScanSelection(gatewayDraft, net.ssid || '')) {
+              gwSsidIn.value = gatewayDraft.ssid;
+            }
+            gwFocusHint = 'gw-pass';
+            gwPassIn.focus();
+          }
+        }));
+      }
+    }
+    if (gwResult) {
+      gwResultEl.hidden = false;
+      gwResultEl.textContent = gwResult;
+    } else {
+      gwResultEl.hidden = true;
+      gwResultEl.textContent = '';
+    }
+  }
+
   function paint() {
-    host.innerHTML = '';
+    const focus = snapshotGwFocus();
+    host.replaceChildren();
     const c = lastSnap.comms;
     if (!lastSnap.p4Online) host.append(p4OfflineBanner());
 
@@ -89,112 +295,10 @@ export async function NetworkPage(container) {
     gateway.append(statRow('Radio / ESP-NOW channel', String(gw.radioChannel ?? c?.radioChannel ?? '—')));
     gateway.append(statRow('Internet', (gw.internet || 'unknown').toUpperCase()));
     gateway.append(statRow('Password stored', gw.passwordConfigured ? 'YES' : 'NO'));
-    const ssidIn = el('input', { id: 'gw-ssid', value: gw.staSsid || '', placeholder: 'Home / venue SSID' });
-    const passIn = el('input', { id: 'gw-pass', type: 'password', placeholder: 'Password (never shown again)' });
-    gateway.append(el('label', { className: 'cmd-field' }, [el('span', { text: 'SSID' }), ssidIn]));
-    gateway.append(el('label', { className: 'cmd-field' }, [el('span', { text: 'Password' }), passIn]));
-    gateway.append(el('div', { className: 'filter-row' }, [
-      el('button', {
-        className: 'btn-primary',
-        text: gwBusy === 'connect' ? 'Connecting…' : 'Connect',
-        disabled: !!gwBusy,
-        onClick: async () => {
-          gwBusy = 'connect';
-          gwResult = '';
-          paint();
-          try {
-            const data = await connectGateway(host.querySelector('#gw-ssid')?.value?.trim() || '', host.querySelector('#gw-pass')?.value || '');
-            gwResult = data && data.ok === false ? (data.error || 'connect failed') : 'Connecting — SoftAP remains available.';
-          } catch (err) {
-            gwResult = err.message;
-          }
-          gwBusy = '';
-          paint();
-        }
-      }),
-      el('button', {
-        className: 'btn-cancel',
-        text: 'Disconnect',
-        disabled: !!gwBusy,
-        onClick: async () => {
-          gwBusy = 'disconnect';
-          paint();
-          try {
-            await disconnectGateway();
-            gwResult = 'AP-only. Saved credentials kept.';
-          } catch (err) {
-            gwResult = err.message;
-          }
-          gwBusy = '';
-          paint();
-        }
-      }),
-      el('button', {
-        className: 'btn-cancel',
-        text: 'Forget',
-        disabled: !!gwBusy,
-        onClick: async () => {
-          gwBusy = 'forget';
-          paint();
-          try {
-            await forgetGateway();
-            gwResult = 'Credentials forgotten.';
-          } catch (err) {
-            gwResult = err.message;
-          }
-          gwBusy = '';
-          paint();
-        }
-      }),
-      el('button', {
-        className: 'btn-cancel',
-        text: scan.state === 'scanning' || gwBusy === 'scan' ? 'Scanning…' : 'Scan',
-        disabled: !!gwBusy,
-        onClick: async () => {
-          gwBusy = 'scan';
-          paint();
-          try {
-            await startGatewayScan();
-            for (let i = 0; i < 8; i++) {
-              await new Promise((r) => setTimeout(r, 500));
-              scan = await fetchGatewayScan();
-              if (scan && scan.state === 'ready') break;
-            }
-            gwResult = scan && scan.networks && scan.networks.length
-              ? `Found ${scan.networks.length} networks.`
-              : 'Scan finished.';
-          } catch (err) {
-            gwResult = err.message;
-          }
-          gwBusy = '';
-          paint();
-        }
-      }),
-      el('button', {
-        className: 'btn-cancel',
-        text: 'AP only',
-        disabled: !!gwBusy,
-        onClick: async () => {
-          try { await setGatewayMode('ap_only'); gwResult = 'Mode AP only.'; }
-          catch (err) { gwResult = err.message; }
-          paint();
-        }
-      })
-    ]));
-    if (scan && Array.isArray(scan.networks) && scan.networks.length) {
-      for (const net of scan.networks) {
-        gateway.append(el('button', {
-          className: 'btn-cancel',
-          text: `${net.ssid || '(hidden)'}  ch${net.channel}  ${net.rssi} dBm`,
-          onClick: () => {
-            const field = host.querySelector('#gw-ssid');
-            if (field) field.value = net.ssid || '';
-          }
-        }));
-      }
-    }
-    if (gwResult) gateway.append(el('p', { className: 'sub', text: gwResult }));
+    syncGwForm(gw);
+    gateway.append(ensureGwForm());
     host.append(gateway);
+    restoreGwFocus(focus);
 
     const comms = el('div', { className: 'card' });
     comms.append(el('h2', { text: 'Communications Network' }));

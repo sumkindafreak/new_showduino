@@ -5,7 +5,7 @@ Set-Location $root
 
 $sidecarPath = Join-Path $root "releases\artifacts\comms-artifact.json"
 if (-not (Test-Path $sidecarPath)) {
-  throw "Missing $sidecarPath — run .\tools\release\make_comms_artifact.ps1 first."
+  throw "Missing $sidecarPath - run .\tools\release\make_comms_artifact.ps1 first."
 }
 $art = Get-Content $sidecarPath -Raw | ConvertFrom-Json
 $bin = Join-Path $root $art.bin
@@ -26,7 +26,7 @@ $tag = $art.tag
 if (-not $tag) { $tag = "v$($art.product)" }
 
 $notes = @"
-Showduino $($art.product) — Comms self-OTA $($art.firmware)
+Showduino $($art.product) - Comms self-OTA $($art.firmware)
 
 Phase 2A: Communications Controller only. Not system-wide OTA.
 hardwareId: SHOWDUINO-S3-COMMS-V1
@@ -35,7 +35,7 @@ size: $($art.size)
 sha256: $($art.sha256)
 url: $($art.githubBin)
 
-Boards still on Comms 0.5.0: join Showduino AP, connect venue Wi-Fi on Network, then Diagnostics → SHOWDUINO SOFTWARE → paste the url/firmware/sha256/size into Update Comms.
+Boards still on Comms 0.5.0: join Showduino AP, connect venue Wi-Fi on Network, then Diagnostics -> SHOWDUINO SOFTWARE -> paste the url/firmware/sha256/size into Update Comms.
 Do not USB-flash Comms for this update.
 "@
 
