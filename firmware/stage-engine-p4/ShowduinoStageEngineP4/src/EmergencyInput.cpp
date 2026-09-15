@@ -1,4 +1,42 @@
 #include "EmergencyInput.h"
+#include "nodes/AudioNodeLink.h"
+
+extern bool emergencyLocked;
+
+/*
+ * The P4 emergency latch is authoritative for every specialist node.
+ *
+ * EMERGENCY:STOP / CLEAR are sent immediately on the real emergency edge by
+ * the Stage Engine. This low-rate reconciliation closes the remaining failure
+ * mode: a node can reboot, reconnect, or miss the one CLEAR packet and then
+ * keep reporting a stale EMERGENCY state forever.
+ *
+ * Only mismatches transmit. Normal healthy operation adds no radio traffic.
+ * Interrupted programme audio is never resumed here; Audio Node CLEAR returns
+ * the node to safe IDLE (or leaves FAULT / NO_STORAGE intact).
+ */
+static uint32_t sAudioEmergencySyncMs = 0;
+
+static void reconcileAudioNodeEmergency(uint32_t nowMs) {
+  const AudioNodeStatus &audio = audioNodeLinkStatus();
+  if (!audio.online) return;
+
+  const bool nodeEmergency = strcmp(audio.state, "EMERGENCY") == 0;
+  if (nodeEmergency == emergencyLocked) return;
+
+  /* Retry at most once per second until the Audio Node reports the P4 truth. */
+  if (sAudioEmergencySyncMs != 0 &&
+      (nowMs - sAudioEmergencySyncMs) < 1000UL) {
+    return;
+  }
+  sAudioEmergencySyncMs = nowMs;
+
+  Serial.printf("[ESTOP] Audio Node emergency resync P4=%s node=%s -> %s\n",
+                emergencyLocked ? "ACTIVE" : "CLEAR",
+                audio.state[0] ? audio.state : "UNKNOWN",
+                emergencyLocked ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR");
+  audioNodeLinkOnEmergency(emergencyLocked);
+}
 
 #if SHOWDUINO_ESTOP_GPIO >= 0
 #include "driver/gpio.h"
@@ -64,6 +102,7 @@ void emergencyInputBegin() {
   sLongHoldFired = false;
   resetLocateSequence();
   cancelPendingClear();
+  sAudioEmergencySyncMs = 0;
 
   gpio_reset_pin((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
   gpio_set_direction((gpio_num_t)SHOWDUINO_ESTOP_GPIO, GPIO_MODE_INPUT);
@@ -125,6 +164,7 @@ EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
     ev.clearExpired = true;
   }
 
+  reconcileAudioNodeEmergency(nowMs);
   return ev;
 }
 
@@ -164,10 +204,13 @@ void emergencyInputCancelClear() {
 
 #else
 
-void emergencyInputBegin() {}
+void emergencyInputBegin() {
+  sAudioEmergencySyncMs = 0;
+}
 
-EmergencyInputEvents emergencyInputService(uint32_t) {
+EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
   EmergencyInputEvents ev = {};
+  reconcileAudioNodeEmergency(nowMs);
   return ev;
 }
 
