@@ -1,0 +1,27 @@
+---
+description: Strict protocol discipline and change workflow
+globs:
+  - protocol/**
+  - firmware/**
+  - tools/protocol-tests/**
+  - docs/command-protocol.md
+---
+Protocol discipline:
+
+- Shared protocol definitions live in `protocol/`; do not fork divergent copies.
+- Version source is `protocol/showduino_protocol_version.h` and related shared headers.
+- Do not invent undocumented parallel message formats.
+- Any protocol change must inspect and update all affected senders/receivers.
+
+Protocol change checklist:
+1. Locate all senders.
+2. Locate all receivers.
+3. Inspect compatibility impact.
+4. Update shared definitions.
+5. Update parsers.
+6. Update serializers/emitters.
+7. Update protocol version where required.
+8. Update docs.
+9. Compile affected firmware targets.
+10. Run relevant protocol/host tests.
+11. Explicitly report compatibility impact.

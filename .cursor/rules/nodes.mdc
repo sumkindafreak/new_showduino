@@ -1,0 +1,16 @@
+---
+description: Rules for specialist node architecture, ownership model, and safe defaults
+globs:
+  - firmware/*node*/**
+  - docs/*node*.md
+  - docs/standalone-node-architecture.md
+---
+Node architecture constraints:
+
+- Nodes are specialist executors (audio/lamp/pixel/etc), not alternate show engines.
+- Preserve communication model: P4 authoritative decisions routed via Comms to node links.
+- Preserve addressing model and ownership semantics where implemented (including GRANT/controlled-vs-standalone behavior where documented in repo).
+- Preserve acknowledgement/status semantics: accepted transport is not physical completion.
+- Preserve offline/failsafe behaviors per node type.
+- Keep node versioning and node role boundaries explicit.
+- Do not duplicate node responsibilities inside P4 or duplicate P4 authority inside nodes without explicit architecture change.

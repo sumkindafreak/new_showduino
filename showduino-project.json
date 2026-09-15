@@ -1,0 +1,194 @@
+{
+  "project": {
+    "name": "Showduino",
+    "repository": "sumkindafreak/new_showduino",
+    "localPathStatus": "runtime-provided",
+    "sourceRefs": [
+      "protocol/showduino_version.h",
+      "README.md"
+    ]
+  },
+  "architecture": {
+    "principle": "The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.",
+    "offlineRuntimeRequirement": "A running show must not depend on Director/browser/internet/normal Wi-Fi client connectivity.",
+    "controlPlane": [
+      "Director requests",
+      "Browser/Studio requests",
+      "Comms transport/proxy"
+    ],
+    "runtimePlane": [
+      "P4 show runtime",
+      "P4 timeline execution",
+      "P4 emergency latch",
+      "P4 authoritative state"
+    ],
+    "sourceRefs": [
+      "README.md",
+      "docs/architecture.md"
+    ]
+  },
+  "components": {
+    "showEngineP4": {
+      "role": "authoritative runtime and safety",
+      "sourcePath": "firmware/stage-engine-p4/ShowduinoStageEngineP4",
+      "board": "ESP32P4 Dev Module (Waveshare ESP32-P4-Module-DEV-KIT)",
+      "framework": "Arduino",
+      "firmwareVersion": "0.6.3",
+      "firmwareVersionSource": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h",
+      "links": [
+        "UART to Communications S3"
+      ]
+    },
+    "communicationsS3": {
+      "role": "ESP-NOW/UART transport, SoftAP host, WebUI host, API proxy",
+      "sourcePath": "firmware/s3-comms-controller/ShowduinoS3CommsController",
+      "board": "ESP32S3 Dev Module",
+      "framework": "Arduino",
+      "firmwareVersion": "0.5.1",
+      "firmwareVersionSource": "firmware/s3-comms-controller/ShowduinoS3CommsController/BoardConfig.h",
+      "links": [
+        "ESP-NOW with Director and nodes",
+        "UART with P4"
+      ]
+    },
+    "director": {
+      "role": "touchscreen operator client",
+      "sourcePath": "firmware/director-esp32-8048s050/ShowduinoDirector8048S050",
+      "board": "ESP32-S3 800x480 panel",
+      "framework": "Arduino + LVGL",
+      "firmwareVersion": {
+        "status": "unknown",
+        "reason": "No single director firmware macro equivalent to P4/Comms was verified during this task."
+      },
+      "storageFwVersionMarker": "0.9.7-director",
+      "storageFwVersionSource": "firmware/director-esp32-8048s050/ShowduinoDirector8048S050/src/StorageConfig.h"
+    },
+    "idfStageEngine": {
+      "role": "native ESP-IDF stage-engine project/foundation",
+      "sourcePath": "stage-engine/esp32-p4",
+      "framework": "ESP-IDF",
+      "status": "present"
+    },
+    "studioWebUi": {
+      "sourcePath": "web/showduino-studio",
+      "embeddedBundlePath": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
+      "embedTool": "tools/embed-webui/embed_webui.py"
+    }
+  },
+  "versions": {
+    "productVersion": "1.0.0-rc.1",
+    "productVersionSource": "protocol/showduino_version.h",
+    "protocolMajor": 1,
+    "protocolMinor": 0,
+    "protocolVersionSource": "protocol/showduino_protocol_version.h",
+    "deskWireVersion": 1,
+    "deskWireVersionSource": "protocol/showduino_protocol_version.h",
+    "shdoPackageVersion": 2,
+    "shdoPackageVersionSource": "protocol/showduino_version.h"
+  },
+  "protocol": {
+    "sharedPath": "protocol/",
+    "notes": [
+      "Shared headers are canonical; do not fork copies into firmware trees.",
+      "Desk packet expected size 108 bytes; node packet expected size 116 bytes."
+    ],
+    "sourceRefs": [
+      "protocol/README.md",
+      "protocol/showduino_protocol_version.h"
+    ]
+  },
+  "hardware": {
+    "p4": {
+      "uart": {
+        "rx": 4,
+        "tx": 5,
+        "source": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h"
+      },
+      "emergencyInput": {
+        "gpio": 25,
+        "assertedLevel": "LOW",
+        "mode": "INPUT_PULLUP",
+        "source": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h"
+      },
+      "pixels": {
+        "showLinePin": 23,
+        "emergencyLinePin": 24,
+        "emergencyCount": 100,
+        "source": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h"
+      },
+      "sdmmc": {
+        "clk": 43,
+        "cmd": 44,
+        "d0": 39,
+        "d1": 40,
+        "d2": 41,
+        "d3": 42,
+        "power": 45,
+        "source": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h"
+      },
+      "i2c": {
+        "sda": 7,
+        "scl": 8,
+        "source": "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h"
+      }
+    },
+    "commsS3": {
+      "uart": {
+        "rx": 18,
+        "tx": 17,
+        "source": "firmware/s3-comms-controller/ShowduinoS3CommsController/BoardConfig.h"
+      },
+      "espnowChannel": 1,
+      "softApSsid": "Showduino",
+      "softApPassword": "showduino",
+      "source": "firmware/s3-comms-controller/ShowduinoS3CommsController/BoardConfig.h"
+    }
+  },
+  "build": {
+    "commands": {
+      "p4Arduino": "arduino-cli compile --fqbn \"esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3\" firmware/stage-engine-p4/ShowduinoStageEngineP4",
+      "commsS3": "arduino-cli compile --fqbn \"esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB\" firmware/s3-comms-controller/ShowduinoS3CommsController",
+      "c3PixelNode": "arduino-cli compile --fqbn \"esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=dio\" firmware/c3-pixel-node/ShowduinoC3PixelNode",
+      "s3LampNode": "arduino-cli compile --fqbn \"esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB\" firmware/s3-lamp-node/ShowduinoS3LampNode",
+      "idfP4": "cd stage-engine/esp32-p4 && idf.py set-target esp32p4 && idf.py build",
+      "webuiEmbed": "python tools/embed-webui/embed_webui.py"
+    },
+    "sourceRefs": [
+      "firmware/stage-engine-p4/README.md",
+      "firmware/s3-comms-controller/README.md",
+      "firmware/c3-pixel-node/README.md",
+      "firmware/s3-lamp-node/README.md",
+      "stage-engine/esp32-p4/README.md",
+      "web/showduino-studio/README.md"
+    ]
+  },
+  "storage": {
+    "authoritativeRuntimeStore": "/showduino on P4 SD",
+    "sourceRefs": [
+      "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h",
+      "firmware/stage-engine-p4/ShowduinoStageEngineP4/src/storage/StageStore.cpp"
+    ]
+  },
+  "webui": {
+    "canonicalSource": "web/showduino-studio",
+    "embeddedHost": "Communications S3",
+    "generatedBundle": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
+    "embedProcess": "python tools/embed-webui/embed_webui.py",
+    "sourceRefs": [
+      "web/showduino-studio/README.md",
+      "tools/embed-webui/embed_webui.py",
+      "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h"
+    ]
+  },
+  "safety": {
+    "authoritativeComponent": "P4 Show Engine",
+    "physicalEmergencyInput": "GPIO25 active-LOW input with software latch",
+    "emergencyOutputRule": "Emergency forces pixel-capable outputs to bright white as documented for current implementation.",
+    "clearBehavior": "Emergency clear requires configured clear-request path and does not auto-resume interrupted show effects.",
+    "sourceRefs": [
+      "firmware/stage-engine-p4/ShowduinoStageEngineP4/src/EmergencyInput.cpp",
+      "firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h",
+      "docs/architecture.md"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+---
+description: High-risk safety and emergency behavior protections
+globs:
+  - firmware/stage-engine-p4/**
+  - firmware/*emergency*/**
+  - protocol/*emergency*.h
+  - docs/*emergency*.md
+  - docs/hardware-pinout.md
+---
+Safety/emergency constraints:
+
+- Safety changes are high risk and require minimal, explicit modifications.
+- Authoritative emergency latch is in P4 show engine path; preserve physical input behavior and clear gates.
+- Preserve physical emergency input assumptions (GPIO25 input/latch path as currently implemented).
+- Preserve emergency override semantics for outputs, including pixel emergency-white behavior.
+- UI/API convenience must never bypass emergency safety path requirements.
+- Preserve communications-failure-safe behavior and no-authority-escalation behavior.
+
+For any future safety change, require:
+- explicit analysis of current safety path,
+- smallest viable implementation,
+- compile verification,
+- bench-test instructions,
+- explicit statement when hardware verification was not performed.

@@ -1,0 +1,15 @@
+---
+description: Rules for Director operator UI responsibilities and limits
+globs:
+  - firmware/director-esp32-8048s050/**
+  - docs/development-workflow.md
+---
+Director constraints:
+
+- Director is an operator touchscreen client that requests actions and displays returned state.
+- Director is not authoritative show runtime and should not execute timeline logic.
+- Commands flow Director -> Comms (ESP-NOW) -> P4 (UART path through Comms).
+- Preserve degraded behavior: running shows must continue if Director disconnects.
+- Preserve emergency interactions as request/display flow; P4 remains emergency authority.
+- Distinguish local Director storage/UI metadata from authoritative P4 show state.
+- Director build/board assumptions must remain aligned with current board config and LVGL stack.

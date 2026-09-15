@@ -1,0 +1,22 @@
+---
+description: Rules for P4 Show Engine runtime, timeline, storage, and safety ownership
+globs:
+  - firmware/stage-engine-p4/**
+  - stage-engine/esp32-p4/**
+  - docs/*p4*.md
+  - docs/architecture.md
+  - docs/final-hardware-architecture.md
+---
+P4 Show Engine constraints:
+
+- P4 is authoritative for runtime state, timeline/cue execution, emergency latch, and show/storage state.
+- Keep Director/Comms/browser as request/transport layers, not show-decision engines.
+- Current production path is Arduino P4 project at `firmware/stage-engine-p4/ShowduinoStageEngineP4/`.
+- Native IDF project `stage-engine/esp32-p4/` exists as a separate implementation track.
+- Preserve UART bridge contract with Comms (P4 RX GPIO4, TX GPIO5, 115200 8N1).
+- Preserve SD storage semantics under `/showduino/...` and format/version checks.
+- Preserve emergency behavior, including latch semantics and emergency-white pixel override.
+- Keep GPIO24 as safety-owned signage/emergency line and GPIO23 as local show pixel line.
+- Do not make active-show continuation depend on browser or Director presence.
+- Build environment references: arduino-cli for active P4 firmware; idf.py for `stage-engine/esp32-p4/`.
+- Version source for active P4 firmware: `firmware/stage-engine-p4/ShowduinoStageEngineP4/BoardConfig.h` (`SHOWDUINO_P4_FIRMWARE_VERSION`) and shared product version in `protocol/showduino_version.h`.

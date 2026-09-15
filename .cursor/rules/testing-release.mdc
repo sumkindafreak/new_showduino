@@ -1,0 +1,29 @@
+---
+description: Testing, release terminology, and evidence reporting discipline
+globs:
+  - docs/**
+  - tools/**
+  - firmware/**
+  - protocol/**
+---
+Testing/release reporting discipline:
+
+Never use these terms interchangeably:
+- Source changed
+- Compiled
+- Flashed
+- Bench verified
+- Release verified
+
+For substantial changes, report exactly:
+- STARTING SHA
+- ENDING SHA
+- FILES CHANGED
+- TARGETS AFFECTED
+- COMPILE STATUS
+- FLASH STATUS
+- BENCH TEST STATUS
+- ACCEPTANCE TEST STATUS
+- UNRELATED DIRTY FILES PRESERVED
+
+Do not fabricate outcomes.

@@ -1,0 +1,23 @@
+---
+description: Rules for Studio/WebUI source, embedding pipeline, UX boundaries, and data handling
+globs:
+  - web/showduino-studio/**
+  - firmware/s3-comms-controller/**/src/web/**
+  - tools/embed-webui/**
+  - docs/studio/**
+  - docs/studio-pixel-authoring.md
+---
+Studio/WebUI constraints:
+
+- Studio/WebUI is an operator/configuration surface, not the authoritative live runtime engine.
+- Editable source is `web/showduino-studio/`; generated S3 bundle is `.../WebAssets.generated.h`.
+- Prefer editing source modules, then regenerate embed output via existing embed tooling.
+- API boundaries: browser calls S3 endpoints/proxy; authoritative show/runtime state comes from P4.
+- UI state must not masquerade as authoritative device state.
+- Mobile is a first-class target; maintain phone usability and avoid desktop-only assumptions.
+- Avoid unnecessary modal chains and avoid making baseline workflows need deep electronics expertise.
+- Advanced workflows must not make beginner flows confusing.
+- Destructive actions require explicit confirmation.
+- Polling/re-rendering must not destroy active form editing state.
+- Do not leak credentials/passwords to status JSON, logs, or persistent browser storage unless explicitly designed and justified.
+- Do not redesign Studio in unrelated tasks.

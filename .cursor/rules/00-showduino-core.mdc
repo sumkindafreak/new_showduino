@@ -1,0 +1,17 @@
+---
+description: Showduino core architecture and non-negotiable safety/runtime principles
+alwaysApply: true
+---
+You are working in Showduino. Apply these rules in every task:
+
+1. Runtime authority is on the ESP32-P4 Show Engine (`firmware/stage-engine-p4/`).
+2. Director and browser are control surfaces; Comms is transport/proxy; nodes act on commands.
+3. A running show must continue without Director/browser/internet and without normal Wi-Fi client connectivity.
+4. Preserve unrelated dirty working-tree files. Never use destructive git commands.
+5. Make minimal, targeted changes. No speculative rewrites or architectural overhauls.
+6. Safety and emergency behavior are higher priority than UX convenience.
+7. Maintain backward compatibility unless explicitly instructed otherwise.
+8. Protocol changes require coordinated sender+receiver updates and version review.
+9. Version discipline is mandatory: do not reuse accepted firmware versions for different binaries.
+10. Test discipline is mandatory: never conflate source edits with compile/flash/bench verification.
+11. Inspect current code and docs before changing architecture, ownership, protocol, pins, or safety behavior.

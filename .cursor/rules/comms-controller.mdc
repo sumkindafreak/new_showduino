@@ -1,0 +1,17 @@
+---
+description: Rules for Communications S3 transport, web host, and API proxy boundaries
+globs:
+  - firmware/s3-comms-controller/**
+  - docs/network-gateway.md
+  - docs/comms-ota.md
+---
+Communications Controller constraints:
+
+- Comms S3 transports traffic (ESP-NOW/UART), serves static WebUI, and proxies API requests.
+- Comms must not become authoritative for show runtime, timeline, cue state, or emergency decisions.
+- Preserve ESP-NOW + UART bridging behavior and packet validation responsibilities.
+- Preserve current UART pins/config (`BoardConfig.h`: RX 18, TX 17 on S3 side).
+- Preserve AP/STA behavior and separation of local AP state vs authoritative P4 show state.
+- Keep OTA scope constrained: current OTA is Comms self-update only, with safety/maintenance gates.
+- Do not quietly move runtime authority from P4 into transport/proxy code.
+- Keep transport concerns (routing/link health) separated from show logic and outcome authority.
