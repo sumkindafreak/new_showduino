@@ -39,9 +39,9 @@
 
 /* Once a version has been physically installed or accepted as a distributed
  * build, never replace that same version string with a different binary.
- * The next post-install firmware change must bump this (0.5.2 or later).
- * 0.5.1 may still be replaced only while it remains an uninstalled prerelease. */
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.1"
+ * 0.5.1 remains the published prerelease OTA candidate; today's tester build
+ * carries the refreshed embedded Studio and is therefore 0.5.2. */
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.2"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
 #define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0
