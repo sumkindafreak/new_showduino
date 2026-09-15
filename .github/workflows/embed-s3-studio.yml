@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - "web/showduino-studio/**"
+      - "web/studio-v4-overlay/**"
       - "tools/embed-webui/embed_webui.py"
       - ".github/workflows/embed-s3-studio.yml"
   pull_request:
     paths:
       - "web/showduino-studio/**"
+      - "web/studio-v4-overlay/**"
       - "tools/embed-webui/embed_webui.py"
       - "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.h"
       - ".github/workflows/embed-s3-studio.yml"
@@ -60,6 +62,9 @@ jobs:
           assert studio.get('embeddedBytes', 0) > 0, studio
           assert studio.get('cloudEnabled') is False, studio
           assert studio.get('externalCdnDependencies') is False, studio
+          sources = set(studio.get('sourceFiles') or [])
+          assert 'js/studio-ollie-ux.js' in sources, sources
+          assert 'js/studio-testing-hardening.js' in sources, sources
           print('Embedded canonical Studio:', studio.get('commit', '')[:12], studio.get('assetCount'), 'assets')
           PY
 
