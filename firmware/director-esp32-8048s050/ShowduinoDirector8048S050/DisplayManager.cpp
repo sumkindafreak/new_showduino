@@ -300,45 +300,37 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
                                   ? ShowduinoPalette::DangerDark
                                   : ShowduinoPalette::AccentDark;
 
-  gDisplayOs.paintChassis(chromeRoot_, accent, accentDark);
-
-  lv_obj_t *brand = lv_label_create(chromeRoot_);
-  lv_label_set_text(brand, "SHOWDUINO");
-  lv_obj_set_style_text_color(brand, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_set_style_text_font(brand, &lv_font_montserrat_24, 0);
-  lv_obj_set_pos(brand, 34, OS_BODY_Y);
-  lv_obj_clear_flag(brand, LV_OBJ_FLAG_CLICKABLE);
-
-  lv_obj_t *kicker = lv_label_create(chromeRoot_);
-  lv_label_set_text(kicker, spec && spec->kicker ? spec->kicker : "///  DIRECTOR SYSTEM");
-  lv_obj_set_style_text_color(kicker, lv_color_hex(accent), 0);
-  lv_obj_set_style_text_font(kicker, &lv_font_montserrat_16, 0);
-  lv_obj_align(kicker, LV_ALIGN_TOP_RIGHT, -34, OS_BODY_Y);
-  lv_obj_clear_flag(kicker, LV_OBJ_FLAG_CLICKABLE);
-
+  const bool danger = spec && spec->dangerAccent;
   const bool completeReport = (page == PAGE_COMPLETE);
+  /* No BACK on emergency / comms-loss screens - those actions stay explicit. */
+  const bool showBack = !danger && page != PAGE_EMERGENCY && page != PAGE_LOCKED &&
+                        page != PAGE_UNLOCK;
+
+  ShowduinoOsTheme::AppHeader hdr = gDisplayOs.makeAppHeader(
+      chromeRoot_,
+      spec && spec->title ? spec->title : displayPageTitle(page),
+      showBack ? dockEventThunk : nullptr,
+      this,
+      showBack ? "SCREEN:DESKTOP" : nullptr,
+      168);
+  if (!showBack && hdr.back) lv_obj_add_flag(hdr.back, LV_OBJ_FLAG_HIDDEN);
+  if (hdr.title && !showBack) lv_obj_set_pos(hdr.title, 16, 10);
+  if (hdr.accent && !showBack) lv_obj_set_pos(hdr.accent, 16, 34);
+  if (hdr.status) {
+    lv_label_set_text(hdr.status, spec && spec->subtitle ? spec->subtitle : "");
+    lv_obj_set_style_text_color(hdr.status, lv_color_hex(accent), 0);
+    if (!showBack) {
+      lv_obj_set_pos(hdr.status, 300, 12);
+    }
+  }
+
   const int actionY = SCREEN_HEIGHT - 28 - OS_BTN_H;
-  const int titleY = completeReport ? (OS_BODY_Y + 32) : (OS_BODY_Y + 40);
-  const int subtitleY = completeReport ? (OS_BODY_Y + 68) : (OS_BODY_Y + 78);
-  const int boxY = completeReport ? (OS_BODY_Y + 96) : (OS_BODY_Y + 118);
-  int boxH = completeReport ? (actionY - OS_GAP - boxY) : 120;
+  const int boxY = OS_SUMMARY_Y;
+  int boxH = completeReport ? (actionY - OS_GAP - boxY) : (OS_PRIMARY_H - 16);
   if (boxH < 120) boxH = 120;
 
-  lv_obj_t *title = lv_label_create(chromeRoot_);
-  lv_label_set_text(title, spec && spec->title ? spec->title : displayPageTitle(page));
-  lv_obj_set_style_text_color(title, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_set_pos(title, 34, titleY);
-  lv_obj_clear_flag(title, LV_OBJ_FLAG_CLICKABLE);
-
-  lv_obj_t *subtitle = lv_label_create(chromeRoot_);
-  lv_label_set_text(subtitle, spec && spec->subtitle ? spec->subtitle : "");
-  lv_obj_set_style_text_color(subtitle, lv_color_hex(accent), 0);
-  lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_16, 0);
-  lv_obj_set_pos(subtitle, 36, subtitleY);
-  lv_obj_clear_flag(subtitle, LV_OBJ_FLAG_CLICKABLE);
-
-  lv_obj_t *infoBox = gDisplayOs.makeRaisedCard(chromeRoot_, 34, boxY, 732, boxH, true);
+  lv_obj_t *infoBox = gDisplayOs.makeRaisedCard(chromeRoot_, OS_MARGIN, boxY,
+                                               OS_CONTENT_FULL_W, boxH, true);
   lv_obj_set_style_border_color(infoBox, lv_color_hex(accentDark), 0);
   if (completeReport) {
     lv_obj_set_style_pad_all(infoBox, 16, 0);
@@ -346,25 +338,20 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
   }
 
   chromeBody_ = lv_label_create(infoBox);
-  lv_obj_set_width(chromeBody_, 700);
+  lv_obj_set_width(chromeBody_, OS_CONTENT_FULL_W - 36);
   lv_label_set_long_mode(chromeBody_, LV_LABEL_LONG_WRAP);
   lv_label_set_text(chromeBody_, spec && spec->body ? spec->body : "");
   lv_obj_set_style_text_color(chromeBody_, lv_color_hex(ShowduinoPalette::Text), 0);
-  lv_obj_set_style_text_font(chromeBody_,
-                             completeReport ? &lv_font_montserrat_16 : &lv_font_montserrat_14, 0);
-  lv_obj_set_pos(chromeBody_, completeReport ? 0 : 12, completeReport ? 0 : 10);
+  lv_obj_set_style_text_font(chromeBody_, &lv_font_montserrat_14, 0);
+  lv_obj_set_pos(chromeBody_, 16, 16);
 
-  chromeStatus_ = lv_label_create(completeReport ? chromeRoot_ : infoBox);
-  lv_obj_set_width(chromeStatus_, completeReport ? 360 : 700);
+  chromeStatus_ = lv_label_create(infoBox);
+  lv_obj_set_width(chromeStatus_, OS_CONTENT_FULL_W - 36);
   lv_label_set_long_mode(chromeStatus_, LV_LABEL_LONG_CLIP);
   lv_label_set_text(chromeStatus_, "Awaiting Stage status");
   lv_obj_set_style_text_color(chromeStatus_, lv_color_hex(ShowduinoPalette::Muted), 0);
-  lv_obj_set_style_text_font(chromeStatus_, &lv_font_montserrat_12, 0);
-  if (completeReport) {
-    lv_obj_align(chromeStatus_, LV_ALIGN_TOP_RIGHT, -34, subtitleY + 2);
-  } else {
-    lv_obj_set_pos(chromeStatus_, 12, 86);
-  }
+  lv_obj_set_style_text_font(chromeStatus_, &lv_font_montserrat_14, 0);
+  lv_obj_set_pos(chromeStatus_, 16, boxH - 36);
   lv_obj_clear_flag(chromeStatus_, LV_OBJ_FLAG_CLICKABLE);
 
   const uint8_t n = spec ? spec->actionCount : 0;
@@ -372,11 +359,10 @@ void DisplayManager::buildSystemChrome(DisplayPageId page, const DisplayPage *de
     const int btnH = OS_BTN_H;
     const int gap = 16;
     const int totalGap = gap * (n - 1);
-    const int btnW = (732 - totalGap) / n;
-    int x = 34;
-    const int y = actionY;
+    const int btnW = (OS_CONTENT_FULL_W - totalGap) / n;
+    int x = OS_MARGIN;
     for (uint8_t i = 0; i < n; i++) {
-      gDisplayOs.makeButton(chromeRoot_, spec->actions[i].label, x, y, btnW, btnH,
+      gDisplayOs.makeButton(chromeRoot_, spec->actions[i].label, x, actionY, btnW, btnH,
                             dockEventThunk, this, spec->actions[i].command,
                             spec->actions[i].danger, false);
       x += btnW + gap;
