@@ -45,6 +45,7 @@ public:
   void setActiveSince(uint32_t startedMs);
   void noteClearRequested(uint32_t nowMs);
   void noteClearRejected(uint32_t nowMs);
+  void noteClearCancelled();
 
   bool isVisible() const { return visible_ && root_ != nullptr; }
   bool isAwaitingStage() const { return awaitingStage_; }

@@ -405,6 +405,82 @@ struct ShowduinoOsTheme {
     return inner;
   }
 
+  struct AppHeader {
+    lv_obj_t *root = nullptr;
+    lv_obj_t *back = nullptr;
+    lv_obj_t *title = nullptr;
+    lv_obj_t *status = nullptr;
+    lv_obj_t *accent = nullptr;
+  };
+
+  static void styleAppBackButton(lv_obj_t *btn) {
+    if (!btn) return;
+    lv_obj_remove_style_all(btn);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(ShowduinoPalette::PanelRaised), 0);
+    lv_obj_set_style_border_width(btn, 2, 0);
+    lv_obj_set_style_border_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(ShowduinoPalette::AccentDim), LV_STATE_PRESSED);
+    lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+    showduino_theme_register(btn, SHOWDUINO_THEME_ROLE_BORDER);
+  }
+
+  static AppHeader makeAppHeader(lv_obj_t *parent, const char *titleText,
+                                 lv_event_cb_t back_cb, void *user = nullptr,
+                                 const char *back_command = nullptr,
+                                 int32_t accent_w = 168) {
+    AppHeader h;
+    if (!parent) return h;
+    h.root = lv_obj_create(parent);
+    lv_obj_remove_style_all(h.root);
+    lv_obj_set_pos(h.root, 0, OS_TITLE_Y);
+    lv_obj_set_size(h.root, SCREEN_WIDTH, OS_TITLE_H);
+    lv_obj_set_style_bg_opa(h.root, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(h.root, LV_OBJ_FLAG_SCROLLABLE);
+
+    h.accent = makeHairline(h.root, 110, 34, accent_w, 3, OsColor::Accent);
+    showduino_theme_register(h.accent, SHOWDUINO_THEME_ROLE_HEADER_ACCENT);
+
+    h.back = lv_button_create(h.root);
+    styleAppBackButton(h.back);
+    lv_obj_set_pos(h.back, 12, 4);
+    lv_obj_set_size(h.back, 88, 40);
+    if (back_command) lv_obj_set_user_data(h.back, (void *)back_command);
+    if (back_cb) lv_obj_add_event_cb(h.back, back_cb, LV_EVENT_CLICKED, user);
+    lv_obj_t *bl = lv_label_create(h.back);
+    lv_label_set_text(bl, LV_SYMBOL_LEFT " BACK");
+    lv_obj_set_style_text_color(bl, lv_color_hex(OsColor::Text), 0);
+    lv_obj_center(bl);
+
+    h.title = lv_label_create(h.root);
+    lv_label_set_text(h.title, titleText ? titleText : "");
+    lv_obj_set_pos(h.title, 110, 10);
+    lv_obj_set_style_text_font(h.title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(h.title, lv_color_hex(OsColor::Text), 0);
+    showduino_theme_register(h.title, SHOWDUINO_THEME_ROLE_TEXT);
+
+    h.status = lv_label_create(h.root);
+    lv_label_set_text(h.status, "");
+    lv_obj_set_pos(h.status, 300, 12);
+    lv_obj_set_width(h.status, 480);
+    lv_label_set_long_mode(h.status, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_font(h.status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h.status, lv_color_hex(OsColor::TextMuted), 0);
+    return h;
+  }
+
+  static void setAppHeaderStatus(const AppHeader &h, const char *text, uint32_t colour) {
+    if (!h.status) return;
+    setTextIfChanged(h.status, text ? text : "");
+    lv_obj_set_style_text_color(h.status, lv_color_hex(colour), 0);
+  }
+
+  static void setAppHeaderTitle(const AppHeader &h, const char *text) {
+    if (!h.title) return;
+    setTextIfChanged(h.title, text ? text : "");
+  }
+
   lv_obj_t *makePageChrome(lv_obj_t *screen, const char *pageTitle, lv_obj_t **outTitleBar = nullptr) {
     lv_obj_t *header = makePageHeader(screen, pageTitle, 16);
     if (outTitleBar) *outTitleBar = header;

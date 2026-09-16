@@ -110,7 +110,7 @@ export async function HomePage(container) {
     safety.append(el('div', { className: 'value', text: emergency === 'EMERGENCY' ? 'EMERGENCY ACTIVE' : (emergency === 'OFFLINE' ? 'P4 OFFLINE' : 'CLEAR') }));
     if (snap.p4Online && sys) {
       safety.append(statRow('Physical loop', loopWord(sys)));
-      safety.append(statRow('Clear request', sys.emergencyPendingClear ? 'PENDING' : 'None'));
+      safety.append(statRow('Clear request', sys.emergencyPendingClear ? 'PENDING (Director)' : 'Director Emergency screen'));
       safety.append(statRow('Latch source', sys.emergencySource || '—'));
     }
     runtimeGrid.append(safety);

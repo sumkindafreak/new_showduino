@@ -14,16 +14,20 @@
  * Press event  = HIGH → LOW after debounce
  * Release event = LOW → HIGH after debounce
  *
- * This module owns debounce and gesture tracking only.
- * The existing P4 emergency latch remains authoritative.
+ * Press latches Emergency immediately. Release never clears.
+ * The same uninterrupted press requests Director Locate after
+ * SHOWDUINO_ESTOP_LOCATE_HOLD_MS. The physical button never clears.
+ *
+ * This module owns debounce, Locate-hold tracking, and pending-clear
+ * authorisation. The existing P4 emergency latch remains authoritative.
  */
 
 struct EmergencyInputEvents {
   bool loopOpened;
   bool loopClosed;
   bool locateRequested;
-  bool clearRequested;
   bool clearExpired;
+  bool clearSuperseded;
 };
 
 void emergencyInputBegin();
@@ -33,10 +37,16 @@ bool emergencyInputLoopOpen();
 bool emergencyInputLoopHealthy();
 int emergencyInputRawGpio();
 int emergencyInputStableOpen(); /* -1 unknown, 0 released/HIGH, 1 pressed/LOW */
-uint8_t emergencyInputLocateCount();
+bool emergencyInputLocateHoldActive();
+bool emergencyInputLocateHoldFired();
 
 bool emergencyInputPendingClear();
 bool emergencyInputPendingClearValid(uint32_t nowMs);
+int emergencyInputBeginDirectorClear(uint32_t nowMs);
+int emergencyInputConfirmDirectorClear(uint32_t nowMs);
 void emergencyInputCancelClear();
+void emergencyInputNoteAssertion();
+bool emergencyInputTakeClearSuperseded();
+uint32_t emergencyInputAssertionSeq();
 
 #endif

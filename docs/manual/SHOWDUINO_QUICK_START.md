@@ -94,6 +94,8 @@ For a first practical RC test, use an already installed production or the docume
 
 On the Director, the main current pages include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **DIAGNOSTICS**, **SETTINGS** and **SYSTEM LOGS**.
 
+**Settings → Display → CALIBRATE** realigns the touchscreen. A valid calibration is stored on the Director and loads at boot. If none is stored, factory mapping is used.
+
 A normal run is:
 
 ```text
@@ -132,16 +134,14 @@ Current implemented effects include:
 
 **People first. Deal with the incident before trying to recover the attraction.**
 
-## Clearing Emergency on this exact RC baseline
+## Clearing Emergency
 
-The current firmware uses a **3-second physical hold to request clearance**, followed by a separate Director confirmation. This procedure is expected to change because the approved production design now assigns an 8-second hold to Director Locate.
-
-For this exact baseline only:
+The physical Emergency button never clears Emergency.
 
 1. Resolve the real-world incident and confirm the attraction is safe.
-2. Hold the main Emergency button for about 3 seconds to create the clear request.
-3. Release the physical button.
-4. On the Director, read **Clear Emergency Stop?** carefully.
+2. Release the physical Emergency button if it is still held.
+3. On the Director Emergency screen, choose **CLEAR EMERGENCY**.
+4. Read **Clear Emergency Stop?** carefully.
 5. Select **CONFIRM CLEAR** only when safe.
 6. Verify authoritative Emergency state changes to clear.
 
@@ -151,11 +151,11 @@ If the physical input is still asserted, the P4 rejects the clear.
 
 After clear, local show pixels remain black and interrupted attraction audio does not resume. A previously running show may remain paused until the operator deliberately stops/restarts or resumes it according to the venue's recovery procedure.
 
+This firmware path is implemented and still requires physical hardware acceptance.
+
 ---
 
-# 7. Director Locate — RC status
-
-The approved production behaviour is:
+# 7. Director Locate
 
 ```text
 Emergency press → Emergency immediately
@@ -164,7 +164,9 @@ first Director touch → acknowledge Locate only
 Emergency remains latched
 ```
 
-That exact behaviour is **not implemented at this repository baseline**. Do not train operators on the temporary current multi-press locator gesture. See `SHOWDUINO_MANUAL_GAPS.md`.
+If the Director cannot be found, keep holding the same Emergency button for 8 seconds. The Director wakes its screen, keeps the backlight on, and flashes its ambient lights until you touch the screen once. That touch acknowledges Locate only.
+
+Hardware acceptance of this path is still required. See `SHOWDUINO_MANUAL_GAPS.md`.
 
 ---
 
@@ -229,7 +231,7 @@ At this manual baseline:
 - Comms self-OTA is implemented in software, but system-wide OTA is not;
 - several hardware paths still require formal physical acceptance;
 - full mixed-device persistent production authoring is not complete;
-- approved 8-second Locate behaviour is not yet implemented;
+- approved 8-second Locate and Director-only clear workflows are implemented in firmware but still require hardware acceptance;
 - the product remains `1.0.0-rc.1`, not final `v1.0.0`.
 
 For complete operating and technical information, use `SHOWDUINO_USER_MANUAL.md`.

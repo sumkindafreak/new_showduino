@@ -162,6 +162,15 @@ void DirectorEmergencyScreen::noteClearRejected(uint32_t nowMs) {
   Serial.println("[E-Stop] CLEAR REJECTED shown - physical E-stop still asserted");
 }
 
+void DirectorEmergencyScreen::noteClearCancelled() {
+  awaitingStage_ = false;
+  if (visible_) {
+    if (phase_ == Phase::ClearRejected) phase_ = Phase::Active;
+    refreshCopy();
+    applyPhaseStyles();
+  }
+}
+
 void DirectorEmergencyScreen::enterClearedHold(uint32_t nowMs) {
   awaitingStage_ = false;
   physicalAsserted_ = false;
@@ -388,7 +397,7 @@ void DirectorEmergencyScreen::buildCopyAndStatus() {
   lv_obj_clear_flag(rejectTitle_, LV_OBJ_FLAG_CLICKABLE);
 
   rejectBody_ = lv_label_create(rejectBox_);
-  lv_label_set_text(rejectBody_, "Release the physical emergency button before clearing the emergency.");
+  lv_label_set_text(rejectBody_, "Cannot clear Emergency. Release the Emergency button first.");
   lv_obj_set_style_text_color(rejectBody_, lv_color_hex(COL_TEXT), 0);
   lv_obj_set_style_text_font(rejectBody_, &lv_font_montserrat_12, 0);
   lv_obj_set_pos(rejectBody_, 16, 28);

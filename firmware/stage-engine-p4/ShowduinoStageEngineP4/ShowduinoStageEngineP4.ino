@@ -43,6 +43,7 @@
 #include "src/nodes/PixelNodeLink.h"
 #include "src/nodes/EmergencyNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
+#include "../../../protocol/showduino_emergency_button.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_deploy.h"
@@ -72,6 +73,8 @@ enum class CommandSource : uint8_t {
   Comms = 0,
   LocalUsb
 };
+
+static void notifyPendingClearSuperseded();
 
 // -----------------------------
 // Runtime state
@@ -365,6 +368,13 @@ void triggerEmergency(EmergencySource source) {
                   gpioRaw, already ? "ACTIVE" : "CLEAR");
   }
 
+  if (source != EmergencySource::Physical) {
+    emergencyInputNoteAssertion();
+    if (emergencyInputTakeClearSuperseded()) {
+      notifyPendingClearSuperseded();
+    }
+  }
+
   if (already) {
     Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
@@ -429,11 +439,19 @@ void triggerEmergencyWireless() {
   triggerEmergency(EmergencySource::Wireless);
 }
 
+static void notifyPendingClearSuperseded() {
+  Serial.println("[ESTOP] Clear request cancelled — new emergency assertion");
+  stageLogEmergency("CLEAR_SUPERSEDED", "new assertion");
+  sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_SUPERSEDED);
+  sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED);
+}
+
 static void rejectEmergencyClear(const char *code, const char *detail) {
   String line = String(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX) + code;
   sendCommandReply(line);
   if (strcmp(code, "BUTTON_ACTIVE") == 0) {
     sendCommandReply(SHOWDUINO_LEGACY_ERR_ESTOP_HELD);
+    Serial.println("[ESTOP] Clear rejected — button asserted");
   }
   Serial.printf("[ESTOP] Clear confirm rejected: %s\n", detail ? detail : code);
   stageLogEmergency("CLEAR_REJECT", code);
@@ -497,22 +515,15 @@ void clearEmergencyStop() {
   applyEmergencyClear();
 }
 
-static void handleEmergencyClearConfirm() {
+static void handleEmergencyClearRequest() {
   const uint32_t now = millis();
-  if (!emergencyLocked) {
+  Serial.println("[ESTOP] Clear requested by Director");
+  const int rc = emergencyInputBeginDirectorClear(now);
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
     rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
     return;
   }
-  if (!emergencyInputPendingClear()) {
-    rejectEmergencyClear("NO_REQUEST", "no pending clear request");
-    return;
-  }
-  if (!emergencyInputPendingClearValid(now)) {
-    emergencyInputCancelClear();
-    rejectEmergencyClear("TIMEOUT", "clear request timed out");
-    return;
-  }
-  if (physicalEstopAssertedNow()) {
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_BUTTON_ACTIVE) {
     rejectEmergencyClear("BUTTON_ACTIVE", "button still active");
     if (sCmdSource != CommandSource::LocalUsb) {
       sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
@@ -520,7 +531,51 @@ static void handleEmergencyClearConfirm() {
     }
     return;
   }
+  if (rc != SHOWDUINO_ESTOP_CLEAR_OK) {
+    rejectEmergencyClear("NO_REQUEST", "clear request failed");
+    return;
+  }
 
+  Serial.println("[ESTOP] Clear confirmation pending");
+  stageLogEmergency("CLEAR_REQUEST", "director");
+  sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST);
+}
+
+static void handleEmergencyClearConfirm() {
+  const uint32_t now = millis();
+  const int rc = emergencyInputConfirmDirectorClear(now);
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
+    rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
+    return;
+  }
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NO_REQUEST) {
+    rejectEmergencyClear("NO_REQUEST", "no pending clear request");
+    return;
+  }
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_TIMEOUT) {
+    rejectEmergencyClear("TIMEOUT", "clear request timed out");
+    return;
+  }
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_SUPERSEDED) {
+    rejectEmergencyClear("SUPERSEDED", "new emergency assertion");
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+    sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+    return;
+  }
+  if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_BUTTON_ACTIVE) {
+    rejectEmergencyClear("BUTTON_ACTIVE", "button still active");
+    if (sCmdSource != CommandSource::LocalUsb) {
+      sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+      sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+    }
+    return;
+  }
+  if (rc != SHOWDUINO_ESTOP_CLEAR_OK) {
+    rejectEmergencyClear("NO_REQUEST", "clear confirm failed");
+    return;
+  }
+
+  Serial.println("[ESTOP] Clear confirmed");
   applyEmergencyClear();
   sendCommandReply(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK);
 }
@@ -548,10 +603,13 @@ void sendCapabilities() {
 static void printLocalConsoleStatus() {
   const StageAudioStatus &audio = stageAudioStatus();
   const char *prod = gRuntime.rt.showName[0] ? gRuntime.rt.showName : "(none)";
-  Serial.printf("[CONSOLE] runtime=%s production=%s emergency=%s\n",
+  Serial.printf("[CONSOLE] runtime=%s production=%s emergency=%s btn=%s locate_hold=%s pending_clear=%s\n",
                 showStateName(gRuntime.rt.state),
                 prod,
-                emergencyLocked ? "ACTIVE" : "CLEAR");
+                emergencyLocked ? "ACTIVE" : "CLEAR",
+                emergencyInputLoopOpen() ? "PRESSED" : "RELEASED",
+                emergencyInputLocateHoldActive() ? "YES" : "NO",
+                emergencyInputPendingClearValid(millis()) ? "YES" : "NO");
 #if SHOWDUINO_ESTOP_GPIO >= 0
   Serial.printf("[CONSOLE] gpio25=%s stable=%s comms=%s director=%s\n",
                 emergencyInputLoopOpen() ? "PRESSED" : "RELEASED",
@@ -872,8 +930,8 @@ static void printUsbHelp() {
   Serial.println("  PRODUCTION:STATUS");
   Serial.println("  UPDATE:MAINTENANCE:ON | UPDATE:MAINTENANCE:OFF");
   Serial.println("  EMERGENCY:STOP");
-  Serial.println("  EMERGENCY:CLEAR            (USB maintenance; loop must be healthy)");
-  Serial.println("  EMERGENCY:CLEAR_CONFIRM    (dual-action; requires pending request)");
+  Serial.println("  EMERGENCY:CLEAR            (USB maintenance clear / Director request)");
+  Serial.println("  EMERGENCY:CLEAR_CONFIRM    (Director confirm; requires pending request)");
   Serial.println("  EMERGENCY:CLEAR_CANCEL");
   Serial.println("  PIXEL:STATUS");
   Serial.println("  PIXEL:COUNT:<1-1024>   (set length, do not init)");
@@ -1058,7 +1116,7 @@ static void dispatchCommand(const String &command) {
     if (sCmdSource == CommandSource::LocalUsb) {
       clearEmergencyStop();
     } else {
-      handleEmergencyClearConfirm();
+      handleEmergencyClearRequest();
     }
     return;
   }
@@ -1462,26 +1520,24 @@ void readUsbSerial() {
 }
 
 void servicePhysicalEstop() {
-  /* Momentary pushbutton: first debounced press still latches immediately.
-   * Release does not clear. Extra gestures never weaken that latch. */
+  /* Momentary pushbutton: debounced press latches immediately.
+   * Release does not clear. An 8-second continuous hold requests Locate once.
+   * The physical button never clears Emergency. */
   const EmergencyInputEvents ev = emergencyInputService(millis());
   if (ev.loopOpened) {
     if (!emergencyLocked) {
       triggerEmergency(EmergencySource::Physical);
       Serial.println("[ESTOP] Emergency latched");
     } else {
-      Serial.println("[ESTOP] press ignored — already latched");
+      Serial.println("[ESTOP] already latched — Locate hold still armed");
     }
   }
   if (ev.locateRequested) {
-    Serial.println("[ESTOP] DIRECTOR:LOCATE");
+    Serial.println("[ESTOP] DIRECTOR:LOCATE sent");
     sendToDirector(SHOWDUINO_LEGACY_DIRECTOR_LOCATE);
   }
-  if (ev.clearRequested) {
-    Serial.println("[ESTOP] Hold detected");
-    Serial.println("[ESTOP] Clear request sent");
-    stageLogEmergency("CLEAR_REQUEST", "physical hold");
-    sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST);
+  if (ev.clearSuperseded) {
+    notifyPendingClearSuperseded();
   }
   if (ev.clearExpired) {
     Serial.println("[ESTOP] Clear request expired");

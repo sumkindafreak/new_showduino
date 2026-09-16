@@ -460,6 +460,8 @@ static void handleApiSystem() {
          String(emergencyInputPendingClearValid(millis()) ? "true" : "false") + ",\n";
   json += "  \"emergencyButtonPressed\": " +
          String(emergencyInputLoopOpen() ? "true" : "false") + ",\n";
+  json += "  \"emergencyLocateHoldActive\": " +
+         String(emergencyInputLocateHoldActive() ? "true" : "false") + ",\n";
   json += "  \"emergencyAudioPath\": ";
   appendQuoted(json, au.selectedPath);
   json += ",\n";

@@ -343,15 +343,26 @@ void handleStageLine(String line) {
   rxCount++;
   lastStageReplyMs = millis();
   linkLostLogged = false;
+  ui.noteStageReply(lastStageReplyMs);
 
   // Any valid Stage reply proves the link is alive (reconnects from DISCONNECTED).
   applyLinkState(LINK_READY);
+
+  /* HELLO / sendCapabilities tokens. TIME:READY|UNSYNCED must not be treated as SUE clock. */
+  if (line == "TIME:READY" || line == "TIME:UNSYNCED") {
+    ui.applyStageCapabilityLine(line.c_str());
+    ui.setTraffic(txCount, rxCount);
+    ui.updateStatusWidgets(false);
+    return;
+  }
 
   /* SUE TimeService - display only; do not invent a local clock. */
   if (line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
     ui.applySueTimeWire(line.c_str());
     return;
   }
+
+  ui.applyStageCapabilityLine(line.c_str());
 
   if (ui.applyGatewayWire(line.c_str()) || ui.applyUpdateWire(line.c_str())) {
     return;
@@ -400,9 +411,7 @@ void handleStageLine(String line) {
   }
 
   if (line == SHOWDUINO_LEGACY_DIRECTOR_LOCATE) {
-    Serial.println("[LOCATOR] Director locate request received");
-    directorWakeDisplay("LOCATOR");
-    directorAmbientStartLocator(millis());
+    directorLocateOnCommand(millis());
     ui.appendLog("Director locate");
     ui.pushOperatorEvent("Director locate");
   }
@@ -415,6 +424,7 @@ void handleStageLine(String line) {
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED) {
     gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
     ui.appendLog("Emergency clear request expired");
     ui.pushOperatorEvent("Clear request expired");
   }
@@ -454,6 +464,7 @@ void handleStageLine(String line) {
       onEmergencyActivatedDirectorUx();
     }
     emergencyLocked = nowLocked;
+    ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(emergencyLocked);
     if (!nowLocked) {
       gDirectorEmergencyClearDialog.hide();
@@ -561,10 +572,12 @@ void handleStageLine(String line) {
   if (line == SHOWDUINO_LEGACY_STATUS_ELOCKED) {
     if (!emergencyLocked) onEmergencyActivatedDirectorUx();
     emergencyLocked = true;
+    ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(true);
   }
   if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
     emergencyLocked = false;
+    ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(false);
     gDirectorEmergencyClearDialog.hide();
     ui.pushOperatorEvent("Stage cleared emergency");
@@ -581,19 +594,28 @@ void handleStageLine(String line) {
       line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)) {
     ui.noteEmergencyClearRejected();
     if (line.endsWith("BUTTON_ACTIVE") || line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD) {
-      ui.appendLog("CLEAR rejected - release the physical emergency loop first");
-      ui.pushOperatorEvent("Release physical E-stop, then CONFIRM CLEAR");
+      ui.appendLog("Cannot clear Emergency. Release the Emergency button first.");
+      ui.pushOperatorEvent("Release the Emergency button first");
     } else if (line.endsWith("NO_REQUEST")) {
-      ui.appendLog("CLEAR rejected - hold the physical stop to request clearance");
-      ui.pushOperatorEvent("Hold physical E-stop to request clear");
+      ui.appendLog("CLEAR rejected - no pending Director clear request");
+      ui.pushOperatorEvent("Clear request is not pending");
       gDirectorEmergencyClearDialog.hide();
+      ui.noteEmergencyClearCancelled();
     } else if (line.endsWith("TIMEOUT")) {
       ui.appendLog("CLEAR rejected - request timed out");
       ui.pushOperatorEvent("Clear request timed out");
       gDirectorEmergencyClearDialog.hide();
+      ui.noteEmergencyClearCancelled();
+    } else if (line.endsWith("SUPERSEDED")) {
+      ui.appendLog("CLEAR cancelled - new Emergency assertion");
+      ui.pushOperatorEvent("Clear request cancelled by new Emergency");
+      gDirectorEmergencyClearDialog.hide();
+      ui.noteEmergencyClearCancelled();
     } else {
       ui.appendLog("CLEAR rejected - " + line);
       ui.pushOperatorEvent("Emergency clear rejected");
+      gDirectorEmergencyClearDialog.hide();
+      ui.noteEmergencyClearCancelled();
     }
   }
 
@@ -683,6 +705,7 @@ void sendToStage(const String &command) {
 #endif
 
   txCount++;
+  if (command == SHOWDUINO_LEGACY_HELLO) lastHelloMs = millis();
 
   /* Emergency lock: E-STOP may set local activating feedback in UI;
      CLEAR must wait for STATE:EMERGENCY:CLEAR (do not unlock here). */
@@ -691,8 +714,9 @@ void sendToStage(const String &command) {
     if (!emergencyLocked) onEmergencyActivatedDirectorUx();
     emergencyLocked = true;
     ui.setEmergencyLocked(true);
-  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR ||
-             command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
+  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR) {
+    Serial.println("[E-Stop] TX EMERGENCY:CLEAR request to Stage");
+  } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
     Serial.println("[E-Stop] TX emergency clear confirm to Stage (await STATE:EMERGENCY:CLEAR)");
   } else if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL) {
     Serial.println("[E-Stop] TX EMERGENCY:CLEAR_CANCEL to Stage");
@@ -1170,12 +1194,20 @@ void handleUiCommand(const String &command) {
     gStorage.logEmergency("UI", "EMERGENCY:STOP");
   }
 
-  if (command == "EMERGENCY:CLEAR" ||
-      command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
+  if (command == "EMERGENCY:CLEAR") {
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
+    ui.appendLog("E-CLEAR request sent to Stage");
+    if (linkState != LINK_READY) {
+      ui.appendLog("CLEAR requested - Stage offline, awaiting confirmation");
+      ui.pushOperatorEvent("Cannot confirm emergency clear - Stage offline");
+    }
+    return;
+  }
+
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
     sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
     ui.appendLog("E-CLEAR confirm sent to Stage");
     if (linkState != LINK_READY) {
-      /* Offline is not proof of safety - stay latched until Stage confirms. */
       ui.appendLog("CLEAR requested - Stage offline, awaiting confirmation");
       ui.pushOperatorEvent("Cannot confirm emergency clear - Stage offline");
     }
@@ -1204,7 +1236,7 @@ void handleUiCommand(const String &command) {
   if (command.startsWith("UI:") || command.startsWith("SCREEN:") ||
       command.startsWith("HOME:") || command.startsWith("PAGE02:") ||
       command.startsWith("PAGE04:") || command.startsWith("PAGE05:") ||
-      command.startsWith("SETTINGS:") || command == "SELFTEST:START") {
+      command.startsWith("PAGE06:") || command.startsWith("SETTINGS:") || command == "SELFTEST:START") {
     return;
   }
   sendToStage(command);
@@ -1266,7 +1298,7 @@ void handleUsbLine(String command) {
   if (command.length() == 0) return;
 
   if (command == "HELP") {
-    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, LOG:LEVEL");
+    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, TOUCH:STATUS, TOUCH:RESET, TOUCH:CALIBRATE, LOG:LEVEL");
     return;
   }
 
@@ -1274,6 +1306,20 @@ void handleUsbLine(String command) {
 
   if (command == "HEALTH") {
     ui.printHealthDiagnostic();
+    return;
+  }
+
+  if (command == "TOUCH:STATUS") {
+    touchLvglPrintCalibrationStatus();
+    return;
+  }
+  if (command == "TOUCH:RESET") {
+    gDirectorTouchCalibrationScreen.hide();
+    touchLvglResetCalibration();
+    return;
+  }
+  if (command == "TOUCH:CALIBRATE") {
+    directorTouchCalStart();
     return;
   }
 
@@ -1487,6 +1533,7 @@ void setup() {
 
   Serial.println("UI: begin (behind boot screen)...");
   ui.begin(handleUiCommand);
+  ui.setEspNowReady(espNowReady);
   gDirectorEmergencyClearDialog.setConfirmHandler(onEmergencyClearConfirm);
   gDirectorEmergencyClearDialog.setCancelHandler(onEmergencyClearCancel);
   Serial.println("UI: begin done");
@@ -1565,6 +1612,7 @@ void loop() {
   }
 
   ui.setEmergencyLocked(emergencyLocked);
+  ui.setEspNowReady(espNowReady);
   gDirectorUnlockScreen.tick(now, espNowReady, linkState, emergencyLocked);
   ui.tickEmergencyOverlay(now);
   gDirectorEmergencyClearDialog.tick(now);

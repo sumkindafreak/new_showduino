@@ -29,9 +29,9 @@ void DirectorEmergencyClearDialog::buildUi() {
 
   lv_obj_t *body = lv_label_create(box);
   lv_label_set_text(body,
-                    "The physical emergency loop created this request.\n"
+                    "Clear Emergency from the Director Emergency screen.\n"
                     "CONFIRM CLEAR does not resume the show. Release the "
-                    "physical stop first or the P4 will reject clearance.");
+                    "physical Emergency button first or the P4 will reject clearance.");
   lv_obj_set_style_text_color(body, lv_color_hex(ShowduinoPalette::Muted), 0);
   lv_obj_set_style_text_font(body, &lv_font_montserrat_14, 0);
   lv_obj_set_pos(body, 24, 80);

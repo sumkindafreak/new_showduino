@@ -172,6 +172,9 @@ int main() {
                 SHOWDUINO_MSG_EMERGENCY_ACTIVATE_REQUEST, "map EMERGENCY:STOP");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR),
                 SHOWDUINO_MSG_EMERGENCY_CLEAR_REQUEST, "map EMERGENCY:CLEAR");
+  expect(strcmp(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_SUPERSEDED,
+                "EMERGENCY:CLEAR:REJECTED:SUPERSEDED") == 0,
+         "superseded reject token");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM),
                 SHOWDUINO_MSG_EMERGENCY_CLEAR_REQUEST, "map EMERGENCY:CLEAR_CONFIRM");
   expect_eq_int(showduino_legacy_map_command(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST),

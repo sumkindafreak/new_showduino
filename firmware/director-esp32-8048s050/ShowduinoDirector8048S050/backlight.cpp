@@ -17,6 +17,8 @@ static uint8_t  s_timeoutMin = 10;
 static uint8_t  s_brightness = 255;
 static bool     s_autoEnabled = true;
 static bool     s_heldOff = true;
+static bool     s_locateHold = false;
+static bool     s_calHold = false;
 #if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 0, 0)
 static uint8_t  s_ledcCh = 0;
 #endif
@@ -159,10 +161,48 @@ void backlightSet(bool on) {
   else setState(BL_STATE_OFF);
 }
 
+void backlightLocateHold(bool hold) {
+  if (s_locateHold == hold) return;
+  s_locateHold = hold;
+  if (hold) {
+    s_heldOff = false;
+    setState(BL_STATE_FULL);
+    Serial.println("[LOCATOR] Auto-off suspended");
+  } else {
+    Serial.println("[LOCATOR] Auto-off restored");
+    backlightNotifyActivity();
+  }
+}
+
+bool backlightLocateHeld() {
+  return s_locateHold;
+}
+
+void backlightCalHold(bool hold) {
+  if (s_calHold == hold) return;
+  s_calHold = hold;
+  if (hold) {
+    s_heldOff = false;
+    setState(BL_STATE_FULL);
+    Serial.println("[TouchCal] Auto-off suspended");
+  } else {
+    Serial.println("[TouchCal] Auto-off restored");
+    backlightNotifyActivity();
+  }
+}
+
+bool backlightCalHeld() {
+  return s_calHold;
+}
+
 void backlightTick(uint32_t nowMs) {
   if (s_pin == 255) return;
   if (s_heldOff) {
     applyPwm(0);
+    return;
+  }
+  if (s_locateHold || s_calHold) {
+    if (s_state != BL_STATE_FULL) setState(BL_STATE_FULL);
     return;
   }
   if (!s_autoEnabled) {

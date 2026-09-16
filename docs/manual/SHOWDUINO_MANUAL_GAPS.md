@@ -20,11 +20,11 @@ The categories used are:
 
 ---
 
-## GAP-001 — Main Emergency button Locate gesture conflicts with approved product requirement
+## GAP-001 — Main Emergency button 8-second Locate hold
 
-**Category:** IMPLEMENTATION GAP / SAFETY PROCEDURE TO CONFIRM  
-**Severity:** Release-blocking for the commercial manual  
-**Current code:** `firmware/stage-engine-p4/ShowduinoStageEngineP4/src/EmergencyInput.cpp`, `BoardConfig.h`
+**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
+**Severity:** Release-blocking until physical bench sign-off  
+**Current code:** `firmware/stage-engine-p4/ShowduinoStageEngineP4/src/EmergencyInput.cpp`, `BoardConfig.h`, `protocol/showduino_emergency_button.h`
 
 ### Approved product requirement
 
@@ -33,66 +33,60 @@ The momentary main-unit Emergency button must:
 1. assert and latch Emergency immediately on button-down;
 2. start a hold timer without delaying Emergency;
 3. if the *same continuous press* reaches 8 seconds, additionally request Director Locate;
-4. keep Emergency and Locate as independent states.
+4. keep Emergency and Locate as independent states;
+5. never clear Emergency from the physical button.
 
-### Baseline implementation
+### Implementation status
 
-At this SHA:
+Implemented in firmware:
 
-- a debounced press asserts Emergency immediately — **correct**;
-- Locate is triggered by **8 press events inside a 6-second window**;
-- a **3-second continuous hold requests Emergency clear**.
+- debounced press asserts Emergency immediately;
+- `SHOWDUINO_ESTOP_LOCATE_HOLD_MS` (8000) on the same uninterrupted press requests `DIRECTOR:LOCATE` once;
+- release never clears and does not accumulate hold time;
+- the retired 8-press / 6-second Locate gesture is gone;
+- the retired 3-second physical hold-to-clear gesture is gone.
 
-The existing gesture therefore does not implement the newly approved 8-second continuous-hold Locate behaviour.
-
-### Required resolution
-
-Rework the physical-button state machine so the same first press both latches Emergency immediately and can mature into Locate after 8 seconds. Remove the gesture collision with the current 3-second clear request. Re-run emergency regression tests on hardware before this feature is documented as production behaviour.
-
----
-
-## GAP-002 — Director Locate presentation does not meet the approved acknowledgement model
-
-**Category:** IMPLEMENTATION GAP / UI/DOCUMENTATION MISMATCH  
-**Current code:** `ShowduinoDirector8048S050.ino`, `DirectorAmbientPixels.cpp/.h`, `backlight.cpp`
-
-The Director currently receives `DIRECTOR:LOCATE`, calls the normal display-wake activity function and starts the ambient locator pattern.
-
-However, the approved product behaviour additionally requires:
-
-- backlight forced on for the whole Locate state;
-- normal display auto-off temporarily suspended;
-- continuous locator flashing until acknowledged;
-- a clear **LOCATE ACTIVE** indication;
-- first deliberate touchscreen touch acknowledges Locate;
-- that touch ends Locate only and **must never clear Emergency**;
-- normal brightness/timeout behaviour is then restored.
-
-At this baseline the ambient locator is automatically time-limited to **15 seconds**. No public stop-on-touch locator API was found, and normal display activity only resets the ordinary timeout rather than creating a dedicated Locate hold state.
-
-### Required resolution
-
-Implement a distinct Director Locate state with explicit touch acknowledgement and independent Emergency state. Hardware-test sleep/wake, touch acknowledgement and emergency-latch retention.
+Physical bench acceptance of this path is still required before commercial validation.
 
 ---
 
-## GAP-003 — Current Emergency clear gesture collides with the new Locate decision
+## GAP-002 — Director Locate presentation / first-touch acknowledgement
 
-**Category:** PRODUCT DECISION REQUIRED / IMPLEMENTATION GAP  
-**Current code:** P4 `EmergencyInput.cpp`; Director `DirectorEmergencyClearDialog.cpp`
+**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
+**Current code:** `DirectorLocateScreen.*`, `DirectorAmbientPixels.cpp/.h`, `backlight.cpp`, `touch_lvgl.cpp`
 
-The current RC clear workflow is internally coherent:
+Implemented in firmware:
 
-- 3-second physical hold creates a clear request;
-- Director displays **EMERGENCY CLEARANCE REQUESTED** / **Clear Emergency Stop?**;
-- the physical button must be released before P4 accepts confirmation;
-- `CONFIRM CLEAR` does not resume the show.
+- `DIRECTOR:LOCATE` wakes the display and forces backlight on;
+- normal auto-off is temporarily suspended without rewriting saved settings;
+- ambient red/blue locator flashes with **no 15-second timeout**;
+- **LOCATE ACTIVE** overlay states that Emergency remains active;
+- the first deliberate touchscreen press acknowledges Locate only;
+- that press/release cycle is consumed and cannot click an underlying control;
+- Locate acknowledgement does not clear Emergency.
 
-The newly approved 8-second hold for Locate means the 3-second hold-to-clear gesture can no longer remain on the same button unchanged: it would initiate a clear workflow before the Locate threshold is reached.
+Hardware-test sleep/wake, touch consumption and emergency-latch retention before treating this as commercially validated.
 
-### Required resolution
+---
 
-Choose and implement the production Emergency-clear request gesture/workflow after the 8-second Locate change. Do not publish a final operator clear procedure until the resulting hardware behaviour is accepted.
+## GAP-003 — Emergency clear is Director request → confirm (physical button never clears)
+
+**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
+**Current code:** P4 `EmergencyInput.cpp` / `ShowduinoStageEngineP4.ino`; Director `DirectorEmergencyScreen.cpp`, `DirectorEmergencyClearDialog.cpp`
+
+Implemented production clear workflow:
+
+- operator chooses **CLEAR EMERGENCY** on the Director Emergency screen;
+- Director sends `EMERGENCY:CLEAR` (request);
+- P4 rejects if not latched or if GPIO25 is still pressed;
+- otherwise P4 creates a timed pending authorisation and sends `EMERGENCY:CLEAR_REQUEST`;
+- Director shows **EMERGENCY CLEARANCE REQUESTED** / **Clear Emergency Stop?**;
+- `CONFIRM CLEAR` sends `EMERGENCY:CLEAR_CONFIRM`;
+- P4 validates again (latched, pending, button released, no newer assertion) then clears;
+- a new physical/wireless Emergency assertion invalidates any stale pending confirm;
+- clear does not resume the show.
+
+Physical acceptance of this handshake is still required. Do not mark commercially validated until the bench checklist is signed.
 
 ---
 
@@ -339,6 +333,17 @@ No evidence was found that Showduino is certified as a fire alarm, evacuation sy
 ### Manual consequence
 
 The commercial manual explicitly keeps venue/fire/machinery/life-safety compliance separate from Showduino show-control emergency behaviour. This is not a negative product claim; it is an accuracy boundary until formal certification exists.
+
+---
+
+## GAP-020 — Director touchscreen calibration is implemented but not hardware-accepted
+
+**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
+**Current code:** `TouchCalibrationMath.h`, `TouchCalibrationStore.cpp`, `DirectorTouchCalibrationScreen.*`, `touch_lvgl.cpp`
+
+Five-point affine calibration, NVS persistence (`showduino_touch` / `cal`), factory fallback, Settings entry, USB `TOUCH:STATUS` / `TOUCH:RESET` / `TOUCH:CALIBRATE`, Emergency/Locate abort, and first-touch consumption while the wizard is open are in firmware.
+
+Do not treat corner accuracy, reboot persistence, or overlay consumption as commercially validated until the physical checklist is signed.
 
 ---
 

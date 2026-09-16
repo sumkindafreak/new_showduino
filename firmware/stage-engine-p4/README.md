@@ -80,7 +80,7 @@ GPIO25 → momentary pushbutton → GND
 INPUT_PULLUP
 ```
 
-Press latches emergency. Release does not clear. USB `EMERGENCY:CLEAR` is the maintenance path and refuses a still-held input. Director clearance retains the dual-action physical-hold/confirmation policy.
+Press latches emergency immediately. Release does not clear. USB `EMERGENCY:CLEAR` is the maintenance path and refuses a still-held input. Director clearance is request → confirm and also refuses a still-held input. An 8-second continuous hold of the same physical button requests `DIRECTOR:LOCATE` once; the physical button never clears Emergency.
 
 ## Pixel outputs
 

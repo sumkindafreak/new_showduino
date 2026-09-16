@@ -57,12 +57,12 @@ Remember: venue Wi-Fi/Internet status is not the same thing as P4 health.
 - [ ] Other installed Emergency-capable Nodes enter their defined Emergency state.
 - [ ] Normal show controls do not override Emergency.
 
-### Clear — exact RC baseline only
+### Clear
 
-The baseline firmware currently uses a 3-second physical hold to request clear plus Director confirmation. This is a temporary RC procedure and will change when the approved 8-second Locate behaviour is implemented.
+The physical Emergency button never clears Emergency.
 
-- [ ] Hold main Emergency button approximately 3 seconds to create a clear request.
-- [ ] Release the physical button.
+- [ ] Release the physical button if it is still held.
+- [ ] On the Director Emergency screen, choose **CLEAR EMERGENCY**.
 - [ ] Director presents **Clear Emergency Stop?** / clearance confirmation.
 - [ ] Select **CONFIRM CLEAR** only after confirming the test area is safe.
 - [ ] P4 accepts the clear only with the physical input released.
@@ -71,6 +71,8 @@ The baseline firmware currently uses a 3-second physical hold to request clear p
 - [ ] P4 show pixels return to blackout rather than the previous effect.
 - [ ] Attraction audio does **not** automatically resume.
 - [ ] The show does **not** automatically continue merely because Emergency was cleared.
+
+This firmware path is implemented and still requires physical hardware acceptance.
 
 **FAIL:** any Emergency item above fails or behaves differently from the installed/manual baseline.  
 **Action:** keep the attraction closed until diagnosed and re-tested.
@@ -165,7 +167,7 @@ Do not start a firmware update during public operation.
 - [ ] Touchscreen responds normally.
 - [ ] Display brightness/auto-off setting is appropriate for the operator position.
 
-**Locate RC note:** the approved 8-second hold/first-touch acknowledgement Locate behaviour is not implemented at this baseline. Do not rely on Locate as a pre-opening safety control until the gap is closed.
+**Locate:** press and hold the main Emergency button for 8 seconds to locate the Director. First touch acknowledges Locate only and does not clear Emergency. Hardware acceptance of this path is still required.
 
 ---
 

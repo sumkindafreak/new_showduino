@@ -85,23 +85,9 @@ export async function LivePage(container) {
     if (emergency === 'EMERGENCY') {
       runtime.append(el('div', { className: 'emergency-banner', text: 'EMERGENCY ACTIVE' }));
       runtime.append(statRow('Physical loop', loopWord(s)));
-      runtime.append(statRow('Clear request', s && s.emergencyPendingClear ? 'PENDING' : 'Hold the physical button for 3s'));
+      runtime.append(statRow('Clear request', s && s.emergencyPendingClear ? 'PENDING ON DIRECTOR' : 'Use the Director Emergency screen'));
       runtime.append(statRow('Latch source', (s && s.emergencySource) || '—'));
-      const row = el('div', { className: 'transport-row' });
-      row.append(el('button', {
-        className: 'btn-cancel',
-        text: pending === 'EMERGENCY:CLEAR_CONFIRM' ? 'CONFIRM…' : 'Confirm clear',
-        disabled: !lastSnap.p4Online || !(s && s.emergencyPendingClear) || !!pending,
-        onClick: () => send('EMERGENCY:CLEAR_CONFIRM')
-      }));
-      row.append(el('button', {
-        className: 'btn-cancel',
-        text: pending === 'EMERGENCY:CLEAR_CANCEL' ? 'CANCEL…' : 'Cancel clear',
-        disabled: !lastSnap.p4Online || !(s && s.emergencyPendingClear) || !!pending,
-        onClick: () => send('EMERGENCY:CLEAR_CANCEL')
-      }));
-      runtime.append(row);
-      runtime.append(el('p', { className: 'sub', text: 'Web clear is no more permissive than Director clear. The P4 owns the latch.' }));
+      runtime.append(el('p', { className: 'sub', text: 'Emergency is cleared from the Director, not from this browser. Confirming Locate on the Director does not clear Emergency.' }));
     }
 
     const transport = el('div', { className: 'transport-row' });

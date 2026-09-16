@@ -1,4 +1,5 @@
 #include "EmergencyInput.h"
+#include "../../../protocol/showduino_emergency_button.h"
 #include "nodes/AudioNodeLink.h"
 
 extern bool emergencyLocked;
@@ -44,53 +45,24 @@ static void reconcileAudioNodeEmergency(uint32_t nowMs) {
 static int sRaw = -1;
 static int sStable = -1;
 static uint32_t sEdgeMs = 0;
-static uint32_t sPressStartMs = 0;
-static uint8_t sPressCount = 0;
-static uint32_t sSequenceStartMs = 0;
-static bool sLongHoldFired = false;
-static bool sPendingClear = false;
-static uint32_t sPendingClearUntilMs = 0;
-static bool sLocateWindowArmed = false;
+static ShowduinoEstopHoldState sHold;
+static ShowduinoEstopClearAuth sClear;
+static uint32_t sAssertionSeq = 0;
+static bool sClearSuperseded = false;
 
 static bool loopIsOpenLevel(int raw) {
   return raw == SHOWDUINO_ESTOP_ASSERTED_LEVEL;
 }
 
-static void resetLocateSequence() {
-  sPressCount = 0;
-  sSequenceStartMs = 0;
-  sLocateWindowArmed = false;
-}
-
 static void cancelPendingClear() {
-  sPendingClear = false;
-  sPendingClearUntilMs = 0;
+  showduino_estop_clear_cancel(&sClear);
 }
 
-static void beginPendingClear(uint32_t nowMs) {
-  sPendingClear = true;
-  sPendingClearUntilMs = nowMs + SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS;
-}
-
-static void notePress(uint32_t nowMs, EmergencyInputEvents *ev) {
-  if (!sLocateWindowArmed) {
-    sLocateWindowArmed = true;
-    sSequenceStartMs = nowMs;
-    sPressCount = 1;
-  } else if ((nowMs - sSequenceStartMs) >= SHOWDUINO_ESTOP_LOCATE_WINDOW_MS) {
-    sSequenceStartMs = nowMs;
-    sPressCount = 1;
-  } else {
-    if (sPressCount < 255) sPressCount++;
-  }
-
-  Serial.printf("[ESTOP] Locate sequence %u/%u\n",
-                (unsigned)sPressCount,
-                (unsigned)SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT);
-
-  if (sPressCount >= SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT) {
-    ev->locateRequested = true;
-    resetLocateSequence();
+static void noteAssertionLocked() {
+  sAssertionSeq++;
+  if (sClear.pending) {
+    cancelPendingClear();
+    sClearSuperseded = true;
   }
 }
 
@@ -98,10 +70,10 @@ void emergencyInputBegin() {
   sRaw = -1;
   sStable = -1;
   sEdgeMs = millis();
-  sPressStartMs = 0;
-  sLongHoldFired = false;
-  resetLocateSequence();
-  cancelPendingClear();
+  showduino_estop_hold_reset(&sHold);
+  showduino_estop_clear_reset(&sClear);
+  sAssertionSeq = 0;
+  sClearSuperseded = false;
   sAudioEmergencySyncMs = 0;
 
   gpio_reset_pin((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
@@ -116,6 +88,8 @@ void emergencyInputBegin() {
                 SHOWDUINO_ESTOP_GPIO,
                 SHOWDUINO_ESTOP_PIN_MODE == INPUT_PULLUP ? "INPUT_PULLUP" : "INPUT",
                 sample);
+  Serial.printf("[ESTOP] Locate hold %lu ms; physical button never clears\n",
+                (unsigned long)SHOWDUINO_ESTOP_LOCATE_HOLD_MS);
 }
 
 EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
@@ -130,38 +104,34 @@ EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
   if ((nowMs - sEdgeMs) >= SHOWDUINO_ESTOP_DEBOUNCE_MS && sStable != open) {
     const int prev = sStable;
     sStable = open;
+    ShowduinoEstopHoldEvents holdEv = {};
     if (open) {
       Serial.println("[ESTOP] Button PRESSED");
       ev.loopOpened = true;
-      sPressStartMs = nowMs;
-      sLongHoldFired = false;
-      notePress(nowMs, &ev);
+      noteAssertionLocked();
+      showduino_estop_hold_on_press(&sHold, nowMs, &holdEv);
+      Serial.println("[ESTOP] Locate hold started");
     } else {
       Serial.println("[ESTOP] Button RELEASED");
       if (prev == 1) ev.loopClosed = true;
-      sLongHoldFired = false;
-      sPressStartMs = 0;
+      showduino_estop_hold_on_release(&sHold, &holdEv);
     }
   }
 
-  if (sLocateWindowArmed &&
-      (nowMs - sSequenceStartMs) >= SHOWDUINO_ESTOP_LOCATE_WINDOW_MS) {
-    resetLocateSequence();
+  ShowduinoEstopHoldEvents holdEv = {};
+  showduino_estop_hold_tick(&sHold, nowMs, &holdEv);
+  if (holdEv.locateRequested) {
+    Serial.printf("[ESTOP] Locate threshold reached %lu ms\n",
+                  (unsigned long)SHOWDUINO_ESTOP_LOCATE_HOLD_MS);
+    ev.locateRequested = true;
   }
 
-  if (sStable == 1 && !sLongHoldFired && sPressStartMs != 0 &&
-      (nowMs - sPressStartMs) >= SHOWDUINO_ESTOP_CLEAR_HOLD_MS) {
-    sLongHoldFired = true;
-    resetLocateSequence();
-    if (!sPendingClear) {
-      beginPendingClear(nowMs);
-      ev.clearRequested = true;
-    }
-  }
-
-  if (sPendingClear && (int32_t)(nowMs - sPendingClearUntilMs) >= 0) {
-    cancelPendingClear();
+  if (showduino_estop_clear_tick(&sClear, nowMs)) {
     ev.clearExpired = true;
+  }
+  if (sClearSuperseded) {
+    ev.clearSuperseded = true;
+    sClearSuperseded = false;
   }
 
   reconcileAudioNodeEmergency(nowMs);
@@ -185,21 +155,50 @@ int emergencyInputStableOpen() {
   return sStable;
 }
 
-uint8_t emergencyInputLocateCount() {
-  return sPressCount;
+bool emergencyInputLocateHoldActive() {
+  return showduino_estop_hold_locate_active(&sHold) != 0;
+}
+
+bool emergencyInputLocateHoldFired() {
+  return sHold.locateHoldFired != 0;
 }
 
 bool emergencyInputPendingClear() {
-  return sPendingClear;
+  return sClear.pending != 0;
 }
 
 bool emergencyInputPendingClearValid(uint32_t nowMs) {
-  if (!sPendingClear) return false;
-  return (int32_t)(nowMs - sPendingClearUntilMs) < 0;
+  return showduino_estop_clear_pending_valid(&sClear, nowMs) != 0;
+}
+
+int emergencyInputBeginDirectorClear(uint32_t nowMs) {
+  return showduino_estop_clear_begin(&sClear, nowMs, emergencyLocked ? 1 : 0,
+                                     emergencyInputLoopOpen() ? 1 : 0,
+                                     sAssertionSeq);
+}
+
+int emergencyInputConfirmDirectorClear(uint32_t nowMs) {
+  return showduino_estop_clear_confirm(&sClear, nowMs, emergencyLocked ? 1 : 0,
+                                       emergencyInputLoopOpen() ? 1 : 0,
+                                       sAssertionSeq);
 }
 
 void emergencyInputCancelClear() {
   cancelPendingClear();
+}
+
+void emergencyInputNoteAssertion() {
+  noteAssertionLocked();
+}
+
+bool emergencyInputTakeClearSuperseded() {
+  const bool v = sClearSuperseded;
+  sClearSuperseded = false;
+  return v;
+}
+
+uint32_t emergencyInputAssertionSeq() {
+  return sAssertionSeq;
 }
 
 #else
@@ -218,9 +217,19 @@ bool emergencyInputLoopOpen() { return false; }
 bool emergencyInputLoopHealthy() { return true; }
 int emergencyInputRawGpio() { return -1; }
 int emergencyInputStableOpen() { return -1; }
-uint8_t emergencyInputLocateCount() { return 0; }
+bool emergencyInputLocateHoldActive() { return false; }
+bool emergencyInputLocateHoldFired() { return false; }
 bool emergencyInputPendingClear() { return false; }
 bool emergencyInputPendingClearValid(uint32_t) { return false; }
+int emergencyInputBeginDirectorClear(uint32_t) {
+  return SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED;
+}
+int emergencyInputConfirmDirectorClear(uint32_t) {
+  return SHOWDUINO_ESTOP_CLEAR_ERR_NO_REQUEST;
+}
 void emergencyInputCancelClear() {}
+void emergencyInputNoteAssertion() {}
+bool emergencyInputTakeClearSuperseded() { return false; }
+uint32_t emergencyInputAssertionSeq() { return 0; }
 
 #endif

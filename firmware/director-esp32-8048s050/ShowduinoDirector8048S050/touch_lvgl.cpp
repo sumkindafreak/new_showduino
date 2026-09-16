@@ -1,7 +1,9 @@
 #include "touch_lvgl.h"
 #include "BoardConfig.h"
 #include "backlight.h"
+#include "TouchCalibrationStore.h"
 
+#include <string.h>
 #include <Wire.h>
 #include <lvgl.h>
 
@@ -14,19 +16,6 @@
  */
 #ifndef TOUCH_GT911_LIB_ROTATION
 #define TOUCH_GT911_LIB_ROTATION ROTATION_NORMAL
-#endif
-
-#ifndef TOUCH_CAL_X_LEFT
-#define TOUCH_CAL_X_LEFT  790
-#endif
-#ifndef TOUCH_CAL_X_RIGHT
-#define TOUCH_CAL_X_RIGHT 18
-#endif
-#ifndef TOUCH_CAL_Y_TOP
-#define TOUCH_CAL_Y_TOP   465
-#endif
-#ifndef TOUCH_CAL_Y_BOT
-#define TOUCH_CAL_Y_BOT   25
 #endif
 
 /* Temporary Serial diagnostics for scroll bring-up - remove after field verify. */
@@ -43,9 +32,16 @@ static int32_t s_lastTouchX = 0;
 static int32_t s_lastTouchY = 0;
 static bool s_hadPress = false;
 static TouchLvglHook s_touchHook = nullptr;
+static ShowduinoTouchCalMode s_calMode = SHOWDUINO_TOUCH_CAL_MODE_FACTORY;
+static ShowduinoTouchCalibrationRecord s_nvsCal;
+static bool s_calLogged = false;
 
 void touchLvglSetHook(TouchLvglHook hook) {
   s_touchHook = hook;
+}
+
+void touchLvglConsumeUntilRelease() {
+  s_eatUntilRelease = true;
 }
 
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
@@ -73,21 +69,65 @@ static void diagScrollPos(const char *tag) {
 }
 #endif
 
-static int32_t mapTouchAxis(int32_t v, int32_t inA, int32_t inB, int32_t outMax) {
-  if (inA == inB) return 0;
-  int32_t mapped = (v - inA) * outMax / (inB - inA);
-  if (mapped < 0) mapped = 0;
-  if (mapped > outMax) mapped = outMax;
-  return mapped;
+static void applyFactoryMode() {
+  s_calMode = SHOWDUINO_TOUCH_CAL_MODE_FACTORY;
+  memset(&s_nvsCal, 0, sizeof(s_nvsCal));
 }
 
-static bool sampleTouch(int32_t &x, int32_t &y) {
+static void logCalibrationOnce() {
+  if (s_calLogged) return;
+  s_calLogged = true;
+  if (s_calMode == SHOWDUINO_TOUCH_CAL_MODE_NVS) {
+    Serial.printf("[Touch] calibration: NVS v%u\n", (unsigned)s_nvsCal.version);
+  } else {
+    Serial.println("[Touch] calibration: FACTORY FALLBACK");
+  }
+}
+
+static void loadCalibrationLocked() {
+  ShowduinoTouchCalibrationRecord rec;
+  int fail = SHOWDUINO_TOUCH_CAL_FAIL_SIZE;
+  if (touchCalibrationStoreLoad(&rec, &fail)) {
+    s_nvsCal = rec;
+    s_calMode = SHOWDUINO_TOUCH_CAL_MODE_NVS;
+  } else {
+    applyFactoryMode();
+  }
+}
+
+void touchLvglMapWith(const ShowduinoTouchCalibrationRecord *rec,
+                      int32_t rawX, int32_t rawY, int32_t *screenX, int32_t *screenY) {
+  if (rec) {
+    showduino_touch_cal_apply_i(rec, rawX, rawY, (int32_t)s_w, (int32_t)s_h, screenX, screenY);
+    return;
+  }
+  showduino_touch_cal_factory_map(rawX, rawY, (int32_t)s_w, (int32_t)s_h, screenX, screenY);
+}
+
+void touchLvglMapRaw(int32_t rawX, int32_t rawY, int32_t *screenX, int32_t *screenY) {
+  if (s_calMode == SHOWDUINO_TOUCH_CAL_MODE_NVS) {
+    touchLvglMapWith(&s_nvsCal, rawX, rawY, screenX, screenY);
+  } else {
+    touchLvglMapWith(nullptr, rawX, rawY, screenX, screenY);
+  }
+}
+
+bool touchLvglReadRaw(TouchRawPoint &point) {
+  point.x = 0;
+  point.y = 0;
   if (!s_touch || !s_ready) return false;
   s_touch->read();
   if (!s_touch->isTouched) return false;
-  TP_Point p = s_touch->points[0];
-  x = mapTouchAxis((int32_t)p.x, TOUCH_CAL_X_LEFT, TOUCH_CAL_X_RIGHT, (int32_t)s_w - 1);
-  y = mapTouchAxis((int32_t)p.y, TOUCH_CAL_Y_TOP, TOUCH_CAL_Y_BOT, (int32_t)s_h - 1);
+  const TP_Point p = s_touch->points[0];
+  point.x = (int32_t)p.x;
+  point.y = (int32_t)p.y;
+  return true;
+}
+
+static bool sampleTouch(int32_t &x, int32_t &y) {
+  TouchRawPoint raw;
+  if (!touchLvglReadRaw(raw)) return false;
+  touchLvglMapRaw(raw.x, raw.y, &x, &y);
   return true;
 }
 
@@ -123,16 +163,23 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
     }
   }
 
-  if (s_touchHook && !s_eatUntilRelease) {
-    s_touchHook(x, y, pressed);
-  }
-
   if (s_eatUntilRelease) {
     if (!pressed) s_eatUntilRelease = false;
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
-    if (!pressed) Serial.println("[Touch] WAKE_EAT release");
+    if (!pressed) Serial.println("[Touch] EAT release");
 #endif
     return;
+  }
+
+  if (s_touchHook) {
+    if (s_touchHook(x, y, pressed)) {
+      s_eatUntilRelease = pressed;
+#if SHOWDUINO_TOUCH_SCROLL_DIAG
+      Serial.printf("[Touch] HOOK_EAT x=%ld y=%ld pressed=%u\n",
+                    (long)x, (long)y, (unsigned)pressed);
+#endif
+      return;
+    }
   }
 
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
@@ -183,6 +230,9 @@ void touchLvglInit(TAMC_GT911 &touch, uint16_t width, uint16_t height, uint8_t d
   s_h = height;
   s_ready = false;
   s_eatUntilRelease = false;
+  s_calLogged = false;
+  loadCalibrationLocked();
+  logCalibrationOnce();
 
   touchWireBegin();
   touch.begin();
@@ -198,6 +248,7 @@ void touchLvglInit(TAMC_GT911 &touch, uint16_t width, uint16_t height, uint8_t d
 #endif
 
   s_ready = true;
+  Serial.println("[Touch] GT911 ready");
   Serial.printf("Touch: GT911 LVGL ready (libRot=%u %ux%u landscape)\n",
                 (unsigned)TOUCH_GT911_LIB_ROTATION, (unsigned)width, (unsigned)height);
 }
@@ -220,5 +271,54 @@ bool touchLvglPollActivity() {
   if (!sampleTouch(x, y)) return false;
   backlightNotifyActivity();
   s_eatUntilRelease = true;
+  return true;
+}
+
+ShowduinoTouchCalMode touchLvglCalibrationMode() {
+  return s_calMode;
+}
+
+bool touchLvglCalibrationIsNvs() {
+  return s_calMode == SHOWDUINO_TOUCH_CAL_MODE_NVS;
+}
+
+uint16_t touchLvglCalibrationVersion() {
+  return s_calMode == SHOWDUINO_TOUCH_CAL_MODE_NVS ? s_nvsCal.version : 0;
+}
+
+void touchLvglPrintCalibrationStatus() {
+  Serial.println("TOUCH CALIBRATION");
+  if (s_calMode == SHOWDUINO_TOUCH_CAL_MODE_NVS) {
+    Serial.println("MODE NVS");
+    Serial.printf("VERSION %u\n", (unsigned)s_nvsCal.version);
+    Serial.printf("DISPLAY %ux%u\n", (unsigned)s_nvsCal.width, (unsigned)s_nvsCal.height);
+    Serial.println("VALID YES");
+  } else {
+    Serial.println("MODE FACTORY");
+    Serial.printf("DISPLAY %ux%u\n", (unsigned)s_w, (unsigned)s_h);
+    Serial.println("VALID NO_SAVED_CALIBRATION");
+  }
+}
+
+bool touchLvglSaveCalibration(const ShowduinoTouchCalibrationRecord &rec) {
+  if (showduino_touch_cal_record_valid(&rec, sizeof(rec), SCREEN_WIDTH, SCREEN_HEIGHT) !=
+      SHOWDUINO_TOUCH_CAL_OK) {
+    Serial.println("[TouchCal] invalid — previous calibration preserved");
+    return false;
+  }
+  if (!touchCalibrationStoreSave(&rec)) {
+    Serial.println("[TouchCal] invalid — previous calibration preserved");
+    return false;
+  }
+  s_nvsCal = rec;
+  s_calMode = SHOWDUINO_TOUCH_CAL_MODE_NVS;
+  Serial.println("[TouchCal] saved NVS v1");
+  return true;
+}
+
+bool touchLvglResetCalibration() {
+  touchCalibrationStoreErase();
+  applyFactoryMode();
+  Serial.println("[TouchCal] reset to factory");
   return true;
 }

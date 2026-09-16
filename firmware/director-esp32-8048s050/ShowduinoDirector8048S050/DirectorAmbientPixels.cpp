@@ -26,7 +26,6 @@ static uint16_t sPhase = 0;
 static uint32_t sPulseUntilMs = 0;
 static ShowState sLastShowState = SHOW_STATE_BOOTING;
 static bool sLocatorActive = false;
-static uint32_t sLocatorUntilMs = 0;
 static uint32_t sLocatorStartMs = 0;
 static uint8_t sCurR = 0;
 static uint8_t sCurG = 0;
@@ -456,10 +455,16 @@ void directorAmbientSync(uint8_t linkState,
 }
 
 void directorAmbientStartLocator(uint32_t nowMs) {
+  const bool fresh = !sLocatorActive;
   sLocatorActive = true;
   sLocatorStartMs = nowMs;
-  sLocatorUntilMs = nowMs + SHOWDUINO_DIRECTOR_LOCATOR_DURATION_MS;
-  Serial.println("[LOCATOR] NeoPixel locator active");
+  if (fresh) Serial.println("[LOCATOR] Ambient locator active");
+}
+
+void directorAmbientStopLocator() {
+  if (!sLocatorActive) return;
+  sLocatorActive = false;
+  Serial.println("[LOCATOR] Ambient locator stopped");
 }
 
 bool directorAmbientLocatorActive() {
@@ -471,13 +476,7 @@ void directorAmbientLoop(uint32_t nowMs) {
   if ((nowMs - sLastFrameMs) < SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS) return;
   sLastFrameMs = nowMs;
   if (sLocatorActive) {
-    if ((int32_t)(nowMs - sLocatorUntilMs) >= 0) {
-      sLocatorActive = false;
-      Serial.println("[LOCATOR] NeoPixel locator finished");
-      renderFrame(nowMs);
-    } else {
-      renderLocator(nowMs);
-    }
+    renderLocator(nowMs);
     return;
   }
   renderFrame(nowMs);
@@ -511,6 +510,7 @@ bool directorAmbientPresentationHeld() { return false; }
 void directorAmbientSetEnabled(bool) {}
 bool directorAmbientEnabled() { return false; }
 void directorAmbientStartLocator(uint32_t) {}
+void directorAmbientStopLocator() {}
 bool directorAmbientLocatorActive() { return false; }
 void directorAmbientSetBrightness(uint8_t) {}
 uint8_t directorAmbientBrightness() { return 0; }

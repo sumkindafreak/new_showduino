@@ -96,8 +96,8 @@ See `showduino_message_types.h`. Intent IDs such as `SHOW_START_REQUEST`, `RELAY
 | `SHOW:STOP` | → `SHOW_STOP_REQUEST` |
 | `PRODUCTION:LIST` / `LOAD:<id>` / `UNLOAD` / `STATUS` | Persistent P4 production requests |
 | `EMERGENCY:STOP` | → `EMERGENCY_ACTIVATE_REQUEST` |
-| `EMERGENCY:CLEAR` | → `EMERGENCY_CLEAR_REQUEST` |
-| `DIRECTOR:LOCATE` | P4 → Director locate gesture (presentation only) |
+| `EMERGENCY:CLEAR` | Director → P4: request clear workflow (USB: maintenance clear) |
+| `DIRECTOR:LOCATE` | P4 → Director locate (latched until first consumed touch) |
 | `EMERGENCY:CLEAR_REQUEST` | P4 → Director pending-clear prompt |
 | `EMERGENCY:CLEAR_CONFIRM` / `CANCEL` | Director → P4 dual-action clear |
 | `RELAY:n:ON/OFF` | → `RELAY_SET_REQUEST` |

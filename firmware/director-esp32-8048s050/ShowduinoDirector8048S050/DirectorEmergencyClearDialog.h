@@ -8,6 +8,7 @@
  * Dual-action emergency clear confirmation.
  *
  * Shown only after the P4 reports EMERGENCY:CLEAR_REQUEST.
+ * The physical Emergency button never creates this request.
  * Does not change the emergency latch itself.
  */
 class DirectorEmergencyClearDialog {

@@ -73,6 +73,7 @@ DirectorAmbientMode directorAmbientMode();
 bool directorAmbientReady();
 
 void directorAmbientStartLocator(uint32_t nowMs);
+void directorAmbientStopLocator();
 bool directorAmbientLocatorActive();
 
 #endif

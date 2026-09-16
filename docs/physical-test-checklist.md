@@ -34,9 +34,65 @@ Dated gate record: [physical-acceptance-1.0.0-rc.1-2026-09-11.md](release/physic
 ## Emergency / safety (must not regress)
 
 - [ ] Physical E-stop GPIO25 latches; outputs safe; auto-resume does not happen.
-- [ ] Director dual-action clear only after P4 clear request.
+- [ ] Release does not clear Emergency.
+- [ ] Director clear is request → confirmation; P4 rejects while GPIO25 is held.
+- [ ] New physical Emergency assertion cancels a pending clear confirmation.
 - [ ] GPIO23 emergency pixels all white; GPIO24 groups of 10; Lamp emergency white; Pixel Node entire configured line bright white.
 - [ ] SHDO persist commit during emergency aborts; running show stops.
+
+## Main button Locate + Director acknowledgement (hardware still required)
+
+Do not tick these unless they were physically run.
+
+- [ ] Quick press immediately enters Emergency
+- [ ] Release does not clear Emergency
+- [ ] 7-second hold does NOT Locate
+- [ ] 8-second hold DOES Locate
+- [ ] Locate command fires once only
+- [ ] Locate works from second hold while already Emergency-latched
+- [ ] Director wakes from auto-off
+- [ ] Director backlight stays on during Locate
+- [ ] Ambient LEDs flash continuously
+- [ ] Locate continues beyond 60 seconds
+- [ ] LOCATE ACTIVE UI is visible
+- [ ] First touch stops Locate
+- [ ] First touch is consumed
+- [ ] Emergency remains latched after Locate acknowledgement
+- [ ] Clear rejected while button pressed
+- [ ] Director clear requires deliberate confirmation
+- [ ] New Emergency assertion cancels old clear authorisation
+- [ ] Clear leaves show stopped/safe
+- [ ] Show requires deliberate restart
+
+## Director touchscreen calibration (hardware still required)
+
+Do not tick these unless they were physically run.
+
+- [ ] Factory fallback still operates with NVS calibration absent
+- [ ] Settings → Touchscreen Calibration opens correctly
+- [ ] Five targets require separate press/release cycles
+- [ ] Holding one target cannot skip to the next
+- [ ] Calibration completes
+- [ ] Bad/failed calibration is not saved
+- [ ] Valid calibration becomes active without reboot
+- [ ] Reboot preserves calibration
+- [ ] Full power removal preserves calibration
+- [ ] Top-left touch accurate
+- [ ] Top-right touch accurate
+- [ ] Bottom-left touch accurate
+- [ ] Bottom-right touch accurate
+- [ ] Centre touch accurate
+- [ ] Edge controls remain usable
+- [ ] Calibration screen prevents underlying UI clicks
+- [ ] Auto-off is suspended during calibration
+- [ ] Normal auto-off resumes afterward
+- [ ] Emergency during calibration aborts calibration safely
+- [ ] No partial calibration saved after Emergency
+- [ ] Locate behaviour still works correctly
+- [ ] Reset calibration restores factory mapping
+- [ ] Reset does not delete unrelated Director NVS
+- [ ] TOUCH:STATUS reports correct mode
+- [ ] TOUCH:RESET provides recovery
 
 ## Pixel Node (NEEDS HARDWARE TEST)
 

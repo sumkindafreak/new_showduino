@@ -6,7 +6,7 @@
 #include "../../../protocol/showduino_version.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.4"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.5"
 #endif
 
 /*
@@ -141,8 +141,9 @@
  * Physical emergency input: momentary pushbutton, GPIO25 to GND.
  * INPUT_PULLUP: released = HIGH (healthy), pressed = LOW (emergency).
  * GPIO25 is a trigger input only. The P4 latches emergency in software.
- * Release does not clear. Director confirmation clears only after a valid
- * physical long-hold request, and only once the button is released again.
+ * Release does not clear. The physical button never clears Emergency.
+ * A continuous hold of SHOWDUINO_ESTOP_LOCATE_HOLD_MS requests Director Locate
+ * once per press. Clearance is a Director request/confirm handshake.
  */
 #ifndef SHOWDUINO_ESTOP_GPIO
 #define SHOWDUINO_ESTOP_GPIO           25
@@ -156,14 +157,8 @@
 #ifndef SHOWDUINO_ESTOP_DEBOUNCE_MS
 #define SHOWDUINO_ESTOP_DEBOUNCE_MS    30UL
 #endif
-#ifndef SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT
-#define SHOWDUINO_ESTOP_LOCATE_PRESS_COUNT 8
-#endif
-#ifndef SHOWDUINO_ESTOP_LOCATE_WINDOW_MS
-#define SHOWDUINO_ESTOP_LOCATE_WINDOW_MS   6000UL
-#endif
-#ifndef SHOWDUINO_ESTOP_CLEAR_HOLD_MS
-#define SHOWDUINO_ESTOP_CLEAR_HOLD_MS      3000UL
+#ifndef SHOWDUINO_ESTOP_LOCATE_HOLD_MS
+#define SHOWDUINO_ESTOP_LOCATE_HOLD_MS     8000UL
 #endif
 #ifndef SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS
 #define SHOWDUINO_ESTOP_CLEAR_REQUEST_TIMEOUT_MS 12000UL

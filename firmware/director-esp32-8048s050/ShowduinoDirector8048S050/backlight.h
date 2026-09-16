@@ -36,3 +36,11 @@ const char *backlightStatusText();
 
 /** Force on/off without changing auto policy (legacy helper). */
 void backlightSet(bool on);
+
+/** Temporary Locate hold: backlight on, auto-off suppressed. Does not rewrite saved settings. */
+void backlightLocateHold(bool hold);
+bool backlightLocateHeld();
+
+/** Temporary calibration hold. Independent of Locate. Does not rewrite saved settings. */
+void backlightCalHold(bool hold);
+bool backlightCalHeld();

@@ -459,9 +459,34 @@ The implementation dims during the idle period and turns the backlight off at th
 
 Emergency presentation is independent of ordinary show operation.
 
-The current baseline's **Locate** implementation is **not considered production-ready for this manual** because it conflicts with the newly approved product behaviour. Current code can wake the display and flash the Director's ambient locator lights, but the production requirement — continuous 8-second hold, forced-on/suspended timeout, `LOCATE ACTIVE`, and first-touch acknowledgement — is not yet fully implemented.
+Press the physical Emergency button once. Showduino immediately enters Emergency mode and remains latched after the button is released.
 
-Do not train operators on the current temporary multi-press Locate gesture as a production procedure.
+If the Director cannot be found, press and hold the **same** Emergency button continuously for 8 seconds. Emergency still activates immediately when the button is first pressed. After 8 seconds, Director Locate activates: the Director wakes its screen, keeps the backlight on, and flashes its ambient indicator lights continuously until the screen is touched once.
+
+That first touch acknowledges Locate only. It does not clear Emergency.
+
+This firmware path is implemented and still requires physical hardware acceptance before commercial validation.
+
+## 8.4 Touchscreen calibration
+
+The Director stores touchscreen alignment on the Director itself (not on the SD card).
+
+If a valid calibration has been saved, it loads automatically at boot. If none is stored, or the stored record is invalid, the factory mapping is used. A firmware update does not force recalibration.
+
+To recalibrate:
+
+1. Open **Settings**.
+2. Open **Display**.
+3. Choose **CALIBRATE**.
+4. Touch the centre of each of the five targets, lifting your finger between targets.
+5. Check alignment on the test screen.
+6. Choose **SAVE CALIBRATION**.
+
+The new mapping becomes active immediately. It survives reboot and power removal. **RESET TOUCH** restores the factory mapping after confirmation. It does not erase other Director settings.
+
+Acknowledging Locate, or an Emergency, while calibration is open cancels the wizard without saving.
+
+This path is implemented and still requires physical hardware acceptance before commercial validation.
 
 ---
 
@@ -734,23 +759,23 @@ Current visible text includes **EMERGENCY** and **SHOW STOPPED**, plus source/li
 
 Stray touches on the Emergency overlay are absorbed so controls underneath do not fire accidentally.
 
-## 16.5 Clearing Emergency — current RC baseline
+## 16.5 Clearing Emergency
 
 **WARNING:** do not clear Emergency until the real-world reason for the Emergency has been resolved and the attraction is safe to return to a controlled idle/paused state.
 
-At this exact RC baseline, the physical main-button clear request is implemented as a **3-second hold**, followed by a separate Director confirmation. This procedure is expected to change because the product owner has now assigned an 8-second hold to Locate; see the manual gaps document.
+The physical Emergency button never clears Emergency.
 
-For this exact baseline only:
+1. Confirm the incident is resolved and the attraction is safe.
+2. Release the physical Emergency button if it is still held.
+3. On the Director Emergency screen, choose **CLEAR EMERGENCY**.
+4. The Director displays **EMERGENCY CLEARANCE REQUESTED** and **Clear Emergency Stop?**
+5. Select **CONFIRM CLEAR** only if the area is safe.
+6. If the physical button is still pressed, the P4 rejects clearance.
+7. After accepted clearance, verify Emergency state clears on the Director/P4 before restarting any show operation.
 
-1. confirm the incident is resolved and the attraction is safe;
-2. with Emergency still latched, hold the main physical Emergency button for approximately 3 seconds to create the clear request;
-3. **release the physical button**;
-4. the Director displays **EMERGENCY CLEARANCE REQUESTED** and **Clear Emergency Stop?**;
-5. select **CONFIRM CLEAR** only if the area is safe;
-6. if the physical input is still asserted, the P4 rejects clearance;
-7. after accepted clearance, verify Emergency state clears on the Director/P4 before restarting any show operation.
+The clear request has a limited validity window. A new Emergency assertion while the confirmation dialog is open cancels the pending clear. If the request times out or is cancelled, start the authorised clear process again rather than trying to bypass it.
 
-The clear request has a limited validity window. If the request times out, start the authorised clear process again rather than trying to bypass it.
+This firmware path is implemented and still requires physical hardware acceptance.
 
 ## 16.6 Clear does not resume the show
 
@@ -786,15 +811,18 @@ After any power interruption during an incident, treat the attraction as **not r
 
 ## 16.9 Locate Director
 
-The approved production design is:
-
 - first press: Emergency immediately;
-- continue holding that same press for 8 seconds: additionally Locate Director;
-- Locate wakes/holds the Director display and flashes its ambient LEDs;
-- first deliberate Director touch acknowledges Locate only;
-- Emergency remains latched.
+- continue holding that same press for 8 seconds: additionally Locate Director once;
+- releasing before 8 seconds leaves Emergency latched and does not Locate;
+- a later uninterrupted 8-second hold can still Locate while Emergency is already latched;
+- Locate wakes/holds the Director display and flashes its ambient LEDs continuously;
+- the screen shows **LOCATE ACTIVE** and **EMERGENCY REMAINS ACTIVE**;
+- first deliberate Director touch acknowledges Locate only and is consumed so it cannot press a control underneath;
+- Emergency remains latched until the separate Director clear procedure is completed.
 
-**This exact behaviour is not implemented at the baseline SHA and is therefore not a normal operator feature in this manual revision.**
+**IMPORTANT:** acknowledging Locate does not clear Emergency. Clearing Emergency does not automatically restart the show.
+
+This firmware path is implemented and still requires physical hardware acceptance.
 
 ---
 
@@ -1189,7 +1217,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | MOSFET Node | Planned |
 | Relay Node | Legacy/retired |
 | DMX production control | Parked / not current product scope |
-| Approved 8-second Emergency-button Locate | Not implemented at this SHA |
+| Approved 8-second Emergency-button Locate | Implemented in firmware; hardware acceptance required |
 
 ---
 

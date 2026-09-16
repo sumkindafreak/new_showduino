@@ -21,6 +21,8 @@
 #include "DisplayPages.h"
 #include "DirectorEmergencyScreen.h"
 #include "DirectorEmergencyClearDialog.h"
+#include "DirectorLocateScreen.h"
+#include "DirectorTouchCalibrationScreen.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
 #include "DirectorAmbientPixels.h"
@@ -29,6 +31,12 @@
 #include "page_02_productions.h"
 #include "page_04_nodes.h"
 #include "page_05_audio_node.h"
+#include "page_06_diagnostics.h"
+#include "page_08_settings.h"
+#include "page_10_live.h"
+#include "page_logs.h"
+#include "page_audio_system.h"
+#include "DirectorDiagnostics.h"
 #include "DirectorAudioNodeControl.h"
 #include "showduino_theme.h"
 #include "showduino_capabilities.h"
@@ -213,6 +221,30 @@ public:
     updatePersistentBanner();
     syncStatusBarHealth();
     if (page_04_nodes_is_active()) refreshNodesPage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
+  }
+
+  void markEmergencyStateFromStage() { emergencyStateKnown_ = true; }
+
+  bool applyStageCapabilityLine(const char *line) {
+    const bool hit = director_diag_apply_line(&diagCaps_, line);
+    if (hit) {
+      statusDirty = true;
+      if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
+    }
+    return hit;
+  }
+
+  void noteStageReply(unsigned long ms) {
+    lastStageReplyMs_ = ms;
+    stageReplySeen_ = true;
+  }
+
+  void setEspNowReady(bool ready) {
+    if (espNowReadyUi_ == ready) return;
+    espNowReadyUi_ = ready;
+    statusDirty = true;
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void noteEmergencyTriggeredByDirector() { emergencyTriggeredByDirector_ = true; }
@@ -255,12 +287,14 @@ public:
     showduino_emergency_desk_rebuild(&estopSheet_);
     updatePersistentBanner();
     if (page_04_nodes_is_active()) refreshNodesPage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void applyEmergencyNodeWire(ShowduinoEmergencyNodeWire wire) {
     emergencyNodeWire_ = wire;
     recountSpecialistNodes();
     if (page_04_nodes_is_active()) refreshNodesPage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void applyEmergencyNodeDetail(const ShowduinoEmergencyDetailWire &d) {
@@ -269,18 +303,24 @@ public:
     showduino_emergency_desk_rebuild(&estopSheet_);
     recountSpecialistNodes();
     if (page_04_nodes_is_active()) refreshNodesPage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void applyEmergencyStationWire(const ShowduinoEmergencyStationWire &st) {
     showduino_emergency_desk_apply_station(&estopSheet_, &st);
     estopSheet_.global_emergency = emergencyLocked ? 1 : 0;
     if (page_04_nodes_is_active()) refreshNodesPage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void noteEmergencyClearRejected() {
     gDirectorEmergencyScreen.noteClearRejected(millis());
     emergencyOverlayDismissed = false;
     emergencyOverlayVisible = true;
+  }
+
+  void noteEmergencyClearCancelled() {
+    gDirectorEmergencyScreen.noteClearCancelled();
   }
 
   bool isEmergencyLocked() const { return emergencyLocked; }
@@ -334,6 +374,7 @@ public:
     recountSpecialistNodes();
     refreshNodesPage();
     statusDirty = true;
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void setLampNodeDetail(const ShowduinoLampDetailWire &d) {
@@ -362,6 +403,7 @@ public:
     recountSpecialistNodes();
     refreshNodesPage();
     statusDirty = true;
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void setPixelNodeDetail(const ShowduinoPixelDetailWire &d) {
@@ -385,6 +427,7 @@ public:
     refreshNodesPage();
     refreshAudioNodePage();
     statusDirty = true;
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void applyAudioNodeDetail(const ShowduinoAudioDetailWire &d) {
@@ -408,6 +451,7 @@ public:
     if (fw) strncpy(audioNodeCtrl_.firmware, fw, sizeof(audioNodeCtrl_.firmware) - 1);
     if (mac) strncpy(audioNodeCtrl_.mac, mac, sizeof(audioNodeCtrl_.mac) - 1);
     refreshAudioNodePage();
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
   void applyAudioNodeInv(uint16_t page, uint16_t total, const char names[][21], uint8_t count) {
@@ -576,6 +620,8 @@ public:
 
     gDirectorEmergencyScreen.tick(nowMs, linkState);
     emergencyOverlayVisible = gDirectorEmergencyScreen.isVisible();
+    directorTouchCalTick(nowMs);
+    directorLocateTick(nowMs);
     gDirectorEmergencyClearDialog.raise();
 
     if (liveProgressBar && liveStatusDirty) {
@@ -843,10 +889,16 @@ public:
       lv_label_set_text(operatorLogLabel, uiLogText.length() ? uiLogText.c_str() : "(no events)\n");
       if (operatorLogScroll != nullptr) lv_obj_scroll_to_y(operatorLogScroll, 0, LV_ANIM_OFF);
     }
+    page_logs_set_body(uiLogText.length() ? uiLogText.c_str() : "(no events)\n");
     if (logsCountLabel_) {
       char buf[48];
       snprintf(buf, sizeof(buf), "Events: %u", (unsigned)eventLogCount);
       ShowduinoOsTheme::setTextIfChanged(logsCountLabel_, buf);
+      page_logs_set_count(buf);
+    } else {
+      char buf[48];
+      snprintf(buf, sizeof(buf), "Events: %u", (unsigned)eventLogCount);
+      page_logs_set_count(buf);
     }
     if (logsNewestLabel_) {
       const char *newest = (eventLogCount > 0) ? eventSlot(0) : "-";
@@ -855,6 +907,14 @@ public:
       char buf[96];
       snprintf(buf, sizeof(buf), "Newest: %.70s", shown);
       ShowduinoOsTheme::setTextIfChanged(logsNewestLabel_, buf);
+      page_logs_set_newest(buf);
+    } else {
+      const char *newest = (eventLogCount > 0) ? eventSlot(0) : "-";
+      char shown[OPERATOR_EVENT_LINE_LEN];
+      director_ui_sanitize_copy(shown, sizeof(shown), newest);
+      char buf[96];
+      snprintf(buf, sizeof(buf), "Newest: %.70s", shown);
+      page_logs_set_newest(buf);
     }
   }
 
@@ -869,60 +929,62 @@ public:
   }
 
   void refreshAudioPresentation() {
-    if (audioLocalStatusLabel_) {
-      char line[96];
-      snprintf(line, sizeof(line), "Status: %s%s",
-               DeskAudioModel::playWord(audioModel_.local.play),
-               audioModel_.local.muted ? " (MUTED)" : "");
-      ShowduinoOsTheme::setTextIfChanged(audioLocalStatusLabel_, line);
-    }
-    if (audioLocalDetailLabel_) {
-      char et[16], rt[16];
-      formatClock(audioModel_.local.elapsedMs, et, sizeof(et));
-      formatClock(audioModel_.local.remainMs, rt, sizeof(rt));
-      char detail[320];
-      snprintf(detail, sizeof(detail),
-               "%s\nAsset: %s\nVol: %u  Loop: %s\nElapsed: %s  Remain: %s\nSD: %s  I2S: %s\n"
-               "Commands only - files play from local SD (no ESP-NOW audio stream).",
-               audioModel_.local.outputName,
-               audioModel_.local.assetName,
-               (unsigned)audioModel_.local.volume,
-               audioModel_.local.loop ? "ON" : "OFF",
-               et, rt,
-               DeskAudioModel::sdWord(audioModel_.local.sd),
-               DeskAudioModel::i2sWord(audioModel_.local.i2s));
-      ShowduinoOsTheme::setTextIfChanged(audioLocalDetailLabel_, detail);
-    }
-    if (audioNodesLabel_) {
-      if (audioModel_.nodeCount == 0) {
-        ShowduinoOsTheme::setTextIfChanged(
-            audioNodesLabel_,
-            "No audio nodes discovered.\n"
-            "Remote nodes = ESP32 + I2S + SD.\n"
-            "P4 sends PLAY/STOP/VOLUME over ESP-NOW (commands only).");
-      } else {
-        String body;
-        for (uint8_t i = 0; i < audioModel_.nodeCount && i < SHOWDUINO_AUDIO_NODE_MAX; i++) {
-          const DeskRemoteAudioNode &n = audioModel_.nodes[i];
-          if (!n.present) continue;
-          char row[220];
-          snprintf(row, sizeof(row),
-                   "%s (%s)\nESP-NOW:%s SD:%s I2S:%s\nASSET:%s STATE:%s SYNC:%s VOL:%u\n\n",
-                   n.name[0] ? n.name : "AUDIO NODE",
-                   n.nodeId[0] ? n.nodeId : "?",
-                   n.online ? "ONLINE" : "OFFLINE",
-                   DeskAudioModel::sdWord(n.sd),
-                   DeskAudioModel::i2sWord(n.i2s),
-                   n.assetName,
-                   DeskAudioModel::playWord(n.play),
-                   DeskAudioModel::syncWord(n.sync),
-                   (unsigned)n.volume);
-          body += row;
-        }
-        ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, body.c_str());
+    char line[96];
+    snprintf(line, sizeof(line), "Status: %s%s",
+             DeskAudioModel::playWord(audioModel_.local.play),
+             audioModel_.local.muted ? " (MUTED)" : "");
+    ShowduinoOsTheme::setTextIfChanged(audioLocalStatusLabel_, line);
+    page_audio_system_set_local_status(line);
+    page_audio_system_set_header(DeskAudioModel::playWord(audioModel_.local.play), OsColor::Accent);
+
+    char et[16], rt[16];
+    formatClock(audioModel_.local.elapsedMs, et, sizeof(et));
+    formatClock(audioModel_.local.remainMs, rt, sizeof(rt));
+    char detail[320];
+    snprintf(detail, sizeof(detail),
+             "%s\nAsset: %s\nVol: %u  Loop: %s\nElapsed: %s  Remain: %s\nSD: %s  I2S: %s\n"
+             "Commands only - files play from local SD (no ESP-NOW audio stream).",
+             audioModel_.local.outputName,
+             audioModel_.local.assetName,
+             (unsigned)audioModel_.local.volume,
+             audioModel_.local.loop ? "ON" : "OFF",
+             et, rt,
+             DeskAudioModel::sdWord(audioModel_.local.sd),
+             DeskAudioModel::i2sWord(audioModel_.local.i2s));
+    ShowduinoOsTheme::setTextIfChanged(audioLocalDetailLabel_, detail);
+    page_audio_system_set_local_detail(detail);
+
+    if (audioModel_.nodeCount == 0) {
+      const char *none =
+          "No audio nodes discovered.\n"
+          "Remote nodes = ESP32 + I2S + SD.\n"
+          "P4 sends PLAY/STOP/VOLUME over ESP-NOW (commands only).";
+      ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, none);
+      page_audio_system_set_nodes(none);
+    } else {
+      String body;
+      for (uint8_t i = 0; i < audioModel_.nodeCount && i < SHOWDUINO_AUDIO_NODE_MAX; i++) {
+        const DeskRemoteAudioNode &n = audioModel_.nodes[i];
+        if (!n.present) continue;
+        char row[220];
+        snprintf(row, sizeof(row),
+                 "%s (%s)\nESP-NOW:%s SD:%s I2S:%s\nASSET:%s STATE:%s SYNC:%s VOL:%u\n\n",
+                 n.name[0] ? n.name : "AUDIO NODE",
+                 n.nodeId[0] ? n.nodeId : "?",
+                 n.online ? "ONLINE" : "OFFLINE",
+                 DeskAudioModel::sdWord(n.sd),
+                 DeskAudioModel::i2sWord(n.i2s),
+                 n.assetName,
+                 DeskAudioModel::playWord(n.play),
+                 DeskAudioModel::syncWord(n.sync),
+                 (unsigned)n.volume);
+        body += row;
       }
+      ShowduinoOsTheme::setTextIfChanged(audioNodesLabel_, body.c_str());
+      page_audio_system_set_nodes(body.c_str());
     }
-    if (audioRoutingLabel_) {
+
+    {
       String body = "Asset source = target device SD (not streamed).\n\n";
       for (uint8_t i = 0; i < 8; i++) {
         if (!audioModel_.routes[i].used) continue;
@@ -932,8 +994,9 @@ public:
         body += row;
       }
       ShowduinoOsTheme::setTextIfChanged(audioRoutingLabel_, body.c_str());
+      page_audio_system_set_routing(body.c_str());
     }
-    if (audioCmdStatusLabel_) {
+    {
       bool any = false;
       String body;
       for (uint8_t i = 0; i < 6; i++) {
@@ -948,6 +1011,7 @@ public:
       }
       if (!any) body = "No command status available.\n(Acks appear when Stage/nodes report them.)";
       ShowduinoOsTheme::setTextIfChanged(audioCmdStatusLabel_, body.c_str());
+      page_audio_system_set_command_status(body.c_str());
     }
     if (deskAudioSummaryLabel_) {
       char sum[128];
@@ -1200,6 +1264,7 @@ public:
           gDirectorUnlockScreen.isVisible() ||
           gDirectorEmergencyScreen.isVisible() ||
           gDirectorEmergencyClearDialog.isVisible() ||
+          directorTouchCalActive() ||
           displayPageIsSystemModal(displayManager_.currentPage()) ||
           (abortConfirmRoot && !lv_obj_has_flag(abortConfirmRoot, LV_OBJ_FLAG_HIDDEN)) ||
           (aboutRoot_ && !lv_obj_has_flag(aboutRoot_, LV_OBJ_FLAG_HIDDEN)) ||
@@ -1296,6 +1361,17 @@ public:
       }
     }
 
+    if (page_06_diagnostics_is_active() &&
+        (statusDirty || refreshTrafficAndUptime)) {
+      refreshDiagnosticsPage();
+    }
+    if (page_08_settings_is_active() && statusDirty) {
+      refreshSettingsPage();
+    }
+    if (page_10_live_is_active() && (statusDirty || liveStatusDirty)) {
+      refreshLiveStatusPanel();
+    }
+
     if (uptimeChanged) lastDrawnUptimeSec = uptimeSec;
     statusDirty = false;
     if (drawTraffic) trafficDirty = false;
@@ -1326,11 +1402,14 @@ private:
   static void displayCommandThunk(const char *command) {
     if (displaySelf_ && command) displaySelf_->runCommand(String(command));
   }
-  static void displayTouchHook(int32_t x, int32_t y, bool pressed) {
+  static bool displayTouchHook(int32_t x, int32_t y, bool pressed) {
+    if (directorLocateOnTouch(x, y, pressed)) return true;
+    if (directorTouchCalOnTouch(x, y, pressed)) return true;
     if (displaySelf_) displaySelf_->displayManager_.onTouch(x, y, pressed);
+    return false;
   }
   static void emergencyClearThunk() {
-    if (displaySelf_) displaySelf_->runCommand("EMERGENCY:CLEAR_CONFIRM");
+    if (displaySelf_) displaySelf_->runCommand("EMERGENCY:CLEAR");
   }
   static void emergencyFinishedThunk() {
     if (displaySelf_) displaySelf_->finishEmergencyScreenReturn();
@@ -1609,6 +1688,431 @@ private:
     (void)stageOk;
   }
 
+  bool audioNodePresent() const {
+    return audioNodeWire_ != SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE &&
+           audioNodeWire_ != SHOWDUINO_AUDIO_NODE_WIRE_INVALID;
+  }
+
+  bool lampNodePresent() const {
+    return lampNodeWire_ == SHOWDUINO_NODE_WIRE_ONLINE ||
+           lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT;
+  }
+
+  bool pixelNodePresent() const {
+    return pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE ||
+           pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
+           pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY;
+  }
+
+  bool emergencyNodePresent() const {
+    return emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_ONLINE ||
+           emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT ||
+           emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_ACTIVE ||
+           estopSheet_.online > 0;
+  }
+
+  DirectorDiagSafetySync diagnosticsSafetySync() const {
+    if (emergencyLocked) {
+      if (audioNodePresent() && audioNodeWire_ != SHOWDUINO_AUDIO_NODE_WIRE_EMERGENCY) {
+        return DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT;
+      }
+      if (lampNodePresent() && lampNodeRaw_ != SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY) {
+        return DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT;
+      }
+      if (pixelNodePresent() && pixelNodeRaw_ != SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
+        return DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT;
+      }
+      return DIRECTOR_DIAG_SYNC_OK;
+    }
+    if (audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_EMERGENCY ||
+        lampNodeRaw_ == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY ||
+        pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
+      return DIRECTOR_DIAG_SYNC_STATE_MISMATCH;
+    }
+    return DIRECTOR_DIAG_SYNC_OK;
+  }
+
+  void refreshDiagnosticsPage() {
+    if (!page_06_diagnostics_is_active()) return;
+
+    const uint32_t now = millis();
+    const DirectorDiagSafetySync sync = diagnosticsSafetySync();
+    const bool stageOnline = (linkState == LINK_READY);
+    const bool nodeFault =
+        audioNodeWire_ == SHOWDUINO_AUDIO_NODE_WIRE_FAULT ||
+        lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT ||
+        pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
+        emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT;
+    const bool storageFault = director_diag_sd_fault(&diagCaps_);
+    const DirectorDiagTri sdTri = director_diag_sd_tri(&diagCaps_);
+    const bool timeWarn = (diagCaps_.time == DIRECTOR_DIAG_UNSYNCED);
+
+    DirectorDiagHealth health = DIRECTOR_DIAG_HEALTH_READY;
+    if (emergencyLocked) {
+      health = DIRECTOR_DIAG_HEALTH_EMERGENCY;
+    } else if (!stageOnline) {
+      health = DIRECTOR_DIAG_HEALTH_STAGE_OFFLINE;
+    } else if (sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH ||
+               sync == DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT ||
+               storageFault ||
+               diagCaps_.audio == DIRECTOR_DIAG_FAULT ||
+               diagCaps_.pixels == DIRECTOR_DIAG_FAULT ||
+               nodeFault ||
+               safetyEstopFault_) {
+      health = DIRECTOR_DIAG_HEALTH_FAULT;
+    } else if (timeWarn || sdTri == DIRECTOR_DIAG_DEGRADED ||
+               diagCaps_.ethernet == DIRECTOR_DIAG_OFFLINE) {
+      health = DIRECTOR_DIAG_HEALTH_DEGRADED;
+    }
+
+    char strip[96];
+    if (health == DIRECTOR_DIAG_HEALTH_EMERGENCY) {
+      director_diag_copy(strip, sizeof(strip), "P4 emergency latch active");
+    } else if (health == DIRECTOR_DIAG_HEALTH_STAGE_OFFLINE) {
+      director_diag_copy(strip, sizeof(strip), "Stage link not ready");
+    } else if (sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH) {
+      director_diag_copy(strip, sizeof(strip), "STATE MISMATCH - node emergency vs P4 CLEAR");
+    } else if (sync == DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT) {
+      director_diag_copy(strip, sizeof(strip), "SAFETY SYNC FAULT - node did not follow P4");
+    } else if (timeWarn) {
+      director_diag_copy(strip, sizeof(strip), "P4 clock TIME UNSYNCED");
+    } else if (storageFault) {
+      snprintf(strip, sizeof(strip), "P4 storage %s",
+               diagCaps_.sdSeen ? diagCaps_.sdState : "FAULT");
+    } else if (diagCaps_.audio == DIRECTOR_DIAG_FAULT) {
+      director_diag_copy(strip, sizeof(strip), "P4 system audio fault");
+    } else if (diagCaps_.pixels == DIRECTOR_DIAG_FAULT) {
+      director_diag_copy(strip, sizeof(strip), "P4 pixel fault");
+    } else {
+      director_diag_copy(strip, sizeof(strip), "Director / P4 / nodes");
+    }
+    page_06_diagnostics_set_health(director_diag_health_word(health), strip,
+                                   director_diag_health_color(health));
+
+    /* DIRECTOR */
+    {
+      char det[96];
+      snprintf(det, sizeof(det), "FW %s", STORAGE_FW_VERSION);
+      page_06_diagnostics_set_card(PAGE06_CARD_DIRECTOR, true, "ONLINE", det,
+                                   ShowduinoPalette::Accent);
+      char up[16], heap[16], psram[16];
+      director_diag_format_uptime(up, sizeof(up), (now - bootMs) / 1000UL);
+      director_diag_format_heap(heap, sizeof(heap), ESP.getFreeHeap());
+      director_diag_format_heap(psram, sizeof(psram), ESP.getFreePsram());
+      char body[400];
+      snprintf(body, sizeof(body),
+               "Firmware     %s\n"
+               "Uptime       %s\n"
+               "Heap         %s\n"
+               "PSRAM        %s\n"
+               "ESP-NOW      %s\n"
+               "TX / RX      %lu / %lu\n"
+               "Touch        %s\n"
+               "Calibration  %s\n"
+               "Display      RGB 800x480",
+               STORAGE_FW_VERSION, up, heap, psram,
+               espNowReadyUi_ ? "READY" : "NOT READY",
+               (unsigned long)txCount, (unsigned long)rxCount,
+               touchLvglReady() ? "GT911 READY" : "NOT READY",
+               touchLvglCalibrationIsNvs() ? "NVS v1" : "Factory fallback");
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_DIRECTOR, body);
+    }
+
+    /* COMMS */
+    {
+      const bool ready = espNowReadyUi_;
+      char det[96];
+      if (ready) {
+        snprintf(det, sizeof(det), "ESP-NOW | TX %lu / RX %lu",
+                 (unsigned long)txCount, (unsigned long)rxCount);
+      } else {
+        director_diag_copy(det, sizeof(det), "ESP-NOW not ready");
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_COMMS, ready,
+                                   ready ? "ONLINE" : "NOT READY", det,
+                                   ready ? ShowduinoPalette::Accent : ShowduinoPalette::Warn);
+      char age[24];
+      director_diag_format_age(age, sizeof(age), stageReplySeen_, now, lastStageReplyMs_);
+      char body[320];
+      snprintf(body, sizeof(body),
+               "ESP-NOW      %s\n"
+               "TX           %lu\n"
+               "RX           %lu\n"
+               "Stage reply  %s\n"
+               "Link         %s",
+               ready ? "READY" : "NOT READY",
+               (unsigned long)txCount, (unsigned long)rxCount, age,
+               stageOnline ? "READY" : (linkState == LINK_SEARCHING ? "SEARCHING" : "DISCONNECTED"));
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_COMMS, body);
+    }
+
+    /* P4 */
+    {
+      const char *st = "STAGE OFFLINE";
+      uint32_t col = ShowduinoPalette::Danger;
+      bool present = false;
+      char det[96];
+      director_diag_copy(det, sizeof(det), "NOT REPORTED");
+      if (stageOnline) {
+        present = true;
+        st = "ONLINE";
+        col = ShowduinoPalette::Accent;
+        if (diagCaps_.firmwareSeen) {
+          snprintf(det, sizeof(det), "FW %s", diagCaps_.firmware);
+        }
+      } else if (linkState == LINK_SEARCHING) {
+        st = "SEARCHING";
+        col = ShowduinoPalette::Warn;
+        director_diag_copy(det, sizeof(det), "Awaiting Stage HELLO");
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_P4, present, st, det, col);
+      char age[24], eth[20], clk[20];
+      director_diag_format_age(age, sizeof(age), stageReplySeen_, now, lastStageReplyMs_);
+      if (diagCaps_.ethernet == DIRECTOR_DIAG_ONLINE) director_diag_copy(eth, sizeof(eth), "ONLINE");
+      else if (diagCaps_.ethernet == DIRECTOR_DIAG_OFFLINE) director_diag_copy(eth, sizeof(eth), "OFFLINE");
+      else director_diag_copy(eth, sizeof(eth), "NOT REPORTED");
+      if (diagCaps_.time == DIRECTOR_DIAG_READY) director_diag_copy(clk, sizeof(clk), "READY");
+      else if (diagCaps_.time == DIRECTOR_DIAG_UNSYNCED) director_diag_copy(clk, sizeof(clk), "UNSYNCED");
+      else director_diag_copy(clk, sizeof(clk), "NOT REPORTED");
+      char body[400];
+      snprintf(body, sizeof(body),
+               "Firmware     %s\n"
+               "Last contact %s\n"
+               "Runtime      %s\n"
+               "Clock        %s\n"
+               "Ethernet     %s\n"
+               "HELLO        %s",
+               diagCaps_.firmwareSeen ? diagCaps_.firmware : "NOT REPORTED",
+               age,
+               mirroredRevision ? liveStateName : "NOT REPORTED",
+               clk, eth,
+               diagCaps_.helloComplete ? "COMPLETE" : (diagCaps_.identitySeen ? "PARTIAL" : "NOT REPORTED"));
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_P4, body);
+    }
+
+    /* SAFETY */
+    {
+      const char *st = "NOT REPORTED";
+      const char *det = "NOT REPORTED";
+      uint32_t col = ShowduinoPalette::Disabled;
+      bool present = emergencyLocked || emergencyStateKnown_;
+      if (emergencyLocked) {
+        st = "EMERGENCY";
+        det = "P4 latch active";
+        col = ShowduinoPalette::Danger;
+      } else if (sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH) {
+        st = "FAULT";
+        det = "STATE MISMATCH";
+        col = ShowduinoPalette::Danger;
+        present = true;
+      } else if (sync == DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT) {
+        st = "FAULT";
+        det = "SAFETY SYNC FAULT";
+        col = ShowduinoPalette::Danger;
+        present = true;
+      } else if (safetyEstopFault_) {
+        st = "FAULT";
+        det = "Safety station fault";
+        col = ShowduinoPalette::Danger;
+        present = true;
+      } else if (emergencyStateKnown_) {
+        st = "CLEAR";
+        det = emergencyNodePresent() ? "Physical loop healthy" : "P4 emergency CLEAR";
+        col = ShowduinoPalette::Accent;
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_SAFETY, present, st, det, col);
+
+      const char *loop = "NOT REPORTED";
+      if (safetyEstopFault_) loop = "SAFETY STATION FAULT";
+      else if (emergencyLocked &&
+               (!strcmp(emergencySourceKind_, "HARDWIRED") ||
+                !strcmp(emergencySourceKind_, "physical"))) {
+        loop = "Physical loop asserted";
+      } else if (emergencyStateKnown_ && !emergencyLocked && emergencyNodePresent()) {
+        loop = "Physical loop healthy";
+      }
+      const char *en = "NOT DETECTED";
+      if (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_ONLINE) en = "ONLINE";
+      else if (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_ACTIVE) en = "EMERGENCY";
+      else if (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT) en = "FAULT";
+      else if (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_OFFLINE) en = "OFFLINE";
+      char src[48];
+      if (emergencySourceKind_[0]) {
+        snprintf(src, sizeof(src), "%s %s", emergencySourceKind_,
+                 emergencySourceId_[0] ? emergencySourceId_ : "");
+      } else {
+        director_diag_copy(src, sizeof(src), "NOT REPORTED");
+      }
+      char body[420];
+      snprintf(body, sizeof(body),
+               "Global       %s\n"
+               "Physical     %s\n"
+               "Emergency Node %s\n"
+               "Last source  %s\n"
+               "Sync         %s\n"
+               "Diagnostics cannot clear or override emergency.",
+               emergencyLocked ? "EMERGENCY" : (emergencyStateKnown_ ? "CLEAR" : "NOT REPORTED"),
+               loop, en, src,
+               sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH ? "STATE MISMATCH" :
+               (sync == DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT ? "SAFETY SYNC FAULT" : "OK"));
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_SAFETY, body);
+    }
+
+    /* STORAGE */
+    {
+      const char *st = "NOT REPORTED";
+      const char *det = "NOT REPORTED";
+      uint32_t col = ShowduinoPalette::Disabled;
+      bool present = diagCaps_.sdSeen;
+      if (sdTri == DIRECTOR_DIAG_ONLINE) {
+        st = "ONLINE";
+        det = "P4 SD ready";
+        col = ShowduinoPalette::Accent;
+      } else if (sdTri == DIRECTOR_DIAG_DEGRADED) {
+        st = diagCaps_.sdState;
+        det = "P4 SD degraded";
+        col = ShowduinoPalette::Warn;
+      } else if (sdTri == DIRECTOR_DIAG_OFFLINE || sdTri == DIRECTOR_DIAG_FAULT) {
+        st = diagCaps_.sdState[0] ? diagCaps_.sdState : "FAULT";
+        det = "P4 SD unavailable";
+        col = ShowduinoPalette::Danger;
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_STORAGE, present, st, det, col);
+      char body[200];
+      snprintf(body, sizeof(body),
+               "Reported P4 SD  %s\n"
+               "Source          HELLO / capabilities",
+               diagCaps_.sdSeen ? diagCaps_.sdState : "NOT REPORTED");
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_STORAGE, body);
+    }
+
+    /* SYSTEM AUDIO (P4) */
+    {
+      const char *st = "NOT REPORTED";
+      const char *det = "NOT REPORTED";
+      uint32_t col = ShowduinoPalette::Disabled;
+      bool present = (diagCaps_.audio != DIRECTOR_DIAG_UNREPORTED);
+      if (diagCaps_.audio == DIRECTOR_DIAG_READY) {
+        st = "READY";
+        det = "ES8311";
+        col = ShowduinoPalette::Accent;
+      } else if (diagCaps_.audio == DIRECTOR_DIAG_FAULT) {
+        st = "FAULT";
+        det = "P4 system audio fault";
+        col = ShowduinoPalette::Danger;
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_AUDIO, present, st, det, col);
+      const char *nodeSt = audioNodeStatusWord();
+      char body[280];
+      snprintf(body, sizeof(body),
+               "P4 system     %s\n"
+               "P4 codec      %s\n"
+               "Audio Node    %s\n"
+               "Node firmware %s",
+               diagCaps_.audio == DIRECTOR_DIAG_READY ? "READY" :
+               (diagCaps_.audio == DIRECTOR_DIAG_FAULT ? "FAULT" : "NOT REPORTED"),
+               present ? "ES8311" : "NOT REPORTED",
+               nodeSt,
+               audioNodeCtrl_.firmware[0] ? audioNodeCtrl_.firmware : "NOT REPORTED");
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_AUDIO, body);
+    }
+
+    /* PIXELS (P4 local lines) */
+    {
+      const char *st = "NOT REPORTED";
+      const char *det = "NOT REPORTED";
+      uint32_t col = ShowduinoPalette::Disabled;
+      bool present = (diagCaps_.pixels != DIRECTOR_DIAG_UNREPORTED);
+      if (diagCaps_.pixels == DIRECTOR_DIAG_READY) {
+        st = "READY";
+        det = "Show + emergency lines";
+        col = ShowduinoPalette::Accent;
+      } else if (diagCaps_.pixels == DIRECTOR_DIAG_FAULT) {
+        st = "FAULT";
+        det = "P4 pixel fault";
+        col = ShowduinoPalette::Danger;
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_PIXELS, present, st, det, col);
+      char body[240];
+      snprintf(body, sizeof(body),
+               "P4 pixels     %s\n"
+               "Pixel Node    %s\n"
+               "Detail from HELLO PIXELS:READY / PIXELS:FAULT.",
+               diagCaps_.pixels == DIRECTOR_DIAG_READY ? "READY" :
+               (diagCaps_.pixels == DIRECTOR_DIAG_FAULT ? "FAULT" : "NOT REPORTED"),
+               pixelNodePresent() ?
+                 (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY ? "EMERGENCY" :
+                  (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ? "FAULT" : "ONLINE"))
+                 : "NOT DETECTED");
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_PIXELS, body);
+    }
+
+    /* NODES summary */
+    {
+      uint8_t online = 0;
+      if (audioNodePresent()) online++;
+      if (lampNodePresent()) online++;
+      if (pixelNodePresent()) online++;
+      if (emergencyNodePresent()) online++;
+      char st[28];
+      char det[96];
+      uint32_t col = ShowduinoPalette::Disabled;
+      bool present = (online > 0);
+      if (sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH ||
+          sync == DIRECTOR_DIAG_SYNC_SAFETY_SYNC_FAULT) {
+        director_diag_copy(st, sizeof(st), "FAULT");
+        director_diag_copy(det, sizeof(det),
+                           sync == DIRECTOR_DIAG_SYNC_STATE_MISMATCH
+                               ? "STATE MISMATCH"
+                               : "SAFETY SYNC FAULT");
+        col = ShowduinoPalette::Danger;
+        present = true;
+      } else if (online == 0) {
+        director_diag_copy(st, sizeof(st), "NOT DETECTED");
+        director_diag_copy(det, sizeof(det), "No specialist nodes");
+      } else {
+        snprintf(st, sizeof(st), "%u ONLINE", (unsigned)online);
+        col = ShowduinoPalette::Accent;
+        if (audioNodePresent() && audioNodeCtrl_.firmware[0]) {
+          snprintf(det, sizeof(det), "Audio Node %s", audioNodeCtrl_.firmware);
+        } else if (audioNodePresent()) {
+          director_diag_copy(det, sizeof(det), "Audio Node");
+        } else if (lampNodePresent()) {
+          director_diag_copy(det, sizeof(det), "Lamp Node");
+        } else if (pixelNodePresent()) {
+          director_diag_copy(det, sizeof(det), "Pixel Node");
+        } else {
+          director_diag_copy(det, sizeof(det), "Emergency Node");
+        }
+      }
+      page_06_diagnostics_set_card(PAGE06_CARD_NODES, present, st, det, col);
+      char body[400];
+      snprintf(body, sizeof(body),
+               "Audio        %s%s%s\n"
+               "Lamp         %s\n"
+               "Pixel        %s\n"
+               "Emergency    %s\n"
+               "Full setup remains on Nodes / Audio Node.",
+               audioNodeStatusWord(),
+               audioNodeCtrl_.firmware[0] ? "  FW " : "",
+               audioNodeCtrl_.firmware[0] ? audioNodeCtrl_.firmware : "",
+               lampNodePresent()
+                   ? (lampNodeRaw_ == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY ? "EMERGENCY"
+                      : (lampNodeWire_ == SHOWDUINO_NODE_WIRE_FAULT ? "FAULT" : "ONLINE"))
+                   : "NOT DETECTED",
+               pixelNodePresent()
+                   ? (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY ? "EMERGENCY"
+                      : (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ? "FAULT" : "ONLINE"))
+                   : "NOT DETECTED",
+               emergencyNodePresent()
+                   ? (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_ACTIVE ? "EMERGENCY"
+                      : (emergencyNodeWire_ == SHOWDUINO_EMERGENCY_NODE_WIRE_FAULT ? "FAULT" : "ONLINE"))
+                   : "NOT DETECTED");
+      page_06_diagnostics_set_sheet_body(PAGE06_CARD_NODES, body);
+    }
+  }
+
+
   /** Desktop SYSTEM SUMMARY - consistent operator vocabulary. */
   const char *deskRuntimeWord() const {
     switch (mirroredState) {
@@ -1716,6 +2220,11 @@ private:
   ShowduinoPixelDetailWire pixelDetail_{};
   ShowduinoAudioNodeWire audioNodeWire_ = SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
   DirectorAudioNodeControl audioNodeCtrl_;
+  DirectorDiagnosticsCaps diagCaps_{};
+  bool emergencyStateKnown_ = false;
+  bool stageReplySeen_ = false;
+  uint32_t lastStageReplyMs_ = 0;
+  bool espNowReadyUi_ = false;
   ShowduinoEmergencyNodeWire emergencyNodeWire_ = SHOWDUINO_EMERGENCY_NODE_WIRE_INVALID;
   ShowduinoEmergencyDirectorSheet estopSheet_{};
   bool safetyEstopFault_ = false;
@@ -2041,6 +2550,21 @@ private:
       if (page_05_audio_node_is_active()) {
         page_05_audio_node_apply_theme();
       }
+      if (page_06_diagnostics_is_active()) {
+        page_06_diagnostics_apply_theme();
+      }
+      if (page_08_settings_is_active()) {
+        page_08_settings_apply_theme();
+      }
+      if (page_10_live_is_active()) {
+        page_10_live_apply_theme();
+      }
+      if (page_logs_is_active()) {
+        page_logs_apply_theme();
+      }
+      if (page_audio_system_is_active()) {
+        page_audio_system_apply_theme();
+      }
       return;
     }
     if (command == "SCREEN:LIVE") {
@@ -2107,6 +2631,53 @@ private:
     }
     if (command == PAGE04_CMD_EMERGENCY || command == PAGE04_CMD_EMERGENCY_STATUS) {
       if (commandCallback) commandCallback("ESTOP:STATUS");
+      return;
+    }
+    if (command == PAGE06_CMD_BACK || command == PAGE08_CMD_BACK ||
+        command == PAGE10_CMD_BACK) {
+      showDesktop();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE08_CMD_CLOSE) {
+      page_08_settings_close_sheet();
+      return;
+    }
+    if (command == PAGE06_CMD_CLOSE) {
+      page_06_diagnostics_close_sheet();
+      return;
+    }
+    if (command == PAGE06_CMD_TOOLS) {
+      return;
+    }
+    if (command == PAGE06_CMD_REFRESH) {
+      if (commandCallback) {
+        commandCallback("HELLO");
+        commandCallback("STATUS:REQUEST");
+      }
+      refreshDiagnosticsPage();
+      pushOperatorEvent("Diagnostics refresh requested");
+      return;
+    }
+    if (command == PAGE06_CMD_STAGE_STATUS) {
+      if (commandCallback) commandCallback("STATUS:REQUEST");
+      return;
+    }
+    if (command == PAGE06_CMD_SD_STATUS) {
+      if (commandCallback) commandCallback("STORAGE:STATUS");
+      return;
+    }
+    if (command == PAGE06_CMD_BACKUP) {
+      if (commandCallback) commandCallback("STORAGE:BACKUP");
+      return;
+    }
+    if (command == PAGE06_CMD_REPAIR) {
+      if (commandCallback) commandCallback("STORAGE:REPAIR");
+      return;
+    }
+    if (command == PAGE06_CMD_LOGS) {
+      showLogs();
+      maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == PAGE05_CMD_BACK) {
@@ -2226,14 +2797,24 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == PAGE08_CMD_TOUCH_CAL || command == "TOUCH:CALIBRATE") {
+      directorTouchCalStart();
+      return;
+    }
+    if (command == PAGE08_CMD_TOUCH_RESET) {
+      directorTouchCalStartReset();
+      return;
+    }
 
     if (command.startsWith("UI:LOGS:FILTER:")) {
       logsFilter_ = (uint8_t)command.substring(strlen("UI:LOGS:FILTER:")).toInt();
       static const char *names[] = {"All", "System", "Show", "Audio", "Network", "Emergency"};
-      if (logsFilterLabel_ && logsFilter_ < 6) {
+      if (logsFilter_ < 6) {
         char buf[32];
         snprintf(buf, sizeof(buf), "Filter: %s", names[logsFilter_]);
         ShowduinoOsTheme::setTextIfChanged(logsFilterLabel_, buf);
+        page_logs_set_filter(buf);
+        page_logs_set_header(names[logsFilter_], OsColor::Accent);
       }
       const bool wasPaused = logsLivePaused_;
       logsLivePaused_ = false;
@@ -2325,9 +2906,14 @@ private:
         refreshRelayButton(i);
       }
       Serial.println("[E-Stop] E-STOP pressed - sending EMERGENCY:STOP");
-    } else if (command == "EMERGENCY:CLEAR" || command == "EMERGENCY:CLEAR_CONFIRM") {
-      /* Do not unlock until STATE:EMERGENCY:CLEAR. */
+    } else if (command == "EMERGENCY:CLEAR") {
+      /* Request the P4 clear workflow. Do not unlock until STATE:EMERGENCY:CLEAR. */
       gDirectorEmergencyScreen.noteClearRequested(millis());
+      appendLog("E-CLEAR request sent to Stage");
+      pushOperatorEvent("E-CLEAR request -> Stage");
+      Serial.println("[E-Stop] CLEAR EMERGENCY - sending EMERGENCY:CLEAR request");
+      outbound = "EMERGENCY:CLEAR";
+    } else if (command == "EMERGENCY:CLEAR_CONFIRM") {
       appendLog("E-CLEAR confirm requested...");
       pushOperatorEvent("E-CLEAR confirm -> Stage (await STATE:EMERGENCY:CLEAR)");
       Serial.println("[E-Stop] CONFIRM CLEAR - sending EMERGENCY:CLEAR_CONFIRM");
@@ -2473,84 +3059,19 @@ private:
 
   void buildLogsPage() {
     logsScreen = makePagePanel(PAGE_LOGS);
-    createDock(logsScreen);
-    lv_obj_t *sum = os_.makePageChrome(logsScreen, "SYSTEM LOGS");
-    logsCountLabel_ = makeLabel(sum, "Events: 0", 10, 8);
-    lv_obj_add_style(logsCountLabel_, &os_.body, 0);
-    logsNewestLabel_ = makeLabel(sum, "Newest: -", 10, 28);
-    lv_obj_add_style(logsNewestLabel_, &os_.caption, 0);
-    lv_obj_set_width(logsNewestLabel_, OS_CONTENT_FULL_W - 24);
-    lv_label_set_long_mode(logsNewestLabel_, LV_LABEL_LONG_CLIP);
-
-    lv_obj_t *panel = os_.makePrimaryPanel(logsScreen);
-    os_.makeHeading(panel, "FILTERS", 8, 2);
-    makeButton(panel, "All", 8, 28, 70, 36, "UI:LOGS:FILTER:0");
-    makeButton(panel, "System", 84, 28, 86, 36, "UI:LOGS:FILTER:1");
-    makeButton(panel, "Show", 176, 28, 70, 36, "UI:LOGS:FILTER:2");
-    makeButton(panel, "Audio", 252, 28, 70, 36, "UI:LOGS:FILTER:3");
-    makeButton(panel, "Net", 328, 28, 64, 36, "UI:LOGS:FILTER:4");
-    makeButton(panel, "E-Stop", 398, 28, 80, 36, "UI:LOGS:FILTER:5");
-    logsFilterLabel_ = makeLabel(panel, "Filter: All", 490, 34);
-    lv_obj_add_style(logsFilterLabel_, &os_.caption, 0);
-
-    makeButton(panel, "Clear", 8, 72, 90, 36, "UI:LOGS:CLEAR", true);
-    makeButton(panel, "Pause", 106, 72, 90, 36, "UI:LOGS:PAUSE");
-    makeButton(panel, "Resume", 204, 72, 90, 36, "UI:LOGS:RESUME");
-    makeButton(panel, "Back", 302, 72, 90, 36, "SCREEN:SETTINGS");
-
-    operatorLogRoot = panel;
-    operatorLogScroll = lv_obj_create(panel);
-    lv_obj_remove_style_all(operatorLogScroll);
-    lv_obj_set_pos(operatorLogScroll, 8, 118);
-    lv_obj_set_size(operatorLogScroll, OS_CONTENT_FULL_W - 28, OS_PRIMARY_H - 130);
-    lv_obj_set_style_bg_opa(operatorLogScroll, LV_OPA_TRANSP, 0);
-    ShowduinoOsTheme::enableVerticalScroll(operatorLogScroll);
-    operatorLogLabel = lv_label_create(operatorLogScroll);
-    lv_obj_set_pos(operatorLogLabel, 2, 0);
-    lv_obj_set_width(operatorLogLabel, OS_CONTENT_FULL_W - 40);
-    lv_obj_add_style(operatorLogLabel, &os_.body, 0);
-    lv_label_set_long_mode(operatorLogLabel, LV_LABEL_LONG_WRAP);
-    lv_label_set_text(operatorLogLabel, "(no events)\n");
+    if (logsScreen != nullptr) {
+      page_logs_create(logsScreen, displayCommandThunk);
+      operatorLogLabel = page_logs_body_label();
+      operatorLogScroll = page_logs_scroll();
+      operatorLogRoot = logsScreen;
+    }
   }
 
   void buildAudioPage() {
     audioScreen = makePagePanel(PAGE_AUDIO);
-    createDock(audioScreen);
-    lv_obj_t *sum = os_.makePageChrome(audioScreen, "AUDIO SYSTEM");
-    makeLabel(sum, "P4 local output: Stop is live. Play needs an asset path from a loaded show.", 10, 10);
-    makeButton(sum, "Back", OS_CONTENT_FULL_W - 110, 8, 90, 36, "SCREEN:SETTINGS");
-
-    lv_obj_t *panel = os_.makePrimaryPanel(audioScreen);
-    /* Content extends past OS_PRIMARY_H (~y=466); makePanel clears SCROLLABLE - restore it. */
-    ShowduinoOsTheme::enableVerticalScroll(panel);
-
-    os_.makeHeading(panel, "LOCAL OUTPUT - IAN / P4 AUDIO 1", 8, 2);
-    audioLocalStatusLabel_ = makeLabel(panel, "Status: UNKNOWN", 8, 28);
-    lv_obj_add_style(audioLocalStatusLabel_, &os_.title, 0);
-    audioLocalDetailLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 54);
-    lv_obj_add_style(audioLocalDetailLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioLocalDetailLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioLocalDetailLabel_, LV_LABEL_LONG_WRAP);
-
-    makeButton(panel, "Stop", 8, 150, 100, 36, "AUDIO:LOCAL:STOP", true);
-
-    os_.makeHeading(panel, "REMOTE AUDIO NODES", 8, 198);
-    audioNodesLabel_ = makeLabel(panel, "No audio node on the fabric.", 8, 224);
-    lv_obj_add_style(audioNodesLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioNodesLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioNodesLabel_, LV_LABEL_LONG_WRAP);
-
-    os_.makeHeading(panel, "AUDIO ROUTING", 8, 348);
-    audioRoutingLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 374);
-    lv_obj_add_style(audioRoutingLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioRoutingLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioRoutingLabel_, LV_LABEL_LONG_WRAP);
-
-    os_.makeHeading(panel, "COMMAND STATUS", 8, 440);
-    audioCmdStatusLabel_ = makeLabel(panel, "NOT AVAILABLE", 8, 466);
-    lv_obj_add_style(audioCmdStatusLabel_, &os_.caption, 0);
-    lv_obj_set_width(audioCmdStatusLabel_, OS_CONTENT_FULL_W - 40);
-    lv_label_set_long_mode(audioCmdStatusLabel_, LV_LABEL_LONG_WRAP);
+    if (audioScreen != nullptr) {
+      page_audio_system_create(audioScreen, displayCommandThunk);
+    }
   }
 
   void buildScreens() {
@@ -2583,56 +3104,20 @@ private:
     Serial.println("[UI] live...");
     liveScreen = makePagePanel(PAGE_LIVE);
     uiBuildPump("[UI] live");
-    createDock(liveScreen);
-    liveChromeRoot_ = os_.makePageChrome(liveScreen, "LIVE", &liveTitleBar_);
-    os_.makeCaption(liveChromeRoot_, "Cue", 10, 8);
-    liveCueLabel_ = makeLabel(liveChromeRoot_, "0 / 0", 10, 28);
-    lv_obj_add_style(liveCueLabel_, &os_.title, 0);
-    os_.makeCaption(liveChromeRoot_, "Elapsed", 160, 8);
-    liveElapsedLabel_ = makeLabel(liveChromeRoot_, "0:00", 160, 28);
-    lv_obj_add_style(liveElapsedLabel_, &os_.body, 0);
-    os_.makeCaption(liveChromeRoot_, "Remaining", 300, 8);
-    liveRemainLabel_ = makeLabel(liveChromeRoot_, "0:00", 300, 28);
-    lv_obj_add_style(liveRemainLabel_, &os_.body, 0);
-    livePendingLabel_ = makeLabel(liveChromeRoot_, "", 430, 28);
-    lv_obj_add_style(livePendingLabel_, &os_.caption, 0);
-    lv_obj_set_width(livePendingLabel_, 300);
-    lv_label_set_long_mode(livePendingLabel_, LV_LABEL_LONG_CLIP);
-    ShowduinoOsTheme::setTextColor(livePendingLabel_, OsColor::Pending);
-
-    livePrimaryPanel_ = os_.makePrimaryPanel(liveScreen);
-    lv_obj_t *live = livePrimaryPanel_;
-    /* Do not scroll the whole Live panel - E-Clear taps must not become drag-scroll. */
-    os_.makeHeading(live, "TRANSPORT", 8, 2);
-    makeButton(live, "Start", 10, 24, 84, 40, "SHOW:START");
-    makeButton(live, "Pause", 102, 24, 76, 40, "SHOW:PAUSE");
-    makeButton(live, "Resume", 186, 24, 84, 40, "SHOW:RESUME");
-    makeButton(live, "Stop", 278, 24, 68, 40, "SHOW:STOP", true);
-    makeButton(live, "Status", 354, 24, 76, 40, "STATUS:REQUEST");
-    makeButton(live, "E-Clear", 442, 24, 100, 40, "EMERGENCY:CLEAR", false, false);
-
-    liveEmergencyDot = lv_obj_create(live);
-    lv_obj_remove_style_all(liveEmergencyDot);
-    lv_obj_set_size(liveEmergencyDot, 12, 12);
-    lv_obj_set_pos(liveEmergencyDot, 552, 6);
-    lv_obj_set_style_radius(liveEmergencyDot, 6, 0);
-    lv_obj_set_style_bg_color(liveEmergencyDot, lv_color_hex(OsColor::Unknown), 0);
-    lv_obj_set_style_bg_opa(liveEmergencyDot, LV_OPA_COVER, 0);
-
-    liveStatusLabel = makeLabel(live, "0%", 10, 70);
-    lv_obj_set_width(liveStatusLabel, 60);
-    lv_obj_add_style(liveStatusLabel, &os_.body, 0);
-
-    liveProgressBar = lv_bar_create(live);
-    lv_obj_set_pos(liveProgressBar, 70, 74);
-    lv_obj_set_size(liveProgressBar, 380, 10);
-    lv_bar_set_range(liveProgressBar, 0, 100);
-    lv_bar_set_value(liveProgressBar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(OsColor::ScanLine), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(liveProgressBar, lv_color_hex(OsColor::Accent), LV_PART_INDICATOR);
-
-    timelineStatusLabel = makeLabel(live, "", 10, 88);
-    lv_obj_add_flag(timelineStatusLabel, LV_OBJ_FLAG_HIDDEN);
+    if (liveScreen != nullptr) {
+      page_10_live_create(liveScreen, displayCommandThunk);
+    }
+    liveChromeRoot_ = nullptr;
+    liveTitleBar_ = nullptr;
+    livePrimaryPanel_ = nullptr;
+    liveCueLabel_ = nullptr;
+    liveElapsedLabel_ = nullptr;
+    liveRemainLabel_ = nullptr;
+    livePendingLabel_ = nullptr;
+    liveStatusLabel = nullptr;
+    liveProgressBar = nullptr;
+    liveEmergencyDot = nullptr;
+    timelineStatusLabel = nullptr;
     uiBuildPump();
 
     /* ---- PAGE 02 PRODUCTIONS (LVGL library shell) ---- */
@@ -2655,35 +3140,38 @@ private:
     Serial.println("[UI] details...");
     showDetailsScreen = makePagePanel(PAGE_SHOW_DETAILS);
     uiBuildPump("[UI] details");
-    createDock(showDetailsScreen);
-    lv_obj_t *detSum = os_.makePageChrome(showDetailsScreen, "SHOW DETAILS");
-    detailsNameLabel = makeLabel(detSum, "Show", 10, 8);
-    lv_obj_add_style(detailsNameLabel, &os_.title, 0);
-    lv_obj_set_width(detailsNameLabel, 440);
+    if (showDetailsScreen != nullptr) {
+      ShowduinoOsTheme::AppHeader detHdr = os_.makeAppHeader(
+          showDetailsScreen, "SHOW DETAILS", staticEventHandler, this, "UI:SHOW:BACK", 168);
+      detailsNameLabel = detHdr.status;
+      lv_label_set_text(detailsNameLabel, "NO PRODUCTION");
+      lv_obj_set_style_text_color(detailsNameLabel, lv_color_hex(OsColor::Accent), 0);
 
-    lv_obj_t *det = os_.makePrimaryPanel(showDetailsScreen);
-    detailsIconHost = lv_obj_create(det);
-    lv_obj_remove_style_all(detailsIconHost);
-    lv_obj_set_pos(detailsIconHost, 8, 8);
-    lv_obj_set_size(detailsIconHost, 96, 64);
-    ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
-    detailsDescLabel = makeLabel(det, "Description", 116, 12);
-    lv_obj_set_width(detailsDescLabel, 330);
-    lv_obj_add_style(detailsDescLabel, &os_.body, 0);
-    lv_label_set_long_mode(detailsDescLabel, LV_LABEL_LONG_WRAP);
-    detailsMetaLabel = makeLabel(det, "Duration / Version / Author", 8, 84);
-    lv_obj_set_width(detailsMetaLabel, 440);
-    lv_obj_add_style(detailsMetaLabel, &os_.caption, 0);
-    lv_label_set_long_mode(detailsMetaLabel, LV_LABEL_LONG_WRAP);
-    timelineDetailLabel = makeLabel(det, "Playback: STOPPED", 8, 110);
-    lv_obj_set_width(timelineDetailLabel, 440);
-    lv_obj_add_style(timelineDetailLabel, &os_.body, 0);
-    makeButton(det, "Load", 8, 155, 72, 44, "UI:SHOW:LOAD");
-    makeButton(det, "Run", 88, 155, 72, 44, "UI:SHOW:RUN");
-    makeButton(det, "Pause", 168, 155, 72, 44, "SHOW:PAUSE");
-    makeButton(det, "Resume", 248, 155, 80, 44, "SHOW:RESUME");
-    makeButton(det, "Stop", 336, 155, 64, 44, "UI:SHOW:STOP");
-    makeButton(det, "Back", 408, 155, 50, 44, "UI:SHOW:BACK");
+      lv_obj_t *det = os_.makeRaisedCard(showDetailsScreen, 16, OS_SUMMARY_Y,
+                                        OS_CONTENT_FULL_W,
+                                        (int)(OS_DOCK_Y - OS_SUMMARY_Y - OS_GAP), true);
+      detailsIconHost = lv_obj_create(det);
+      lv_obj_remove_style_all(detailsIconHost);
+      lv_obj_set_pos(detailsIconHost, 16, 16);
+      lv_obj_set_size(detailsIconHost, 96, 64);
+      ShowduinoShowThumb::makeDefaultIcon(detailsIconHost, 0, 0, 96, 64);
+      detailsDescLabel = makeLabel(det, "Description", 128, 18);
+      lv_obj_set_width(detailsDescLabel, OS_CONTENT_FULL_W - 160);
+      lv_obj_add_style(detailsDescLabel, &os_.body, 0);
+      lv_label_set_long_mode(detailsDescLabel, LV_LABEL_LONG_WRAP);
+      detailsMetaLabel = makeLabel(det, "Duration / Version / Author", 16, 92);
+      lv_obj_set_width(detailsMetaLabel, OS_CONTENT_FULL_W - 40);
+      lv_obj_add_style(detailsMetaLabel, &os_.caption, 0);
+      lv_label_set_long_mode(detailsMetaLabel, LV_LABEL_LONG_WRAP);
+      timelineDetailLabel = makeLabel(det, "Playback: STOPPED", 16, 140);
+      lv_obj_set_width(timelineDetailLabel, OS_CONTENT_FULL_W - 40);
+      lv_obj_add_style(timelineDetailLabel, &os_.body, 0);
+      makeButton(det, "LOAD", 16, 210, 112, 48, "UI:SHOW:LOAD");
+      makeButton(det, "RUN", 136, 210, 112, 48, "UI:SHOW:RUN");
+      makeButton(det, "PAUSE", 256, 210, 112, 48, "SHOW:PAUSE");
+      makeButton(det, "RESUME", 376, 210, 120, 48, "SHOW:RESUME");
+      makeButton(det, "STOP", 504, 210, 112, 48, "UI:SHOW:STOP", true);
+    }
     uiBuildPump();
 
     /* ---- PAGE 04 NODES (fabric inventory) ---- */
@@ -2709,80 +3197,30 @@ private:
     }
     uiBuildPump();
 
-    /* ---- DIAGNOSTICS (storage / bench tools) ---- */
-    Serial.println("[UI] diagnostics...");
+    /* ---- PAGE 06 DIAGNOSTICS ---- */
+    Serial.println("[UI] Page 06 Diagnostics...");
     diagnosticsScreen = makePagePanel(PAGE_DIAGNOSTICS);
-    uiBuildPump("[UI] diagnostics");
-    createDock(diagnosticsScreen);
-    lv_obj_t *nodeSum = os_.makePageChrome(diagnosticsScreen, "DIAGNOSTICS");
-    os_.makeCaption(nodeSum, "Bench", 10, 8);
-    makeLabel(nodeSum, "Director storage and Stage probes", 10, 28);
-    lv_obj_t *nodes = os_.makePrimaryPanel(diagnosticsScreen);
-    os_.makeHeading(nodes, "TOOLS", 8, 2);
-    makeButton(nodes, "SD Status", 12, 36, 140, 48, "STORAGE:STATUS");
-    makeButton(nodes, "Backup", 160, 36, 140, 48, "STORAGE:BACKUP");
-    makeButton(nodes, "Export", 308, 36, 140, 48, "STORAGE:EXPORT");
-    makeButton(nodes, "Repair Dirs", 12, 96, 140, 48, "STORAGE:REPAIR");
-    makeButton(nodes, "Stage Status", 160, 96, 140, 48, "STATUS:REQUEST");
-    makeButton(nodes, "Stage Hello", 308, 96, 140, 48, "HELLO");
-    lv_obj_t *fontTest = os_.makeCaption(nodes,
-        "FONT TEST  ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 | - : / . , ( ) [ ] % -> <-",
-        8, 160);
-    lv_obj_set_width(fontTest, OS_CONTENT_FULL_W - 24);
-    lv_label_set_long_mode(fontTest, LV_LABEL_LONG_WRAP);
+    uiBuildPump("[UI] Page 06");
+    if (diagnosticsScreen != nullptr) {
+      page_06_diagnostics_create(diagnosticsScreen, displayCommandThunk);
+      refreshDiagnosticsPage();
+    } else {
+      Serial.println("[UI] Page 06 panel missing");
+    }
     uiBuildPump();
 
-    /* ---- SETTINGS - How is the system configured? ---- */
-    Serial.println("[UI] settings...");
+    /* ---- PAGE 08 SETTINGS ---- */
+    Serial.println("[UI] Page 08 Settings...");
     settingsScreen = makePagePanel(PAGE_SETTINGS);
     uiBuildPump("[UI] settings");
-    createDock(settingsScreen);
-    lv_obj_t *setSum = os_.makePageChrome(settingsScreen, "SETTINGS");
-    os_.makeCaption(setSum, "Display", 10, 8);
-    timeoutLabel = makeLabel(setSum, "Auto backlight: 10 min", 10, 28);
-    lv_obj_add_style(timeoutLabel, &os_.body, 0);
-    /* Always-visible Clear - not inside the scrollable primary panel. */
-    makeButton(setSum, "Clear E-Stop", OS_CONTENT_FULL_W - 160, 16, 140, 40, "EMERGENCY:CLEAR",
-               false, false);
-
-    lv_obj_t *settings = os_.makePrimaryPanel(settingsScreen);
-    /* SYSTEM row sits below OS_PRIMARY_H - panel must be scrollable. */
-    ShowduinoOsTheme::enableVerticalScroll(settings);
-    os_.makeHeading(settings, "MODULES", 8, 2);
-    makeButton(settings, "Audio System", 8, 32, 230, 48, "SCREEN:AUDIO");
-    makeButton(settings, "System Logs", 248, 32, 220, 48, "SCREEN:LOGS");
-    os_.makeCaption(settings, "Audio: P4 Stop is live   |   Logs: operator event history", 8, 86);
-
-    os_.makeHeading(settings, "DISPLAY", 8, 112);
-    makeButton(settings, "Never", 8, 140, 70, 40, "SETTINGS:TIMEOUT:0");
-    makeButton(settings, "1m", 86, 140, 54, 40, "SETTINGS:TIMEOUT:1");
-    makeButton(settings, "3m", 148, 140, 54, 40, "SETTINGS:TIMEOUT:3");
-    makeButton(settings, "5m", 210, 140, 54, 40, "SETTINGS:TIMEOUT:5");
-    makeButton(settings, "10m", 272, 140, 62, 40, "SETTINGS:TIMEOUT:10");
-    makeButton(settings, "30m", 342, 140, 62, 40, "SETTINGS:TIMEOUT:30");
-    makeButton(settings, "Cycle", 412, 140, 48, 40, "SETTINGS:TIMEOUT:CYCLE");
-    os_.makeCaption(settings, "Dim at half timeout, then off. Touch wakes.", 8, 186);
-
-    os_.makeHeading(settings, "ATMOSPHERE", 8, 210);
-    makeButton(settings, "LEDs", 8, 238, 110, 44, "SETTINGS:AMBIENT:TOGGLE");
-    makeButton(settings, "LED Bri", 126, 238, 120, 44, "SETTINGS:AMBIENT:BRI:CYCLE");
-    makeButton(settings, "UI Motion", 254, 238, 140, 44, "SETTINGS:ANIM:CYCLE");
-    atmosphereLabel_ = makeLabel(settings, "LEDs ON  |  Bright 180  |  Motion ON", 8, 288);
-    lv_obj_add_style(atmosphereLabel_, &os_.caption, 0);
-    lv_obj_set_width(atmosphereLabel_, OS_CONTENT_FULL_W - 24);
-    lv_label_set_long_mode(atmosphereLabel_, LV_LABEL_LONG_CLIP);
-    os_.makeCaption(settings, "Emergency indication always remains available.", 8, 310);
-
-    os_.makeHeading(settings, "SYSTEM", 8, 338);
-    makeButton(settings, "Backup", 8, 364, 140, 44, "STORAGE:BACKUP");
-    makeButton(settings, "Export", 156, 364, 120, 44, "STORAGE:EXPORT");
-    makeButton(settings, "About", 284, 364, 120, 44, "SETTINGS:ABOUT");
-    makeButton(settings, "Network", 8, 416, 140, 44, "SETTINGS:NETWORK");
-    makeButton(settings, "Software", 156, 416, 140, 44, "SETTINGS:SOFTWARE");
-      os_.makeCaption(settings, "Software shows versions. OTA install is not implemented.", 8, 468);
-
-    refreshTimeoutLabel();
-    refreshAtmosphereLabel();
+    if (settingsScreen != nullptr) {
+      page_08_settings_create(settingsScreen, displayCommandThunk);
+      refreshSettingsPage();
+    } else {
+      Serial.println("[UI] Settings page missing");
+    }
+    timeoutLabel = nullptr;
+    atmosphereLabel_ = nullptr;
     uiBuildPump();
 
     Serial.println("[UI] logs...");
@@ -3019,40 +3457,31 @@ private:
     char cueBuf[24];
     snprintf(cueBuf, sizeof(cueBuf), "%lu / %lu",
              (unsigned long)liveCue, (unsigned long)liveCueTotal);
-    ShowduinoOsTheme::setTextIfChanged(liveCueLabel_, cueBuf);
-    ShowduinoOsTheme::setTextIfChanged(liveElapsedLabel_, et);
-    ShowduinoOsTheme::setTextIfChanged(liveRemainLabel_, rt);
+    page_10_live_set_cue(cueBuf);
+    page_10_live_set_elapsed(et);
+    page_10_live_set_remain(rt);
 
-    if (livePendingLabel_) {
-      const char *pending = "";
-      uint32_t col = OsColor::TextMuted;
-      if (pendingResumeAwait) {
-        pending = "RESUME PENDING - awaiting Stage";
-        col = OsColor::Pending;
-      } else if (pendingAbortAwait) {
-        pending = "ABORT PENDING - awaiting Stage";
-        col = OsColor::Pending;
-      } else if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
-        pending = "EMERGENCY - Stage latch active";
-        col = OsColor::Fault;
-      }
-      ShowduinoOsTheme::setTextIfChanged(livePendingLabel_, pending);
-      ShowduinoOsTheme::setTextColor(livePendingLabel_, col);
+    const char *pending = "";
+    uint32_t col = OsColor::TextMuted;
+    if (pendingResumeAwait) {
+      pending = "RESUME PENDING - awaiting Stage";
+      col = OsColor::Pending;
+    } else if (pendingAbortAwait) {
+      pending = "ABORT PENDING - awaiting Stage";
+      col = OsColor::Pending;
+    } else if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) {
+      pending = "EMERGENCY - Stage latch active";
+      col = OsColor::Fault;
     }
+    page_10_live_set_pending(pending, col);
+    page_10_live_set_progress(liveProgressPct);
+    page_10_live_set_emergency((mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked);
 
-    if (liveStatusLabel) {
-      char line[64];
-      snprintf(line, sizeof(line), "%u%%", (unsigned)liveProgressPct);
-      ShowduinoOsTheme::setTextIfChanged(liveStatusLabel, line);
-    }
-    if (liveProgressBar) {
-      lv_bar_set_value(liveProgressBar, liveProgressPct, LV_ANIM_ON);
-    }
-    if (liveEmergencyDot) {
-      bool em = (mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked;
-      lv_obj_set_style_bg_color(liveEmergencyDot,
-                                lv_color_hex(em ? OsColor::DangerBorder : OsColor::Unknown), 0);
-    }
+    uint32_t headerCol = OsColor::Accent;
+    if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) headerCol = OsColor::Fault;
+    else if (mirroredState == SHOW_STATE_ERROR) headerCol = OsColor::Fault;
+    else if (mirroredState == SHOW_STATE_RUNNING) headerCol = OsColor::Ok;
+    page_10_live_set_header(deskRuntimeWord(), headerCol);
   }
 
   void showEmergencyOverlay() {
@@ -3254,27 +3683,49 @@ private:
     gDirectorEmergencyScreen.setShowName(estopShowName);
   }
 
-  void refreshTimeoutLabel() {
-    if (timeoutLabel == nullptr) return;
-    char buf[48];
+  void refreshSettingsPage() {
+    if (!page_08_settings_is_active()) return;
+    char dispStatus[28];
+    char dispDetail[96];
     if (screenTimeoutMinutes == 0) {
-      snprintf(buf, sizeof(buf), "Auto backlight: NEVER (always on)");
+      snprintf(dispStatus, sizeof(dispStatus), "NEVER");
+      snprintf(dispDetail, sizeof(dispDetail), "Always on  |  Touch %s",
+               touchLvglCalibrationIsNvs() ? "Calibrated" : "Factory");
     } else {
-      snprintf(buf, sizeof(buf), "Auto backlight: %u min (dim then off)",
-               (unsigned)screenTimeoutMinutes);
+      snprintf(dispStatus, sizeof(dispStatus), "%u MIN", (unsigned)screenTimeoutMinutes);
+      snprintf(dispDetail, sizeof(dispDetail), "Dim then off  |  Touch %s",
+               touchLvglCalibrationIsNvs() ? "Calibrated" : "Factory");
     }
-    lv_label_set_text(timeoutLabel, buf);
+    page_08_settings_set_card(PAGE08_CARD_DISPLAY, true, dispStatus, dispDetail, OsColor::Accent);
+
+    char atmoStatus[28];
+    char atmoDetail[96];
+    snprintf(atmoStatus, sizeof(atmoStatus), "%s", directorAmbientEnabled() ? "ON" : "OFF");
+    snprintf(atmoDetail, sizeof(atmoDetail), "Bright %u  |  Motion %s",
+             (unsigned)directorAmbientBrightness(), directorUiMotionModeName());
+    page_08_settings_set_card(PAGE08_CARD_ATMOSPHERE, true, atmoStatus, atmoDetail, OsColor::Accent);
+    page_08_settings_set_card(PAGE08_CARD_AUDIO, true, "OPEN",
+                              "P4 local Stop is live", OsColor::Accent);
+    char logsStatus[28];
+    snprintf(logsStatus, sizeof(logsStatus), "%u EVENTS", (unsigned)eventLogCount);
+    page_08_settings_set_card(PAGE08_CARD_LOGS, true, logsStatus, "Operator history",
+                              OsColor::Accent);
+    page_08_settings_set_card(PAGE08_CARD_STORAGE, true, "LOCAL", "Backup / export",
+                              OsColor::Accent);
+    page_08_settings_set_card(PAGE08_CARD_SYSTEM, true, STORAGE_FW_VERSION,
+                              "About / network / software", OsColor::Accent);
+    page_08_settings_set_header(STORAGE_FW_VERSION, OsColor::Accent);
+
+    const bool em = emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP;
+    page_08_settings_set_strip(
+        "SAFETY",
+        em ? "E-STOP ACTIVE  |  CLEAR is a request" : "CLEAR  |  P4 remains the latch.",
+        em ? OsColor::Fault : OsColor::Ok);
   }
 
-  void refreshAtmosphereLabel() {
-    if (atmosphereLabel_ == nullptr) return;
-    char buf[72];
-    snprintf(buf, sizeof(buf), "LEDs %s  |  Bright %u  |  Motion %s",
-             directorAmbientEnabled() ? "ON" : "OFF",
-             (unsigned)directorAmbientBrightness(),
-             directorUiMotionModeName());
-    lv_label_set_text(atmosphereLabel_, buf);
-  }
+  void refreshTimeoutLabel() { refreshSettingsPage(); }
+
+  void refreshAtmosphereLabel() { refreshSettingsPage(); }
 
   void clearShowListChildren() {
     if (showListScroll == nullptr) return;
@@ -3486,6 +3937,11 @@ private:
   }
   void showLive() {
     if (displayManager_.showPage(PAGE_LIVE)) {
+      Serial.println("[UI] Page 10 Live (LVGL)");
+      if (page_10_live_is_active()) {
+        page_10_live_apply_theme();
+        refreshLiveStatusPanel();
+      }
       pushDisplaySnapshot();
     } else {
       Serial.println("[UI] Live page unavailable");
@@ -3552,52 +4008,65 @@ private:
   }
   void showDiagnostics() {
     if (displayManager_.showPage(PAGE_DIAGNOSTICS)) {
-      pushDisplaySnapshot();
-    } else {
-      displayManager_.releasePage();
-      if (diagnosticsScreen) {
-        lv_screen_load(diagnosticsScreen);
-        Serial.println("[UI] Diagnostics legacy LVGL");
-      } else {
-        Serial.println("[UI] Diagnostics page unavailable");
-        showDesktop();
+      Serial.println("[UI] Page 06 Diagnostics (LVGL)");
+      if (page_06_diagnostics_is_active()) {
+        page_06_diagnostics_apply_theme();
+        refreshDiagnosticsPage();
       }
+      pushDisplaySnapshot();
+      if (commandCallback) {
+        commandCallback("HELLO");
+        commandCallback("STATUS:REQUEST");
+      }
+    } else {
+      Serial.println("[UI] Diagnostics page unavailable");
+      showDesktop();
     }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showSettings() {
-    if (!displayManager_.showPage(PAGE_SETTINGS)) {
-      displayManager_.releasePage();
-      lv_screen_load(settingsScreen);
-      Serial.println("[UI] Settings legacy LVGL");
+    if (displayManager_.showPage(PAGE_SETTINGS)) {
+      Serial.println("[UI] Page 08 Settings (LVGL)");
+      if (page_08_settings_is_active()) {
+        page_08_settings_apply_theme();
+        refreshSettingsPage();
+      }
+      pushDisplaySnapshot();
+    } else {
+      Serial.println("[UI] Settings page unavailable");
+      showDesktop();
     }
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showAudio() {
-    if (!displayManager_.showPage(PAGE_AUDIO)) {
-      displayManager_.releasePage();
-      lv_screen_load(audioScreen);
-      Serial.println("[UI] Audio legacy LVGL");
+    if (displayManager_.showPage(PAGE_AUDIO)) {
+      if (page_audio_system_is_active()) page_audio_system_apply_theme();
+      refreshAudioPresentation();
+      pushDisplaySnapshot();
+    } else {
+      Serial.println("[UI] Audio page unavailable");
+      showSettings();
     }
-    refreshAudioPresentation();
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
   }
   void showLogs() {
-    if (!displayManager_.showPage(PAGE_LOGS)) {
-      displayManager_.releasePage();
-      lv_screen_load(logsScreen);
-      Serial.println("[UI] Logs legacy LVGL");
+    if (displayManager_.showPage(PAGE_LOGS)) {
+      if (page_logs_is_active()) page_logs_apply_theme();
+      const bool wasPaused = logsLivePaused_;
+      logsLivePaused_ = false;
+      refreshLogsDisplay();
+      logsLivePaused_ = wasPaused;
+      pushDisplaySnapshot();
+    } else {
+      Serial.println("[UI] Logs page unavailable");
+      showSettings();
     }
-    const bool wasPaused = logsLivePaused_;
-    logsLivePaused_ = false;
-    refreshLogsDisplay();
-    logsLivePaused_ = wasPaused;
     statusDirty = true;
     trafficDirty = true;
     updateStatusWidgets(true);
