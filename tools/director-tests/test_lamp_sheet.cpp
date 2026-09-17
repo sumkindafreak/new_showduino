@@ -269,6 +269,27 @@ int main() {
     expect_str(id, SHOWDUINO_CARBIDE_LOGICAL_DEFAULT, "invalid id rejected");
   }
 
+  /* ---- ACTIVE presence is online for the desk ---- */
+  {
+    expect(showduino_parse_state_node_lamp("STATE:NODE:LAMP:ACTIVE") ==
+               SHOWDUINO_LAMP_NODE_WIRE_ACTIVE,
+           "ACTIVE presence token");
+    expect(showduino_lamp_wire_to_avail(SHOWDUINO_LAMP_NODE_WIRE_ACTIVE) ==
+               SHOWDUINO_NODE_WIRE_ONLINE,
+           "ACTIVE gates the desk as online");
+    ShowduinoLampDetailWire a;
+    ShowduinoLampDetailWire b;
+    memset(&a, 0, sizeof(a));
+    memset(&b, 0, sizeof(b));
+    strncpy(a.state, "SHOW_CONTROLLED", sizeof(a.state) - 1);
+    strncpy(a.fx, "BURNING", sizeof(a.fx) - 1);
+    a.brightness = 80;
+    b = a;
+    expect(showduino_lamp_detail_equal(&a, &b) == 1, "identical lamp detail equal");
+    b.brightness = 81;
+    expect(showduino_lamp_detail_equal(&a, &b) == 0, "brightness change is unequal");
+  }
+
   std::printf("\n");
   if (g_fails == 0) {
     std::printf("All Director lamp sheet tests passed.\n");

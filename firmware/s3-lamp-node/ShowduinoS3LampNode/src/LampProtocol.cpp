@@ -125,7 +125,8 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
   if (origin == SHOWDUINO_CMD_ORIGIN_SHOW &&
       (cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT || cmd == SHOWDUINO_LAMP_CMD_STATUS ||
        showduino_lamp_cmd_theatrical(cmd))) {
-    lampOwnerApplyEvent(cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT
+    lampOwnerApplyEvent((cmd == SHOWDUINO_LAMP_CMD_OWN_GRANT ||
+                         showduino_lamp_cmd_theatrical(cmd))
                             ? SHOWDUINO_OWNER_EV_GRANT
                             : SHOWDUINO_OWNER_EV_KEEP);
     onOwnerEdges();

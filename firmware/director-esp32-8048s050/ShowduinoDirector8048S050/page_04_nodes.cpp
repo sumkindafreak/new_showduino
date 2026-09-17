@@ -281,7 +281,9 @@ static void apply_card(Page04Role role, bool present, const char *status,
   if (c->accent) {
     lv_obj_set_style_bg_opa(c->accent, present ? LV_OPA_COVER : LV_OPA_40, 0);
   }
-  if (s_open == (int)role) fill_sheet();
+  /* Lamp sheet has a cheap live refresh. Rebuilding it from card updates
+   * during IGNITE replies froze the desk. */
+  if (s_open == (int)role && role != PAGE04_ROLE_LAMP) fill_sheet();
 }
 
 static void set_action(uint8_t i, const char *label, const char *cmd, bool enable, bool danger) {
@@ -399,6 +401,18 @@ static void apply_lamp_sheet_widgets(void) {
         lv_color_hex(m->emergency ? ShowduinoPalette::Danger
                      : (m->online ? ShowduinoPalette::Muted : ShowduinoPalette::Warn)), 0);
   }
+}
+
+static void apply_lamp_live(void) {
+  if (s_open != (int)PAGE04_ROLE_LAMP) return;
+  apply_lamp_sheet_widgets();
+  set_action(0, "IGNITE", PAGE04_CMD_LAMP_IGNITE,
+             s_lamp_sheet.ignite_enabled != 0, false);
+  set_action(1, "EXTINGUISH", PAGE04_CMD_LAMP_EXTINGUISH,
+             s_lamp_sheet.extinguish_enabled != 0, true);
+  set_action(2, "FLARE", PAGE04_CMD_LAMP_FLARE,
+             s_lamp_sheet.flare_enabled != 0, false);
+  set_action(3, "REFRESH", PAGE04_CMD_LAMP_STATUS, true, false);
 }
 
 static void fill_sheet(void) {
@@ -884,6 +898,7 @@ void page_04_nodes_close_sheet(void) {
 }
 
 void page_04_nodes_set_lock(bool emergency) {
+  if (s_emergency == emergency) return;
   s_emergency = emergency;
   if (s_open >= 0) fill_sheet();
 }
@@ -927,7 +942,7 @@ void page_04_nodes_set_card(Page04Role role, bool present,
 
 void page_04_nodes_set_lamp_sheet(const ShowduinoLampDirectorSheet *model) {
   if (model) s_lamp_sheet = *model;
-  if (s_open == (int)PAGE04_ROLE_LAMP) fill_sheet();
+  apply_lamp_live();
 }
 
 void page_04_nodes_set_emergency_sheet(const ShowduinoEmergencyDirectorSheet *model) {

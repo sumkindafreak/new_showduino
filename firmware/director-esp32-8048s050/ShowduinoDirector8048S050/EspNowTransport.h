@@ -58,6 +58,10 @@ public:
 
     online = true;
     sendBusy = false;
+    sendBusySinceMs = 0;
+    txHead = 0;
+    txTail = 0;
+    txQueued = 0;
     portENTER_CRITICAL(&rxMux);
     rxHead = 0;
     rxTail = 0;
@@ -92,36 +96,24 @@ public:
 
   void service(bool haveLink) {
     follow_.tick(haveLink);
+    pumpTx();
   }
 
   uint8_t radioChannel() const { return follow_.channel(); }
 
   bool sendCommand(const String &command) {
     if (!online) return false;
-    if (sendBusy) return false;
-
-    ShowduinoEspNowPacket packet = {};
-    packet.magic = SHOWDUINO_ESPNOW_MAGIC;
-    packet.version = SHOWDUINO_ESPNOW_VERSION;
-    packet.sequence = nextSequence++;
-    packet.sentMillis = millis();
-    command.substring(0, SHOWDUINO_ESPNOW_COMMAND_MAX - 1).toCharArray(packet.command, SHOWDUINO_ESPNOW_COMMAND_MAX);
-
-    lastCommand = command;
-    lastSequence = packet.sequence;
-
-    sendBusy = true;
-    lastCallbackOk = false;
-    callbackSeen = false;
-
-    esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
-    if (result != ESP_OK) {
-      sendBusy = false;
-      lastSendOk = false;
-      return false;
+    if (txQueued >= TX_QUEUE_DEPTH) {
+      /* Drop oldest (usually HEARTBEAT) so operator lamp/show commands still go. */
+      txTail = (uint8_t)((txTail + 1) % TX_QUEUE_DEPTH);
+      txQueued--;
     }
-
-    lastSendOk = true;
+    command.substring(0, SHOWDUINO_ESPNOW_COMMAND_MAX - 1)
+        .toCharArray(txQueue[txHead], SHOWDUINO_ESPNOW_COMMAND_MAX);
+    txHead = (uint8_t)((txHead + 1) % TX_QUEUE_DEPTH);
+    txQueued++;
+    lastCommand = command;
+    pumpTx();
     return true;
   }
 
@@ -145,12 +137,19 @@ public:
 
 private:
   static const uint8_t RX_QUEUE_DEPTH = 32;
+  static const uint8_t TX_QUEUE_DEPTH = 8;
+  static const uint32_t SEND_BUSY_WATCHDOG_MS = 150UL;
 
   bool online = false;
   bool lastSendOk = false;
   uint16_t nextSequence = 1;
   uint16_t lastSequence = 0;
   String lastCommand;
+  char txQueue[TX_QUEUE_DEPTH][SHOWDUINO_ESPNOW_COMMAND_MAX] = {};
+  uint8_t txHead = 0;
+  uint8_t txTail = 0;
+  uint8_t txQueued = 0;
+  uint32_t sendBusySinceMs = 0;
 
   static portMUX_TYPE rxMux;
   static volatile bool sendBusy;
@@ -169,6 +168,40 @@ private:
     SHOWDUINO_COMMS_MAC_5
   };
   ShowduinoRadioFollow follow_{};
+
+  void pumpTx() {
+    if (!online) return;
+    if (sendBusy) {
+      if ((millis() - sendBusySinceMs) < SEND_BUSY_WATCHDOG_MS) return;
+      sendBusy = false;
+    }
+    if (txQueued == 0) return;
+
+    ShowduinoEspNowPacket packet = {};
+    packet.magic = SHOWDUINO_ESPNOW_MAGIC;
+    packet.version = SHOWDUINO_ESPNOW_VERSION;
+    packet.sequence = nextSequence++;
+    packet.sentMillis = millis();
+    memcpy(packet.command, txQueue[txTail], SHOWDUINO_ESPNOW_COMMAND_MAX);
+    packet.command[SHOWDUINO_ESPNOW_COMMAND_MAX - 1] = 0;
+    lastSequence = packet.sequence;
+
+    sendBusy = true;
+    sendBusySinceMs = millis();
+    lastCallbackOk = false;
+    callbackSeen = false;
+
+    esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
+    if (result != ESP_OK) {
+      sendBusy = false;
+      lastSendOk = false;
+      return;
+    }
+
+    txTail = (uint8_t)((txTail + 1) % TX_QUEUE_DEPTH);
+    txQueued--;
+    lastSendOk = true;
+  }
 
   bool addBridgePeer() {
     if (esp_now_is_peer_exist(stageBridgeMac)) {

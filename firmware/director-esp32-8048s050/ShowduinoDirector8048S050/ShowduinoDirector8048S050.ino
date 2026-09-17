@@ -326,6 +326,8 @@ bool isQuietLinkTraffic(const String &msg) {
          msg == SHOWDUINO_WIRE_SNAPSHOT_END ||
          msg == "ERR:UNKNOWN_COMMAND" ||
          msg.startsWith("ERR:UNKNOWN_COMMAND:") ||
+         msg.startsWith("LAMP:PENDING") ||
+         msg.startsWith("LAMP:OWNED") ||
          msg.startsWith("STATE:") ||
          msg.startsWith(SHOW_RUNTIME_WIRE_PREFIX) ||
          /* Quiet 1 Hz clock pushes; keep TIME:REQUEST visible for diagnostics. */
@@ -729,8 +731,10 @@ void sendToStage(const String &command) {
     else ui.appendLog("TX -> Stage UART: " + command);
   }
 
-  // Drain any replies that arrived during the blocking send wait.
-  readEspNowReplies();
+  /* Do not drain ESP-NOW here. LVGL click handlers call sendToStage();
+   * handling STATE:NODE:LAMP replies would rebuild the Nodes sheet on the
+   * touch callback and freeze the desk (then heartbeats miss and the S3
+   * link looks dead). Replies are pumped from loop(). */
 }
 
 void requestStateSync() {
@@ -1263,7 +1267,7 @@ void readEspNowReplies() {
   if (!espNowReady) return;
   String reply;
   uint8_t n = 0;
-  while (n < 32 && espNowTransport.popReply(reply)) {
+  while (n < 8 && espNowTransport.popReply(reply)) {
     handleStageLine(reply);
     n++;
   }

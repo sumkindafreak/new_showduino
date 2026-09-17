@@ -215,15 +215,12 @@ bool lampNodeLinkHandleCommand(const char *command, char *reply, size_t replyLen
   if (!lampCmd) return false;
   if (reply && replyLen) reply[0] = '\0';
 
+  const ShowduinoLampCmd parsedCmd = showduino_lamp_parse_command(command, nullptr);
   const bool alwaysOk =
-      !strcmp(command, "LAMP:STATUS") ||
-      !strcmp(command, "LAMP:NODE:STATUS") ||
-      !strcmp(command, "LAMP:OFF") ||
-      !strcmp(command, "LAMP:STOP") ||
-      !strcmp(command, "LAMP:NODE:STOP") ||
-      !strcmp(command, "LAMP:EXTINGUISH") ||
-      !strcmp(command, "LAMP:NODE:EXTINGUISH") ||
-      (strstr(command, ":EXTINGUISH") != nullptr);
+      parsedCmd == SHOWDUINO_LAMP_CMD_STATUS ||
+      parsedCmd == SHOWDUINO_LAMP_CMD_OFF ||
+      parsedCmd == SHOWDUINO_LAMP_CMD_STOP ||
+      parsedCmd == SHOWDUINO_LAMP_CMD_EXTINGUISH;
   if (emergencyLocked && !alwaysOk) {
     if (reply && replyLen) strncpy(reply, "REJECTED:LAMP:EMERGENCY_ACTIVE", replyLen - 1);
     return true;
@@ -231,6 +228,14 @@ bool lampNodeLinkHandleCommand(const char *command, char *reply, size_t replyLen
   if (!sSt.online && !alwaysOk) {
     if (reply && replyLen) strncpy(reply, "REJECTED:LAMP:OFFLINE", replyLen - 1);
     return true;
+  }
+
+  if (parsedCmd != SHOWDUINO_LAMP_CMD_NONE &&
+      parsedCmd != SHOWDUINO_LAMP_CMD_STATUS &&
+      parsedCmd != SHOWDUINO_LAMP_CMD_OWN_GRANT &&
+      parsedCmd != SHOWDUINO_LAMP_CMD_EMERGENCY_STOP &&
+      parsedCmd != SHOWDUINO_LAMP_CMD_EMERGENCY_CLEAR) {
+    route(sSeq++, "LAMP:NODE:OWN:GRANT");
   }
 
   const uint32_t seq = sSeq++;

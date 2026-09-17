@@ -542,9 +542,9 @@ static inline ShowduinoLampFail showduino_lamp_can_accept_ex(
   }
   if (showduino_lamp_cmd_theatrical(cmd)) {
     if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) {
-      return st == SHOWDUINO_LAMP_ST_SHOW_CONTROLLED
-                 ? SHOWDUINO_LAMP_FAIL_NONE
-                 : SHOWDUINO_LAMP_FAIL_NOT_OWNER;
+      /* P4 routed this. Accept while GRANT is in flight or the node is
+       * still SEARCHING/STANDALONE after announce. Emergency is gated above. */
+      return SHOWDUINO_LAMP_FAIL_NONE;
     }
     if (st == SHOWDUINO_LAMP_ST_SHOW_CONTROLLED) {
       return SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED;

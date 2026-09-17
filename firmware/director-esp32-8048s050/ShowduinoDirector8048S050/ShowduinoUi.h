@@ -378,9 +378,10 @@ public:
   }
 
   void setLampNodeDetail(const ShowduinoLampDetailWire &d) {
+    if (lampDetailValid_ && showduino_lamp_detail_equal(&lampDetail_, &d)) return;
     lampDetail_ = d;
     lampDetailValid_ = true;
-    refreshNodesPage();
+    if (page_04_nodes_is_active()) refreshLampSheet();
   }
 
   void setPixelNodeAvail(ShowduinoPixelNodeWire wire) {
@@ -407,8 +408,9 @@ public:
   }
 
   void setPixelNodeDetail(const ShowduinoPixelDetailWire &d) {
+    if (memcmp(&pixelDetail_, &d, sizeof(d)) == 0) return;
     pixelDetail_ = d;
-    refreshNodesPage();
+    if (page_04_nodes_is_active()) refreshNodesPage();
   }
 
   void setAudioNodeWire(ShowduinoAudioNodeWire wire) {
@@ -843,7 +845,7 @@ public:
     eventSlot(0)[OPERATOR_EVENT_LINE_LEN - 1] = '\0';
     if (eventLogCount < OPERATOR_EVENT_LOG_MAX) eventLogCount++;
 
-    refreshLogsDisplay();
+    logsDirty_ = true;
   }
 
   static const char *logSeverityTag(const char *msg) {
@@ -1256,6 +1258,10 @@ public:
 
   // Call often from loop. Only touches LVGL when something actually changed.
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
+    if (logsDirty_) {
+      logsDirty_ = false;
+      refreshLogsDisplay();
+    }
     syncStatusBarHealth();
     statusBar_.update(millis());
     if (statusBar_.root()) {
@@ -1544,6 +1550,7 @@ private:
   }
 
   void refreshLampSheet() {
+    if (!page_04_nodes_is_active()) return;
     ShowduinoLampDirectorInput in;
     ShowduinoLampDirectorSheet sh;
     memset(&in, 0, sizeof(in));
@@ -2190,6 +2197,7 @@ private:
   bool emergencySessionOpen = false;
   bool completeOverlayVisible = false;
   bool liveStatusDirty = true;
+  bool logsDirty_ = false;
   unsigned long emergencyActiveSinceMs = 0;
   char estopShowName[64] = "-";
   char estopPlayStateBefore[24] = "Stopped";

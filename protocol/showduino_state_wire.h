@@ -305,6 +305,16 @@ static inline int showduino_parse_state_node_lamp_detail(const char *line,
   return 1;
 }
 
+static inline int showduino_lamp_detail_equal(const ShowduinoLampDetailWire *a,
+                                              const ShowduinoLampDetailWire *b) {
+  if (!a || !b) return 0;
+  return a->brightness == b->brightness &&
+         strcmp(a->state, b->state) == 0 &&
+         strcmp(a->fx, b->fx) == 0 &&
+         strcmp(a->mac, b->mac) == 0 &&
+         strcmp(a->firmware, b->firmware) == 0;
+}
+
 typedef enum ShowduinoAudioNodeWire {
   SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE = 0,
   SHOWDUINO_AUDIO_NODE_WIRE_ONLINE,

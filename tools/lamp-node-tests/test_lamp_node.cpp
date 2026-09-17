@@ -123,6 +123,26 @@ int main() {
                                       SHOWDUINO_CMD_ORIGIN_WEB) ==
              SHOWDUINO_LAMP_FAIL_NONE,
          "web commissioning ignite while searching");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_SEARCHING,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_LAMP_FAIL_NONE,
+         "P4 ignite while searching");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_STANDALONE,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_LAMP_FAIL_NONE,
+         "P4 ignite while standalone");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_STANDALONE,
+                                      SHOWDUINO_LAMP_CMD_FX,
+                                      SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_LAMP_FAIL_NONE,
+         "P4 flare/fx while standalone");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED,
+         "web cannot override after grant");
   expect(showduino_lamp_comms_loss_extinguish(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
                                               1, 0) == 1,
          "show-controlled timeout extinguishes");
