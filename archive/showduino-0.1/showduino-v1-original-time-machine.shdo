@@ -12,7 +12,7 @@
     "description": "Modern SHDO reconstruction of the original Showduino 0.1 time-machine attraction.",
     "author": "Toby Brandon",
     "version": "2.0.0",
-    "revision": 2,
+    "revision": 3,
     "duration": 300000
   },
   "architecture": {
@@ -62,14 +62,263 @@
       "targetDeviceId": "audio-1"
     }
   ],
-  "clips": [],
+  "clips": [
+    {
+      "id": "boot-booting-up",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-booting-up",
+      "name": "Booting up",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 0,
+      "durationMs": 18000,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/booting_up.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Booting up",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 18000,
+        "value": "The_Chamber/booting_up.wav",
+        "params": {
+          "file": "The_Chamber/booting_up.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-steam",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-steam",
+      "name": "Steam",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 23000,
+      "durationMs": 3000,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/steam.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Steam",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "The_Chamber/steam.wav",
+        "params": {
+          "file": "The_Chamber/steam.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-radio1",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-radio1",
+      "name": "Radio 1",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 26000,
+      "durationMs": 3000,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/radio1.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Radio 1",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "The_Chamber/radio1.wav",
+        "params": {
+          "file": "The_Chamber/radio1.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-radio2",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-radio2",
+      "name": "Radio 2",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 29000,
+      "durationMs": 5000,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/radio2.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Radio 2",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 5000,
+        "value": "The_Chamber/radio2.wav",
+        "params": {
+          "file": "The_Chamber/radio2.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-radio3",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-radio3",
+      "name": "Radio 3",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 34000,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/radio3.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Radio 3",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "value": "The_Chamber/radio3.wav",
+        "params": {
+          "file": "The_Chamber/radio3.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-blast-shield",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-blast-shield",
+      "name": "Blast shield",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 42000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "file": "The_Chamber/blast_shield.wav",
+        "volume": 80,
+        "loop": false
+      },
+      "action": {
+        "type": "audio",
+        "label": "Blast shield",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 0,
+        "value": "The_Chamber/blast_shield.wav",
+        "params": {
+          "file": "The_Chamber/blast_shield.wav",
+          "volume": 80,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "boot-complete",
+      "trackId": "track-audio",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-complete",
+      "name": "Opening sequence complete",
+      "type": "log",
+      "startMs": 42000,
+      "durationMs": 0,
+      "enabled": true
+    }
+  ],
   "markers": [],
   "scenes": [
     {
       "id": "scene-boot",
       "name": "Machine Start / Opening Sequence",
       "order": 0,
-      "cues": []
+      "cues": [
+        {
+          "id": "cue-boot-booting-up",
+          "name": "Booting up",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-booting-up"
+          ]
+        },
+        {
+          "id": "cue-boot-steam",
+          "name": "Steam",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-steam"
+          ]
+        },
+        {
+          "id": "cue-boot-radio1",
+          "name": "Radio 1",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-radio1"
+          ]
+        },
+        {
+          "id": "cue-boot-radio2",
+          "name": "Radio 2",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-radio2"
+          ]
+        },
+        {
+          "id": "cue-boot-radio3",
+          "name": "Radio 3",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-radio3"
+          ]
+        },
+        {
+          "id": "cue-boot-blast-shield",
+          "name": "Blast shield",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-blast-shield"
+          ]
+        },
+        {
+          "id": "cue-boot-complete",
+          "name": "Opening sequence complete",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-complete"
+          ]
+        }
+      ]
     },
     {
       "id": "scene-dino",
@@ -115,33 +364,168 @@
     }
   ],
   "assets": [
-    {"id":"audio-alarm","name":"alarm.wav","type":"audio","path":"The_Chamber/alarm.wav"},
-    {"id":"audio-blast-shield","name":"blast_shield.wav","type":"audio","path":"The_Chamber/blast_shield.wav"},
-    {"id":"audio-booting-up","name":"booting_up.wav","type":"audio","path":"The_Chamber/booting_up.wav"},
-    {"id":"audio-dinosaur-scene","name":"dinosaur_scene.wav","type":"audio","path":"The_Chamber/dinosaur_scene.wav"},
-    {"id":"audio-door","name":"door.wav","type":"audio","path":"The_Chamber/door.wav"},
-    {"id":"audio-door-open","name":"door_open.wav","type":"audio","path":"The_Chamber/door_open.wav"},
-    {"id":"audio-electric","name":"electric.wav","type":"audio","path":"The_Chamber/electric.wav"},
-    {"id":"audio-emergency","name":"emergency.wav","type":"audio","path":"The_Chamber/emergency.wav"},
-    {"id":"audio-heavy-lightning","name":"heavy_lightning.wav","type":"audio","path":"The_Chamber/heavy_lightning.wav"},
-    {"id":"audio-machine-ambience","name":"machine_ambience.wav","type":"audio","path":"The_Chamber/machine_ambience.wav"},
-    {"id":"audio-machine-breaks","name":"machine_breaks.wav","type":"audio","path":"The_Chamber/machine_breaks.wav"},
-    {"id":"audio-radio1","name":"radio1.wav","type":"audio","path":"The_Chamber/radio1.wav"},
-    {"id":"audio-radio1a","name":"radio1a.wav","type":"audio","path":"The_Chamber/radio1a.wav"},
-    {"id":"audio-radio2","name":"radio2.wav","type":"audio","path":"The_Chamber/radio2.wav"},
-    {"id":"audio-radio3","name":"radio3.wav","type":"audio","path":"The_Chamber/radio3.wav"},
-    {"id":"audio-radio4","name":"radio4.wav","type":"audio","path":"The_Chamber/radio4.wav"},
-    {"id":"audio-radio5","name":"radio5.wav","type":"audio","path":"The_Chamber/radio5.wav"},
-    {"id":"audio-radio6","name":"radio6.wav","type":"audio","path":"The_Chamber/radio6.wav"},
-    {"id":"audio-radio7","name":"radio7.wav","type":"audio","path":"The_Chamber/radio7.wav"},
-    {"id":"audio-radio8","name":"radio8.wav","type":"audio","path":"The_Chamber/radio8.wav"},
-    {"id":"audio-radio9","name":"radio9.wav","type":"audio","path":"The_Chamber/radio9.wav"},
-    {"id":"audio-ripper-buildup","name":"ripper_buildup.wav","type":"audio","path":"The_Chamber/ripper_buildup.wav"},
-    {"id":"audio-roar","name":"roar.wav","type":"audio","path":"The_Chamber/roar.wav"},
-    {"id":"audio-steam","name":"steam.wav","type":"audio","path":"The_Chamber/steam.wav"},
-    {"id":"audio-victorian-london","name":"victorian_london.wav","type":"audio","path":"The_Chamber/victorian_london.wav"},
-    {"id":"audio-war-1944","name":"war_1944.wav","type":"audio","path":"The_Chamber/war_1944.wav"},
-    {"id":"audio-whales","name":"whales.wav","type":"audio","path":"The_Chamber/whales.wav"}
+    {
+      "id": "audio-alarm",
+      "name": "alarm.wav",
+      "type": "audio",
+      "path": "The_Chamber/alarm.wav"
+    },
+    {
+      "id": "audio-blast-shield",
+      "name": "blast_shield.wav",
+      "type": "audio",
+      "path": "The_Chamber/blast_shield.wav"
+    },
+    {
+      "id": "audio-booting-up",
+      "name": "booting_up.wav",
+      "type": "audio",
+      "path": "The_Chamber/booting_up.wav"
+    },
+    {
+      "id": "audio-dinosaur-scene",
+      "name": "dinosaur_scene.wav",
+      "type": "audio",
+      "path": "The_Chamber/dinosaur_scene.wav"
+    },
+    {
+      "id": "audio-door",
+      "name": "door.wav",
+      "type": "audio",
+      "path": "The_Chamber/door.wav"
+    },
+    {
+      "id": "audio-door-open",
+      "name": "door_open.wav",
+      "type": "audio",
+      "path": "The_Chamber/door_open.wav"
+    },
+    {
+      "id": "audio-electric",
+      "name": "electric.wav",
+      "type": "audio",
+      "path": "The_Chamber/electric.wav"
+    },
+    {
+      "id": "audio-emergency",
+      "name": "emergency.wav",
+      "type": "audio",
+      "path": "The_Chamber/emergency.wav"
+    },
+    {
+      "id": "audio-heavy-lightning",
+      "name": "heavy_lightning.wav",
+      "type": "audio",
+      "path": "The_Chamber/heavy_lightning.wav"
+    },
+    {
+      "id": "audio-machine-ambience",
+      "name": "machine_ambience.wav",
+      "type": "audio",
+      "path": "The_Chamber/machine_ambience.wav"
+    },
+    {
+      "id": "audio-machine-breaks",
+      "name": "machine_breaks.wav",
+      "type": "audio",
+      "path": "The_Chamber/machine_breaks.wav"
+    },
+    {
+      "id": "audio-radio1",
+      "name": "radio1.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio1.wav"
+    },
+    {
+      "id": "audio-radio1a",
+      "name": "radio1a.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio1a.wav"
+    },
+    {
+      "id": "audio-radio2",
+      "name": "radio2.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio2.wav"
+    },
+    {
+      "id": "audio-radio3",
+      "name": "radio3.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio3.wav"
+    },
+    {
+      "id": "audio-radio4",
+      "name": "radio4.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio4.wav"
+    },
+    {
+      "id": "audio-radio5",
+      "name": "radio5.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio5.wav"
+    },
+    {
+      "id": "audio-radio6",
+      "name": "radio6.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio6.wav"
+    },
+    {
+      "id": "audio-radio7",
+      "name": "radio7.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio7.wav"
+    },
+    {
+      "id": "audio-radio8",
+      "name": "radio8.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio8.wav"
+    },
+    {
+      "id": "audio-radio9",
+      "name": "radio9.wav",
+      "type": "audio",
+      "path": "The_Chamber/radio9.wav"
+    },
+    {
+      "id": "audio-ripper-buildup",
+      "name": "ripper_buildup.wav",
+      "type": "audio",
+      "path": "The_Chamber/ripper_buildup.wav"
+    },
+    {
+      "id": "audio-roar",
+      "name": "roar.wav",
+      "type": "audio",
+      "path": "The_Chamber/roar.wav"
+    },
+    {
+      "id": "audio-steam",
+      "name": "steam.wav",
+      "type": "audio",
+      "path": "The_Chamber/steam.wav"
+    },
+    {
+      "id": "audio-victorian-london",
+      "name": "victorian_london.wav",
+      "type": "audio",
+      "path": "The_Chamber/victorian_london.wav"
+    },
+    {
+      "id": "audio-war-1944",
+      "name": "war_1944.wav",
+      "type": "audio",
+      "path": "The_Chamber/war_1944.wav"
+    },
+    {
+      "id": "audio-whales",
+      "name": "whales.wav",
+      "type": "audio",
+      "path": "The_Chamber/whales.wav"
+    }
   ],
   "globalSettings": {},
   "config": {
@@ -154,11 +538,13 @@
     "studioModel": "timeline-tracks-clips-logical-devices",
     "authoringSource": "showduino-0.1-migration",
     "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
-    "migrationStatus": "canonical-structure-and-audio-library",
+    "migrationStatus": "opening-audio-timeline-authored",
     "notes": [
       "Structure intentionally follows examples/productions/first-audio-test.shdo.",
       "AUDIO-01 resolves relative audio paths beneath /showduino/audio/.",
-      "Original DFPlayer track numbers are historical provenance only and are not runtime addressing."
+      "Original DFPlayer track numbers are historical provenance only and are not runtime addressing.",
+      "Opening audio names are mapped to surviving The_Chamber WAV assets; legacy numeric MP3 track IDs are not used for runtime addressing.",
+      "Opening timing preserves the intended threshold/wait sequence: boot at 0s, Scene 1 at 18s (no new audio), steam 23s, radio1 26s, radio2 29s, radio3 34s, blast shield 42s."
     ]
   }
 }
