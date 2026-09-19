@@ -1,0 +1,583 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "showduino-v1-original-time-machine",
+    "name": "Showduino V1 — Original Time Machine",
+    "description": "Preservation-grade SHDO v2 reconstruction of the original Showduino 0.1 time-machine attraction controller.",
+    "version": "0.1.0-migration",
+    "author": "Toby Brandon",
+    "createdAt": "2026-09-19T00:00:00+01:00",
+    "updatedAt": "2026-09-19T00:00:00+01:00",
+    "tags": [
+      "showduino-history",
+      "time-machine",
+      "migration",
+      "reference-production"
+    ]
+  },
+  "architecture": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "notes": [
+      "Preservation migration from archived Showduino 0.1 Arduino controller.",
+      "Authoring document intentionally records original behavior even where current Stage persistent runtime cannot yet execute every action kind.",
+      "Physical pins from the original controller are provenance only; creative actions target logical device IDs."
+    ]
+  },
+  "devices": [
+    {
+      "id": "audio-ambient",
+      "kind": "audio",
+      "name": "Ambient Audio",
+      "required": true,
+      "legacy": {
+        "object": "mp3_ambient",
+        "serialPins": {
+          "rx": 51,
+          "tx": 52
+        }
+      }
+    },
+    {
+      "id": "audio-machine",
+      "kind": "audio",
+      "name": "Machine Audio",
+      "required": true,
+      "legacy": {
+        "object": "mp3_machine",
+        "serialPins": {
+          "rx": 48,
+          "tx": 49
+        }
+      }
+    },
+    {
+      "id": "pixel-machine",
+      "kind": "lighting",
+      "name": "Machine Pixel Line",
+      "required": true,
+      "legacy": {
+        "object": "machine",
+        "pin": 9,
+        "pixels": 100
+      }
+    },
+    {
+      "id": "pixel-time-display",
+      "kind": "lighting",
+      "name": "Time Display",
+      "required": true,
+      "legacy": {
+        "object": "time_display",
+        "pin": 8,
+        "pixels": 100
+      }
+    },
+    {
+      "id": "pixel-candles",
+      "kind": "lighting",
+      "name": "Candles",
+      "required": true,
+      "legacy": {
+        "object": "pixels",
+        "pin": 7,
+        "pixels": 9
+      }
+    },
+    {
+      "id": "pixel-spotlights",
+      "kind": "lighting",
+      "name": "Spotlights",
+      "required": false,
+      "legacy": {
+        "object": "spotlights",
+        "pin": 7,
+        "pixels": 6
+      }
+    },
+    {
+      "id": "pixel-time-circuits",
+      "kind": "lighting",
+      "name": "Time Circuits",
+      "required": true,
+      "legacy": {
+        "object": "time_circuits",
+        "pin": 6,
+        "pixels": 100
+      }
+    },
+    {
+      "id": "pixel-indicators",
+      "kind": "lighting",
+      "name": "Scene Indicators",
+      "required": true,
+      "legacy": {
+        "object": "Display",
+        "pin": 5,
+        "pixels": 100
+      }
+    },
+    {
+      "id": "fx-relay-01",
+      "kind": "relay",
+      "name": "FX Relay 1",
+      "required": true,
+      "legacy": {
+        "pin": 34,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-02",
+      "kind": "relay",
+      "name": "FX Relay 2",
+      "required": true,
+      "legacy": {
+        "pin": 35,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-03",
+      "kind": "relay",
+      "name": "FX Relay 3",
+      "required": false,
+      "legacy": {
+        "pin": 36,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-04",
+      "kind": "relay",
+      "name": "FX Relay 4",
+      "required": false,
+      "legacy": {
+        "pin": 37,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-05",
+      "kind": "relay",
+      "name": "FX Relay 5",
+      "required": false,
+      "legacy": {
+        "pin": 38,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-06",
+      "kind": "relay",
+      "name": "FX Relay 6",
+      "required": false,
+      "legacy": {
+        "pin": 39,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-07",
+      "kind": "relay",
+      "name": "FX Relay 7",
+      "required": false,
+      "legacy": {
+        "pin": 40,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "fx-relay-08",
+      "kind": "relay",
+      "name": "FX Relay 8",
+      "required": false,
+      "legacy": {
+        "pin": 41,
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-start",
+      "kind": "input",
+      "name": "Start Button",
+      "legacy": {
+        "pin": 23,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-emergency",
+      "kind": "input",
+      "name": "Emergency Stop",
+      "legacy": {
+        "pin": 24,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-reset",
+      "kind": "input",
+      "name": "Reset Button",
+      "legacy": {
+        "pin": 25,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc1",
+      "kind": "input",
+      "name": "Scene Trigger SC1",
+      "legacy": {
+        "pin": 26,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc2",
+      "kind": "input",
+      "name": "Scene Trigger SC2",
+      "legacy": {
+        "pin": 27,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc3",
+      "kind": "input",
+      "name": "Scene Trigger SC3",
+      "legacy": {
+        "pin": 28,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc4",
+      "kind": "input",
+      "name": "Scene Trigger SC4",
+      "legacy": {
+        "pin": 29,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc5",
+      "kind": "input",
+      "name": "Scene Trigger SC5",
+      "legacy": {
+        "pin": 30,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc6",
+      "kind": "input",
+      "name": "Scene Trigger SC6",
+      "legacy": {
+        "pin": 31,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc7",
+      "kind": "input",
+      "name": "Scene Trigger SC7",
+      "legacy": {
+        "pin": 32,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-sc8",
+      "kind": "input",
+      "name": "Scene Trigger SC8",
+      "legacy": {
+        "pin": 33,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-oneshot-01",
+      "kind": "input",
+      "name": "One-shot 1",
+      "legacy": {
+        "pin": 43,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-oneshot-02",
+      "kind": "input",
+      "name": "One-shot 2",
+      "legacy": {
+        "pin": 44,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-oneshot-03",
+      "kind": "input",
+      "name": "One-shot 3",
+      "legacy": {
+        "pin": 45,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    },
+    {
+      "id": "trigger-oneshot-04",
+      "kind": "input",
+      "name": "One-shot 4",
+      "legacy": {
+        "pin": 46,
+        "mode": "INPUT_PULLUP",
+        "activeLow": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-audio-ambient",
+      "name": "Ambient Audio",
+      "deviceId": "audio-ambient"
+    },
+    {
+      "id": "track-audio-machine",
+      "name": "Machine Audio",
+      "deviceId": "audio-machine"
+    },
+    {
+      "id": "track-machine-lighting",
+      "name": "Machine Lighting",
+      "deviceId": "pixel-machine"
+    },
+    {
+      "id": "track-time-display",
+      "name": "Time Display",
+      "deviceId": "pixel-time-display"
+    },
+    {
+      "id": "track-time-circuits",
+      "name": "Time Circuits",
+      "deviceId": "pixel-time-circuits"
+    },
+    {
+      "id": "track-candles",
+      "name": "Candles",
+      "deviceId": "pixel-candles"
+    },
+    {
+      "id": "track-indicators",
+      "name": "Scene Indicators",
+      "deviceId": "pixel-indicators"
+    },
+    {
+      "id": "track-relay-01",
+      "name": "FX Relay 1",
+      "deviceId": "fx-relay-01"
+    },
+    {
+      "id": "track-relay-02",
+      "name": "FX Relay 2",
+      "deviceId": "fx-relay-02"
+    }
+  ],
+  "clips": [],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-boot",
+      "name": "Machine Start / Opening Sequence",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-start",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "covers": [
+          "scene1",
+          "scene2",
+          "scene2_1",
+          "scene3"
+        ],
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-dino",
+      "name": "Travel to Dino",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc1",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 4,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-water",
+      "name": "Travel to Water",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc2",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 5,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-war",
+      "name": "Travel to War",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc3",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 6,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-1842",
+      "name": "1842 / Police / Walking",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc4",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 7,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-pub",
+      "name": "Pub / Victorian London",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc5",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 8,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-home",
+      "name": "Home Scene",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc6",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 9,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-return",
+      "name": "Return / Scene 10",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc7",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "scene": 10,
+        "status": "mapped-pending-cues"
+      }
+    },
+    {
+      "id": "scene-unused-sc8",
+      "name": "SC8 Reserved / No Scene Found",
+      "trigger": {
+        "mode": "input",
+        "deviceId": "trigger-sc8",
+        "edge": "pressed"
+      },
+      "cueIds": [],
+      "legacy": {
+        "status": "unmapped"
+      }
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false
+    },
+    "productionCannotDisable": true
+  },
+  "globalSettings": {
+    "defaultAudioVolume": 30,
+    "timebase": "milliseconds"
+  },
+  "config": {
+    "migrationMode": "preserve-executed-behavior",
+    "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
+    "ambiguityPolicy": "do-not-silently-correct",
+    "notes": [
+      "Legacy relay outputs are active-low: LOW=active, HIGH=inactive.",
+      "Legacy track comments and executed track numbers are both retained when they disagree.",
+      "Continuous legacy effects will be represented as named lighting intents before runtime compilation."
+    ]
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2
+  },
+  "metadata": {
+    "provenance": {
+      "sourceVersion": "SHOWDUINO VER 0.1",
+      "migrationBranch": "showduino-v1-original-show"
+    },
+    "migrationStatus": "device-registry-and-scene-skeleton",
+    "knownAmbiguities": [
+      {
+        "id": "water-whales-track",
+        "note": "Scene 5 executes ambient track 23 while source comment says track 22 (whales). Requires operator confirmation before asset binding."
+      },
+      {
+        "id": "sc8-unused",
+        "note": "SC8 input exists in hardware declarations but no scene activation was found in the extracted scene flow."
+      }
+    ]
+  }
+}
