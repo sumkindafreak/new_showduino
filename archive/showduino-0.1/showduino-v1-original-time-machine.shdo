@@ -12,7 +12,7 @@
     "description": "Modern SHDO reconstruction of the original Showduino 0.1 time-machine attraction.",
     "author": "Toby Brandon",
     "version": "2.0.0",
-    "revision": 3,
+    "revision": 4,
     "duration": 300000
   },
   "architecture": {
@@ -50,6 +50,26 @@
         "route": "audio-node",
         "nodeId": "AUDIO-01"
       }
+    },
+    {
+      "id": "pixels-ambience",
+      "name": "Ambience Pixel Line",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      }
+    },
+    {
+      "id": "pixels-machine",
+      "name": "Machine Pixel Node",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01"
+      }
     }
   ],
   "tracks": [
@@ -60,6 +80,22 @@
       "enabled": true,
       "order": 0,
       "targetDeviceId": "audio-1"
+    },
+    {
+      "id": "track-pixels-ambience",
+      "name": "Ambience",
+      "type": "pixel",
+      "enabled": true,
+      "order": 1,
+      "targetDeviceId": "pixels-ambience"
+    },
+    {
+      "id": "track-pixels-machine",
+      "name": "Machine",
+      "type": "pixel",
+      "enabled": true,
+      "order": 2,
+      "targetDeviceId": "pixels-machine"
     }
   ],
   "clips": [
@@ -538,13 +574,39 @@
     "studioModel": "timeline-tracks-clips-logical-devices",
     "authoringSource": "showduino-0.1-migration",
     "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
-    "migrationStatus": "opening-audio-timeline-authored",
+    "migrationStatus": "opening-audio-and-modern-pixel-routing",
     "notes": [
       "Structure intentionally follows examples/productions/first-audio-test.shdo.",
       "AUDIO-01 resolves relative audio paths beneath /showduino/audio/.",
       "Original DFPlayer track numbers are historical provenance only and are not runtime addressing.",
       "Opening audio names are mapped to surviving The_Chamber WAV assets; legacy numeric MP3 track IDs are not used for runtime addressing.",
-      "Opening timing preserves the intended threshold/wait sequence: boot at 0s, Scene 1 at 18s (no new audio), steam 23s, radio1 26s, radio2 29s, radio3 34s, blast shield 42s."
-    ]
+      "Opening timing preserves the intended threshold/wait sequence: boot at 0s, Scene 1 at 18s (no new audio), steam 23s, radio1 26s, radio2 29s, radio3 34s, blast shield 42s.",
+      "Modern pixel topology: P4 GPIO23 is the backstage Ambience line; LED-01 is the remote Machine Pixel Node."
+    ],
+    "pixelRouting": {
+      "principle": "Showduino stays backstage; local P4 pixels serve nearby ambience, remote Pixel Node lives at the machine.",
+      "ambience": {
+        "targetDeviceId": "pixels-ambience",
+        "route": "p4-show-pixels",
+        "nodeId": "p4",
+        "legacyGroups": [
+          "candles",
+          "spotlights",
+          "environment/scenic lighting"
+        ]
+      },
+      "machine": {
+        "targetDeviceId": "pixels-machine",
+        "route": "pixel-node",
+        "nodeId": "LED-01",
+        "legacyGroups": [
+          "machine",
+          "door/status lighting",
+          "time circuits",
+          "time display",
+          "machine indicators"
+        ]
+      }
+    }
   }
 }
