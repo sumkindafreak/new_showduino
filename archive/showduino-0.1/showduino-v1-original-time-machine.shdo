@@ -12,7 +12,7 @@
     "description": "Modern SHDO reconstruction of the original Showduino 0.1 time-machine attraction.",
     "author": "Toby Brandon",
     "version": "2.0.0",
-    "revision": 4,
+    "revision": 5,
     "duration": 300000
   },
   "architecture": {
@@ -59,6 +59,28 @@
       "binding": {
         "route": "p4-show-pixels",
         "nodeId": "p4"
+      },
+      "capabilities": {
+        "segmentedPixels": true,
+        "maxPixels": 1024,
+        "segments": 16
+      },
+      "metadata": {
+        "role": "backstage-ambience",
+        "segmentPlan": [
+          {
+            "segment": 0,
+            "name": "Candles",
+            "legacySource": "candles",
+            "legacyCount": 9
+          },
+          {
+            "segment": 1,
+            "name": "Spotlights",
+            "legacySource": "spotlights",
+            "legacyCount": 6
+          }
+        ]
       }
     },
     {
@@ -69,6 +91,46 @@
       "binding": {
         "route": "pixel-node",
         "nodeId": "LED-01"
+      },
+      "capabilities": {
+        "segmentedPixels": true,
+        "maxPixels": 512,
+        "segments": 16
+      },
+      "metadata": {
+        "role": "remote-time-machine",
+        "segmentPlan": [
+          {
+            "segment": 0,
+            "name": "Machine body / console",
+            "legacySource": "machine",
+            "legacyRange": "0-17, 22-41"
+          },
+          {
+            "segment": 1,
+            "name": "Door / lock status",
+            "legacySource": "machine",
+            "legacyRange": "18-21"
+          },
+          {
+            "segment": 2,
+            "name": "Time circuits",
+            "legacySource": "time_circuits",
+            "legacyCount": 100
+          },
+          {
+            "segment": 3,
+            "name": "Time display",
+            "legacySource": "time_display",
+            "legacyCount": 100
+          },
+          {
+            "segment": 4,
+            "name": "Machine indicators",
+            "legacySource": "Display",
+            "legacyCount": 100
+          }
+        ]
       }
     }
   ],
@@ -574,7 +636,7 @@
     "studioModel": "timeline-tracks-clips-logical-devices",
     "authoringSource": "showduino-0.1-migration",
     "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
-    "migrationStatus": "opening-audio-and-modern-pixel-routing",
+    "migrationStatus": "logical-pixel-segments-planned",
     "notes": [
       "Structure intentionally follows examples/productions/first-audio-test.shdo.",
       "AUDIO-01 resolves relative audio paths beneath /showduino/audio/.",
@@ -607,6 +669,42 @@
           "machine indicators"
         ]
       }
+    },
+    "segmentMigration": {
+      "status": "logical-plan-only",
+      "note": "Segments identify old functional groups. Physical startPixel/length values remain unassigned until the modern P4 and LED-01 strips are physically laid out/commissioned.",
+      "ambience": [
+        {
+          "segment": 0,
+          "name": "Candles"
+        },
+        {
+          "segment": 1,
+          "name": "Spotlights"
+        }
+      ],
+      "machine": [
+        {
+          "segment": 0,
+          "name": "Machine body / console"
+        },
+        {
+          "segment": 1,
+          "name": "Door / lock status"
+        },
+        {
+          "segment": 2,
+          "name": "Time circuits"
+        },
+        {
+          "segment": 3,
+          "name": "Time display"
+        },
+        {
+          "segment": 4,
+          "name": "Machine indicators"
+        }
+      ]
     }
   }
 }
