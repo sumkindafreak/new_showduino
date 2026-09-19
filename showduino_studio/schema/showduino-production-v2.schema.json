@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Showduino Production v2",
+  "type": "object",
+  "required": [
+    "schema",
+    "project",
+    "architecture",
+    "compatibility",
+    "devices",
+    "tracks",
+    "clips",
+    "markers",
+    "scenes",
+    "assets",
+    "safety",
+    "globalSettings",
+    "config",
+    "package",
+    "metadata"
+  ],
+  "properties": {
+    "schema": {
+      "const": "showduino-production-v2"
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "version",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "required": [
+        "runtimeAuthority",
+        "operator",
+        "transport",
+        "nodeAddressing"
+      ]
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "shdoMajor"
+      ],
+      "properties": {
+        "shdoMajor": {
+          "const": 2
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name"
+        ]
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "deviceId"
+        ]
+      }
+    },
+    "clips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "trackId",
+          "sceneId",
+          "startMs",
+          "actions"
+        ]
+      }
+    },
+    "markers": {
+      "type": "array"
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "trigger",
+          "cueIds"
+        ]
+      }
+    },
+    "assets": {
+      "type": "array"
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "policy",
+        "emergency",
+        "productionCannotDisable"
+      ]
+    },
+    "globalSettings": {
+      "type": "object"
+    },
+    "config": {
+      "type": "object"
+    },
+    "package": {
+      "type": "object",
+      "required": [
+        "format",
+        "version"
+      ],
+      "properties": {
+        "format": {
+          "const": "showduino-production"
+        },
+        "version": {
+          "const": 2
+        }
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
