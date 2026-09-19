@@ -285,12 +285,14 @@ struct ShdoParams {
   uint32_t speed;
   uint32_t intensity;
   uint32_t randomness;
+  uint32_t segment;
+  uint32_t mask;
   uint32_t volume;
   bool reverse;
   bool loop;
   bool blackoutAtEnd;
   bool haveR, haveG, haveB;
-  bool haveLength, haveCount;
+  bool haveLength, haveCount, haveSegment, haveMask;
 };
 
 struct ShdoClip {
@@ -426,6 +428,12 @@ static bool shdoParseParams(ShdoJson &r, ShdoParams *params) {
       if (!r.string(params->secondary, sizeof(params->secondary))) return false;
     } else if (strcmp(key, "startPixel") == 0) {
       if (!r.u32(&params->startPixel)) return false;
+    } else if (strcmp(key, "segment") == 0 || strcmp(key, "segmentId") == 0) {
+      if (!r.u32(&params->segment)) return false;
+      params->haveSegment = true;
+    } else if (strcmp(key, "mask") == 0) {
+      if (!r.u32(&params->mask)) return false;
+      params->haveMask = true;
     } else if (strcmp(key, "length") == 0) {
       if (!r.u32(&params->length)) return false;
       params->haveLength = true;
@@ -624,6 +632,10 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   if (clip.params.haveCount) pixCount = clip.params.count;
   else if (clip.params.haveLength) pixCount = clip.params.length;
   if (pixCount < 1) pixCount = 1;
+  if (clip.params.haveMask && pixCount > 32) {
+    *status = SHDO_UNSUPPORTED_ACTION;
+    return false;
+  }
   if (device->pixelCount > 0 && localStart + pixCount > device->pixelCount) {
     *status = SHDO_UNSUPPORTED_ACTION;
     return false;
@@ -650,6 +662,11 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   if (!add(cmd)) return false;
   snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:FX:%s", prefix, (unsigned)slot, fx);
   if (!add(cmd)) return false;
+  if (clip.params.haveMask) {
+    snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:MASK:%lu",
+             prefix, (unsigned)slot, (unsigned long)clip.params.mask);
+    if (!add(cmd)) return false;
+  }
   snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR:%lu:%lu:%lu",
            prefix, (unsigned)slot, (unsigned long)r, (unsigned long)g, (unsigned long)b);
   if (!add(cmd)) return false;
@@ -1115,7 +1132,15 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
         if (strcmp(devices[di].id, clip.targetDeviceId) == 0) break;
       }
       if (di >= deviceCount) di = 0;
-      uint8_t slot = pixelSlots[di]++;
+      uint8_t slot = 0;
+      if (clip.params.haveSegment) {
+        if (clip.params.segment >= SHOWDUINO_SHDO_PIXEL_SLOTS) {
+          return fail(SHDO_UNSUPPORTED_ACTION, "pixel segment must be 0-15");
+        }
+        slot = (uint8_t)clip.params.segment;
+      } else {
+        slot = pixelSlots[di]++;
+      }
       if (!shdoCompilePixel(clip, device, slot, cueBuf, &compiled, &status)) {
         return fail(status, status == SHDO_MISSING_DEVICE
                                 ? "pixel clip is missing a bound show-pixel device"
