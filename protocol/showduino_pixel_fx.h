@@ -39,6 +39,7 @@ enum class ShowduinoPixelFx : uint8_t {
   Portal,
   Rainbow,
   CustomSequence,
+  Mask,
   Count
 };
 
@@ -66,6 +67,7 @@ struct ShowduinoPixelSegmentState {
   uint32_t lastStepMs;
   uint32_t phase;
   uint32_t aux;
+  uint32_t mask;          /* bit-per-pixel mask for up to 32 pixels */
 };
 
 inline const char *showduinoPixelFxName(ShowduinoPixelFx fx) {
@@ -95,6 +97,7 @@ inline const char *showduinoPixelFxName(ShowduinoPixelFx fx) {
     case ShowduinoPixelFx::Portal:         return "PORTAL";
     case ShowduinoPixelFx::Rainbow:        return "RAINBOW";
     case ShowduinoPixelFx::CustomSequence: return "CUSTOM_SEQUENCE";
+    case ShowduinoPixelFx::Mask:           return "MASK";
     default:                                return "UNKNOWN";
   }
 }
@@ -131,7 +134,8 @@ inline bool showduinoPixelFxFromName(const char *name, ShowduinoPixelFx *out) {
     {"PORTAL", ShowduinoPixelFx::Portal},
     {"PORTAL_GLOW", ShowduinoPixelFx::Portal},
     {"RAINBOW", ShowduinoPixelFx::Rainbow},
-    {"CUSTOM_SEQUENCE", ShowduinoPixelFx::CustomSequence}
+    {"CUSTOM_SEQUENCE", ShowduinoPixelFx::CustomSequence},
+    {"MASK", ShowduinoPixelFx::Mask}
   };
 
   for (size_t i = 0; i < sizeof(entries) / sizeof(entries[0]); ++i) {
@@ -162,6 +166,7 @@ inline ShowduinoPixelSegmentState showduinoPixelDefaultSegment() {
   s.lastStepMs = 0;
   s.phase = 0;
   s.aux = 0;
+  s.mask = 0;
   return s;
 }
 
