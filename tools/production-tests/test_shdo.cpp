@@ -342,5 +342,35 @@ int main() {
            "first-audio-test authoring binds only the Audio Node");
   }
 
+  static const char *kMaskedDisplay =
+      "{\\n"
+      "  \\"schema\\": \\"showduino-production-v2\\",\\n"
+      "  \\"package\\": { \\"version\\": 2 },\\n"
+      "  \\"project\\": { \\"id\\": \\"masked_display\\", \\"name\\": \\"Masked Display\\" },\\n"
+      "  \\"architecture\\": { \\"runtimeAuthority\\": \\"esp32-p4-show-engine\\", \\"transport\\": \\"esp32-s3-comms-controller\\" },\\n"
+      "  \\"safety\\": { \\"policy\\": \\"firmware-authoritative\\", \\"productionCannotDisable\\": true,\\n"
+      "    \\"emergency\\": { \\"autoResume\\": false, \\"requiresManualClear\\": true, \\"stopTimeline\\": true, \\"pixelOverride\\": \\"all-white\\" } },\\n"
+      "  \\"devices\\": [{ \\"id\\": \\"machine\\", \\"type\\": \\"pixel-node\\",\\n"
+      "    \\"binding\\": { \\"route\\": \\"pixel-node\\", \\"nodeId\\": \\"LED-01\\", \\"pixelStart\\": 0, \\"pixelCount\\": 100 } }],\\n"
+      "  \\"clips\\": [{ \\"id\\": \\"display-2025\\", \\"type\\": \\"pixel\\", \\"targetDeviceId\\": \\"machine\\",\\n"
+      "    \\"startMs\\": 18000, \\"params\\": { \\"segment\\": 3, \\"startPixel\\": 0, \\"length\\": 28, \\"effect\\": \\"MASK\\",\\n"
+      "      \\"mask\\": 191884790, \\"r\\": 255, \\"g\\": 0, \\"b\\": 0 } }]\\n"
+      "}\\n";
+
+  ShdoCue displayCues[24]{};
+  uint16_t displayCount = 0;
+  const ShdoStatus displayOk = shdoCompile(kMaskedDisplay, std::strlen(kMaskedDisplay), &manifest,
+                                           displayCues, 24, &displayCount, err, sizeof(err));
+  expect(displayOk == SHDO_OK, "masked numeric-display SHDO compiles");
+  bool sawDisplayRange = false, sawDisplayMask = false, sawDisplayFx = false;
+  for (uint16_t i = 0; i < displayCount; ++i) {
+    if (std::strcmp(displayCues[i].command, "PIXEL:NODE:LED-01:SEGMENT:3:RANGE:0:28") == 0) sawDisplayRange = true;
+    if (std::strcmp(displayCues[i].command, "PIXEL:NODE:LED-01:SEGMENT:3:FX:MASK") == 0) sawDisplayFx = true;
+    if (std::strcmp(displayCues[i].command, "PIXEL:NODE:LED-01:SEGMENT:3:MASK:191884790") == 0) sawDisplayMask = true;
+  }
+  expect(sawDisplayRange, "authored time-display segment 3 is preserved");
+  expect(sawDisplayFx, "time display uses MASK effect");
+  expect(sawDisplayMask, "2025 legacy 28-pixel mask is preserved exactly");
+
   return failures ? 1 : 0;
 }
