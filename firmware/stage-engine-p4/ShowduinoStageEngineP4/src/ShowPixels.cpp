@@ -368,6 +368,14 @@ static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
       break;
     }
 
+    case ShowduinoPixelFx::Mask: {
+      const uint16_t maskedCount = min<uint16_t>(actualCount, 32U);
+      for (uint16_t p = 0; p < maskedCount; ++p) {
+        if ((seg.mask >> p) & 1UL) setPixelScaled(seg.start + p, seg, seg.primary);
+      }
+      break;
+    }
+
     case ShowduinoPixelFx::CustomSequence: {
       const uint32_t unit = periodFromSpeed(seg.speed, 1600, 150);
       uint32_t step = (elapsed / max<uint32_t>(1, unit)) % 3U;
@@ -808,6 +816,17 @@ bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) 
     else if (op == "INTENSITY") seg.intensity = value;
     else seg.randomness = value;
     setReply(reply, replyLen, "PIXEL:SEGMENT:PARAMETER:OK");
+    return true;
+  }
+
+  if (op == "MASK" && n == 5) {
+    uint32_t value;
+    if (!parseU32(p[4], &value)) setReply(reply, replyLen, "PIXEL:ERROR:MASK");
+    else {
+      if (!seg.configured) seg = showduinoPixelDefaultSegment();
+      seg.configured = true; seg.mask = value;
+      setReply(reply, replyLen, "PIXEL:SEGMENT:MASK:OK");
+    }
     return true;
   }
 
