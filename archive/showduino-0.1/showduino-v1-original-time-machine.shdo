@@ -12,7 +12,7 @@
     "description": "Modern SHDO reconstruction of the original Showduino 0.1 time-machine attraction.",
     "author": "Toby Brandon",
     "version": "2.0.0",
-    "revision": 5,
+    "revision": 6,
     "duration": 300000
   },
   "architecture": {
@@ -351,6 +351,212 @@
       "startMs": 42000,
       "durationMs": 0,
       "enabled": true
+    },
+    {
+      "id": "boot-machine-on",
+      "trackId": "track-pixels-machine",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-machine-on",
+      "name": "Machine body / console on",
+      "type": "pixel",
+      "targetDeviceId": "pixels-machine",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "segment": 0,
+        "segmentName": "Machine body / console",
+        "startPixel": 0,
+        "length": 1,
+        "effect": "SOLID",
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "brightness": 255,
+        "speed": 50,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": false
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Machine body / console on",
+        "targetDeviceId": "pixels-machine",
+        "delayMs": 0,
+        "durationMs": 0,
+        "params": {
+          "segment": 0,
+          "segmentName": "Machine body / console",
+          "startPixel": 0,
+          "length": 1,
+          "effect": "SOLID",
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "brightness": 255,
+          "speed": 50,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "boot-door-open",
+      "trackId": "track-pixels-machine",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-door-open",
+      "name": "Door status open / green",
+      "type": "pixel",
+      "targetDeviceId": "pixels-machine",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "segment": 1,
+        "segmentName": "Door / lock status",
+        "startPixel": 0,
+        "length": 1,
+        "effect": "SOLID",
+        "r": 0,
+        "g": 255,
+        "b": 0,
+        "brightness": 255,
+        "speed": 50,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": false
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Door status open / green",
+        "targetDeviceId": "pixels-machine",
+        "delayMs": 0,
+        "durationMs": 0,
+        "params": {
+          "segment": 1,
+          "segmentName": "Door / lock status",
+          "startPixel": 0,
+          "length": 1,
+          "effect": "SOLID",
+          "r": 0,
+          "g": 255,
+          "b": 0,
+          "brightness": 255,
+          "speed": 50,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "boot-time-circuits",
+      "trackId": "track-pixels-machine",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-time-circuits",
+      "name": "Time circuits flicker",
+      "type": "pixel",
+      "targetDeviceId": "pixels-machine",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "segment": 2,
+        "segmentName": "Time circuits",
+        "startPixel": 0,
+        "length": 1,
+        "effect": "FLICKER",
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "secondary": "#101820",
+        "brightness": 255,
+        "speed": 50,
+        "intensity": 80,
+        "randomness": 70,
+        "reverse": false,
+        "blackoutAtEnd": false
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Time circuits flicker",
+        "targetDeviceId": "pixels-machine",
+        "delayMs": 0,
+        "durationMs": 0,
+        "params": {
+          "segment": 2,
+          "segmentName": "Time circuits",
+          "startPixel": 0,
+          "length": 1,
+          "effect": "FLICKER",
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "secondary": "#101820",
+          "brightness": 255,
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "boot-door-lock",
+      "trackId": "track-pixels-machine",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-door-lock",
+      "name": "Door status locked / blue",
+      "type": "pixel",
+      "targetDeviceId": "pixels-machine",
+      "startMs": 42000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "segment": 1,
+        "segmentName": "Door / lock status",
+        "startPixel": 0,
+        "length": 1,
+        "effect": "SOLID",
+        "r": 0,
+        "g": 0,
+        "b": 255,
+        "brightness": 255,
+        "speed": 50,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": false
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Door status locked / blue",
+        "targetDeviceId": "pixels-machine",
+        "delayMs": 0,
+        "durationMs": 0,
+        "params": {
+          "segment": 1,
+          "segmentName": "Door / lock status",
+          "startPixel": 0,
+          "length": 1,
+          "effect": "SOLID",
+          "r": 0,
+          "g": 0,
+          "b": 255,
+          "brightness": 255,
+          "speed": 50,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": false
+        }
+      }
     }
   ],
   "markers": [],
@@ -414,6 +620,38 @@
           "trigger": "Timeline",
           "clipIds": [
             "boot-complete"
+          ]
+        },
+        {
+          "id": "cue-boot-machine-on",
+          "name": "Machine body / console on",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-machine-on"
+          ]
+        },
+        {
+          "id": "cue-boot-door-open",
+          "name": "Door status open / green",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-door-open"
+          ]
+        },
+        {
+          "id": "cue-boot-time-circuits",
+          "name": "Time circuits flicker",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-time-circuits"
+          ]
+        },
+        {
+          "id": "cue-boot-door-lock",
+          "name": "Door status locked / blue",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-door-lock"
           ]
         }
       ]
@@ -636,14 +874,15 @@
     "studioModel": "timeline-tracks-clips-logical-devices",
     "authoringSource": "showduino-0.1-migration",
     "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
-    "migrationStatus": "logical-pixel-segments-planned",
+    "migrationStatus": "opening-audio-and-machine-pixel-behaviour-authored",
     "notes": [
       "Structure intentionally follows examples/productions/first-audio-test.shdo.",
       "AUDIO-01 resolves relative audio paths beneath /showduino/audio/.",
       "Original DFPlayer track numbers are historical provenance only and are not runtime addressing.",
       "Opening audio names are mapped to surviving The_Chamber WAV assets; legacy numeric MP3 track IDs are not used for runtime addressing.",
       "Opening timing preserves the intended threshold/wait sequence: boot at 0s, Scene 1 at 18s (no new audio), steam 23s, radio1 26s, radio2 29s, radio3 34s, blast shield 42s.",
-      "Modern pixel topology: P4 GPIO23 is the backstage Ambience line; LED-01 is the remote Machine Pixel Node."
+      "Modern pixel topology: P4 GPIO23 is the backstage Ambience line; LED-01 is the remote Machine Pixel Node.",
+      "Opening Machine pixel cues use one-pixel placeholder ranges so routing/effects compile now; replace startPixel/length with commissioned physical segment ranges before hardware playback."
     ],
     "pixelRouting": {
       "principle": "Showduino stays backstage; local P4 pixels serve nearby ambience, remote Pixel Node lives at the machine.",
