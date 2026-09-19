@@ -12,7 +12,7 @@
     "description": "Modern SHDO reconstruction of the original Showduino 0.1 time-machine attraction.",
     "author": "Toby Brandon",
     "version": "2.0.0",
-    "revision": 6,
+    "revision": 7,
     "duration": 300000
   },
   "architecture": {
@@ -508,6 +508,59 @@
       }
     },
     {
+      "id": "boot-time-display-2025",
+      "trackId": "track-pixels-machine",
+      "sceneId": "scene-boot",
+      "cueId": "cue-boot-time-display-2025",
+      "name": "Time display — 2025",
+      "type": "pixel",
+      "targetDeviceId": "pixels-machine",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "segment": 3,
+        "segmentName": "Time display",
+        "startPixel": 0,
+        "length": 28,
+        "effect": "MASK",
+        "mask": 191884790,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 255,
+        "speed": 50,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": false
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Time display — 2025",
+        "targetDeviceId": "pixels-machine",
+        "delayMs": 0,
+        "durationMs": 0,
+        "params": {
+          "segment": 3,
+          "segmentName": "Time display",
+          "startPixel": 0,
+          "length": 28,
+          "effect": "MASK",
+          "mask": 191884790,
+          "r": 255,
+          "g": 0,
+          "b": 0,
+          "brightness": 255,
+          "speed": 50,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
       "id": "boot-door-lock",
       "trackId": "track-pixels-machine",
       "sceneId": "scene-boot",
@@ -644,6 +697,14 @@
           "trigger": "Timeline",
           "clipIds": [
             "boot-time-circuits"
+          ]
+        },
+        {
+          "id": "cue-boot-time-display-2025",
+          "name": "Time display — 2025",
+          "trigger": "Timeline",
+          "clipIds": [
+            "boot-time-display-2025"
           ]
         },
         {
@@ -874,7 +935,7 @@
     "studioModel": "timeline-tracks-clips-logical-devices",
     "authoringSource": "showduino-0.1-migration",
     "legacySource": "archive/showduino-0.1/original-time-machine-controller.ino",
-    "migrationStatus": "opening-audio-and-machine-pixel-behaviour-authored",
+    "migrationStatus": "opening-audio-machine-pixels-and-time-display-authored",
     "notes": [
       "Structure intentionally follows examples/productions/first-audio-test.shdo.",
       "AUDIO-01 resolves relative audio paths beneath /showduino/audio/.",
@@ -882,7 +943,8 @@
       "Opening audio names are mapped to surviving The_Chamber WAV assets; legacy numeric MP3 track IDs are not used for runtime addressing.",
       "Opening timing preserves the intended threshold/wait sequence: boot at 0s, Scene 1 at 18s (no new audio), steam 23s, radio1 26s, radio2 29s, radio3 34s, blast shield 42s.",
       "Modern pixel topology: P4 GPIO23 is the backstage Ambience line; LED-01 is the remote Machine Pixel Node.",
-      "Opening Machine pixel cues use one-pixel placeholder ranges so routing/effects compile now; replace startPixel/length with commissioned physical segment ranges before hardware playback."
+      "Opening Machine pixel cues use one-pixel placeholder ranges so routing/effects compile now; replace startPixel/length with commissioned physical segment ranges before hardware playback.",
+      "Time Display now uses the generic 32-pixel MASK effect on LED-01 segment 3. The original Arduino 28-pixel masks are preserved as regression fixtures; physical startPixel is still to be commissioned."
     ],
     "pixelRouting": {
       "principle": "Showduino stays backstage; local P4 pixels serve nearby ambience, remote Pixel Node lives at the machine.",
@@ -944,6 +1006,23 @@
           "name": "Machine indicators"
         }
       ]
+    },
+    "timeDisplay": {
+      "role": "Machine four-digit 28-pixel display",
+      "targetDeviceId": "pixels-machine",
+      "segment": 3,
+      "pixelCount": 28,
+      "rendering": "bit-mask",
+      "bitOrder": "legacy physical pixel index; bit 0 = first display pixel",
+      "commissionedStartPixel": null,
+      "legacyMasks": {
+        "1842": 71303159,
+        "1942": 71168731,
+        "2025": 191884790,
+        "5010": 248500415,
+        "0000": 133160895
+      },
+      "note": "Masks are regression fixtures reconstructed from the original Arduino time_display functions. startPixel remains a commissioning placeholder until the rebuilt machine is physically wired."
     }
   }
 }
