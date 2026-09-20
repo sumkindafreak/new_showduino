@@ -141,9 +141,16 @@ async function load(){
     ['State',S.state],['Fault',S.fault],['OLED','GPIO5/6 0x3C'],
     ['Pixel DATA','GPIO'+S.gpio]
   ]);
-  $('nid').value=S.id||''; $('nname').value=S.name||'';
-  $('count').value=S.configured||100; $('count').max=S.max||512;
-  $('bri').value=S.brightness; $('briv').textContent=S.brightness;
+  // Status polling must never overwrite controls while the operator is editing them.
+  // This prevents caret jumps, garbled identity text and the configured pixel count
+  // being repeatedly reinserted during commissioning.
+  const editing=el=>document.activeElement===el;
+  if(!editing($('nid'))) $('nid').value=S.id||'';
+  if(!editing($('nname'))) $('nname').value=S.name||'';
+  if(!editing($('count'))) $('count').value=S.configured||100;
+  $('count').max=S.max||512;
+  if(!editing($('bri'))) $('bri').value=S.brightness;
+  $('briv').textContent=S.brightness;
 }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
