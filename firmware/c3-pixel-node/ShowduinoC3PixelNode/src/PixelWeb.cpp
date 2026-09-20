@@ -204,16 +204,24 @@ static void handleCommand() {
                  "{\"ok\":false,\"error\":\"EMERGENCY\",\"message\":\"Webpage cannot clear Showduino emergency\"}");
     return;
   }
+  // Physical commissioning remains available while Showduino owns the node.
+  // Theatrical commands stay locked so the local WebUI cannot fight the live show.
+  const bool commissioningCommand =
+      !strncmp(cmd, "PIXEL:COUNT:", 12) ||
+      !strcmp(cmd, "PIXEL:INIT");
+
+  if (pixelNodeStateShowControlled() &&
+      !commissioningCommand &&
+      showduino_pixel_cmd_theatrical(showduino_pixel_classify_command(cmd))) {
+    sServer.send(200, "application/json",
+                 "{\"ok\":false,\"error\":\"SHOW_CONTROLLED\",\"message\":\"CONTROLLED BY SHOWDUINO\"}");
+    return;
+  }
+
   pixelProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_WEB);
   if (pixelEngineEmergency()) {
     sServer.send(200, "application/json",
                  "{\"ok\":false,\"error\":\"EMERGENCY\",\"message\":\"EMERGENCY ACTIVE\"}");
-    return;
-  }
-  if (pixelNodeStateShowControlled() &&
-      showduino_pixel_cmd_theatrical(showduino_pixel_classify_command(cmd))) {
-    sServer.send(200, "application/json",
-                 "{\"ok\":false,\"error\":\"SHOW_CONTROLLED\",\"message\":\"CONTROLLED BY SHOWDUINO\"}");
     return;
   }
   sServer.send(200, "application/json", "{\"ok\":true}");
