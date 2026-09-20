@@ -12,6 +12,7 @@
 #include "BoardConfig.h"
 #include "src/EmergencyInput.h"
 #include "src/EmergencyIndicate.h"
+#include "src/EmergencyDisplay.h"
 #include "src/EmergencyIdentity.h"
 #include "src/EmergencyProtocol.h"
 #include "src/EspNowEmergencyTransport.h"
@@ -52,6 +53,7 @@ void setup() {
   emergencyInputBegin();
   showduino_emergency_machine_init(&gEmergencyMachine, emergencyInputOpen());
   emergencyIndicateBegin();
+  const bool oledOk = emergencyDisplayBegin();
 
   Serial.begin(115200);
 
@@ -73,6 +75,9 @@ void setup() {
   }
 
   nodeDiagPrintBootBanner();
+  Serial.printf("[OLED] SSD1306 0x%02X SDA=%d SCL=%d %s\\n",
+                SHOWDUINO_ESTOP_OLED_ADDR, SHOWDUINO_ESTOP_OLED_SDA,
+                SHOWDUINO_ESTOP_OLED_SCL, oledOk ? "OK" : "NOT FOUND");
   emergencyProtocolAnnounce();
 }
 
@@ -81,5 +86,6 @@ void loop() {
   pollUsb();
   emergencyProtocolService();
   emergencyIndicateService(&gEmergencyMachine, emergencyEspNowHaveComms());
+  emergencyDisplayService(&gEmergencyMachine);
   nodeDiagMarkLoop(micros() - t0);
 }
