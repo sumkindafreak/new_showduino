@@ -46,6 +46,18 @@
 #define SHOWDUINO_ESTOP_NODE_BUZZER_GPIO        (-1)
 #define SHOWDUINO_ESTOP_NODE_BUZZER_ACTIVE      HIGH
 
+/* Same SSD1306 OLED hardware/pin map as the C3 Pixel Node. */
+#define SHOWDUINO_ESTOP_OLED_SDA                 5
+#define SHOWDUINO_ESTOP_OLED_SCL                 6
+#define SHOWDUINO_ESTOP_OLED_ADDR                0x3C
+#define SHOWDUINO_ESTOP_OLED_I2C_HZ              400000UL
+#define SHOWDUINO_ESTOP_OLED_WIDTH               128
+#define SHOWDUINO_ESTOP_OLED_HEIGHT              64
+#define SHOWDUINO_ESTOP_OLED_MARGIN_LEFT         28
+#define SHOWDUINO_ESTOP_OLED_MARGIN_TOP          24
+#define SHOWDUINO_ESTOP_OLED_VISIBLE_H           38
+#define SHOWDUINO_ESTOP_OLED_ROTATION_180        1
+
 #define SHOWDUINO_ESTOP_NODE_INPUT_POLL_MS      5UL
 
 #endif
