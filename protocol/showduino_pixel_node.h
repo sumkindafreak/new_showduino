@@ -297,6 +297,14 @@ static inline ShowduinoPixelFail showduino_pixel_can_accept_ex(
   if (cmd == SHOWDUINO_PIXEL_CMD_ID || cmd == SHOWDUINO_PIXEL_CMD_NAME ||
       cmd == SHOWDUINO_PIXEL_CMD_COUNT || cmd == SHOWDUINO_PIXEL_CMD_INIT) {
     if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) return SHOWDUINO_PIXEL_FAIL_NONE;
+    // Physical commissioning remains available from the node WebUI while
+    // Showduino owns the node. Identity, line count and line initialisation
+    // do not constitute theatrical control.
+    if (origin == SHOWDUINO_CMD_ORIGIN_WEB &&
+        (cmd == SHOWDUINO_PIXEL_CMD_ID || cmd == SHOWDUINO_PIXEL_CMD_NAME ||
+         cmd == SHOWDUINO_PIXEL_CMD_COUNT || cmd == SHOWDUINO_PIXEL_CMD_INIT)) {
+      return SHOWDUINO_PIXEL_FAIL_NONE;
+    }
     if (st == SHOWDUINO_PIXEL_ST_SHOW_CONTROLLED) {
       return SHOWDUINO_PIXEL_FAIL_SHOW_CONTROLLED;
     }
