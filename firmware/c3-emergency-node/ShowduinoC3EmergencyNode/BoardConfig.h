@@ -8,17 +8,16 @@
  * Showduino C3 Emergency Node — specialist ESP-NOW station.
  *
  * GPIO MAP IS UNCONFIRMED. These values are proposed defaults for a Super Mini
- * class ESP32-C3. Do not treat them as physically verified. Do not flash this
- * firmware until the mushroom switch wiring is commissioned on the bench.
+ * class ESP32-C3 and must be physically confirmed during breadboard commissioning.
  *
- * Proposed NC topology (preferred):
- *   mushroom NC contact between GPIO and GND
+ * Provisional momentary-pushbutton topology:
+ *   normally-open momentary pushbutton between GPIO and GND
  *   pinMode INPUT_PULLUP
- *   CLOSED (healthy)  -> LOW
- *   OPEN (pressed or local wire broken) -> HIGH -> EMERGENCY CONDITION
+ *   RELEASED -> HIGH (healthy)
+ *   PRESSED  -> LOW  (emergency assertion)
  *
- * Opening the local NC input is an emergency whether caused by a button press
- * or a broken local conductor. V1 does not distinguish those two cases.
+ * The emergency assertion is latched by the Emergency Node state machine.
+ * Releasing the pushbutton must not clear the P4 global emergency latch.
  */
 
 #define SHOWDUINO_EMERGENCY_NODE_FW             "0.1.0"
@@ -28,9 +27,9 @@
 #define SHOWDUINO_ESPNOW_CHANNEL                1
 #define SHOWDUINO_ESTOP_NODE_AP_PASSWORD        "showduino"
 
-/* Proposed NC input — UNCONFIRMED. */
+/* Provisional momentary emergency pushbutton input — UNCONFIRMED GPIO. */
 #define SHOWDUINO_ESTOP_NODE_GPIO               4
-#define SHOWDUINO_ESTOP_NODE_OPEN_LEVEL         HIGH
+#define SHOWDUINO_ESTOP_NODE_OPEN_LEVEL         LOW
 #define SHOWDUINO_ESTOP_NODE_PIN_MODE           INPUT_PULLUP
 
 /* Optional local re-arm (BOOT). Never clears P4 emergency. UNCONFIRMED. */
