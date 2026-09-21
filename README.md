@@ -1,229 +1,154 @@
-# Showduino v1
+# Showduino
 
-**Showduino** is a modular, distributed show-control platform for scare attractions, escape rooms, immersive experiences, and interactive props.
+**Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
-## Architectural constitution
+**Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
+**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release.
 
-> The Show Engine decides.  
-> The Communications Engine transports.  
-> The Director commands and displays.  
-> The Nodes act.
+Showduino coordinates attraction audio, addressable lighting, interactive props, trigger inputs and operator controls using a central ESP32-P4 Show Engine and specialist ESP32 nodes. A loaded show runs on the Show Engine: it does not need an open browser, a connected Director touchscreen, home/venue Wi-Fi or internet access.
 
-- The **Show Engine** on the ESP32-P4 is the single source of truth for show state, safety policy, production runtime, configuration and authoritative device state.
-- The **Communications Engine** is the dedicated ESP32-S3. It transports ESP-NOW/UART traffic and currently hosts the static bench/browser WebUI plus API proxy. It must not make show-level decisions.
-- The **Director** is the ESP32-S3 touchscreen operator interface. Commands are requests; authoritative state comes back from the P4.
-- A running show must **not** depend on an active Director, browser, Wi-Fi client, or internet connection.
-- Application code should address devices by logical Showduino device IDs; MAC addresses remain transport details.
-- Command acceptance and physical completion are separate lifecycle events.
+> **Architectural rule:** The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.
 
-The Waveshare onboard ESP32-C6 remains **unused/reserved**.
+## At a glance
 
-## Current live topology
+| Part | Hardware | Responsibility |
+| --- | --- | --- |
+| **Show Engine / Stage Controller** | Waveshare ESP32-P4 | Authoritative show runtime, cue scheduling, emergency policy, SD storage and local hardware |
+| **Communications Engine** | Dedicated ESP32-S3 Dev Module | ESP-NOW transport, UART bridge, Showduino Wi-Fi access point, embedded WebUI and API proxy |
+| **Director** | ESP32-S3 800 × 480 touchscreen | Operator interface, show requests, status, node controls and diagnostics |
+| **Specialist nodes** | ESP32-A1S, ESP32-S3 and ESP32-C3 boards | Local audio, interactive lamp, remote pixels and wireless emergency assertion |
 
-```text
-Director ESP32-S3
-        │ ESP-NOW
-        ▼
-Dedicated ESP32-S3 Communications Engine
-        │ UART 115200 8N1
-        ▼
+The Waveshare P4 board's onboard ESP32-C6 is **unused/reserved**. The older ESP32-C3/SUE communications controller and legacy relay product role are **not** the current architecture.
+
+## System architecture
+
+~~~text
+Director ESP32-S3 touchscreen
+          ↕ ESP-NOW
+Dedicated ESP32-S3 Communications Engine ←→ Wi-Fi browser / local Studio
+          ↕ UART, 115200 8N1
 ESP32-P4 Show Engine / Stage Controller
-        │
-        ├── local system/safety audio (ES8311)
-        ├── GPIO24 emergency/designated-signage NeoPixels
-        ├── GPIO23 segmented theatrical Show Pixel Line
-        └── authoritative production/runtime state
+          ├─ SD: productions, configuration, system audio and logs
+          ├─ ES8311: local system / emergency audio
+          ├─ GPIO23: segmented Show Pixel Line
+          ├─ GPIO24: emergency / designated-signage pixel line
+          ├─ GPIO25: physical momentary emergency button
+          └─ I²C Plug-in Bus: expansion inputs / outputs
 
-Specialist Nodes
-        │ ESP-NOW through Communications Engine
-        ▼
-P4 authoritative control
-```
+Audio, Lamp, Pixel and Emergency Nodes
+          ↕ ESP-NOW through Communications S3
+ESP32-P4 remains authoritative
+~~~
 
-## Browser / phone path
+The Comms S3 serves the browser frontend and forwards commands; it **does not** execute timelines, own emergency state or invent completion acknowledgements. The P4 can operate its already-loaded show independently when the browser or Director disconnects. A disconnected specialist node may still lose its individual effect; each node has its own defined fail-safe behavior.
 
-The Communications S3 now hosts the static Showduino browser UI from PROGMEM and proxies P4 API requests:
+**Comms wiring:** S3 TX GPIO17 → P4 RX GPIO4; S3 RX GPIO18 ← P4 TX GPIO5; common GND; 115200 8N1. See [hardware pinout](docs/hardware-pinout.md) before connecting hardware.
 
-```text
-Phone / Tablet / Laptop
-        │ Wi-Fi / Showduino SoftAP
-        ▼
-S3 Communications Engine — static WebUI / transport proxy
-        │ UART
-        ▼
-P4 Show Engine — authoritative state/API data
-```
+## What the current firmware supports
 
-The S3 does not become the Show Engine merely because it serves the HTML/JS.
+### Show Engine
 
-## Core roles
+- Start, pause, resume and stop a loaded timeline, with P4-owned show and emergency state.
+- Discover, validate and load SD productions; accept a supported SHDO v2 deployment through the Comms/P4 compile-and-store path.
+- Run a direct/commissioning RAM timeline for supported audio and pixel cues.
+- Drive a local segmented Show Pixel Line on GPIO23; up to 1,024 configured pixels and 16 segment slots.
+- Drive a separate GPIO24 emergency/designated-signage line; up to 100 configured pixels in ten-pixel sign groups.
+- Play **system / emergency audio** through the onboard ES8311. Attraction/programme audio belongs to the Audio Node.
+- Expose local diagnostics, SD storage, Plug-in Bus foundations and authoritative Web API state.
 
-### Show Engine — ESP32-P4 Stage Controller
+### Specialist-node status
 
-Current implemented foundation includes:
+**Source availability is not the same as a physically accepted installation.** Node behavior below describes implemented firmware and its intended hardware role; complete multi-node and safety acceptance remains a separate gate.
 
-- authoritative runtime/emergency state;
-- start/pause/resume/stop timeline runtime;
-- transactional loading of versioned TEST/LOG productions from P4 SD;
-- P4 onboard ES8311 system/safety audio;
-- Audio Node routing/state tracking;
-- GPIO24 emergency/designated-signage pixel engine;
-- GPIO23 segmented local Show Pixel Engine;
-- local storage, Plug-in Bus, network and diagnostics foundations.
+| Node | Intended capability | Repository status |
+| --- | --- | --- |
+| **Audio Node** (ESP32-A1S / ES8388) | SD-based WAV attraction audio; play, loop, stop, pause, volume, fade/duck, local sound-level/trigger diagnostics and standalone/managed ownership | Active firmware; physical audio, radio and end-to-end cue tests required |
+| **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Fermion audio, motion provision and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
+| **C3 Pixel Node** | One remote WS2812/NeoPixel line on GPIO2, segmented effects, OLED and node commissioning; configured limit 1–512 pixels | Active firmware; physical output and radio testing required |
+| **C3 Emergency Node** | Additional wireless station that can **assert**, but never clear, the P4 emergency latch | Active firmware; station-specific hardware/input commissioning and safety acceptance required |
+| **MOSFET Node** | Future digital switching and PWM/dimming specialist | **Planned; not a completed production node** |
+| **DMX / E1.31 production control** | Possible future stage-lighting integration | **Parked expansion; not included as a supported production-control feature** |
 
-Persistent production format v1 still accepts only TEST/LOG cues. `AUDIO` and `PIXEL` production cue parsing/dispatch remain follow-up work.
+The retired Relay Node and historical C3 Lamp implementation remain in the repository for reference; do not confuse them with current specialist products. See the [repository status](docs/repository-status.md) and [node roadmap](docs/node-roadmap.md). Older per-component README files may lag the active source and should not override current BoardConfig or implementation.
 
-### Communications Engine — dedicated ESP32-S3
+### Pixel lighting
 
-Current responsibilities:
+The P4 GPIO23 line and remote C3 Pixel Nodes use the [shared effect vocabulary](protocol/showduino_pixel_fx.h): solid colour, fades, pulse/breathe, flicker/candle/fire, lightning/strobe, chase/bounce/comet/wipe, sparkle/twinkle/glitch, warning, portal, rainbow and other defined effects. Segments allow different effects on regions of the same physical strip.
 
-- ESP-NOW with Director and specialist nodes;
-- UART with P4 (`P4 RX=GPIO4`, `P4 TX=GPIO5`; S3 TX=GPIO17, RX=GPIO18);
-- Audio Node packet forwarding;
-- transport/link health;
-- SoftAP and static WebUI hosting;
-- proxying browser API requests to authoritative P4 services.
+GPIO24 is **not** another theatrical lighting lane. In normal operation, each ten-pixel designated-signage group has one green locator pixel and nine off. When Showduino emergency is asserted, the configured P4 show/signage lines and pixel-capable nodes are commanded bright white. On authorised clear, the signage line returns to its normal pattern and theatrical pixel effects **do not automatically resume**.
 
-It must not run timelines or invent show state.
+Configure pixel counts and initialise each line before testing output. Use appropriately rated external 5 V power, common grounds, signal conditioning/level shifting and suitable wiring/protection; see the [hardware pinout](docs/hardware-pinout.md) and [Pixel Node commissioning guide](firmware/c3-pixel-node/README.md).
 
-### Director — ESP32-S3 touchscreen
+## Studio, show files and deployment
 
-- show selection and run-control requests;
-- node/output controls;
-- emergency workflow;
-- authoritative-state display;
-- local UI/diagnostic behavior.
+Showduino has **two distinct browser surfaces**:
 
-### Specialist Nodes
+- The **Comms-hosted system console** provides status, configuration, production management, outputs and commissioning at the local Showduino address.
+- **Studio V4** is the evolving attraction/scene/timeline authoring experience. It uses the **SHDO v2** interchange model. Its source and embedded snapshot must not be mistaken for a fully tested, unrestricted on-device editor.
 
-Current rollout order is intentionally fixed:
+The currently implemented workflow has important boundaries:
 
-```text
-1. Audio Node
-2. S3 Lamp Node
-3. C3 Pixel Node
-4. MOSFET Node
-```
+1. Studio/commissioning can send supported **PIXEL and AUDIO:NODE cues** to a P4 **RAM timeline** using \`/api/studio-timeline\`. This does not persist the show to SD and does not automatically start it.
+2. A supported **SHDO v2** package can be uploaded through the Comms production-deploy API. The P4 validates and **compiles a supported subset** into its own SD runtime representation (\`manifest.json\` and \`timeline.json\`); it does **not** execute arbitrary \`.shdo\` JSON directly. Successful commit neither auto-loads nor auto-starts the production.
+3. The stored/runtime cue representation and supported compiler actions are **not the same as unrestricted Studio authoring**. Unsupported actions or devices are rejected. In particular, do not assume a complete mixed-device attraction show is proven merely because its SHDO package exports.
+4. After deployment, an operator loads the production and deliberately starts it through the Director or supported local control surface. The P4 then owns execution.
 
-The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. Legacy relay source remains for reference only.
+See [Studio architecture and boundaries](docs/studio/README.md), [SHDO v2 format](docs/studio/production-format.md), [production storage/deployment](docs/production-storage.md), and the [first Audio Node test production](examples/productions/README.md). Some older subproject documentation still calls all persistent production cues TEST/LOG-only; the current SHDO compiler/deploy code additionally handles a bounded subset of audio, pixel and lamp actions. Treat feature-specific host and hardware tests as authoritative for readiness.
 
-DMX remains **parked/out of scope** until explicitly reopened.
+## Getting started on the bench
 
-## P4 pixel architecture
+> **For commissioning only.** This is not a final venue installation or a substitute for the physical acceptance checklist.
 
-### GPIO24 — emergency/designated-signage line
+1. Follow the component-specific firmware instructions; use the **actual board type, flash/PSRAM configuration and live pinout** for each device. The overall release-candidate version does not imply every component has the same firmware version.
+2. Prepare the P4 SD card and physically wire Comms ↔ P4 with the UART connections and common ground shown above.
+3. Power the **P4**, then **Comms S3**, then **Director**. Confirm P4 storage, communications link and authoritative runtime status before operating effects.
+4. Join the Comms Showduino access point using the configured **bench credentials**, then open **http://192.168.4.1/** for the system console or **http://192.168.4.1/studio/** for its embedded Studio snapshot. Home/venue Wi-Fi and internet are optional for local show execution.
+5. Commission the intended node IDs, pixel counts, audio assets, inputs and output hardware. Start with safe low-power tests, then prove the supported deployment/load/start path and expected emergency behavior.
 
-One emergency exit sign is a 10-pixel bundle. The configured maximum is 100 pixels / ten signs.
+Individual nodes may provide a **separate commissioning SoftAP**, commonly at **http://192.168.5.1/**. That is **not** the main Comms console. Change the documented default bench Wi-Fi credential before public/venue use; do not assume home-Wi-Fi configuration changes the Showduino AP password.
 
-Normal state:
+Use the [quick start](docs/manual/SHOWDUINO_QUICK_START.md), [user manual draft](docs/manual/SHOWDUINO_USER_MANUAL.md) and [physical test checklist](docs/physical-test-checklist.md). Operator guidance remains subject to hardware acceptance and current UI verification.
 
-```text
-pixel 0 GREEN, 1-9 OFF
-pixel 10 GREEN, 11-19 OFF
-pixel 20 GREEN, 21-29 OFF
-...
-```
+## Emergency and safety boundaries
 
-Emergency state:
+The P4's **main physical button** is a **momentary, active-LOW GPIO25 input**. A valid press latches Showduino emergency after input debounce; releasing the button does **not** clear it. Holding the **same continuous press for eight seconds** also requests Director Locate. Locate wakes/illuminates the Director and flashes its ambient LEDs until acknowledged; the first touchscreen press acknowledges **Locate only**, not the emergency latch.
 
-```text
-ALL GPIO24 PIXELS BRIGHT WHITE
-```
+The Director emergency-clear workflow requires an explicit request and confirmation after the physical input is released. New assertions invalidate a pending clear. Clearing emergency does **not** automatically restart a show. Wireless Emergency Nodes may assert the global latch but may **never** clear it. Their documented NC input arrangement is **different from the P4's momentary button**; do not copy one pin/polarity assumption to the other.
 
-All groups are prepared in one frame so the signs switch together.
+**Showduino is not a certified life-safety, fire-alarm, evacuation, machinery E-stop or safety-PLC system.** Wireless links and Showduino's theatrical emergency lighting are not replacements for independent, code-compliant emergency systems or a site-specific risk assessment. The effects and safety behavior in this repository must be physically accepted before venue use; emergency-latch persistence through complete power loss is **not** yet an established product guarantee.
 
-### GPIO23 — local Show Pixel Line
+See [wireless emergency requirements](docs/emergency-node.md), [hardware pinout](docs/hardware-pinout.md), [manual verification gaps](docs/manual/SHOWDUINO_MANUAL_GAPS.md) and [physical acceptance checklist](docs/physical-test-checklist.md).
 
-The P4 now contains a non-blocking segmented FX engine with up to 16 configured segment slots and the shared Showduino 25-effect vocabulary.
+## Firmware and repository map
 
-Example simultaneous use:
+| Path | Purpose |
+| --- | --- |
+| [\`firmware/stage-engine-p4/\`](firmware/stage-engine-p4/) | ESP32-P4 Show Engine; historical folder name retained |
+| [\`firmware/s3-comms-controller/\`](firmware/s3-comms-controller/) | Dedicated Comms S3, WebUI hosting and transport |
+| [\`firmware/director-esp32-8048s050/\`](firmware/director-esp32-8048s050/) | ESP32-S3 touchscreen Director |
+| [\`firmware/audio-node-esp32-a1s/\`](firmware/audio-node-esp32-a1s/) | Specialist Audio Node |
+| [\`firmware/s3-lamp-node/\`](firmware/s3-lamp-node/) | Current S3 interactive Lamp Node |
+| [\`firmware/c3-pixel-node/\`](firmware/c3-pixel-node/) | Remote C3 Pixel Node |
+| [\`firmware/c3-emergency-node/\`](firmware/c3-emergency-node/) | Wireless emergency station |
+| [\`protocol/\`](protocol/) | Shared commands, packet schemas, SHDO, pixel effects and versions |
+| [\`web/showduino-studio/\`](web/showduino-studio/) | Editable Comms-hosted console source |
+| [\`web/studio-v4-overlay/\`](web/studio-v4-overlay/) | Studio V4 authoring/website integration source |
+| [\`tools/\`](tools/) | Tests, WebUI embedding, release and development helpers |
+| [\`docs/\`](docs/) | Architecture, hardware, operator and engineering documentation |
 
-```text
-pixels 0-7    LIGHTNING
-pixels 8-10   SOLID BLUE
-pixels 11-29  FIRE
-pixels 30-49  PULSE RED
-pixels 50-79  FLICKER WARM WHITE
-```
+The Comms frontend is generated into \`firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h\` from editable sources. Regenerate it with \`python tools/embed-webui/embed_webui.py\` after frontend changes; **do not manually edit the generated header**.
 
-Hard Showduino emergency rule:
+## Updates and release readiness
 
-> **EMERGENCY = ALL PIXELS BRIGHT WHITE.**
+**Comms self-OTA** is implemented in software with HTTPS firmware download, SHA-256 comparison and a post-reboot health gate/rollback path. It is **Comms-only**; system-wide OTA and specialist-node OTA are not available. Installing a Comms update requires the documented maintenance, idle-show, emergency and operator-confirmation gates. Do not claim that source-code implementation proves the OTA/rollback scenario passed a live hardware test.
 
-This applies to GPIO23, GPIO24, and every future pixel-capable node. Clearing emergency returns GPIO24 to green locator markers and leaves normal show pixels blacked out; interrupted FX do not auto-resume.
+Showduino remains **1.0.0-rc.1** until integrated hardware sign-off. The release checklist covers Director/Comms radio stability, audio and specialist-node behavior, SD deployment, physical emergency/clear/Locate, pixel emergency override and recovery after faults. Firmware compilation and protocol host tests are useful evidence, **not** a substitute for those physical tests.
 
-Shared effect vocabulary: [`protocol/showduino_pixel_fx.h`](protocol/showduino_pixel_fx.h).
+- [Architecture and ownership](docs/architecture.md)
+- [Current repository classification](docs/repository-status.md)
+- [Showduino V1 feature matrix](docs/v1-feature-matrix.md)
+- [Comms OTA](docs/comms-ota.md)
+- [Physical test checklist](docs/physical-test-checklist.md)
+- [Commercial manual draft](docs/manual/SHOWDUINO_USER_MANUAL.md)
 
-## Pixel electrical standard
-
-Each P4 pixel data output uses a **470 Ω series resistor** near the controller/logic buffer:
-
-```text
-GPIO23 / 5V buffer → 470 Ω → Show Pixel DIN
-GPIO24 / 5V buffer → 470 Ω → Emergency/Signage DIN
-```
-
-Use common P4/pixel ground. Final/long-cable installations should use a 5 V-compatible logic buffer such as a 74AHCT125/74HCT125-class device. The 470 Ω resistor is not a level shifter. Pixels should use a suitably sized external 5 V supply, with bulk capacitance and power injection appropriate to the installation.
-
-## Firmware map
-
-### Active / current
-
-```text
-firmware/director-esp32-8048s050/     Director
-firmware/s3-comms-controller/         Communications Engine
-firmware/stage-engine-p4/             Show Engine / Stage Controller
-firmware/audio-node-esp32-a1s/        Audio Node — hardware test required
-firmware/s3-lamp-node/                S3 Lamp Node — carbide practical (GPIO trace required)
-firmware/c3-lamp-node/                Historical C3 lamp — superseded / reference
-```
-
-### Planned
-
-```text
-C3 Pixel Node                          follows Lamp; shares common FX vocabulary
-firmware/mosfet-node-esp32/           planned; digital/PWM specialist
-```
-
-### Legacy / reserved / diagnostic
-
-```text
-firmware/relay-node-esp32/            LEGACY / RETIRED product role
-firmware/p4-c6-espnow-bridge/         UNUSED / RESERVED onboard C6 work
-firmware/c3-supermini-espnow-bridge/  LEGACY / SUPERSEDED SUE Comms
-firmware/director-s3/                 LEGACY
-firmware/espnow-bridge/               LEGACY
-firmware/touch-probe-8048/            DIAGNOSTIC
-firmware/controller-cyd/              ARCHIVE CANDIDATE
-firmware/executor-mega/               ARCHIVE CANDIDATE
-```
-
-## Documentation
-
-| Document | Contents |
-|----------|----------|
-| [`docs/constitution.md`](docs/constitution.md) | Permanent architectural rules |
-| [`docs/architecture.md`](docs/architecture.md) | System architecture and maturity |
-| [`docs/repository-status.md`](docs/repository-status.md) | Current firmware classification |
-| [`docs/final-hardware-architecture.md`](docs/final-hardware-architecture.md) | Hardware topology |
-| [`docs/hardware-pinout.md`](docs/hardware-pinout.md) | Current P4 pins and pixel wiring standard |
-| [`docs/audio-pixel-engine.md`](docs/audio-pixel-engine.md) | Audio split, segmented FX and emergency-pixel policy |
-| [`docs/audio-node.md`](docs/audio-node.md) | ESP32-A1S / ES8388 Audio Node |
-| [`docs/node-roadmap.md`](docs/node-roadmap.md) | Audio → Lamp → C3 Pixel → MOSFET rollout |
-| [`docs/production-storage.md`](docs/production-storage.md) | Persistent P4 production format v1 |
-| [`docs/studio/README.md`](docs/studio/README.md) | Studio/WebUI vs SHDO v2 vs P4 store |
-| [`docs/standalone-node-architecture.md`](docs/standalone-node-architecture.md) | GRANT / standalone specialist nodes |
-| [`docs/plugin-bus.md`](docs/plugin-bus.md) | Showduino Plug-in Bus |
-
-## Current milestone
-
-The immediate platform target is to bench-commission the **P4 pixel lines**:
-
-1. prove GPIO24 normal green-sign pattern;
-2. prove synchronized full-white emergency signage;
-3. prove GPIO23 direct colour and commissioning test;
-4. prove multiple simultaneous segmented FX;
-5. prove emergency forces GPIO23 + GPIO24 white;
-6. prove clear returns signage to locator green and show pixels to safe blackout.
-
-After Audio, the specialist order is **S3 Lamp Node**, then **C3 Pixel**, then **MOSFET**.
+**Development note:** Some subproject READMEs, status tables and planned-feature documents are older than active firmware. When they disagree, check the current component's BoardConfig, implementation, protocol and test evidence before describing a feature as available or physically verified.
