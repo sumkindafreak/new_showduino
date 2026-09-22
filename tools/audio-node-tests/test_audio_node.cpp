@@ -38,8 +38,18 @@ int main() {
   expect(showduino_audio_parse_command("AUDIO:NODE:PLAY:effects/thunder.wav", arg, sizeof(arg), &vol) ==
              SHOWDUINO_AUDIO_CMD_PLAY, "parse play");
   expect(strcmp(arg, "effects/thunder.wav") == 0, "play arg");
+  expect(showduino_audio_resolve_path(arg, path, sizeof(path)) == SHOWDUINO_AUDIO_PATH_OK,
+         "parsed play arg resolves");
+  expect(strcmp(path, "/showduino/audio/effects/thunder.wav") == 0,
+         "parsed play arg absolute path");
   expect(showduino_audio_parse_command("AUDIO:NODE:LOOP:ambience/room.wav", arg, sizeof(arg), &vol) ==
              SHOWDUINO_AUDIO_CMD_LOOP, "parse loop");
+  expect(strcmp(arg, "ambience/room.wav") == 0, "loop arg");
+  expect(showduino_audio_resolve_path(arg, path, sizeof(path)) == SHOWDUINO_AUDIO_PATH_OK,
+         "parsed loop arg resolves");
+  expect(showduino_audio_parse_command("AUDIO:NODE:PLAY:system-test.wav", arg, sizeof(arg), &vol) ==
+             SHOWDUINO_AUDIO_CMD_PLAY, "parse system test play");
+  expect(strcmp(arg, "system-test.wav") == 0, "system test play arg");
   expect(showduino_audio_parse_command("AUDIO:NODE:STOP", arg, sizeof(arg), &vol) ==
              SHOWDUINO_AUDIO_CMD_STOP, "parse stop");
   expect(showduino_audio_parse_command("AUDIO:NODE:PAUSE", arg, sizeof(arg), &vol) ==
