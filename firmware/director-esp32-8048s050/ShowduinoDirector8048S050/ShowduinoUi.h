@@ -432,6 +432,7 @@ public:
 
   void applyAudioNodeDetail(const ShowduinoAudioDetailWire &d) {
     director_audio_apply_detail(&audioNodeCtrl_, &d);
+    director_audio_reconcile_pending(&audioNodeCtrl_);
     refreshAudioNodePage();
     statusDirty = true;
   }
@@ -1258,6 +1259,11 @@ public:
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
     syncStatusBarHealth();
     statusBar_.update(millis());
+    if (director_audio_pending_timeout(&audioNodeCtrl_, millis())) {
+      refreshAudioNodePage();
+      pushOperatorEvent("Audio Node command timed out");
+      statusDirty = true;
+    }
     if (statusBar_.root()) {
       const bool cover =
           gDirectorUnlockScreen.ownsDisplay() ||
@@ -1530,6 +1536,22 @@ private:
   }
 
   void sendAudioNodeCmd(const String &cmd) {
+    DirectorAudioPending pending = DIRECTOR_AUDIO_PEND_NONE;
+    if (cmd.startsWith("AUDIO:NODE:PLAY:")) pending = DIRECTOR_AUDIO_PEND_PLAY;
+    else if (cmd.startsWith("AUDIO:NODE:LOOP:")) pending = DIRECTOR_AUDIO_PEND_LOOP;
+    else if (cmd == "AUDIO:NODE:PAUSE") pending = DIRECTOR_AUDIO_PEND_PAUSE;
+    else if (cmd == "AUDIO:NODE:RESUME") pending = DIRECTOR_AUDIO_PEND_RESUME;
+    else if (cmd == "AUDIO:NODE:STOP") pending = DIRECTOR_AUDIO_PEND_STOP;
+    else if (cmd.startsWith("AUDIO:NODE:VOLUME:")) pending = DIRECTOR_AUDIO_PEND_VOLUME;
+    else if (cmd == "AUDIO:NODE:TEST") pending = DIRECTOR_AUDIO_PEND_TEST;
+
+    if (pending != DIRECTOR_AUDIO_PEND_NONE) {
+      audioNodeCtrl_.pending = pending;
+      audioNodeCtrl_.pendingSinceMs = millis();
+      audioNodeCtrl_.pendingSeq = 0;
+      audioNodeCtrl_.feedback[0] = '\0';
+      audioNodeCtrl_.lastErrorText[0] = '\0';
+    }
     if (commandCallback) commandCallback(cmd);
   }
 
