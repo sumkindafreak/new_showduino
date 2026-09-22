@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_audio_node.h"
+#include "../../../protocol/showduino_state_wire.h"
 
 struct AudioNodeStatus {
   bool seen = false;
