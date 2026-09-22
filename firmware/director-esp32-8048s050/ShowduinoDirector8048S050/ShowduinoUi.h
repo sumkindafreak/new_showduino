@@ -412,9 +412,19 @@ public:
   }
 
   void setAudioNodeWire(ShowduinoAudioNodeWire wire) {
-    if (audioNodeWire_ == wire) return;
+    if (audioNodeWire_ == wire) {
+      /* A repeated coarse state can still be the acknowledgement for the
+       * command we just sent (for example PLAY while already PLAYING, or STOP
+       * while already IDLE). Reconcile it instead of throwing it away. */
+      director_audio_apply_coarse(&audioNodeCtrl_, wire);
+      director_audio_reconcile_pending(&audioNodeCtrl_);
+      refreshAudioNodePage();
+      statusDirty = true;
+      return;
+    }
     audioNodeWire_ = wire;
     director_audio_apply_coarse(&audioNodeCtrl_, wire);
+    director_audio_reconcile_pending(&audioNodeCtrl_);
     const bool present = (wire != SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE &&
                           wire != SHOWDUINO_AUDIO_NODE_WIRE_INVALID);
     ShowduinoCapabilities caps = page_01_home_get_capabilities();
