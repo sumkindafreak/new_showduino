@@ -545,20 +545,21 @@ void handleStageLine(String line) {
       uint16_t page = (uint16_t)atoi(p);
       const char *c1 = strchr(p, ':');
       uint16_t total = 0;
-      char names[SHOWDUINO_AUDIO_INV_WIRE_MAX][21] = {};
+      char names[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 1] = {};
       uint8_t count = 0;
       if (c1) {
         total = (uint16_t)atoi(c1 + 1);
         const char *list = strchr(c1 + 1, ':');
         if (list && list[1]) {
           list++;
-          char buf[80];
+          char buf[(SHOWDUINO_AUDIO_INV_WIRE_MAX * (SHOWDUINO_AUDIO_INV_NAME_MAX + 1)) + 1];
           strncpy(buf, list, sizeof(buf) - 1);
           char *item = buf;
           while (item && *item && count < SHOWDUINO_AUDIO_INV_WIRE_MAX) {
             char *comma2 = strchr(item, ',');
             if (comma2) *comma2 = '\0';
-            strncpy(names[count], item, 20);
+            strncpy(names[count], item, SHOWDUINO_AUDIO_INV_NAME_MAX);
+            names[count][SHOWDUINO_AUDIO_INV_NAME_MAX] = '\0';
             count++;
             item = comma2 ? comma2 + 1 : nullptr;
           }
