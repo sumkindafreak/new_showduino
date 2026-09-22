@@ -412,6 +412,8 @@ bool audioNodeLinkHandleReport(const char *line) {
     sSt.volume = (uint8_t)atoi(p + 13);
     sSt.pending = false;
     strncpy(sSt.lastLife, "VOLUME", sizeof(sSt.lastLife) - 1);
+    /* Volume does not change the coarse playback state, so publish the detail\n     * frame explicitly. Otherwise the Director can remain VOLUME PENDING until\n     * the next periodic state refresh. */
+    publishExtra(true);
     return true;
   }
   if (!strncmp(p, "AUDIO:PAUSED:", 13)) {
