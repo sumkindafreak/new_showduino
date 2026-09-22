@@ -64,7 +64,7 @@ static const char *shortFault(const char *err) {
 }
 
 static void publishExtra(bool force) {
-  char line[96];
+  char line[256];
   char asset[SHOWDUINO_AUDIO_DETAIL_ASSET_MAX + 1];
   const char *src = (sSt.online && sSt.asset[0] && strcmp(sSt.asset, "-") != 0) ? sSt.asset : "-";
   strncpy(asset, src, sizeof(asset) - 1);
@@ -108,15 +108,18 @@ static void publishExtra(bool force) {
   }
 
   {
-    char names[80] = "";
+    char names[(SHOWDUINO_AUDIO_INV_WIRE_MAX * (SHOWDUINO_AUDIO_INV_NAME_MAX + 1)) + 1] = "";
     size_t n = 0;
     uint8_t count = 0;
     for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_PER_PAGE && count < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
       if (!sSt.inventory[i][0]) continue;
-      char one[21];
+      char one[SHOWDUINO_AUDIO_INV_NAME_MAX + 1];
       strncpy(one, sSt.inventory[i], sizeof(one) - 1);
       one[sizeof(one) - 1] = '\0';
-      n += (size_t)snprintf(names + n, sizeof(names) - n, "%s%s", count ? "," : "", one);
+      if (n < sizeof(names)) {
+        const int wrote = snprintf(names + n, sizeof(names) - n, "%s%s", count ? "," : "", one);
+        if (wrote > 0) n += (size_t)wrote;
+      }
       count++;
     }
     snprintf(line, sizeof(line), "%s%u:%u:%s",
