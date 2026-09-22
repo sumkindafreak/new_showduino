@@ -66,7 +66,7 @@ static Page05Ui s;
 static page05_command_fn s_cb = nullptr;
 static bool s_active = false;
 static DirectorAudioNodeControl s_model;
-static char s_asset_cmds[SHOWDUINO_AUDIO_INV_WIRE_MAX][48];
+static char s_asset_cmds[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
 
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
