@@ -167,6 +167,59 @@ static inline void director_audio_apply_detail(DirectorAudioNodeControl *m,
   m->emergency = !strcmp(m->state, "ESTP");
 }
 
+static inline void director_audio_clear_pending(DirectorAudioNodeControl *m,
+                                                const char *feedback) {
+  if (!m) return;
+  m->pending = DIRECTOR_AUDIO_PEND_NONE;
+  m->pendingSinceMs = 0;
+  m->pendingSeq = 0;
+  if (feedback) {
+    strncpy(m->feedback, feedback, sizeof(m->feedback) - 1);
+    m->feedback[sizeof(m->feedback) - 1] = '\0';
+  }
+}
+
+static inline bool director_audio_reconcile_pending(DirectorAudioNodeControl *m) {
+  if (!m || m->pending == DIRECTOR_AUDIO_PEND_NONE) return false;
+  bool confirmed = false;
+  switch (m->pending) {
+    case DIRECTOR_AUDIO_PEND_PLAY:
+      confirmed = !strcmp(m->state, "PLAY") || !strcmp(m->state, "LOOP");
+      break;
+    case DIRECTOR_AUDIO_PEND_LOOP:
+      confirmed = !strcmp(m->state, "LOOP");
+      break;
+    case DIRECTOR_AUDIO_PEND_PAUSE:
+      confirmed = !strcmp(m->state, "PAUS");
+      break;
+    case DIRECTOR_AUDIO_PEND_RESUME:
+      confirmed = !strcmp(m->state, "PLAY") || !strcmp(m->state, "LOOP");
+      break;
+    case DIRECTOR_AUDIO_PEND_STOP:
+      confirmed = !strcmp(m->state, "IDLE") || !strcmp(m->state, "OFF");
+      break;
+    case DIRECTOR_AUDIO_PEND_VOLUME:
+      confirmed = m->volume == m->pendingVolume;
+      if (confirmed) m->pendingVolume = m->volume;
+      break;
+    case DIRECTOR_AUDIO_PEND_TEST:
+      confirmed = !strcmp(m->state, "PLAY") || !strcmp(m->state, "LOOP");
+      break;
+    default:
+      break;
+  }
+  if (confirmed) director_audio_clear_pending(m, "CONFIRMED");
+  return confirmed;
+}
+
+static inline bool director_audio_pending_timeout(DirectorAudioNodeControl *m,
+                                                  uint32_t nowMs) {
+  if (!m || m->pending == DIRECTOR_AUDIO_PEND_NONE || m->pendingSinceMs == 0) return false;
+  if ((uint32_t)(nowMs - m->pendingSinceMs) < DIRECTOR_AUDIO_PENDING_MS) return false;
+  director_audio_clear_pending(m, "COMMAND TIMEOUT");
+  return true;
+}
+
 static inline void director_audio_apply_coarse(DirectorAudioNodeControl *m,
                                                ShowduinoAudioNodeWire wire) {
   if (!m) return;
