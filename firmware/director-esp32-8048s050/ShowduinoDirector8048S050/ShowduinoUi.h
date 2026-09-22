@@ -455,7 +455,7 @@ public:
     if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
 
-  void applyAudioNodeInv(uint16_t page, uint16_t total, const char names[][21], uint8_t count) {
+  void applyAudioNodeInv(uint16_t page, uint16_t total, const char names[][SHOWDUINO_AUDIO_INV_NAME_MAX + 1], uint8_t count) {
     audioNodeCtrl_.inventoryPage = page;
     audioNodeCtrl_.inventoryTotal = total;
     for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
