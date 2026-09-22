@@ -35,7 +35,7 @@ struct DirectorAudioNodeControl {
   char mac[18];
   char caps[48];
   char selectedAsset[SHOWDUINO_AUDIO_DETAIL_ASSET_MAX + 1];
-  char inventory[SHOWDUINO_AUDIO_INV_WIRE_MAX][21];
+  char inventory[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 1];
   char feedback[48];
   char lastErrorText[40];
   uint16_t inventoryTotal;
