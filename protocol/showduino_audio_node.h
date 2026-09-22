@@ -420,6 +420,7 @@ static inline ShowduinoAudioCmd showduino_audio_parse_command_ex(const char *cmd
 
   if (showduino_audio_starts(cmd, "AUDIO:NODE:PLAY:")) {
     const char *p = cmd + 16;
+    if (*p == ':') p++;  /* skip the delimiter after PLAY */
     if (arg && argLen) {
       size_t n = strlen(p);
       if (n + 1 >= argLen) return SHOWDUINO_AUDIO_CMD_NONE;
@@ -440,6 +441,7 @@ static inline ShowduinoAudioCmd showduino_audio_parse_command_ex(const char *cmd
   }
   if (showduino_audio_starts(cmd, "AUDIO:NODE:LOOP:")) {
     const char *p = cmd + 16;
+    if (*p == ':') p++;  /* skip the delimiter after LOOP */
     if (arg && argLen) {
       size_t n = strlen(p);
       if (n + 1 >= argLen) return SHOWDUINO_AUDIO_CMD_NONE;
