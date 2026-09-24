@@ -236,6 +236,54 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   return true;
 }
 
+/*
+ * Emergency audio reuses the exact same working pipeline as normal show
+ * playback (path resolve -> storage/codec checks -> audioPlaybackStart on
+ * the shared decoder/I2S/codec/amp engine). It is never a second audio
+ * subsystem. The asset is relative to SHOWDUINO_AUDIO_ROOT
+ * ("/showduino/audio"), NOT the Director show-library root
+ * (SHOWDUINO_AUDIO_SHOW_ROOT), so it is passed to startAsset() without a
+ * leading '/' to force the normal-root resolver.
+ */
+static const char kEmergencyAssetRel[] = "show_machine/emergency.wav";
+
+static void startEmergencyAsset() {
+  SD_LOGI("AUDIO", "Emergency requested");
+  SD_LOGI("AUDIO", "Emergency asset: %s/%s", SHOWDUINO_AUDIO_ROOT, kEmergencyAssetRel);
+  SD_LOGI("AUDIO", "Normal playback interrupted");
+
+  if (!audioStorageReady()) {
+    SD_LOGE("AUDIO", "Emergency failed: NO_STORAGE");
+    audioCodecMute(true);
+    return;
+  }
+  char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
+  const ShowduinoAudioPathStatus ps =
+      showduino_audio_resolve_path(kEmergencyAssetRel, absPath, sizeof(absPath));
+  if (ps != SHOWDUINO_AUDIO_PATH_OK || !audioStorageExists(absPath)) {
+    SD_LOGE("AUDIO", "Emergency failed: FILE_NOT_FOUND %s/%s",
+            SHOWDUINO_AUDIO_ROOT, kEmergencyAssetRel);
+    audioCodecMute(true);
+    return;
+  }
+
+  const bool started = startAsset(kEmergencyAssetRel, AudioPlayMode::Loop, 0, false, 0,
+                                  (int)SHOWDUINO_AUDIO_PRI_SFX);
+  if (started) {
+    SD_LOGW("AUDIO", "Emergency playback START");
+  } else if (audioPlaybackLastError()[0] &&
+             strstr(audioPlaybackLastError(), "WAV")) {
+    SD_LOGE("AUDIO", "Emergency failed: INVALID_WAV");
+  }
+  /* startAsset() moves node state through LOADING/PLAYING/LOOPING (or back
+   * to IDLE/NO_STORAGE on failure) as a side effect of the shared pipeline.
+   * Emergency must remain the authoritative state either way so normal
+   * show commands stay rejected (showduino_audio_can_accept gates on
+   * SHOWDUINO_AUDIO_ST_EMERGENCY) and the Director/P4 see EMERGENCY, not
+   * PLAYING, for the duration of the incident. */
+  audioNodeStateSet(SHOWDUINO_AUDIO_ST_EMERGENCY);
+}
+
 static bool handleSoundCommand(const char *command, uint32_t sequence,
                                ShowduinoCmdOrigin origin) {
   const char *cmd = command;
@@ -429,24 +477,40 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
   }
 
   if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP) {
+    /* Retrigger protection: P4 keepalive resyncs resend EMERGENCY:STOP on
+     * every reconciliation tick while the latch holds (and again on Audio
+     * Node reconnect while the P4 remains latched). Only the NORMAL/other
+     * -> EMERGENCY transition stops the current track and starts the
+     * emergency asset; repeats while already EMERGENCY must not restart it. */
+    const bool wasEmergency = (audioNodeState() == SHOWDUINO_AUDIO_ST_EMERGENCY);
     audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_STOP);
-    stopPlaybackClear();
-    audioCodecMute(true);
-    audioInputSetEmergency(true);
     audioPixelEngineOnEmergency(true);
-    audioNodeStateSet(SHOWDUINO_AUDIO_ST_EMERGENCY);
+    if (!wasEmergency) {
+      SD_LOGW("EMERGENCY", "ACTIVE");
+      stopPlaybackClear();
+      audioInputSetEmergency(true);
+      audioNodeStateSet(SHOWDUINO_AUDIO_ST_EMERGENCY);
+      startEmergencyAsset();
+    }
     char line[48];
     snprintf(line, sizeof(line), "AUDIO:EMERGENCY:%lu", (unsigned long)sequence);
     report(line, sequence);
     return;
   }
   if (cmd == SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR) {
+    const bool wasEmergency = (audioNodeState() == SHOWDUINO_AUDIO_ST_EMERGENCY);
     audioOwnerApplyEvent(SHOWDUINO_OWNER_EV_EMERGENCY_CLEAR);
     onOwnerEdges();
+    if (wasEmergency) {
+      SD_LOGW("EMERGENCY", "CLEAR");
+      stopPlaybackClear();
+      SD_LOGI("AUDIO", "Emergency playback STOP");
+    }
     audioCodecMute(false);
     audioInputSetEmergency(false);
     audioPixelEngineOnEmergency(false);
     audioPixelEngineBlackout();
+    if (wasEmergency) SD_LOGI("PIXEL", "Emergency override released");
     applyMaster((uint8_t)sVolume, false);
     if (audioNodeState() != SHOWDUINO_AUDIO_ST_FAULT &&
         audioNodeState() != SHOWDUINO_AUDIO_ST_NO_STORAGE) {
@@ -681,7 +745,11 @@ void audioCommandService() {
     char line[96];
     audioProtocolFormatCompleted(line, sizeof(line), sActiveSeq, sActiveRel);
     report(line, sActiveSeq);
-    audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
+    /* A completed/looped-out emergency asset must not drop the node out of
+     * EMERGENCY — only an explicit EMERGENCY:CLEAR may do that. */
+    if (audioNodeState() != SHOWDUINO_AUDIO_ST_EMERGENCY) {
+      audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
+    }
     sActiveRel[0] = '\0';
   }
   if (audioPlaybackJustFailed()) {
@@ -690,7 +758,9 @@ void audioCommandService() {
     char line[96];
     audioProtocolFormatFailed(line, sizeof(line), sActiveSeq, SHOWDUINO_AUDIO_FAIL_UNSUPPORTED);
     report(line, sActiveSeq);
-    audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
+    if (audioNodeState() != SHOWDUINO_AUDIO_ST_EMERGENCY) {
+      audioNodeStateSet(SHOWDUINO_AUDIO_ST_IDLE);
+    }
   }
 
   if (audioStorageJustRemoved()) {

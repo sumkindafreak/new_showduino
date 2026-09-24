@@ -175,7 +175,17 @@ void audioStorageLoop() {
     sRemovedEvt = true;
     sLastPresent = false;
     Serial.println("[SD] STORAGE:REMOVED");
-  } else if (!sLastPresent && pinPresent) {
+  } else if (!sLastPresent) {
+    /*
+     * The detect pin is a hint, not ground truth — several Audio Kit V2.2
+     * microSD sockets do not route a working card-detect switch to
+     * SHOWDUINO_AUDIO_SD_DETECT_PIN, so it can sit floating/HIGH forever
+     * even with a good card seated. Gating the remount retry on pinPresent
+     * meant a stuck/unwired detect line could permanently strand the node
+     * in NO_STORAGE with a perfectly usable card. Always retry the real
+     * SD.begin() on the existing probe cadence; its result is authoritative,
+     * not the detect pin.
+     */
     if (mountCard()) {
       sInsertedEvt = true;
       sLastPresent = true;
