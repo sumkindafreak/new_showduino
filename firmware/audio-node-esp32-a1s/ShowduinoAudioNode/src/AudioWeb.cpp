@@ -357,10 +357,29 @@ static void handleCommand() {
       return;
     }
   }
+  bool pixelRejected = false;
+  char pixelRejectReason[SHOWDUINO_NODE_COMMAND_MAX] = "";
   if (!strncmp(cmd, "PIXEL:", 6)) {
     audioPixelProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
+    /* audioPixelProtocolApply() has no return value — it reports success or
+       failure asynchronously via audioPixelNodeStateLastResult(). Surface a
+       real failure to the caller instead of always claiming "ok" so the
+       WebUI can show WHY a command (e.g. PIXEL:COUNT) was not applied. */
+    const char *last = audioPixelNodeStateLastResult();
+    if (last && (strstr(last, "FAILED") || strstr(last, "ERROR") ||
+                 strstr(last, "REJECTED"))) {
+      pixelRejected = true;
+      strncpy(pixelRejectReason, last, sizeof(pixelRejectReason) - 1);
+    }
   } else {
     audioCommandApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_WEB);
+  }
+  if (pixelRejected) {
+    String json = "{\"ok\":false,\"error\":\"PIXEL_REJECTED\",\"message\":\"";
+    jsonEsc(pixelRejectReason, json);
+    json += "\"}";
+    sServer.send(200, "application/json", json);
+    return;
   }
   const bool locked = audioNodeStateShowControlled();
   const bool diagnostic =

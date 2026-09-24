@@ -9,6 +9,7 @@ static bool sReady = false;
 static bool sEmergency = false;
 static bool sTestActive = false;
 static bool sLocateActive = false;
+static uint8_t sTestLoggedStage = 0xFF; /* boot self-test stage-change log guard */
 static uint32_t sTestStartedMs = 0;
 static uint32_t sLocateStartedMs = 0;
 static uint32_t sLastFrameMs = 0;
@@ -351,25 +352,36 @@ static void renderEmergencyWhite() {
   for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, v, v, v);
 }
 
+static void logTestStage(uint8_t stage, const char *label) {
+  if (sTestLoggedStage == stage) return;
+  sTestLoggedStage = stage;
+  Serial.printf("[PIXEL] %s\n", label);
+}
+
 static void renderCommissioningTest(uint32_t now) {
   const uint32_t elapsed = now - sTestStartedMs;
   const uint32_t block = 700UL;
   clearFrame();
   if (elapsed < block) {
+    logTestStage(0, "RED");
     for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, sGlobalBrightness, 0, 0);
   } else if (elapsed < block * 2UL) {
+    logTestStage(1, "GREEN");
     for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 0, sGlobalBrightness, 0);
   } else if (elapsed < block * 3UL) {
+    logTestStage(2, "BLUE");
     for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 0, 0, sGlobalBrightness);
   } else if (elapsed < block * 4UL) {
+    logTestStage(3, "WHITE");
     for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, sGlobalBrightness, sGlobalBrightness, sGlobalBrightness);
   } else {
+    logTestStage(4, "OFF");
     const uint32_t chaseElapsed = elapsed - block * 4UL;
     const uint32_t chaseLength = (uint32_t)sCount * 30UL;
     if (chaseElapsed >= chaseLength) {
       sTestActive = false;
       clearFrame();
-      Serial.println("[PIXEL] Commissioning test complete");
+      Serial.println("[PIXEL] Self-test COMPLETE");
       return;
     }
     uint16_t pos = (uint16_t)(chaseElapsed / 30UL);
@@ -402,9 +414,14 @@ bool audioPixelEngineSafeGpio() {
 
 bool audioPixelEngineBegin() {
   if (sReady && sCount == sConfiguredCount && sConfiguredCount > 0) return true;
-  if (sConfiguredCount == 0 || sConfiguredCount > SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS) {
-    Serial.printf("[PIXEL] GPIO%d waiting for PIXEL:COUNT:<1-%u> then PIXEL:INIT\n",
-                  SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+  if (sConfiguredCount == 0) {
+    Serial.printf("[PIXEL][ERROR] Count not configured (0) — send PIXEL:COUNT:<1-%u> then PIXEL:INIT\n",
+                  (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
+    return false;
+  }
+  if (sConfiguredCount > SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS) {
+    Serial.printf("[PIXEL][ERROR] Configured count %u exceeds max %u\n",
+                  (unsigned)sConfiguredCount,
                   (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
     return false;
   }
@@ -419,7 +436,7 @@ bool audioPixelEngineBegin() {
   sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
                                  SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
   if (!sFrame || !sStrip) {
-    Serial.println("[PIXEL] Show line allocation failed");
+    Serial.println("[PIXEL][ERROR] Show line allocation failed (out of memory)");
     audioPixelEngineShutdown();
     return false;
   }
@@ -436,6 +453,11 @@ bool audioPixelEngineBegin() {
                 (unsigned)sCount,
                 (unsigned)SHOWDUINO_PIXEL_MAX_SEGMENTS,
                 (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS);
+  Serial.println("[PIXEL] Engine: READY");
+  Serial.printf("[PIXEL] GPIO: %d\n", SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  Serial.printf("[PIXEL] Count: %u\n", (unsigned)sCount);
+  Serial.printf("[PIXEL] Brightness: %u\n", (unsigned)sGlobalBrightness);
+  Serial.printf("[PIXEL] Emergency: %s\n", sEmergency ? "ACTIVE" : "INACTIVE");
   return true;
 }
 
@@ -447,10 +469,21 @@ void audioPixelEngineApplyPersisted() {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
                   SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
                   (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
+    Serial.println("[PIXEL][ERROR] Count not configured (0) — line will stay dark until set");
     return;
   }
-  (void)audioPixelEngineBegin();
+  if (!audioPixelEngineBegin()) return;
+  /* Boot self-test proves GPIO/library/render independent of any Director
+     or WebUI command path. Only runs once, only when a real pixel count is
+     configured, and never while Emergency is active. */
+  if (!sEmergency) {
+    sTestActive = true;
+    sTestStartedMs = millis();
+    sTestLoggedStage = 0xFF;
+    Serial.println("[PIXEL] Self-test START");
+  }
 }
+
 
 void audioPixelEngineSetConfiguredCount(uint16_t count) {
   sConfiguredCount = count;
@@ -707,6 +740,8 @@ bool audioPixelEngineHandleCommand(const char *command, char *reply, size_t repl
   if (cmd == "PIXEL:TEST") {
     sTestActive = true;
     sTestStartedMs = millis();
+    sTestLoggedStage = 0xFF;
+    Serial.println("[PIXEL] Self-test START");
     setReply(reply, replyLen, "PIXEL:TEST:STARTED");
     return true;
   }

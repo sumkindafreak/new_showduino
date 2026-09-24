@@ -220,6 +220,9 @@ void audioPixelProtocolApply(const char *command, uint32_t sequence, ShowduinoCm
   }
 
   char reply[SHOWDUINO_NODE_COMMAND_MAX];
+  if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) {
+    SD_LOGI("PIXEL", "RX: %s", work);
+  }
   if (audioPixelEngineHandleCommand(work, reply, sizeof(reply))) {
     if (reply[0]) report(reply, sequence);
     sActiveSeq = sequence;
