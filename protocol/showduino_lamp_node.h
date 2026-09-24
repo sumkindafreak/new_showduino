@@ -101,8 +101,19 @@ typedef enum ShowduinoLampCmd {
   SHOWDUINO_LAMP_CMD_EMERGENCY_CLEAR,
   SHOWDUINO_LAMP_CMD_IGNITE,
   SHOWDUINO_LAMP_CMD_EXTINGUISH,
+  SHOWDUINO_LAMP_CMD_AUDIO,
+  SHOWDUINO_LAMP_CMD_JEWEL_TEST,
   SHOWDUINO_LAMP_CMD_LOCAL_REJECT
 } ShowduinoLampCmd;
+
+typedef enum ShowduinoLampAudioVerb {
+  SHOWDUINO_LAMP_AUDIO_NONE = 0,
+  SHOWDUINO_LAMP_AUDIO_FLICK,
+  SHOWDUINO_LAMP_AUDIO_IGNITION,
+  SHOWDUINO_LAMP_AUDIO_FLAME_LOOP,
+  SHOWDUINO_LAMP_AUDIO_STOP,
+  SHOWDUINO_LAMP_AUDIO_EMERGENCY
+} ShowduinoLampAudioVerb;
 
 typedef enum ShowduinoLampFail {
   SHOWDUINO_LAMP_FAIL_NONE = 0,
@@ -126,6 +137,7 @@ typedef struct ShowduinoLampFxInfo {
 typedef struct ShowduinoLampCommand {
   ShowduinoLampCmd cmd;
   ShowduinoLampFx fx;
+  ShowduinoLampAudioVerb audio;
   uint8_t brightness; /* 0..100, 255 = unchanged */
   uint8_t r;
   uint8_t g;
@@ -307,6 +319,7 @@ static inline ShowduinoLampCmd showduino_lamp_parse_command(
   tmp.brightness = 255;
   tmp.intensity = 255;
   tmp.randomness = 255;
+  tmp.audio = SHOWDUINO_LAMP_AUDIO_NONE;
   tmp.r = 255;
   tmp.g = 180;
   tmp.b = 40;
@@ -337,8 +350,26 @@ static inline ShowduinoLampCmd showduino_lamp_parse_command(
   else if (strcmp(cmd, "IGNITE") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_IGNITE;
   else if (strcmp(cmd, "EXTINGUISH") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_EXTINGUISH;
   else if (strcmp(cmd, "TEST") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_TEST;
+  else if (strcmp(cmd, "JEWEL:TEST") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_JEWEL_TEST;
   else if (strcmp(cmd, "LIST") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_LIST;
   else if (strcmp(cmd, "OWN:GRANT") == 0) tmp.cmd = SHOWDUINO_LAMP_CMD_OWN_GRANT;
+  else if (strncmp(cmd, "AUDIO:", 6) == 0) {
+    const char *a = cmd + 6;
+    tmp.cmd = SHOWDUINO_LAMP_CMD_AUDIO;
+    if (strcmp(a, "FLICK") == 0 || strcmp(a, "STRIKE") == 0) {
+      tmp.audio = SHOWDUINO_LAMP_AUDIO_FLICK;
+    } else if (strcmp(a, "IGNITION") == 0) {
+      tmp.audio = SHOWDUINO_LAMP_AUDIO_IGNITION;
+    } else if (strcmp(a, "FLAME_LOOP") == 0 || strcmp(a, "BURN_LOOP") == 0) {
+      tmp.audio = SHOWDUINO_LAMP_AUDIO_FLAME_LOOP;
+    } else if (strcmp(a, "STOP") == 0) {
+      tmp.audio = SHOWDUINO_LAMP_AUDIO_STOP;
+    } else if (strcmp(a, "EMERGENCY") == 0) {
+      tmp.audio = SHOWDUINO_LAMP_AUDIO_EMERGENCY;
+    } else {
+      return SHOWDUINO_LAMP_CMD_NONE;
+    }
+  }
   else if (strncmp(cmd, "BRIGHTNESS:", 11) == 0) {
     uint8_t v = 0;
     if (showduino_lamp_parse_u8(cmd + 11, &v, SHOWDUINO_LAMP_BRI_MAX) != 0) {
@@ -440,7 +471,14 @@ static inline int showduino_lamp_cmd_theatrical(ShowduinoLampCmd cmd) {
   return cmd == SHOWDUINO_LAMP_CMD_OFF || cmd == SHOWDUINO_LAMP_CMD_STOP ||
          cmd == SHOWDUINO_LAMP_CMD_SOLID || cmd == SHOWDUINO_LAMP_CMD_FX ||
          cmd == SHOWDUINO_LAMP_CMD_BRIGHTNESS || cmd == SHOWDUINO_LAMP_CMD_TEST ||
-         cmd == SHOWDUINO_LAMP_CMD_IGNITE || cmd == SHOWDUINO_LAMP_CMD_EXTINGUISH;
+         cmd == SHOWDUINO_LAMP_CMD_IGNITE || cmd == SHOWDUINO_LAMP_CMD_EXTINGUISH ||
+         cmd == SHOWDUINO_LAMP_CMD_AUDIO || cmd == SHOWDUINO_LAMP_CMD_JEWEL_TEST;
+}
+
+/* Physical striker / blow may operate the carbide machine under P4 ownership.
+ * SoftAP WebUI remains locked (showduino_lamp_web_may_control). */
+static inline int showduino_lamp_cmd_local_physical(ShowduinoLampCmd cmd) {
+  return cmd == SHOWDUINO_LAMP_CMD_IGNITE || cmd == SHOWDUINO_LAMP_CMD_EXTINGUISH;
 }
 
 static inline int showduino_lamp_comms_loss_extinguish(ShowduinoLampNodeState st,
@@ -547,12 +585,21 @@ static inline ShowduinoLampFail showduino_lamp_can_accept_ex(
                  : SHOWDUINO_LAMP_FAIL_NOT_OWNER;
     }
     if (st == SHOWDUINO_LAMP_ST_SHOW_CONTROLLED) {
+      if (origin == SHOWDUINO_CMD_ORIGIN_LOCAL &&
+          showduino_lamp_cmd_local_physical(cmd)) {
+        return SHOWDUINO_LAMP_FAIL_NONE;
+      }
       return SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED;
     }
     if (st == SHOWDUINO_LAMP_ST_STANDALONE) return SHOWDUINO_LAMP_FAIL_NONE;
     if (st == SHOWDUINO_LAMP_ST_SEARCHING &&
         (origin == SHOWDUINO_CMD_ORIGIN_LOCAL ||
          origin == SHOWDUINO_CMD_ORIGIN_WEB)) {
+      return SHOWDUINO_LAMP_FAIL_NONE;
+    }
+    if (st == SHOWDUINO_LAMP_ST_BOOTING &&
+        origin == SHOWDUINO_CMD_ORIGIN_LOCAL &&
+        showduino_lamp_cmd_local_physical(cmd)) {
       return SHOWDUINO_LAMP_FAIL_NONE;
     }
     return SHOWDUINO_LAMP_FAIL_NOT_OWNER;

@@ -85,6 +85,9 @@ void setup() {
   }
 
   nodeDiagPrintBootBanner();
+  if (!lampEngineEmergency()) {
+    lampEngineRunBootCommission();
+  }
   lampProtocolAnnounce();
 }
 

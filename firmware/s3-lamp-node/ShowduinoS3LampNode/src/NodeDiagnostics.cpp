@@ -62,39 +62,46 @@ void nodeDiagPrintBootBanner() {
   char mac[24];
   lampEspNowMacString(mac, sizeof(mac));
   Serial.println("================================================");
-  Serial.println(" SHOWDUINO S3 LAMP NODE — CARBIDE SIMULATOR");
+  Serial.println(" SHOWDUINO LAMP NODE");
   Serial.println("================================================");
-  Serial.printf("Name: %s  id=%s\n", lampConfigName(), lampConfigId());
-  Serial.printf("Board: %s\n", SHOWDUINO_LAMP_NODE_BOARD);
-  Serial.printf("Firmware: %s  Product: %s  Protocol: %s\n",
-                SHOWDUINO_LAMP_NODE_FW, SHOWDUINO_PLATFORM_VERSION,
-                SHOWDUINO_LAMP_PROTOCOL);
-  Serial.printf("ESP32: %s rev %u\n", ESP.getChipModel(),
-                (unsigned)ESP.getChipRevision());
-  Serial.printf("Flash: %lu MB  PSRAM: %s\n",
-                (unsigned long)(ESP.getFlashChipSize() / (1024UL * 1024UL)),
-                ESP.getPsramSize() ? "present" : "none");
+  Serial.printf("Firmware: %s\n", SHOWDUINO_LAMP_NODE_FW);
   Serial.printf("MAC: %s\n", mac);
-  Serial.printf("ESP-NOW: %s ch=%u comms=%s\n",
-                lampEspNowReady() ? "ready" : "FAULT",
-                (unsigned)lampEspNowChannel(),
-                lampEspNowHaveComms() ? "ONLINE" : "SEARCHING");
-  Serial.printf("Jewel: %s x%u  carbide=%s\n",
-                lampEngineJewelReady() ? "driver" : "stub",
-                (unsigned)lampEngineCount(), lampEngineCarbideName());
-  Serial.printf("Fermion: %s (local FX, not Audio Node)\n", lampAudioStatus());
-  Serial.printf("Mode: %s  owner=%s  emergency=%s  fault=%s\n",
-                lampNodeProductModeName(),
-                lampNodeStateName(),
-                lampEngineEmergency() ? "ACTIVE" : "CLEAR",
-                lampNodeStateFault());
+  Serial.println("");
+  Serial.printf("DFPlayer: %s\n", lampAudioStatus());
+  Serial.println("");
+  Serial.println("Jewel:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_PIXEL_PIN);
+  Serial.printf("Pixels: %u\n", (unsigned)SHOWDUINO_LAMP_PIXEL_COUNT);
+  Serial.printf("%s\n", lampEngineJewelReady() ? "READY" : "STUB");
+  Serial.println("");
+  Serial.println("Ignition button:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_BTN_IGNITE);
+  Serial.printf("%s\n", lampLocalPinConfirmed() ? "READY" : "UNCONFIRMED");
+  Serial.println("");
+  Serial.println("Microphone:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_MIC_PIN);
+  Serial.println("READY");
+  Serial.println("");
+  Serial.println("Motion:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_MOTION_PIN);
+  Serial.printf("%s\n", lampMotionHardwareConfirmed() ? "READY" : "UNCONFIRMED");
+  Serial.println("");
+  Serial.println("Light sensor:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_LIGHT_PIN);
+  Serial.println("READY");
+  Serial.println("");
+  Serial.println("Voltage sensor:");
+  Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_VOLT_PIN);
+  Serial.println("READY");
+  Serial.println("");
+  Serial.printf("ESP-NOW:\n%s\n", lampEspNowReady() ? "READY" : "FAULT");
+  Serial.printf("Channel: %u\n", (unsigned)lampEspNowChannel());
+  Serial.println("");
+  Serial.printf("Owner:\n%s\n", lampNodeStateName());
+  Serial.println("");
+  Serial.printf("Lamp state:\n%s\n", lampEngineCarbideName());
+  Serial.println("================================================");
   nodeDiagPrintPins();
-  if (SHOWDUINO_LAMP_BTN_IGNITE >= 0) {
-    Serial.printf("Button idle GPIO%d=%s (%s)\n", SHOWDUINO_LAMP_BTN_IGNITE,
-                  digitalRead(SHOWDUINO_LAMP_BTN_IGNITE) ? "HIGH" : "LOW",
-                  SHOWDUINO_LAMP_BTN_POLARITY_NOTE);
-  }
-  Serial.println("Physical lamp is live. SoftAP WebUI is local. Showduino is optional.");
 }
 
 void nodeDiagPrintHelp() {

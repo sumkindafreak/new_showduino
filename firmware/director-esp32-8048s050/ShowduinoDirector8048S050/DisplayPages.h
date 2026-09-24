@@ -46,6 +46,12 @@ static const DisplayPage kAudioNodePage = {
   false, false, 0, false, true,
 };
 
+static const DisplayPage kLampNodePage = {
+  nullptr, nullptr, 0,
+  nullptr, 0,
+  false, false, 0, false, true,
+};
+
 static const DisplayPage kSettingsPage = {
   nullptr, nullptr, 0,
   nullptr, 0,
@@ -80,6 +86,7 @@ inline const DisplayPage *displayPageById(DisplayPageId id) {
     case PAGE_DIAGNOSTICS: return &kDiagnosticsPage;
     case PAGE_NODES: return &kNodesPage;
     case PAGE_AUDIO_NODE: return &kAudioNodePage;
+    case PAGE_LAMP_NODE: return &kLampNodePage;
     case PAGE_SETTINGS: return &kSettingsPage;
     case PAGE_AUDIO: return &kAudioPage;
     case PAGE_LOGS: return &kLogsPage;
@@ -145,6 +152,7 @@ inline const char *displayPageTitle(DisplayPageId id) {
     case PAGE_DIAGNOSTICS: return "DIAGNOSTICS";
     case PAGE_NODES: return "NODES";
     case PAGE_AUDIO_NODE: return "AUDIO NODE";
+    case PAGE_LAMP_NODE: return "LAMP NODE";
     case PAGE_EMERGENCY: return "EMERGENCY";
     default: return "SHOWDUINO";
   }

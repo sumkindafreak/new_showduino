@@ -13,6 +13,7 @@ static uint32_t sKeepaliveMs = 0;
 static uint32_t sPublishMs = 0;
 static char sLastWire[24] = "";
 static char sLastDetail[96] = "";
+static char sLastSensors[120] = "";
 
 static void route(uint32_t seq, const char *cmd) {
   char line[180];
@@ -26,6 +27,26 @@ static const char *wireToken() {
   if (!strcmp(sSt.state, "FAULT")) return "FAULT";
   if (sSt.fxActive) return "ACTIVE";
   return "ONLINE";
+}
+
+static void publishSensors(bool force) {
+  if (!sSt.sensorsValid && !force) return;
+  char line[120];
+  snprintf(line, sizeof(line), "%s%s:%s:%s:%s:%s:%s:%s",
+           SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX,
+           sSt.sensors.button[0] ? sSt.sensors.button : "-",
+           sSt.sensors.mic[0] ? sSt.sensors.mic : "-",
+           sSt.sensors.blow[0] ? sSt.sensors.blow : "-",
+           sSt.sensors.motion[0] ? sSt.sensors.motion : "-",
+           sSt.sensors.light[0] ? sSt.sensors.light : "-",
+           sSt.sensors.voltage[0] ? sSt.sensors.voltage : "-",
+           sSt.sensors.audio[0] ? sSt.sensors.audio : "-");
+  if (force || strcmp(sLastSensors, line) != 0) {
+    if (sendToDirector(String(line))) {
+      strncpy(sLastSensors, line, sizeof(sLastSensors) - 1);
+      sLastSensors[sizeof(sLastSensors) - 1] = '\0';
+    }
+  }
 }
 
 static void publishExtra(bool force) {
@@ -42,12 +63,16 @@ static void publishExtra(bool force) {
       strncpy(sLastDetail, line, sizeof(sLastDetail) - 1);
     }
   }
+  publishSensors(force);
 }
 
 static void publishState(bool force = false) {
   char line[48];
   const char *tok = wireToken();
-  if (!force && !strcmp(sLastWire, tok)) return;
+  if (!force && !strcmp(sLastWire, tok)) {
+    publishExtra(force);
+    return;
+  }
   snprintf(line, sizeof(line), "%s%s", SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX, tok);
   if (!sendToDirector(String(line))) return;
   strncpy(sLastWire, tok, sizeof(sLastWire) - 1);
@@ -70,6 +95,7 @@ void lampNodeLinkBegin() {
   sSt = LampNodeStatus();
   sLastWire[0] = '\0';
   sLastDetail[0] = '\0';
+  sLastSensors[0] = '\0';
 }
 
 void lampNodeLinkLoop() {
@@ -78,12 +104,17 @@ void lampNodeLinkLoop() {
     strncpy(sSt.state, "OFFLINE", sizeof(sSt.state) - 1);
     sSt.fxActive = false;
     sSt.pending = false;
+    sSt.sensorsValid = false;
     SD_LOGW("LAMP", "Lamp Node offline");
     publishState();
   }
   if (sSt.online && (millis() - sKeepaliveMs) >= 2000UL) {
     sKeepaliveMs = millis();
-    route(sSeq++, "LAMP:NODE:OWN:GRANT");
+    if (emergencyLocked) {
+      route(sSeq++, "EMERGENCY:STOP");
+    } else {
+      route(sSeq++, "LAMP:NODE:OWN:GRANT");
+    }
     route(sSeq++, "LAMP:STATUS");
   }
   if ((millis() - sPublishMs) >= 3000UL) {
@@ -158,8 +189,34 @@ bool lampNodeLinkHandleReport(const char *line) {
     return true;
   }
 
+  if (!strncmp(p, "SENSORS:", 8)) {
+    char wire[120];
+    snprintf(wire, sizeof(wire), "%s%s", SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX, p + 8);
+    if (showduino_parse_state_node_lamp_sensors(wire, &sSt.sensors)) {
+      sSt.sensorsValid = true;
+      publishSensors(false);
+    }
+    return true;
+  }
+
+  if (!strncmp(p, "LAMP:ID:", 8) || !strncmp(p, "ID:", 3)) {
+    const char *id = strchr(p, ':');
+    if (id && id[1]) {
+      strncpy(sSt.logicalId, id + 1, sizeof(sSt.logicalId) - 1);
+    }
+    return true;
+  }
+
   if (!strncmp(p, "LAMP:OWNED:", 11) || !strncmp(p, "OWNED:", 6)) {
     SD_LOGT("LAMP", "%s", p);
+    return true;
+  }
+
+  if (!strncmp(p, "LAMP:ACCEPTED:", 14) || !strncmp(p, "ACCEPTED:", 9)) {
+    sSt.pending = false;
+    strncpy(sSt.lastLife, "ACCEPTED", sizeof(sSt.lastLife) - 1);
+    sendToDirector(String("LAMP:ACCEPTED:") + String(sSt.pendingSeq));
+    publishState();
     return true;
   }
 
@@ -199,7 +256,12 @@ bool lampNodeLinkHandleReport(const char *line) {
     const char *reason = strrchr(p, ':');
     if (reason && reason[1]) strncpy(sSt.lastError, reason + 1, sizeof(sSt.lastError) - 1);
     sSt.pending = false;
+    strncpy(sSt.lastLife, "FAILED", sizeof(sSt.lastLife) - 1);
     SD_LOGW("LAMP", "Failed: %s", sSt.lastError[0] ? sSt.lastError : "-");
+    char failLine[64];
+    snprintf(failLine, sizeof(failLine), "LAMP:FAILED:%s",
+             sSt.lastError[0] ? sSt.lastError : "FAULT");
+    sendToDirector(String(failLine));
     publishState();
     return true;
   }
@@ -223,7 +285,8 @@ bool lampNodeLinkHandleCommand(const char *command, char *reply, size_t replyLen
       !strcmp(command, "LAMP:NODE:STOP") ||
       !strcmp(command, "LAMP:EXTINGUISH") ||
       !strcmp(command, "LAMP:NODE:EXTINGUISH") ||
-      (strstr(command, ":EXTINGUISH") != nullptr);
+      (strstr(command, ":EXTINGUISH") != nullptr) ||
+      (strstr(command, ":STATUS") != nullptr);
   if (emergencyLocked && !alwaysOk) {
     if (reply && replyLen) strncpy(reply, "REJECTED:LAMP:EMERGENCY_ACTIVE", replyLen - 1);
     return true;

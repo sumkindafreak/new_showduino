@@ -183,7 +183,7 @@ int main() {
     expect(sh.flare_enabled, "FLARE enabled while BURNING");
   }
 
-  /* ---- no fake OK health; no direct hardware controls ---- */
+  /* ---- sensor health stays unknown without wire; desk exposes commissioning ---- */
   {
     ShowduinoLampDirectorInput in = online_burning("LAMP-01");
     ShowduinoLampDirectorSheet sh;
@@ -193,10 +193,12 @@ int main() {
     expect(!showduino_lamp_desk_health_is_fake_ok(sh.motion_health), "MOTION health not fake OK");
     expect(!showduino_lamp_desk_health_is_fake_ok(sh.mic_health), "MIC not fake OK");
     expect(!showduino_lamp_desk_health_is_fake_ok(sh.voltage_health), "VOLTAGE not fake OK");
-    expect_str(sh.jewel_health, "--", "JEWEL health unavailable");
-    expect(!sh.has_jewel_control, "no direct Jewel control exists");
-    expect(!sh.has_audio_control, "no direct lamp audio control exists");
+    expect_str(sh.jewel_health, "--", "JEWEL health unavailable without sensors");
+    expect(sh.has_jewel_control, "desk may request JEWEL:TEST via P4");
+    expect(sh.has_audio_control, "desk may request LAMP:AUDIO via P4");
     expect(!sh.has_espnow_direct, "no direct ESP-NOW lamp control exists");
+    expect_str(sh.jewel_test_cmd, "LAMP:NODE:LAMP-01:JEWEL:TEST", "jewel test wire");
+    expect_str(sh.audio_flick_cmd, "LAMP:NODE:LAMP-01:AUDIO:FLICK", "audio flick wire");
   }
 
   /* ---- do not infer flameloop from BURNING ---- */
@@ -248,6 +250,10 @@ int main() {
     expect_str(a[0].label, "REFRESH", "stage/comms refresh");
 
     page04_sheet_fill_actions(PAGE04_NAV_ROLE_LAMP, 1, 0, a);
+    expect_str(a[0].label, "LAMP DESK", "lamp sheet opens dedicated desk");
+    expect_str(a[1].label, "IGNITE", "lamp sheet quick IGNITE");
+    expect_str(a[2].label, "EXTINGUISH", "lamp sheet quick EXTINGUISH");
+    expect_str(a[3].label, "REFRESH", "lamp sheet REFRESH");
     expect(strcmp(a[0].label, "CLEAR") != 0 && strcmp(a[1].label, "CLEAR") != 0,
            "lamp actions are not emergency-clear");
     int i;

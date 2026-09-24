@@ -4,6 +4,8 @@
 #include "LampConfig.h"
 #include "LampSensors.h"
 #include "LampMotion.h"
+#include "LampAudio.h"
+#include "LocalControls.h"
 #include "LampWeb.h"
 #include "EspNowLampTransport.h"
 #include "../BoardConfig.h"
@@ -21,6 +23,7 @@ static bool isRoutine(const char *line) {
   if (!line) return true;
   if (!strncmp(line, "ANNOUNCE:", 9)) return true;
   if (!strncmp(line, "STATUS:", 7)) return true;
+  if (!strncmp(line, "SENSORS:", 8)) return true;
   if (!strncmp(line, "LAMP:OWNED:", 11)) return true;
   if (!strncmp(line, "LAMP:CAPS:", 10)) return true;
   if (!strncmp(line, "LAMP:ID:", 8)) return true;
@@ -53,6 +56,76 @@ void lampProtocolFormatStatus(char *out, size_t n) {
            (unsigned)lampEngineBrightness(),
            lampEngineActive() ? lampEngineFxToken() : "-",
            lampNodeStateFault());
+}
+
+void lampProtocolFormatSensors(char *out, size_t n) {
+  const ShowduinoBlowDetector *blow = lampSensorsBlow();
+  const char *blowTok = "IDLE";
+  if (blow) {
+    if (blow->classified == SHOWDUINO_BLOW_SUSTAINED) blowTok = "DETECTED";
+    else if (blow->classified == SHOWDUINO_BLOW_PUFF) blowTok = "PUFF";
+    else if (showduino_blow_detected(blow)) blowTok = "ACTIVE";
+  }
+  int32_t micPct = -1;
+  if (blow && blow->threshold > 0) {
+    const int32_t delta = blow->filtered - blow->baseline;
+    if (delta > 0) {
+      micPct = (delta * 100) / blow->threshold;
+      if (micPct > 100) micPct = 100;
+    } else {
+      micPct = 0;
+    }
+  }
+  char micBuf[8];
+  if (micPct < 0) strncpy(micBuf, "-", sizeof(micBuf));
+  else snprintf(micBuf, sizeof(micBuf), "%ld", (long)micPct);
+
+  const char *motionTok = "UNCONF";
+  if (lampMotionHardwareConfirmed()) {
+    motionTok = lampMotionActive() ? "DETECTED" : "CLEAR";
+  }
+
+  int32_t lightN = showduino_lamp_light_normalized(lampSensorsLightRaw(),
+                                                   lampConfigLightScale());
+  char lightBuf[8];
+  if (lightN < 0) strncpy(lightBuf, "-", sizeof(lightBuf));
+  else snprintf(lightBuf, sizeof(lightBuf), "%ld", (long)lightN);
+
+  const int32_t voltMv = lampSensorsVoltMv();
+  char voltBuf[12];
+  if (voltMv < 0) strncpy(voltBuf, "-", sizeof(voltBuf));
+  else snprintf(voltBuf, sizeof(voltBuf), "%ld", (long)voltMv);
+
+  const char *audioTok = lampAudioCurrentRole();
+  if (!audioTok || !audioTok[0] || !strcmp(audioTok, "NONE")) {
+    audioTok = lampAudioStatus();
+  }
+
+  snprintf(out, n, "SENSORS:%s:%s:%s:%s:%s:%s:%s",
+           lampLocalPressed() ? "PRESSED" : "RELEASED",
+           micBuf,
+           blowTok,
+           motionTok,
+           lightBuf,
+           voltBuf,
+           audioTok ? audioTok : "-");
+}
+
+void lampProtocolPublishSensors(bool force) {
+  static char sLast[96] = "";
+  static uint32_t sLastMs = 0;
+  const uint32_t now = millis();
+  if (!force && (now - sLastMs) < 1500UL) return;
+  char line[96];
+  lampProtocolFormatSensors(line, sizeof(line));
+  if (!force && !strcmp(line, sLast)) {
+    sLastMs = now;
+    return;
+  }
+  strncpy(sLast, line, sizeof(sLast) - 1);
+  sLast[sizeof(sLast) - 1] = 0;
+  sLastMs = now;
+  report(line, 0);
 }
 
 void lampProtocolBegin() {
@@ -196,6 +269,7 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     char id[40];
     snprintf(id, sizeof(id), "LAMP:ID:%s", lampConfigId());
     report(id, sequence);
+    lampProtocolPublishSensors(true);
     return;
   }
 
@@ -228,6 +302,45 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       page++;
       if (page > 8) break;
     }
+    return;
+  }
+
+  if (cmd == SHOWDUINO_LAMP_CMD_AUDIO) {
+    switch (parsed.audio) {
+      case SHOWDUINO_LAMP_AUDIO_FLICK:
+        lampAudioPlay(SHOWDUINO_LAMP_SND_STRIKE);
+        break;
+      case SHOWDUINO_LAMP_AUDIO_IGNITION:
+        lampAudioPlay(SHOWDUINO_LAMP_SND_IGNITION);
+        break;
+      case SHOWDUINO_LAMP_AUDIO_FLAME_LOOP:
+        lampAudioPlay(SHOWDUINO_LAMP_SND_BURN_LOOP);
+        break;
+      case SHOWDUINO_LAMP_AUDIO_EMERGENCY:
+        lampAudioPlay(SHOWDUINO_LAMP_SND_EMERGENCY);
+        break;
+      case SHOWDUINO_LAMP_AUDIO_STOP:
+      default:
+        lampAudioStop();
+        break;
+    }
+    char line[48];
+    snprintf(line, sizeof(line), "LAMP:ACCEPTED:%lu", (unsigned long)sequence);
+    report(line, sequence);
+    lampProtocolPublishSensors(true);
+    return;
+  }
+
+  if (cmd == SHOWDUINO_LAMP_CMD_JEWEL_TEST) {
+    if (!lampEngineStartJewelTest()) {
+      char line[64];
+      snprintf(line, sizeof(line), "LAMP:FAILED:%lu:%s",
+               (unsigned long)sequence,
+               showduino_lamp_fail_name(SHOWDUINO_LAMP_FAIL_EMERGENCY));
+      report(line, sequence);
+      return;
+    }
+    accepted(sequence);
     return;
   }
 
@@ -270,10 +383,6 @@ void lampProtocolLocalIgnite() {
     Serial.println("[LAMP] Ignition blocked — emergency");
     return;
   }
-  if (!showduino_lamp_local_authority(lampNodeState())) {
-    Serial.println("[LAMP] Ignition blocked — P4 show control");
-    return;
-  }
   if (lampEngineFlameLit()) {
     Serial.println("[LAMP] Local striker: already lit");
     return;
@@ -293,7 +402,6 @@ void lampProtocolService() {
   lampOwnerTick();
   onOwnerEdges();
 
-  const bool localOk = showduino_lamp_local_authority(lampNodeState());
   const ShowduinoBlowDetector *blowDet = lampSensorsBlow();
   uint8_t stress = 0;
   if (blowDet && blowDet->threshold > 0) {
@@ -311,10 +419,11 @@ void lampProtocolService() {
   lampEngineSetBlowStress(lampEngineEmergency() ? 0 : stress);
 
   const ShowduinoBlowClass blow = lampSensorsTakeBlowEvent();
-  if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY && localOk) {
+  if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
     if (blow == SHOWDUINO_BLOW_SUSTAINED && lampEngineFlameLit()) {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW);
       Serial.println("[LAMP] Sustained blow → EXTINGUISH");
+      lampProtocolPublishSensors(true);
     } else if (blow == SHOWDUINO_BLOW_PUFF && lampEngineFlameLit()) {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_PUFF);
     } else if (blow == SHOWDUINO_BLOW_RELEASE) {
@@ -346,14 +455,10 @@ void lampProtocolService() {
     }
     if (cmd[0]) {
       lampProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
-    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_OWNER) {
-      Serial.println("[MOTION] ignored — P4 show control");
-    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_EMERGENCY) {
-      Serial.println("[MOTION] ignored — emergency");
-    } else if (dec == SHOWDUINO_MOTION_DECIDE_BLOCKED_UNCONFIRMED) {
-      Serial.println("[MOTION] ignored — sensor unconfirmed, telemetry only");
     }
   }
+
+  lampProtocolPublishSensors(false);
 
   if (sApDueMs && (int32_t)(millis() - sApDueMs) >= 0) {
     sApDueMs = 0;

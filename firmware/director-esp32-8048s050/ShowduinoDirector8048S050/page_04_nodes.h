@@ -23,6 +23,7 @@ extern "C" {
 #define PAGE04_CMD_BACK            "PAGE04:BACK"
 #define PAGE04_CMD_CLOSE           "PAGE04:CLOSE"
 #define PAGE04_CMD_AUDIO           "PAGE04:AUDIO"
+#define PAGE04_CMD_LAMP            "PAGE04:LAMP"
 #define PAGE04_CMD_STATUS          "PAGE04:STATUS"
 #define PAGE04_CMD_AUDIO_TEST      "PAGE04:AUDIO:TEST"
 #define PAGE04_CMD_AUDIO_STOP      "PAGE04:AUDIO:STOP"

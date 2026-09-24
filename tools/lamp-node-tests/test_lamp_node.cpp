@@ -157,6 +157,34 @@ int main() {
          "web may control standalone");
   expect(!showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED),
          "web may not override P4");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
+                                      SHOWDUINO_LAMP_CMD_IGNITE,
+                                      SHOWDUINO_CMD_ORIGIN_LOCAL) ==
+             SHOWDUINO_LAMP_FAIL_NONE,
+         "local striker allowed under show control");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_SHOW_CONTROLLED,
+                                      SHOWDUINO_LAMP_CMD_AUDIO,
+                                      SHOWDUINO_CMD_ORIGIN_WEB) ==
+             SHOWDUINO_LAMP_FAIL_SHOW_CONTROLLED,
+         "web audio blocked under show control");
+  expect(showduino_lamp_parse_command("LAMP:AUDIO:FLICK", &c) ==
+             SHOWDUINO_LAMP_CMD_AUDIO,
+         "audio flick");
+  expect(c.audio == SHOWDUINO_LAMP_AUDIO_FLICK, "audio flick verb");
+  expect(showduino_lamp_parse_command("LAMP:NODE:LAMP-01:AUDIO:FLAME_LOOP", &c) ==
+             SHOWDUINO_LAMP_CMD_AUDIO,
+         "audio flame loop");
+  expect(c.audio == SHOWDUINO_LAMP_AUDIO_FLAME_LOOP, "flame loop verb");
+  expect(showduino_lamp_parse_command("LAMP:JEWEL:TEST", &c) ==
+             SHOWDUINO_LAMP_CMD_JEWEL_TEST,
+         "jewel test");
+  expect(showduino_lamp_parse_command("LAMP:AUDIO:NOPE", &c) == SHOWDUINO_LAMP_CMD_NONE,
+         "bad audio rejected");
+  expect(showduino_lamp_can_accept_ex(SHOWDUINO_LAMP_ST_EMERGENCY,
+                                      SHOWDUINO_LAMP_CMD_JEWEL_TEST,
+                                      SHOWDUINO_CMD_ORIGIN_SHOW) ==
+             SHOWDUINO_LAMP_FAIL_EMERGENCY,
+         "emergency rejects jewel test");
   expect(!showduino_lamp_web_may_control(SHOWDUINO_LAMP_ST_EMERGENCY),
          "web may not control emergency");
   expect(showduino_lamp_local_authority(SHOWDUINO_LAMP_ST_SEARCHING),

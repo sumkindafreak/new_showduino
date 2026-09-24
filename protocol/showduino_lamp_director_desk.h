@@ -36,7 +36,14 @@ typedef enum ShowduinoLampDeskVerb {
   SHOWDUINO_LAMP_DESK_CMD_IGNITE = 0,
   SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH,
   SHOWDUINO_LAMP_DESK_CMD_FLARE,
-  SHOWDUINO_LAMP_DESK_CMD_STATUS
+  SHOWDUINO_LAMP_DESK_CMD_STATUS,
+  SHOWDUINO_LAMP_DESK_CMD_JEWEL_TEST,
+  SHOWDUINO_LAMP_DESK_CMD_FLAME_TEST,
+  SHOWDUINO_LAMP_DESK_CMD_OFF,
+  SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLICK,
+  SHOWDUINO_LAMP_DESK_CMD_AUDIO_IGNITION,
+  SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLAME_LOOP,
+  SHOWDUINO_LAMP_DESK_CMD_AUDIO_STOP
 } ShowduinoLampDeskVerb;
 
 typedef struct ShowduinoLampDirectorInput {
@@ -44,9 +51,11 @@ typedef struct ShowduinoLampDirectorInput {
   int offline;
   int emergency;
   int detail_valid;
+  int sensors_valid;
   char logical_id[16];
   char friendly[24];
   ShowduinoLampDetailWire detail;
+  ShowduinoLampSensorWire sensors;
 } ShowduinoLampDirectorInput;
 
 typedef struct ShowduinoLampDirectorSheet {
@@ -78,6 +87,20 @@ typedef struct ShowduinoLampDirectorSheet {
   char extinguish_cmd[48];
   char flare_cmd[48];
   char refresh_cmd[48];
+  char jewel_test_cmd[48];
+  char flame_test_cmd[48];
+  char off_cmd[48];
+  char audio_flick_cmd[48];
+  char audio_ignition_cmd[48];
+  char audio_loop_cmd[48];
+  char audio_stop_cmd[48];
+  char light[8];
+  char voltage[12];
+  char button[12];
+  uint8_t jewel_enabled;
+  uint8_t flame_test_enabled;
+  uint8_t off_enabled;
+  uint8_t audio_enabled;
 } ShowduinoLampDirectorSheet;
 
 typedef enum Page04NavPlace {
@@ -104,6 +127,13 @@ static inline const char *showduino_lamp_desk_verb_tail(ShowduinoLampDeskVerb ve
     case SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH: return "EXTINGUISH";
     case SHOWDUINO_LAMP_DESK_CMD_FLARE: return "FX:FLARE";
     case SHOWDUINO_LAMP_DESK_CMD_STATUS: return "STATUS";
+    case SHOWDUINO_LAMP_DESK_CMD_JEWEL_TEST: return "JEWEL:TEST";
+    case SHOWDUINO_LAMP_DESK_CMD_FLAME_TEST: return "FX:STEADY_FLAME";
+    case SHOWDUINO_LAMP_DESK_CMD_OFF: return "OFF";
+    case SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLICK: return "AUDIO:FLICK";
+    case SHOWDUINO_LAMP_DESK_CMD_AUDIO_IGNITION: return "AUDIO:IGNITION";
+    case SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLAME_LOOP: return "AUDIO:FLAME_LOOP";
+    case SHOWDUINO_LAMP_DESK_CMD_AUDIO_STOP: return "AUDIO:STOP";
     default: return "STATUS";
   }
 }
@@ -177,10 +207,13 @@ static inline void showduino_lamp_director_build_sheet(
   strncpy(out->motion_health, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->motion_health) - 1);
   strncpy(out->mic_health, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->mic_health) - 1);
   strncpy(out->voltage_health, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->voltage_health) - 1);
+  strncpy(out->light, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->light) - 1);
+  strncpy(out->voltage, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->voltage) - 1);
+  strncpy(out->button, SHOWDUINO_LAMP_DESK_UNKNOWN, sizeof(out->button) - 1);
   out->refresh_enabled = 1;
   out->has_clear_emergency = 0;
-  out->has_jewel_control = 0;
-  out->has_audio_control = 0;
+  out->has_jewel_control = 1;
+  out->has_audio_control = 1;
   out->has_espnow_direct = 0;
 
   showduino_lamp_director_select_id(in ? in->logical_id : 0, id, sizeof(id));
@@ -233,6 +266,10 @@ static inline void showduino_lamp_director_build_sheet(
 
   out->ignite_enabled = (uint8_t)live;
   out->extinguish_enabled = (uint8_t)live;
+  out->jewel_enabled = (uint8_t)live;
+  out->flame_test_enabled = (uint8_t)live;
+  out->off_enabled = (uint8_t)live;
+  out->audio_enabled = (uint8_t)live;
   flare = live;
   if (live && in && in->detail_valid) {
     fx = in->detail.fx;
@@ -243,6 +280,36 @@ static inline void showduino_lamp_director_build_sheet(
   }
   out->flare_enabled = (uint8_t)flare;
 
+  if (out->online && in && in->sensors_valid) {
+    if (in->sensors.button[0]) {
+      strncpy(out->button, in->sensors.button, sizeof(out->button) - 1);
+    }
+    if (in->sensors.motion[0]) {
+      strncpy(out->motion, in->sensors.motion, sizeof(out->motion) - 1);
+    }
+    if (in->sensors.blow[0]) {
+      strncpy(out->blow, in->sensors.blow, sizeof(out->blow) - 1);
+    }
+    if (in->sensors.audio[0]) {
+      strncpy(out->audio, in->sensors.audio, sizeof(out->audio) - 1);
+    }
+    if (in->sensors.mic[0]) {
+      strncpy(out->mic_health, in->sensors.mic, sizeof(out->mic_health) - 1);
+    }
+    if (in->sensors.light[0]) {
+      strncpy(out->light, in->sensors.light, sizeof(out->light) - 1);
+    }
+    if (in->sensors.voltage[0]) {
+      strncpy(out->voltage, in->sensors.voltage, sizeof(out->voltage) - 1);
+      strncpy(out->voltage_health, in->sensors.voltage, sizeof(out->voltage_health) - 1);
+    }
+    strncpy(out->jewel_health, "READY", sizeof(out->jewel_health) - 1);
+    strncpy(out->audio_health, in->sensors.audio[0] ? in->sensors.audio : "--",
+            sizeof(out->audio_health) - 1);
+    strncpy(out->motion_health, in->sensors.motion[0] ? in->sensors.motion : "--",
+            sizeof(out->motion_health) - 1);
+  }
+
   showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_IGNITE,
                                      out->ignite_cmd, sizeof(out->ignite_cmd));
   showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH,
@@ -251,6 +318,20 @@ static inline void showduino_lamp_director_build_sheet(
                                      out->flare_cmd, sizeof(out->flare_cmd));
   showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_STATUS,
                                      out->refresh_cmd, sizeof(out->refresh_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_JEWEL_TEST,
+                                     out->jewel_test_cmd, sizeof(out->jewel_test_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_FLAME_TEST,
+                                     out->flame_test_cmd, sizeof(out->flame_test_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_OFF,
+                                     out->off_cmd, sizeof(out->off_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLICK,
+                                     out->audio_flick_cmd, sizeof(out->audio_flick_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_AUDIO_IGNITION,
+                                     out->audio_ignition_cmd, sizeof(out->audio_ignition_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLAME_LOOP,
+                                     out->audio_loop_cmd, sizeof(out->audio_loop_cmd));
+  showduino_lamp_director_format_cmd(id, SHOWDUINO_LAMP_DESK_CMD_AUDIO_STOP,
+                                     out->audio_stop_cmd, sizeof(out->audio_stop_cmd));
 }
 
 static inline void page04_nav_reset(Page04Nav *n) {
@@ -312,9 +393,9 @@ static inline void page04_sheet_fill_actions(int role, int present, int emergenc
     return;
   }
   if (role == PAGE04_NAV_ROLE_LAMP) {
-    page04_sheet_set_action(&out[0], "IGNITE", "PAGE04:LAMP:IGNITE", live);
-    page04_sheet_set_action(&out[1], "EXTINGUISH", "PAGE04:LAMP:EXTINGUISH", live);
-    page04_sheet_set_action(&out[2], "FLARE", "PAGE04:LAMP:FLARE", live);
+    page04_sheet_set_action(&out[0], "LAMP DESK", "PAGE04:LAMP", 1);
+    page04_sheet_set_action(&out[1], "IGNITE", "PAGE04:LAMP:IGNITE", live);
+    page04_sheet_set_action(&out[2], "EXTINGUISH", "PAGE04:LAMP:EXTINGUISH", live);
     page04_sheet_set_action(&out[3], "REFRESH", "PAGE04:LAMP:STATUS", 1);
     return;
   }

@@ -4,7 +4,7 @@
 Status: ACTIVE firmware / physical GPIOs confirmed
 Role: Interactive carbide-lamp practical
 Hardware: ESP32-S3 development board (same family as the Comms Controller)
-Firmware: 0.4.0
+Firmware: 0.4.1
 ```
 
 This is the **production Lamp Node**.

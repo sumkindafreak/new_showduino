@@ -485,6 +485,19 @@ void handleStageLine(String line) {
       ui.setLampNodeDetail(ldet);
     }
   }
+  {
+    ShowduinoLampSensorWire lsen{};
+    if (showduino_parse_state_node_lamp_sensors(line.c_str(), &lsen)) {
+      ui.setLampNodeSensors(lsen);
+    }
+  }
+  if (line.startsWith("LAMP:ACCEPTED:")) {
+    ui.noteLampAccepted();
+  }
+  if (line.startsWith("LAMP:FAILED:") || line.startsWith("REJECTED:LAMP:")) {
+    const int colon = line.lastIndexOf(':');
+    ui.noteLampFailed(colon >= 0 ? line.substring(colon + 1).c_str() : "FAILED");
+  }
 
   ShowduinoPixelNodeWire pixW = showduino_parse_state_node_pixel(line.c_str());
   if (pixW != SHOWDUINO_PIXEL_NODE_WIRE_INVALID) {

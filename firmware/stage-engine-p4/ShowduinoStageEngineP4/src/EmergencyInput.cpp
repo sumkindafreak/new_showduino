@@ -1,6 +1,7 @@
 #include "EmergencyInput.h"
 #include "../../../protocol/showduino_emergency_button.h"
 #include "nodes/AudioNodeLink.h"
+#include "nodes/LampNodeLink.h"
 
 extern bool emergencyLocked;
 
@@ -17,6 +18,7 @@ extern bool emergencyLocked;
  * the node to safe IDLE (or leaves FAULT / NO_STORAGE intact).
  */
 static uint32_t sAudioEmergencySyncMs = 0;
+static uint32_t sLampEmergencySyncMs = 0;
 
 static void reconcileAudioNodeEmergency(uint32_t nowMs) {
   const AudioNodeStatus &audio = audioNodeLinkStatus();
@@ -37,6 +39,26 @@ static void reconcileAudioNodeEmergency(uint32_t nowMs) {
                 audio.state[0] ? audio.state : "UNKNOWN",
                 emergencyLocked ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR");
   audioNodeLinkOnEmergency(emergencyLocked);
+}
+
+static void reconcileLampNodeEmergency(uint32_t nowMs) {
+  const LampNodeStatus &lamp = lampNodeLinkStatus();
+  if (!lamp.online) return;
+
+  const bool nodeEmergency = strcmp(lamp.state, "EMERGENCY") == 0;
+  if (nodeEmergency == emergencyLocked) return;
+
+  if (sLampEmergencySyncMs != 0 &&
+      (nowMs - sLampEmergencySyncMs) < 1000UL) {
+    return;
+  }
+  sLampEmergencySyncMs = nowMs;
+
+  Serial.printf("[ESTOP] Lamp Node emergency resync P4=%s node=%s -> %s\n",
+                emergencyLocked ? "ACTIVE" : "CLEAR",
+                lamp.state[0] ? lamp.state : "UNKNOWN",
+                emergencyLocked ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR");
+  lampNodeLinkOnEmergency(emergencyLocked);
 }
 
 #if SHOWDUINO_ESTOP_GPIO >= 0
@@ -75,6 +97,7 @@ void emergencyInputBegin() {
   sAssertionSeq = 0;
   sClearSuperseded = false;
   sAudioEmergencySyncMs = 0;
+  sLampEmergencySyncMs = 0;
 
   gpio_reset_pin((gpio_num_t)SHOWDUINO_ESTOP_GPIO);
   gpio_set_direction((gpio_num_t)SHOWDUINO_ESTOP_GPIO, GPIO_MODE_INPUT);
@@ -135,6 +158,7 @@ EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
   }
 
   reconcileAudioNodeEmergency(nowMs);
+  reconcileLampNodeEmergency(nowMs);
   return ev;
 }
 
@@ -205,11 +229,13 @@ uint32_t emergencyInputAssertionSeq() {
 
 void emergencyInputBegin() {
   sAudioEmergencySyncMs = 0;
+  sLampEmergencySyncMs = 0;
 }
 
 EmergencyInputEvents emergencyInputService(uint32_t nowMs) {
   EmergencyInputEvents ev = {};
   reconcileAudioNodeEmergency(nowMs);
+  reconcileLampNodeEmergency(nowMs);
   return ev;
 }
 

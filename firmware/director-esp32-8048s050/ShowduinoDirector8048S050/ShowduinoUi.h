@@ -31,6 +31,7 @@
 #include "page_02_productions.h"
 #include "page_04_nodes.h"
 #include "page_05_audio_node.h"
+#include "page_lamp_node.h"
 #include "page_06_diagnostics.h"
 #include "page_08_settings.h"
 #include "page_10_live.h"
@@ -38,6 +39,7 @@
 #include "page_audio_system.h"
 #include "DirectorDiagnostics.h"
 #include "DirectorAudioNodeControl.h"
+#include "DirectorLampNodeControl.h"
 #include "showduino_theme.h"
 #include "showduino_capabilities.h"
 #include "DirectorUiText.h"
@@ -358,11 +360,18 @@ public:
 
   void setLampNodeAvail(ShowduinoLampNodeWire raw) {
     const ShowduinoNodeAvailWire wire = showduino_lamp_wire_to_avail(raw);
-    if (lampNodeRaw_ == raw && lampNodeWire_ == wire) return;
+    if (lampNodeRaw_ == raw && lampNodeWire_ == wire) {
+      refreshLampNodePage();
+      return;
+    }
     lampNodeRaw_ = raw;
     lampNodeWire_ = wire;
     const bool present = (wire == SHOWDUINO_NODE_WIRE_ONLINE ||
                           wire == SHOWDUINO_NODE_WIRE_FAULT);
+    if (!present) {
+      lampSensorsValid_ = false;
+      lampDetailValid_ = false;
+    }
     ShowduinoCapabilities caps = page_01_home_get_capabilities();
     if (caps.lamp != present) {
       caps.lamp = present;
@@ -373,6 +382,7 @@ public:
         : "-");
     recountSpecialistNodes();
     refreshNodesPage();
+    refreshLampNodePage();
     statusDirty = true;
     if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
   }
@@ -381,6 +391,24 @@ public:
     lampDetail_ = d;
     lampDetailValid_ = true;
     refreshNodesPage();
+    refreshLampNodePage();
+  }
+
+  void setLampNodeSensors(const ShowduinoLampSensorWire &s) {
+    lampSensors_ = s;
+    lampSensorsValid_ = true;
+    refreshNodesPage();
+    refreshLampNodePage();
+  }
+
+  void noteLampAccepted() {
+    director_lamp_note_accepted(&lampNodeCtrl_);
+    refreshLampNodePage();
+  }
+
+  void noteLampFailed(const char *reason) {
+    director_lamp_note_failed(&lampNodeCtrl_, reason);
+    refreshLampNodePage();
   }
 
   void setPixelNodeAvail(ShowduinoPixelNodeWire wire) {
@@ -1586,15 +1614,48 @@ private:
     in.emergency = (emergencyLocked ||
                     lampNodeRaw_ == SHOWDUINO_LAMP_NODE_WIRE_EMERGENCY) ? 1 : 0;
     in.detail_valid = lampDetailValid_ ? 1 : 0;
+    in.sensors_valid = lampSensorsValid_ ? 1 : 0;
     strncpy(in.logical_id, lampLogicalId_, sizeof(in.logical_id) - 1);
     in.detail = lampDetail_;
+    in.sensors = lampSensors_;
     showduino_lamp_director_build_sheet(&in, &sh);
     page_04_nodes_set_lamp_sheet(&sh);
+    director_lamp_apply_sheet(&lampNodeCtrl_, &sh);
+    lampNodeCtrl_.emergency = in.emergency != 0;
+    director_lamp_reconcile_from_state(&lampNodeCtrl_);
+    if (page_lamp_node_is_active()) {
+      page_lamp_node_set_model(&lampNodeCtrl_);
+    }
+  }
+
+  void refreshLampNodePage() {
+    refreshLampSheet();
+    director_lamp_pending_timeout(&lampNodeCtrl_, millis());
+    if (page_lamp_node_is_active()) {
+      page_lamp_node_set_model(&lampNodeCtrl_);
+    }
   }
 
   void sendLampDesk(ShowduinoLampDeskVerb verb) {
     char cmd[48];
     showduino_lamp_director_format_cmd(lampLogicalId_, verb, cmd, sizeof(cmd));
+    DirectorLampPending pend = DIRECTOR_LAMP_PEND_STATUS;
+    switch (verb) {
+      case SHOWDUINO_LAMP_DESK_CMD_IGNITE: pend = DIRECTOR_LAMP_PEND_IGNITE; break;
+      case SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH: pend = DIRECTOR_LAMP_PEND_EXTINGUISH; break;
+      case SHOWDUINO_LAMP_DESK_CMD_JEWEL_TEST: pend = DIRECTOR_LAMP_PEND_JEWEL; break;
+      case SHOWDUINO_LAMP_DESK_CMD_FLAME_TEST: pend = DIRECTOR_LAMP_PEND_FLAME; break;
+      case SHOWDUINO_LAMP_DESK_CMD_OFF: pend = DIRECTOR_LAMP_PEND_OFF; break;
+      case SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLICK:
+      case SHOWDUINO_LAMP_DESK_CMD_AUDIO_IGNITION:
+      case SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLAME_LOOP:
+      case SHOWDUINO_LAMP_DESK_CMD_AUDIO_STOP:
+        pend = DIRECTOR_LAMP_PEND_AUDIO;
+        break;
+      default: pend = DIRECTOR_LAMP_PEND_STATUS; break;
+    }
+    director_lamp_set_pending(&lampNodeCtrl_, pend, millis());
+    refreshLampNodePage();
     if (commandCallback) commandCallback(cmd);
   }
 
@@ -2245,8 +2306,11 @@ private:
   ShowduinoNodeAvailWire lampNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
   ShowduinoLampNodeWire lampNodeRaw_ = SHOWDUINO_LAMP_NODE_WIRE_INVALID;
   ShowduinoLampDetailWire lampDetail_{};
+  ShowduinoLampSensorWire lampSensors_{};
   bool lampDetailValid_ = false;
+  bool lampSensorsValid_ = false;
   char lampLogicalId_[16] = SHOWDUINO_CARBIDE_LOGICAL_DEFAULT;
+  DirectorLampNodeControl lampNodeCtrl_{};
   ShowduinoNodeAvailWire pixelNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
   ShowduinoPixelNodeWire pixelNodeRaw_ = SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
   ShowduinoPixelDetailWire pixelDetail_{};
@@ -2582,6 +2646,9 @@ private:
       if (page_05_audio_node_is_active()) {
         page_05_audio_node_apply_theme();
       }
+      if (page_lamp_node_is_active()) {
+        page_lamp_node_apply_theme();
+      }
       if (page_06_diagnostics_is_active()) {
         page_06_diagnostics_apply_theme();
       }
@@ -2629,6 +2696,11 @@ private:
       maybeRestoreEmergencyOverlay();
       return;
     }
+    if (command == PAGE04_CMD_LAMP) {
+      showLampNode();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
     if (command == PAGE04_CMD_CLOSE) {
       page_04_nodes_close_sheet();
       return;
@@ -2658,6 +2730,51 @@ private:
       return;
     }
     if (command == PAGE04_CMD_LAMP_STATUS) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_BACK) {
+      showNodes();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_IGNITE) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_IGNITE);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_EXTINGUISH) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_EXTINGUISH);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_JEWEL_TEST) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_JEWEL_TEST);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_FLAME_TEST) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_FLAME_TEST);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_OFF) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_OFF);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_AUDIO_FLICK) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLICK);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_AUDIO_IGNITE) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_AUDIO_IGNITION);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_AUDIO_LOOP) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_AUDIO_FLAME_LOOP);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_AUDIO_STOP) {
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_AUDIO_STOP);
+      return;
+    }
+    if (command == PAGE_LAMP_CMD_REFRESH) {
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
       return;
     }
@@ -3229,6 +3346,17 @@ private:
     }
     uiBuildPump();
 
+    Serial.println("[UI] Page Lamp Node...");
+    lv_obj_t *lampNodePanel = makePagePanel(PAGE_LAMP_NODE);
+    uiBuildPump("[UI] Lamp Node");
+    if (lampNodePanel != nullptr) {
+      page_lamp_node_create(lampNodePanel, displayCommandThunk);
+      page_lamp_node_set_model(&lampNodeCtrl_);
+    } else {
+      Serial.println("[UI] Lamp Node panel missing");
+    }
+    uiBuildPump();
+
     /* ---- PAGE 06 DIAGNOSTICS ---- */
     Serial.println("[UI] Page 06 Diagnostics...");
     diagnosticsScreen = makePagePanel(PAGE_DIAGNOSTICS);
@@ -3674,6 +3802,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
       case PAGE_AUDIO: showAudio(); break;
@@ -3689,6 +3818,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
       case PAGE_AUDIO: showAudio(); break;
@@ -4032,6 +4162,23 @@ private:
       if (commandCallback) commandCallback("STATUS:REQUEST");
     } else {
       Serial.println("[UI] Audio Node page unavailable");
+      showNodes();
+    }
+    statusDirty = true;
+    trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void showLampNode() {
+    if (displayManager_.showPage(PAGE_LAMP_NODE)) {
+      Serial.println("[UI] Lamp Node page (LVGL)");
+      if (page_lamp_node_is_active()) {
+        page_lamp_node_apply_theme();
+        refreshLampNodePage();
+      }
+      pushDisplaySnapshot();
+      sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+    } else {
+      Serial.println("[UI] Lamp Node page unavailable");
       showNodes();
     }
     statusDirty = true;

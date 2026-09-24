@@ -3,12 +3,14 @@
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_lamp_node.h"
+#include "../../../protocol/showduino_state_wire.h"
 
 struct LampNodeStatus {
   bool seen = false;
   bool online = false;
   bool pending = false;
   bool fxActive = false;
+  bool sensorsValid = false;
   uint8_t brightness = 100;
   uint32_t lastSeq = 0;
   uint32_t pendingSeq = 0;
@@ -19,6 +21,8 @@ struct LampNodeStatus {
   char fx[24] = "-";
   char lastLife[16] = "";
   char lastError[24] = "";
+  char logicalId[16] = "";
+  ShowduinoLampSensorWire sensors{};
 };
 
 void lampNodeLinkBegin();

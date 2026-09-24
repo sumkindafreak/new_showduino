@@ -32,7 +32,7 @@
  * only and must never be combined with the confirmed production map.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.4.0"
+#define SHOWDUINO_LAMP_NODE_FW             "0.4.1"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 

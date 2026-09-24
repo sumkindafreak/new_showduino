@@ -10,5 +10,7 @@ void lampProtocolLocalIgnite();
 void lampProtocolAnnounce();
 void lampProtocolService();
 void lampProtocolFormatStatus(char *out, size_t n);
+void lampProtocolFormatSensors(char *out, size_t n);
+void lampProtocolPublishSensors(bool force);
 
 #endif

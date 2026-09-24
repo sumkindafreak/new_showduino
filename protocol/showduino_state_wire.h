@@ -151,6 +151,7 @@ typedef enum ShowduinoLampNodeWire {
 } ShowduinoLampNodeWire;
 
 #define SHOWDUINO_WIRE_STATE_NODE_LAMP_DETAIL_PREFIX "STATE:NODE:LAMP:D:"
+#define SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX "STATE:NODE:LAMP:S:"
 
 typedef struct ShowduinoLampDetailWire {
   char state[16];
@@ -160,13 +161,30 @@ typedef struct ShowduinoLampDetailWire {
   char firmware[12];
 } ShowduinoLampDetailWire;
 
+/* Compact live sensor snapshot for Director commissioning.
+ * Wire: STATE:NODE:LAMP:S:<btn>:<mic>:<blow>:<motion>:<light>:<volt_mv>:<audio>
+ * btn: RELEASED|PRESSED  blow: IDLE|PUFF|BLOW|DETECTED
+ * motion: CLEAR|DETECTED|UNCONF  mic/light: 0-100 or -  volt_mv: integer or -
+ */
+typedef struct ShowduinoLampSensorWire {
+  char button[12];
+  char mic[8];
+  char blow[12];
+  char motion[12];
+  char light[8];
+  char voltage[12];
+  char audio[16];
+} ShowduinoLampSensorWire;
+
 static inline ShowduinoLampNodeWire showduino_parse_state_node_lamp(const char *line) {
   const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX) - 1;
   if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX, prefixLen) != 0) {
     return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
   }
   const char *v = line + prefixLen;
-  if (v[0] && v[1] == ':' && v[0] == 'D') return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+  if (v[0] && v[1] == ':' && (v[0] == 'D' || v[0] == 'S')) {
+    return SHOWDUINO_LAMP_NODE_WIRE_INVALID;
+  }
   if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_OFFLINE;
   if (strcmp(v, "ONLINE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_ONLINE;
   if (strcmp(v, "ACTIVE") == 0) return SHOWDUINO_LAMP_NODE_WIRE_ACTIVE;
@@ -302,6 +320,72 @@ static inline int showduino_parse_state_node_lamp_detail(const char *line,
   n = strlen(p);
   if (n >= sizeof(out->firmware)) n = sizeof(out->firmware) - 1;
   memcpy(out->firmware, p, n);
+  return 1;
+}
+
+static inline int showduino_parse_state_node_lamp_sensors(const char *line,
+                                                          ShowduinoLampSensorWire *out) {
+  char *next;
+  size_t n;
+  char *fields[7];
+  char buf[96];
+  int i;
+  if (!line || !out) return 0;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX,
+              sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX) - 1) != 0) {
+    return 0;
+  }
+  memset(out, 0, sizeof(*out));
+  {
+    const char *p = line + (sizeof(SHOWDUINO_WIRE_STATE_NODE_LAMP_SENSOR_PREFIX) - 1);
+    n = strlen(p);
+    if (n >= sizeof(buf)) n = sizeof(buf) - 1;
+    memcpy(buf, p, n);
+    buf[n] = 0;
+  }
+  for (i = 0; i < 7; i++) fields[i] = NULL;
+  fields[0] = buf;
+  for (i = 1; i < 7; i++) {
+    next = strchr(fields[i - 1], ':');
+    if (!next) break;
+    *next = 0;
+    fields[i] = next + 1;
+  }
+  if (fields[0]) {
+    n = strlen(fields[0]);
+    if (n >= sizeof(out->button)) n = sizeof(out->button) - 1;
+    memcpy(out->button, fields[0], n);
+  }
+  if (fields[1]) {
+    n = strlen(fields[1]);
+    if (n >= sizeof(out->mic)) n = sizeof(out->mic) - 1;
+    memcpy(out->mic, fields[1], n);
+  }
+  if (fields[2]) {
+    n = strlen(fields[2]);
+    if (n >= sizeof(out->blow)) n = sizeof(out->blow) - 1;
+    memcpy(out->blow, fields[2], n);
+  }
+  if (fields[3]) {
+    n = strlen(fields[3]);
+    if (n >= sizeof(out->motion)) n = sizeof(out->motion) - 1;
+    memcpy(out->motion, fields[3], n);
+  }
+  if (fields[4]) {
+    n = strlen(fields[4]);
+    if (n >= sizeof(out->light)) n = sizeof(out->light) - 1;
+    memcpy(out->light, fields[4], n);
+  }
+  if (fields[5]) {
+    n = strlen(fields[5]);
+    if (n >= sizeof(out->voltage)) n = sizeof(out->voltage) - 1;
+    memcpy(out->voltage, fields[5], n);
+  }
+  if (fields[6]) {
+    n = strlen(fields[6]);
+    if (n >= sizeof(out->audio)) n = sizeof(out->audio) - 1;
+    memcpy(out->audio, fields[6], n);
+  }
   return 1;
 }
 

@@ -29,6 +29,8 @@ static int sIdentify = -1;
 static uint32_t sIdentifyUntil = 0;
 static ShowduinoCarbideVisual sVisual = SHOWDUINO_CARBIDE_VIS_BLACK;
 static ShowduinoCarbideState sLastState = SHOWDUINO_CARBIDE_OFF;
+static int8_t sJewelTestStep = -1;
+static uint32_t sJewelTestUntil = 0;
 
 static uint32_t hash32(uint32_t x) {
   x ^= x >> 16;
@@ -351,6 +353,23 @@ void lampEngineApplyTune() {
 void lampEngineService() {
   const uint32_t now = millis();
   sMach.nowMs = now;
+  if (sJewelTestStep >= 0) {
+    if ((int32_t)(now - sJewelTestUntil) >= 0) {
+      static const uint8_t kSteps[][3] = {
+        {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}, {0, 0, 0}
+      };
+      sJewelTestStep++;
+      if (sJewelTestStep >= 5) {
+        sJewelTestStep = -1;
+        clearScratch();
+      } else {
+        lampEngineFill(kSteps[sJewelTestStep][0], kSteps[sJewelTestStep][1],
+                       kSteps[sJewelTestStep][2]);
+        sJewelTestUntil = now + 180UL;
+      }
+    }
+    return;
+  }
   if (sIdentify >= 0 && (int32_t)(now - sIdentifyUntil) >= 0) {
     sIdentify = -1;
     clearScratch();
@@ -556,6 +575,7 @@ bool lampEngineFlameLit() {
 void lampEngineOnEmergency(bool active) {
   sEmergency = active;
   sIdentify = -1;
+  sJewelTestStep = -1;
   sBlowStress = 0;
   sRecoverUntil = 0;
   if (active) {
@@ -581,6 +601,26 @@ void lampEngineFill(uint8_t r, uint8_t g, uint8_t b) {
     putRaw(i, scale(r, sBri), scale(g, sBri), scale(b, sBri));
   }
   showScratch();
+}
+
+bool lampEngineStartJewelTest() {
+  if (sEmergency) return false;
+  if (!sStrip) return false;
+  sIdentify = -1;
+  sCompat = false;
+  showduino_carbide_apply(&sMach, SHOWDUINO_CARBIDE_EV_FORCE_OFF, &sCfg);
+  sJewelTestStep = 0;
+  sJewelTestUntil = millis() + 180UL;
+  lampEngineFill(255, 0, 0);
+  Serial.println("[LAMP] JEWEL TEST R-G-B-W-OFF");
+  return true;
+}
+
+bool lampEngineJewelTestActive() { return sJewelTestStep >= 0; }
+
+void lampEngineRunBootCommission() {
+  if (sEmergency || !sStrip) return;
+  lampEngineStartJewelTest();
 }
 
 bool lampEngineStartIdentify() {

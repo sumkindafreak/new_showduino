@@ -449,12 +449,11 @@ static void fill_sheet(void) {
       break;
     case PAGE04_ROLE_LAMP:
       apply_lamp_sheet_widgets();
-      set_action(0, "IGNITE", PAGE04_CMD_LAMP_IGNITE,
+      set_action(0, "LAMP DESK", PAGE04_CMD_LAMP, true, false);
+      set_action(1, "IGNITE", PAGE04_CMD_LAMP_IGNITE,
                  s_lamp_sheet.ignite_enabled != 0, false);
-      set_action(1, "EXTINGUISH", PAGE04_CMD_LAMP_EXTINGUISH,
+      set_action(2, "EXTINGUISH", PAGE04_CMD_LAMP_EXTINGUISH,
                  s_lamp_sheet.extinguish_enabled != 0, true);
-      set_action(2, "FLARE", PAGE04_CMD_LAMP_FLARE,
-                 s_lamp_sheet.flare_enabled != 0, false);
       set_action(3, "REFRESH", PAGE04_CMD_LAMP_STATUS, true, false);
       break;
     case PAGE04_ROLE_NEOPIXEL:
