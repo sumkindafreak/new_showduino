@@ -68,7 +68,7 @@ export async function OutputsPage(container) {
   let pending = null;
   let lastResult = '';
   let lastSnap = { p4Online: false, system: null };
-  let assetPath = 'system-test.wav';
+  let assetPath = '';
   let lineCount = 100;
   let lineCountSeeded = false;
   const nodeLineCounts = {};
@@ -522,30 +522,38 @@ export async function OutputsPage(container) {
       if (assets.length) {
         const sel = el('select', { className: 'text-input' });
         for (const name of assets) {
-          const opt = el('option', { text: name, value: name });
-          if (name === assetPath) opt.selected = true;
+          const value = name.startsWith('/The_Chamber/')
+            ? name
+            : (name.startsWith('/') ? '/The_Chamber/' + name.replace(/^\/+/, '') : name);
+          const opt = el('option', { text: name, value });
+          if (value === assetPath) opt.selected = true;
           sel.append(opt);
         }
         sel.addEventListener('change', () => { assetPath = sel.value; });
-        node.append(el('p', { className: 'sub', text: 'Library reported by the Audio Node (page ' + (an.inventoryPage ?? 0) + ' of ' + (an.inventoryTotal ?? assets.length) + '). Browser → P4 → Node.' }));
+        node.append(el('p', { className: 'sub', text: 'The_Chamber library (page ' + (an.inventoryPage ?? 0) + ' of ' + (an.inventoryTotal ?? assets.length) + '). Browser → P4 → Node.' }));
         node.append(sel);
         if ((an.inventoryTotal || 0) > assets.length) {
           node.append(el('button', {
             className: 'btn-cancel',
             text: 'Next library page',
             disabled: !!pending || !an.online,
-            onClick: () => send('AUDIO:NODE:INVENTORY:' + ((an.inventoryPage || 0) + 1))
+            onClick: () => send('AUDIO:NODE:LIBRARY:' + ((an.inventoryPage || 0) + 1))
           }));
         }
       }
+      node.append(el('button', {
+        className: 'btn-cancel',
+        text: 'Refresh library',
+        disabled: !!pending || !an.online,
+        onClick: () => send('AUDIO:NODE:LIBRARY:RESCAN')
+      }));
       const path = el('input', {
         className: 'text-input',
         type: 'text',
         value: assetPath,
-        maxlength: '63'
+        readonly: true
       });
-      path.addEventListener('input', () => { assetPath = path.value.trim(); });
-      node.append(el('p', { className: 'sub', text: 'Relative WAV under /showduino/audio/' }));
+      node.append(el('p', { className: 'sub', text: 'Selected show audio path' }));
       node.append(path);
       const row = el('div', { className: 'filter-row' });
       const busy = !!pending || emergency === 'EMERGENCY' || !an.online;
@@ -726,6 +734,9 @@ export async function OutputsPage(container) {
     paint();
   });
   await pollLighting();
+  if (lastSnap.p4Online && lastSnap.audioNode && lastSnap.audioNode.online) {
+    await send('AUDIO:NODE:LIBRARY');
+  }
   const timer = setInterval(pollLighting, 4000);
   return () => {
     unsub();

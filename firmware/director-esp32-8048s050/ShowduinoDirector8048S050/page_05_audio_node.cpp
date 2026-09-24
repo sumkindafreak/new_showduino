@@ -56,10 +56,12 @@ struct Page05Ui {
   lv_obj_t *btn_snd_test;
   lv_obj_t *details;
   lv_obj_t *details_body;
+  lv_obj_t *details_close;
   lv_obj_t *select;
   lv_obj_t *select_list;
   lv_obj_t *inv_btns[SHOWDUINO_AUDIO_INV_WIRE_MAX];
   lv_obj_t *btn_inv_next;
+  lv_obj_t *select_close;
 };
 
 static Page05Ui s;
@@ -493,7 +495,7 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_label_set_long_mode(s.details_body, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_font(s.details_body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s.details_body, lv_color_hex(ShowduinoPalette::Text), 0);
-  make_btn(s.details, "CLOSE", 240, 268, 160, 40, PAGE05_CMD_CLOSE, false);
+  s.details_close = make_btn(s.details, "CLOSE", 240, 268, 160, 40, PAGE05_CMD_CLOSE, false);
 
   s.select = lv_obj_create(parent);
   lv_obj_remove_style_all(s.select);
@@ -516,7 +518,7 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
     lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
   }
   s.btn_inv_next = make_btn(s.select, "NEXT PAGE", 20, 214, 160, 44, PAGE05_CMD_INV_NEXT, false);
-  make_btn(s.select, "CLOSE", 340, 214, 160, 44, PAGE05_CMD_CLOSE, false);
+  s.select_close = make_btn(s.select, "CLOSE", 340, 214, 160, 44, PAGE05_CMD_CLOSE, false);
 
   page_05_audio_node_apply_theme();
   s_active = true;
@@ -530,6 +532,29 @@ void page_05_audio_node_destroy(void) {
   showduino_theme_unregister(s.title);
   showduino_theme_unregister(s.btn_back);
   showduino_theme_unregister(s.status);
+  showduino_theme_unregister(s.mic);
+  showduino_theme_unregister(s.mic_bar_fg);
+  showduino_theme_unregister(s.btn_play);
+  showduino_theme_unregister(s.btn_loop);
+  showduino_theme_unregister(s.btn_pause);
+  showduino_theme_unregister(s.btn_resume);
+  showduino_theme_unregister(s.btn_stop);
+  showduino_theme_unregister(s.btn_vol_dn);
+  showduino_theme_unregister(s.btn_vol_up);
+  showduino_theme_unregister(s.btn_select);
+  showduino_theme_unregister(s.btn_test);
+  showduino_theme_unregister(s.btn_details);
+  showduino_theme_unregister(s.btn_cal);
+  showduino_theme_unregister(s.btn_snd);
+  showduino_theme_unregister(s.btn_th_dn);
+  showduino_theme_unregister(s.btn_th_up);
+  showduino_theme_unregister(s.btn_snd_test);
+  showduino_theme_unregister(s.details_close);
+  for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
+    showduino_theme_unregister(s.inv_btns[i]);
+  }
+  showduino_theme_unregister(s.btn_inv_next);
+  showduino_theme_unregister(s.select_close);
   if (s.root) lv_obj_clean(s.root);
   memset(&s, 0, sizeof(s));
   s_cb = nullptr;

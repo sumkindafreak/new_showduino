@@ -104,7 +104,7 @@
  * is not used by the codec, SD, keys, PA, headphone detect, or microphone.
  * It is therefore the dedicated external status-pixel data output.
  *
- * This is diagnostics/connectivity only — never a programme/show pixel.
+ * GPIO22 is the Audio Node's dedicated programmable pixel line.
  */
 #ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
 #define SHOWDUINO_AUDIO_STATUS_PIXEL_PIN   22
@@ -115,6 +115,11 @@
 #ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER
 #define SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER (NEO_GRB + NEO_KHZ800)
 #endif
+
+#define SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS   512
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS 330
+#define SHOWDUINO_AUDIO_PIXEL_CAPS \
+  "LINE,SEGMENTS,SHOWDUINO_FX,COUNT,INIT,LOCATE,ESPNOW,EMERGENCY,STANDALONE,OWN"
 
 #ifndef SHOWDUINO_AUDIO_HP_DETECT_PIN
 #define SHOWDUINO_AUDIO_HP_DETECT_PIN      39  /* LOW = jack inserted */
@@ -134,3 +139,7 @@
 #define SHOWDUINO_AUDIO_AP_PASSWORD        "showduino"
 
 #endif
+
+#define SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS 512
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS 330
+#define SHOWDUINO_AUDIO_PIXEL_CAPS SHOWDUINO_PIXEL_CAPS

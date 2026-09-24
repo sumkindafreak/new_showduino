@@ -6,7 +6,7 @@
 #include "ShowduinoOsPalette.h"
 
 #ifndef SHOWDUINO_THEME_MAX_OBJECTS
-#define SHOWDUINO_THEME_MAX_OBJECTS 64
+#define SHOWDUINO_THEME_MAX_OBJECTS 192
 #endif
 
 struct ThemeEntry {

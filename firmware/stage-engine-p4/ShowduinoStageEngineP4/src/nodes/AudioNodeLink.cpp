@@ -64,7 +64,7 @@ static const char *shortFault(const char *err) {
 }
 
 static void publishExtra(bool force) {
-  char line[256];
+  char line[96];
   char asset[SHOWDUINO_AUDIO_DETAIL_ASSET_MAX + 1];
   const char *src = (sSt.online && sSt.asset[0] && strcmp(sSt.asset, "-") != 0) ? sSt.asset : "-";
   strncpy(asset, src, sizeof(asset) - 1);
@@ -108,17 +108,22 @@ static void publishExtra(bool force) {
   }
 
   {
-    char names[(SHOWDUINO_AUDIO_INV_WIRE_MAX * (SHOWDUINO_AUDIO_INV_NAME_MAX + 1)) + 1] = "";
+    char names[80] = "";
     size_t n = 0;
     uint8_t count = 0;
     for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_PER_PAGE && count < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
       if (!sSt.inventory[i][0]) continue;
-      char one[SHOWDUINO_AUDIO_INV_NAME_MAX + 1];
-      strncpy(one, sSt.inventory[i], sizeof(one) - 1);
+      const char *source = sSt.inventory[i];
+      if (!strncmp(source, SHOWDUINO_AUDIO_SHOW_ROOT "/",
+                   strlen(SHOWDUINO_AUDIO_SHOW_ROOT) + 1)) {
+        source += strlen(SHOWDUINO_AUDIO_SHOW_ROOT) + 1;
+      }
+      char one[SHOWDUINO_AUDIO_PATH_MAX + 1];
+      strncpy(one, source, sizeof(one) - 1);
       one[sizeof(one) - 1] = '\0';
       if (n < sizeof(names)) {
-        const int wrote = snprintf(names + n, sizeof(names) - n, "%s%s", count ? "," : "", one);
-        if (wrote > 0) n += (size_t)wrote;
+        n += (size_t)snprintf(names + n, sizeof(names) - n, "%s%s",
+                               count ? "," : "", one);
       }
       count++;
     }
@@ -231,12 +236,16 @@ void audioNodeLinkLoop() {
   }
   if (sSt.online && (millis() - sKeepaliveMs) >= 2000UL) {
     sKeepaliveMs = millis();
-    route(sSeq++, "AUDIO:NODE:OWN:GRANT");
+    if (emergencyLocked) {
+      route(sSeq++, "EMERGENCY:STOP");
+    } else {
+      route(sSeq++, "AUDIO:NODE:OWN:GRANT");
+    }
     route(sSeq++, "AUDIO:NODE:STATUS");
   }
   if (sSt.online && (millis() - sInvMs) >= 15000UL) {
     sInvMs = millis();
-    route(sSeq++, "AUDIO:NODE:INVENTORY");
+    route(sSeq++, "AUDIO:NODE:LIBRARY");
   }
   if ((millis() - sPublishMs) >= 3000UL) {
     publishState(true);
@@ -274,7 +283,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     route(sSeq++, "AUDIO:NODE:OWN:GRANT");
     if (sInvMs == 0) {
       sInvMs = millis();
-      route(sSeq++, "AUDIO:NODE:INVENTORY");
+      route(sSeq++, "AUDIO:NODE:LIBRARY");
     }
     publishState();
     return true;

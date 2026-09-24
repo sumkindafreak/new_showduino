@@ -1,11 +1,12 @@
 #include "NodeDiagnostics.h"
-#include <Adafruit_NeoPixel.h>
 #include "AudioCodec.h"
 #include "AudioCommand.h"
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
 #include "AudioNodeState.h"
 #include "AudioWeb.h"
+#include "AudioPixelProtocol.h"
+#include "AudioPixelEngine.h"
 #include "EspNowNodeTransport.h"
 #include "LocalButtons.h"
 #include "input/AudioInput.h"
@@ -14,95 +15,11 @@
 #include "../../../protocol/showduino_log.h"
 #include "../../shared-node/NodeSoftAp.h"
 
-static uint32_t sPixelTestUntil = 0;
 static uint32_t sLoopUs = 0;
 static uint32_t sLoopMaxUs = 0;
 static uint32_t sMinHeap = 0;
 
-#if SHOWDUINO_AUDIO_STATUS_PIXEL_PIN >= 0
-static Adafruit_NeoPixel sStatusPixel(
-    SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
-    SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
-    SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
-static bool sStatusPixelReady = false;
-static uint32_t sLastPixelColor = 0xFFFFFFFFUL;
-
-static uint32_t pixelRgb(uint8_t r, uint8_t g, uint8_t b) {
-  return sStatusPixel.Color(r, g, b);
-}
-
-static uint32_t statusPixelColor(uint32_t now) {
-  if ((int32_t)(sPixelTestUntil - now) > 0) {
-    switch ((now / 150UL) % 4UL) {
-      case 0: return pixelRgb(96, 0, 0);
-      case 1: return pixelRgb(0, 96, 0);
-      case 2: return pixelRgb(0, 0, 96);
-      default: return pixelRgb(96, 96, 96);
-    }
-  }
-
-  const ShowduinoAudioNodeState st = audioNodeState();
-  const ShowduinoNodeOwnerMode owner = audioOwnerMode();
-
-  /* Every pixel-capable output goes unmistakably white in emergency. */
-  if (st == SHOWDUINO_AUDIO_ST_EMERGENCY || owner == SHOWDUINO_OWNER_EMERGENCY) {
-    return pixelRgb(255, 255, 255);
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_FAULT || owner == SHOWDUINO_OWNER_FAULT) {
-    return ((now / 110UL) & 1UL) ? pixelRgb(120, 0, 0) : 0;
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_NO_STORAGE) {
-    const uint32_t phase = now % 1400UL;
-    const bool flash = phase < 120UL ||
-                       (phase > 200UL && phase < 320UL) ||
-                       (phase > 400UL && phase < 520UL);
-    return flash ? pixelRgb(110, 32, 0) : 0;
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_BOOTING || owner == SHOWDUINO_OWNER_BOOTING) {
-    return ((now / 700UL) & 1UL) ? pixelRgb(0, 0, 48) : 0;
-  }
-
-  if (owner == SHOWDUINO_OWNER_SEARCHING) {
-    return ((now / 350UL) & 1UL) ? pixelRgb(90, 42, 0) : 0;
-  }
-
-  if (owner == SHOWDUINO_OWNER_STANDALONE) {
-    return ((now / 900UL) & 1UL) ? pixelRgb(72, 0, 110) : pixelRgb(28, 0, 48);
-  }
-
-  /* Brief bright-green kick on real ESP-NOW traffic from Comms. */
-  const uint32_t lastRx = audioEspNowLastRxMs();
-  if (lastRx != 0 && (uint32_t)(now - lastRx) < 120UL) {
-    return pixelRgb(0, 150, 24);
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_PAUSED) {
-    return ((now / 900UL) & 1UL) ? pixelRgb(60, 0, 80) : 0;
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_LOADING || st == SHOWDUINO_AUDIO_ST_STOPPING) {
-    return ((now / 180UL) & 1UL) ? pixelRgb(0, 72, 96) : 0;
-  }
-
-  if (st == SHOWDUINO_AUDIO_ST_PLAYING || st == SHOWDUINO_AUDIO_ST_LOOPING) {
-    return pixelRgb(0, 54, 72);
-  }
-
-  /* P4-owned, healthy and idle. */
-  return pixelRgb(0, 72, 0);
-}
-#endif
-
 void nodeDiagBegin() {
-#if SHOWDUINO_AUDIO_STATUS_PIXEL_PIN >= 0
-  sStatusPixel.begin();
-  sStatusPixel.clear();
-  sStatusPixel.show();
-  sStatusPixelReady = true;
-#endif
   sMinHeap = ESP.getFreeHeap();
 }
 
@@ -130,9 +47,9 @@ void nodeDiagPrintBootBanner() {
   Serial.printf("[AUDIO NODE] SD: %s\n", audioStorageLastError());
   Serial.printf("[AUDIO NODE] MAC: %s\n", mac);
   Serial.printf("[AUDIO NODE] Firmware: %s\n", SHOWDUINO_AUDIO_NODE_FW);
-  Serial.printf("[AUDIO NODE] Status pixel: WS2812 x%u GPIO%d\n",
-                (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  Serial.printf("[AUDIO NODE] Show pixel line: WS2812 configured=%u GPIO%d\n",
+                (unsigned)audioPixelEngineConfiguredCount(),
+                audioPixelEnginePin());
 
   Serial.println("================================================");
   Serial.println(" SHOWDUINO AUDIO NODE");
@@ -200,9 +117,10 @@ void nodeDiagPrintStatus() {
                 audioWebReady() ? "UP" : "DOWN",
                 nodeSoftApStarted() ? nodeSoftApSsid() : "-",
                 nodeSoftApStarted() ? nodeSoftApIp() : "-");
-  Serial.printf("STATUS_PIXEL WS2812 GPIO%d count=%u owner=%s\n",
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
-                (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
+  Serial.printf("PIXEL_LINE WS2812 GPIO%d count=%u ready=%s owner=%s\n",
+                audioPixelEnginePin(),
+                (unsigned)audioPixelEngineCount(),
+                audioPixelEngineReady() ? "YES" : "NO",
                 audioOwnerModeName());
   Serial.printf("CAPS %s\n", SHOWDUINO_AUDIO_CAPS);
 }
@@ -295,31 +213,18 @@ void nodeDiagPrintRunTest() {
   Serial.printf("  ESP-NOW %s comms=%s\n",
                 audioEspNowReady() ? "PASS" : "FAIL",
                 audioEspNowHaveComms() ? "YES" : "NO");
-  Serial.printf("  Status pixel WS2812 x%u GPIO%d — TEST 1.5 s\n",
-                (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  Serial.printf("  Show pixel line WS2812 configured=%u GPIO%d — use PIXEL:TEST\n",
+                (unsigned)audioPixelEngineConfiguredCount(),
+                audioPixelEnginePin());
   Serial.println("  Speaker playback is NOT part of RUN:TEST. Use AUDIO:TEST.");
   nodeDiagLedTest();
 }
 
 void nodeDiagLedTest() {
-  sPixelTestUntil = millis() + 1500UL;
+  audioPixelProtocolLocalTest();
 }
 
 void nodeDiagServiceLed() {
-#if SHOWDUINO_AUDIO_STATUS_PIXEL_PIN < 0
-  return;
-#else
-  if (!sStatusPixelReady) return;
-
-  const uint32_t now = millis();
-  const uint32_t color = statusPixelColor(now);
-  if (color == sLastPixelColor) return;
-
-  sLastPixelColor = color;
-  sStatusPixel.setPixelColor(0, color);
-  sStatusPixel.show();
-#endif
 }
 
 bool nodeDiagHandleLine(const char *line) {

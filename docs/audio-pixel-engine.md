@@ -89,6 +89,13 @@ The retired P4 PCM5102A path is not a substitute for the Audio Node.
 
 See [`docs/audio-node.md`](audio-node.md).
 
+The Audio Node also exposes a programmable WS2812 line on GPIO22. It uses the
+same non-blocking engine, 25-effect vocabulary, segment/configuration commands,
+ownership gates, and emergency blackout/restore rules as the standalone C3
+Pixel Node. The Audio Node advertises this in its existing `AUDIO:CAPS` report
+as `PIXEL:<pixel-capabilities>`; pixel commands are routed to GPIO22 and do
+not create a second node identity.
+
 ## 2. I2S ownership
 
 The ESP32-P4 has one I2S peripheral. It is owned by onboard ES8311 system audio.

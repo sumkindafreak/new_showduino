@@ -454,6 +454,8 @@ static void printFinalReport() {
 
   Serial.print(sReport);
   writeLastReport(sReport);
+  /* Commissioning procedure has finished; give the operator an audible result. */
+  stageAudioPlay(rowFail ? SystemSound::Error : SystemSound::Complete);
 }
 
 static void runP4() {

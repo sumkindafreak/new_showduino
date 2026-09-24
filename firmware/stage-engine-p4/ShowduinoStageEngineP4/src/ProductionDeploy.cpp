@@ -1,6 +1,7 @@
 #include "ProductionDeploy.h"
 
 #include "ProductionStore.h"
+#include "StageAudio.h"
 #include "storage/StageStore.h"
 #include "../../../protocol/showduino_deploy.h"
 #include "../../../protocol/showduino_shdo.h"
@@ -103,6 +104,7 @@ static bool handleBegin(const char *body, int *statusOut, String *jsonOut) {
   if (!stageStoreWritable()) {
     setErr("storage_not_writable");
     reply(statusOut, jsonOut, 503, statusJson(false, "storage"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   uint32_t bytes = 0;
@@ -112,6 +114,7 @@ static bool handleBegin(const char *body, int *statusOut, String *jsonOut) {
       bytes == 0 || bytes > SHOWDUINO_SHDO_MAX_BYTES) {
     setErr("invalid_begin");
     reply(statusOut, jsonOut, 400, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   freeDoc();
@@ -120,6 +123,7 @@ static bool handleBegin(const char *body, int *statusOut, String *jsonOut) {
   if (!sDoc) {
     setErr("no_memory");
     reply(statusOut, jsonOut, 507, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   sExpected = bytes;
@@ -131,6 +135,8 @@ static bool handleBegin(const char *body, int *statusOut, String *jsonOut) {
   sLastCues = 0;
   setErr("OK");
   reply(statusOut, jsonOut, 200, statusJson(true, "open"));
+  /* Deploy upload request accepted — the transfer itself is not yet complete. */
+  (void)stageAudioPlay(SystemSound::Accepted);
   return true;
 }
 
@@ -184,11 +190,13 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
     freeDoc();
     setErr("session_timeout");
     reply(statusOut, jsonOut, 408, statusJson(false, "timeout"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   if (sSession != DeploySession::Open || !sDoc) {
     setErr("no_session");
     reply(statusOut, jsonOut, 409, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   uint32_t crc = sCrc;
@@ -196,6 +204,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
   if (sUsed != sExpected) {
     setErr("incomplete");
     reply(statusOut, jsonOut, 409, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   sDoc[sUsed] = 0;
@@ -203,6 +212,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
   if (got != crc) {
     setErr("crc_mismatch");
     reply(statusOut, jsonOut, 400, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
 
@@ -214,6 +224,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
     freeDoc();
     setErr("no_memory");
     reply(statusOut, jsonOut, 507, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
 
@@ -227,6 +238,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
     freeDoc();
     setErr(compileErr[0] ? compileErr : shdoStatusName(st));
     reply(statusOut, jsonOut, 422, statusJson(false, "rejected"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   if (emergencyLocked) {
@@ -250,6 +262,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
     freeDoc();
     setErr("no_memory");
     reply(statusOut, jsonOut, 507, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
 
@@ -264,6 +277,7 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
     freeDoc();
     setErr("compile_write_failed");
     reply(statusOut, jsonOut, 500, statusJson(false, "error"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
 
@@ -286,12 +300,15 @@ static bool handleCommit(const char *body, int *statusOut, String *jsonOut) {
   if (stored != ProductionStoreResult::Ok) {
     setErr(gProductionStore.lastError());
     reply(statusOut, jsonOut, 500, statusJson(false, "store_failed"));
+    (void)stageAudioPlay(SystemSound::Error);
     return true;
   }
   setErr("OK");
   Serial.printf("[DEPLOY] persisted %s cues=%u (not loaded)\n",
                 sLastId, (unsigned)sLastCues);
   reply(statusOut, jsonOut, 200, statusJson(true, "committed"));
+  /* Deploy fully persisted to storage — the requested operation has finished. */
+  (void)stageAudioPlay(SystemSound::Complete);
   return true;
 }
 

@@ -286,17 +286,36 @@ See [`studio-pixel-authoring.md`](studio-pixel-authoring.md).
 
 ## Audio architecture
 
-P4 onboard ES8311 audio is **Showduino system/safety audio only**. Attraction/programme audio belongs to the ESP32-A1S Audio Node.
+P4 onboard ES8311 audio is **Showduino system/safety audio only**. Attraction/programme audio belongs to the ESP32-A1S Audio Node. These are intentionally separate systems; the P4 speaker is never an attraction-audio fallback.
 
 ```text
-P4 ES8311
-    → boot / accepted / error / emergency / system sounds
+P4 ES8311 (system speaker)
+    → boot/startup
+    → operator/system acknowledgement (ACCEPTED)
+    → completion notifications (COMPLETE)
+    → system errors (ERROR)
+    → commissioning/diagnostic feedback (BEEP/TONE)
+    → emergency audio (EMERGENCY, highest priority, independent of audio success)
 
 Audio Node
-    → ambience / music / dialogue / scare SFX / programme audio
+    → attraction audio: ambience / music / dialogue / scare SFX / programme audio
 ```
 
 The P4 does not use its system speaker as fallback programme audio.
+
+### System sound event mapping
+
+| Sound | Fires on |
+| --- | --- |
+| `Boot` | Local power-up, and the first Director HELLO after a genuine Director-desk absence (debounced; routine reconnect HELLOs do not replay it). |
+| `Accepted` | A show is selected for loading (`SHOW:LOAD:`/`SHOW:RUN:<name>`), and a deploy upload session begins (`SHDO` begin). |
+| `Complete` | A production/timeline load fully finishes (`PRODUCTION:LOAD:<id>`, `SHOW:TL:END`), a deploy is committed to storage, and a commissioning `RUN:TEST` finishes with no failing rows. |
+| `Error` | A production/show load fails, a deploy fails (begin/commit rejected), and a commissioning `RUN:TEST` finishes with at least one failing row. Existing per-sound rate limiting/priority in `StageAudio` still applies. |
+| `Beep` | Emitted alongside `DIRECTOR:LOCATE`; harmless no-op today because Locate only fires while Emergency is already latched and Emergency audio has priority. |
+| `Tone` | Reserved for diagnostics/commissioning/system-speaker identification; not tied to a routine operator event. |
+| `Emergency` | Unchanged — latched independently of audio success, highest priority, never auto-resumes interrupted notifications on clear. |
+
+Routine polling, telemetry, heartbeats, and background ESP-NOW/UART traffic never produce sound.
 
 ---
 

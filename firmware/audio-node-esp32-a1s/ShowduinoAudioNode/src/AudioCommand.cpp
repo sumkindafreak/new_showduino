@@ -1,4 +1,5 @@
 #include "AudioCommand.h"
+#include "AudioPixelEngine.h"
 #include "AudioCodec.h"
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
@@ -17,7 +18,7 @@
 #include "../../../protocol/showduino_log.h"
 
 static uint32_t sActiveSeq = 0;
-static char sActiveRel[SHOWDUINO_AUDIO_REL_MAX + 1] = "";
+static char sActiveRel[SHOWDUINO_AUDIO_PATH_MAX + 1] = "";
 static uint32_t sLastAnnounce = 0;
 static uint32_t sApDueMs = 0;
 static uint32_t sVolume = SHOWDUINO_AUDIO_DEFAULT_VOLUME;
@@ -158,7 +159,10 @@ static void onOwnerEdges() {
 static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
                        bool fromShow, int fadeMs, int priIn) {
   char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
-  const ShowduinoAudioPathStatus ps = showduino_audio_resolve_path(rel, absPath, sizeof(absPath));
+  const ShowduinoAudioPathStatus ps =
+      (rel && rel[0] == '/')
+          ? showduino_audio_resolve_show_path(rel, absPath, sizeof(absPath))
+          : showduino_audio_resolve_path(rel, absPath, sizeof(absPath));
   if (ps != SHOWDUINO_AUDIO_PATH_OK) {
     char line[96];
     audioProtocolFormatFailed(line, sizeof(line), seq, SHOWDUINO_AUDIO_FAIL_BAD_PATH);
@@ -388,7 +392,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
   if (origin == SHOWDUINO_CMD_ORIGIN_SHOW) audioNodeStateNoteComms();
   if (handleSoundCommand(command, sequence, origin)) return;
 
-  char arg[SHOWDUINO_AUDIO_REL_MAX + 1];
+  char arg[SHOWDUINO_AUDIO_PATH_MAX + 1];
   int volume = -1;
   int fadeMs = -1;
   int pri = -1;
@@ -429,6 +433,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     stopPlaybackClear();
     audioCodecMute(true);
     audioInputSetEmergency(true);
+    audioPixelEngineOnEmergency(true);
     audioNodeStateSet(SHOWDUINO_AUDIO_ST_EMERGENCY);
     char line[48];
     snprintf(line, sizeof(line), "AUDIO:EMERGENCY:%lu", (unsigned long)sequence);
@@ -440,6 +445,8 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     onOwnerEdges();
     audioCodecMute(false);
     audioInputSetEmergency(false);
+    audioPixelEngineOnEmergency(false);
+    audioPixelEngineBlackout();
     applyMaster((uint8_t)sVolume, false);
     if (audioNodeState() != SHOWDUINO_AUDIO_ST_FAULT &&
         audioNodeState() != SHOWDUINO_AUDIO_ST_NO_STORAGE) {
@@ -519,6 +526,23 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     report(line, sequence);
     return;
   }
+  if (cmd == SHOWDUINO_AUDIO_CMD_LIBRARY) {
+    uint16_t page = 0;
+    if (!strcmp(arg, "RESCAN")) {
+      audioStorageShowLibraryRescan();
+    } else {
+      page = (uint16_t)atoi(arg);
+    }
+    char path[SHOWDUINO_AUDIO_PATH_MAX + 1];
+    const uint16_t total = audioStorageShowLibraryCount();
+    char line[SHOWDUINO_NODE_COMMAND_MAX];
+    const bool havePath = audioStorageShowLibraryPage(page, path, sizeof(path));
+    const char *wirePath = havePath ? path + strlen(SHOWDUINO_AUDIO_SHOW_ROOT) + 1 : "";
+    snprintf(line, sizeof(line), "AUDIO:LIBRARY:%u:%u:%s",
+             (unsigned)page, (unsigned)total, wirePath);
+    report(line, sequence);
+    return;
+  }
   if (cmd == SHOWDUINO_AUDIO_CMD_INVENTORY) {
     char names[SHOWDUINO_AUDIO_INV_MAX][40];
     const uint16_t total = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
@@ -548,7 +572,8 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     snprintf(owner, sizeof(owner), "AUDIO:OWNER:%s", audioOwnerModeName());
     report(owner, sequence);
     char caps[SHOWDUINO_NODE_COMMAND_MAX];
-    snprintf(caps, sizeof(caps), "AUDIO:CAPS:%s", SHOWDUINO_AUDIO_CAPS);
+    snprintf(caps, sizeof(caps), "AUDIO:CAPS:%s,PIXEL:%s",
+             SHOWDUINO_AUDIO_CAPS, SHOWDUINO_AUDIO_PIXEL_CAPS);
     report(caps, sequence);
     char meta[SHOWDUINO_NODE_COMMAND_MAX];
     snprintf(meta, sizeof(meta), "AUDIO:META:%s:%s:%s",
@@ -621,6 +646,9 @@ void audioCommandAnnounce() {
   audioEspNowMacString(mac, sizeof(mac));
   audioProtocolFormatAnnounce(line, sizeof(line), mac, SHOWDUINO_AUDIO_NODE_FW,
                               audioNodeStateName());
+  audioEspNowSend(line, 0);
+  snprintf(line, sizeof(line), "AUDIO:CAPS:%s,PIXEL:%s",
+           SHOWDUINO_AUDIO_CAPS, SHOWDUINO_AUDIO_PIXEL_CAPS);
   audioEspNowSend(line, 0);
 }
 

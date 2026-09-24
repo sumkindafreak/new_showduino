@@ -723,6 +723,7 @@ static void handleProductionCommand(const String &command) {
     }
     if (!sProductionStoreReady) {
       sendProductionError("LOAD", ProductionStoreResult::StorageUnavailable);
+      stageAudioPlay(SystemSound::Error);
       return;
     }
     if (gRuntime.rt.state == SHOW_STATE_RUNNING ||
@@ -741,6 +742,7 @@ static void handleProductionCommand(const String &command) {
                     productionStoreResultName(result), gProductionStore.lastError());
       sendProductionError("LOAD", result);
       gProductionStore.release(&package);
+      stageAudioPlay(SystemSound::Error);
       return;
     }
 
@@ -749,6 +751,7 @@ static void handleProductionCommand(const String &command) {
     if (!gRuntime.handleTlBegin(false)) {
       gProductionStore.release(&package);
       sendProductionError("LOAD", ProductionStoreResult::NoMemory);
+      stageAudioPlay(SystemSound::Error);
       return;
     }
     bool staged = true;
@@ -763,6 +766,7 @@ static void handleProductionCommand(const String &command) {
       gProductionStore.release(&package);
       Serial.println("[PRODUCTION] ERROR: timeline commit failed");
       sendProductionError("LOAD", ProductionStoreResult::NoMemory);
+      stageAudioPlay(SystemSound::Error);
       return;
     }
 
@@ -775,6 +779,8 @@ static void handleProductionCommand(const String &command) {
     Serial.printf("[TIMELINE] %u cues loaded\n", (unsigned)cueCount);
     Serial.println("[PRODUCTION] Load complete");
     sendCommandReply(String("PRODUCTION:LOAD:OK:") + loadedId);
+    /* Production load has fully finished (not merely accepted). */
+    stageAudioPlay(SystemSound::Complete);
     return;
   }
 
@@ -821,6 +827,8 @@ void handleShowCommand(const String &command) {
     if (!gRuntime.handleLoadName(name.c_str(), now, &gEngine)) return;
     gProductionStore.unload();
     showPixelsBlackout();
+    /* Show selection accepted; the timeline itself has not finished loading yet. */
+    stageAudioPlay(SystemSound::Accepted);
     return;
   }
 
@@ -890,7 +898,13 @@ void handleShowCommand(const String &command) {
       sendCommandReply("REJECTED:SHOW:EMERGENCY_ACTIVE");
       return;
     }
-    if (gRuntime.handleTlEnd(now, &gEngine)) gProductionStore.unload();
+    if (gRuntime.handleTlEnd(now, &gEngine)) {
+      gProductionStore.unload();
+      /* Timeline load has fully finished. */
+      stageAudioPlay(SystemSound::Complete);
+    } else {
+      stageAudioPlay(SystemSound::Error);
+    }
     return;
   }
 
@@ -1535,6 +1549,11 @@ void servicePhysicalEstop() {
   if (ev.locateRequested) {
     Serial.println("[ESTOP] DIRECTOR:LOCATE sent");
     sendToDirector(SHOWDUINO_LEGACY_DIRECTOR_LOCATE);
+    /* Locate only fires once Emergency is already latched, so StageAudio's own
+     * priority guard makes this a no-op WAV request today. Left in place so a
+     * future non-emergency Locate path gets audio for free. Emergency audio
+     * is never interrupted or delayed by this call. */
+    stageAudioPlay(SystemSound::Beep);
   }
   if (ev.clearSuperseded) {
     notifyPendingClearSuperseded();

@@ -18,6 +18,7 @@ extern "C" {
 #define SHOWDUINO_AUDIO_NODE_TYPE          "AUDIO"
 #define SHOWDUINO_AUDIO_NODE_NAME          "Audio Node"
 #define SHOWDUINO_AUDIO_ROOT               "/showduino/audio"
+#define SHOWDUINO_AUDIO_SHOW_ROOT          "/The_Chamber"
 #define SHOWDUINO_AUDIO_PATH_MAX           79
 #define SHOWDUINO_AUDIO_REL_MAX            63
 #define SHOWDUINO_AUDIO_VOLUME_MAX         100
@@ -27,6 +28,7 @@ extern "C" {
   "WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD,STANDALONE,OWN"
 #define SHOWDUINO_AUDIO_INV_PER_PAGE       6
 #define SHOWDUINO_AUDIO_INV_MAX            48
+#define SHOWDUINO_AUDIO_LIBRARY_PER_PAGE   1
 #define SHOWDUINO_AUDIO_FADE_MAX_MS        15000
 #define SHOWDUINO_AUDIO_PROTOCOL           "1.3"
 
@@ -58,6 +60,7 @@ typedef enum ShowduinoAudioCmd {
   SHOWDUINO_AUDIO_CMD_DUCK,
   SHOWDUINO_AUDIO_CMD_UNDUCK,
   SHOWDUINO_AUDIO_CMD_INVENTORY,
+  SHOWDUINO_AUDIO_CMD_LIBRARY,
   SHOWDUINO_AUDIO_CMD_OWN_GRANT,
   SHOWDUINO_AUDIO_CMD_EMERGENCY_STOP,
   SHOWDUINO_AUDIO_CMD_EMERGENCY_CLEAR,
@@ -210,6 +213,28 @@ static inline ShowduinoAudioPathStatus showduino_audio_path_check(const char *re
     if (!ok) return SHOWDUINO_AUDIO_PATH_BAD_CHAR;
   }
   if (!showduino_audio_has_wav_ext(rel)) return SHOWDUINO_AUDIO_PATH_BAD_EXT;
+  return SHOWDUINO_AUDIO_PATH_OK;
+}
+
+static inline ShowduinoAudioPathStatus showduino_audio_resolve_show_path(const char *path,
+                                                                         char *out,
+                                                                         size_t outLen) {
+  const size_t rootLen = strlen(SHOWDUINO_AUDIO_SHOW_ROOT);
+  if (!path || !out || outLen == 0) return SHOWDUINO_AUDIO_PATH_EMPTY;
+  out[0] = '\0';
+  if (strncmp(path, SHOWDUINO_AUDIO_SHOW_ROOT, rootLen) != 0 ||
+      path[rootLen] != '/') {
+    return SHOWDUINO_AUDIO_PATH_OUTSIDE_ROOT;
+  }
+  {
+    const ShowduinoAudioPathStatus st =
+        showduino_audio_path_check(path + rootLen + 1);
+    if (st != SHOWDUINO_AUDIO_PATH_OK) return st;
+  }
+  if (strlen(path) + 1 > outLen || strlen(path) > SHOWDUINO_AUDIO_PATH_MAX) {
+    return SHOWDUINO_AUDIO_PATH_TOO_LONG;
+  }
+  strcpy(out, path);
   return SHOWDUINO_AUDIO_PATH_OK;
 }
 
@@ -408,6 +433,21 @@ static inline ShowduinoAudioCmd showduino_audio_parse_command_ex(const char *cmd
       if (n + 1 < argLen) memcpy(arg, p, n + 1);
     }
     return SHOWDUINO_AUDIO_CMD_INVENTORY;
+  }
+  if (strcmp(cmd, "AUDIO:NODE:LIBRARY") == 0) {
+    if (arg && argLen > 1) {
+      arg[0] = '0';
+      arg[1] = '\0';
+    }
+    return SHOWDUINO_AUDIO_CMD_LIBRARY;
+  }
+  if (showduino_audio_starts(cmd, "AUDIO:NODE:LIBRARY:")) {
+    const char *p = cmd + 19;
+    if (arg && argLen) {
+      size_t n = strlen(p);
+      if (n + 1 < argLen) memcpy(arg, p, n + 1);
+    }
+    return SHOWDUINO_AUDIO_CMD_LIBRARY;
   }
   if (strcmp(cmd, "AUDIO:NODE:TEST") == 0 || strcmp(cmd, "AUDIO:TEST") == 0) {
     if (arg && argLen) {

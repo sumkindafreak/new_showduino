@@ -17,6 +17,9 @@ static uint32_t sVolSaveAt = 0;
 static bool sVolDirty = false;
 static uint32_t sProbeMs = 0;
 static char sErr[40] = "SD not started";
+static char sShowLibrary[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_PATH_MAX + 1];
+static uint16_t sShowLibraryCount = 0;
+static bool sShowLibraryReady = false;
 
 static const char *kFolders[] = {
   PATH_SHOWDUINO,
@@ -196,6 +199,7 @@ static void collectDir(const char *relDir, char names[][40], uint16_t maxNames, 
   } else {
     strncpy(abs, PATH_AUDIO_ROOT, sizeof(abs) - 1);
   }
+
   File dir = SD.open(abs);
   if (!dir) return;
   File e = dir.openNextFile();
@@ -218,6 +222,62 @@ static void collectDir(const char *relDir, char names[][40], uint16_t maxNames, 
     e = dir.openNextFile();
   }
   dir.close();
+}
+
+static void collectShowDir(const char *absDir) {
+  if (!absDir || !sReady || sShowLibraryCount >= SHOWDUINO_AUDIO_INV_MAX) return;
+  File dir = SD.open(absDir);
+  if (!dir || !dir.isDirectory()) return;
+  File e = dir.openNextFile();
+  while (e && sShowLibraryCount < SHOWDUINO_AUDIO_INV_MAX) {
+    char path[SHOWDUINO_AUDIO_PATH_MAX + 1];
+    const char *name = e.name();
+    if (name && name[0] == '/') strncpy(path, name, sizeof(path) - 1);
+    else snprintf(path, sizeof(path), "%s/%s", absDir, name ? name : "");
+    path[sizeof(path) - 1] = '\0';
+    if (e.isDirectory()) {
+      collectShowDir(path);
+    } else if (showduino_audio_has_wav_ext(path)) {
+      char canonical[SHOWDUINO_AUDIO_PATH_MAX + 1];
+      if (showduino_audio_resolve_show_path(path, canonical, sizeof(canonical)) ==
+          SHOWDUINO_AUDIO_PATH_OK) {
+        strncpy(sShowLibrary[sShowLibraryCount], canonical,
+                sizeof(sShowLibrary[sShowLibraryCount]) - 1);
+        sShowLibrary[sShowLibraryCount][sizeof(sShowLibrary[sShowLibraryCount]) - 1] = '\0';
+        sShowLibraryCount++;
+      }
+    }
+    e.close();
+    e = dir.openNextFile();
+  }
+  dir.close();
+}
+
+bool audioStorageShowLibraryRescan() {
+  sShowLibraryCount = 0;
+  sShowLibraryReady = false;
+  if (!sReady || !SD.exists(SHOWDUINO_AUDIO_SHOW_ROOT)) return false;
+  collectShowDir(SHOWDUINO_AUDIO_SHOW_ROOT);
+  sShowLibraryReady = true;
+  Serial.printf("[AUDIO LIB] scanning %s found %u files\n",
+                SHOWDUINO_AUDIO_SHOW_ROOT, (unsigned)sShowLibraryCount);
+  return true;
+}
+
+uint16_t audioStorageShowLibraryCount() {
+  if (!sShowLibraryReady) audioStorageShowLibraryRescan();
+  return sShowLibraryCount;
+}
+
+bool audioStorageShowLibraryPage(uint16_t page, char *path, size_t pathLen) {
+  if (!path || pathLen == 0) return false;
+  path[0] = '\0';
+  if (!sShowLibraryReady) audioStorageShowLibraryRescan();
+  const uint32_t index = (uint32_t)page * SHOWDUINO_AUDIO_LIBRARY_PER_PAGE;
+  if (index >= sShowLibraryCount) return false;
+  strncpy(path, sShowLibrary[index], pathLen - 1);
+  path[pathLen - 1] = '\0';
+  return true;
 }
 
 uint16_t audioStorageListWav(char names[][40], uint16_t maxNames) {

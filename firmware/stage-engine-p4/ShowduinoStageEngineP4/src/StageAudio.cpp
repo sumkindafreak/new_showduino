@@ -59,6 +59,10 @@ static const char *const kSearchDirs[] = {
   PATH_AUDIO_SYSTEM,
   PATH_AUDIO_SYSTEM_LIBRARY,
 };
+static const char *const kEmergencyFallbackPaths[] = {
+  PATH_EMERGENCY_WAV_ROOT,
+  "/showduino/audio/emergency.wav",
+};
 
 static constexpr size_t kSoundCount = sizeof(kSounds) / sizeof(kSounds[0]);
 static char sResolvedPath[kSoundCount][64];
@@ -245,7 +249,8 @@ static void scanAssets(bool verbose = false) {
     bool matched = false;
     char lastErr[48] = "WAV missing";
 
-    for (size_t d = 0; d < sizeof(kSearchDirs) / sizeof(kSearchDirs[0]); d++) {
+    const size_t searchDirCount = sizeof(kSearchDirs) / sizeof(kSearchDirs[0]);
+    for (size_t d = 0; d < searchDirCount; d++) {
       char cand[64];
       snprintf(cand, sizeof(cand), "%s/%s", kSearchDirs[d], fileName);
       if (!stageStorageFs().exists(cand)) continue;
@@ -288,6 +293,43 @@ static void scanAssets(bool verbose = false) {
                       (unsigned long)info.sampleRate);
       }
       break;
+    }
+
+    if (!matched && kSounds[i].id == SystemSound::Emergency) {
+      for (size_t p = 0; p < sizeof(kEmergencyFallbackPaths) /
+                                  sizeof(kEmergencyFallbackPaths[0]); p++) {
+        const char *cand = kEmergencyFallbackPaths[p];
+        if (!stageStorageFs().exists(cand)) continue;
+
+        StageWavInfo info;
+        if (!stageAudioInspectWav(cand, &info) || !info.engineSupported) {
+          strncpy(lastErr, info.error[0] ? info.error : "invalid WAV",
+                  sizeof(lastErr) - 1);
+          lastErr[sizeof(lastErr) - 1] = '\0';
+          if (verbose) {
+            Serial.printf("[AUDIO] %-9s skip   %s  (%s)\n",
+                          kSounds[i].name, cand, lastErr);
+          }
+          continue;
+        }
+
+        strncpy(sResolvedPath[i], cand, sizeof(sResolvedPath[i]) - 1);
+        sResolvedPath[i][sizeof(sResolvedPath[i]) - 1] = '\0';
+        sResolvedValid[i] = true;
+        matched = true;
+        sStatus.activeAssets++;
+        sStatus.wavPresent = true;
+        strncpy(sStatus.wavPath, cand, sizeof(sStatus.wavPath) - 1);
+        sStatus.wavPath[sizeof(sStatus.wavPath) - 1] = '\0';
+        if (verbose) {
+          Serial.printf("[AUDIO] %-9s valid  %s  PCM %u-bit %s %lu Hz\n",
+                        kSounds[i].name, cand,
+                        (unsigned)info.bits,
+                        info.channels == 1 ? "mono" : "stereo",
+                        (unsigned long)info.sampleRate);
+        }
+        break;
+      }
     }
 
     if (!matched) {
@@ -723,7 +765,7 @@ static bool playInternal(SystemSound sound, bool safetyEmergency, bool testLoop)
     sStatus.playbackFailed = true;
     if (safetyEmergency) {
       sLastOpenFailMs = millis();
-      Serial.printf("[AUDIO] Emergency WAV failed: %s — latch is independent\n",
+      Serial.printf("[AUDIO] EMERGENCY FAILED: %s — latch is independent\n",
                     sStatus.lastError);
     } else {
       Serial.printf("[AUDIO] %s failed: %s\n", def->name, sStatus.lastError);
@@ -737,8 +779,13 @@ static bool playInternal(SystemSound sound, bool safetyEmergency, bool testLoop)
     sErrorStormUntil = sLastErrorPlayMs + kErrorRetriggerMs;
   }
 
-  Serial.printf("[AUDIO] Started %s  loop=%s  safety=%s\n",
-                def->name, loop ? "yes" : "no", safetyEmergency ? "yes" : "no");
+  if (sound == SystemSound::Emergency) {
+    Serial.printf("[AUDIO] Emergency playback START  loop=%s  safety=%s\n",
+                  loop ? "yes" : "no", safetyEmergency ? "yes" : "no");
+  } else {
+    Serial.printf("[AUDIO] Started %s  loop=%s  safety=%s\n",
+                  def->name, loop ? "yes" : "no", safetyEmergency ? "yes" : "no");
+  }
   return true;
 }
 
@@ -782,8 +829,10 @@ bool stageAudioBegin() {
     if (sStatus.wavPresent) {
       Serial.printf("[AUDIO] Emergency WAV: %s\n", sStatus.wavPath);
     } else {
-      Serial.printf("[AUDIO] Emergency WAV missing (%s or %s/emergency.wav) — latch still works\n",
-                    PATH_SYSTEM_EMERGENCY_WAV, PATH_AUDIO_SYSTEM_LIBRARY);
+      Serial.printf("[AUDIO] Emergency WAV missing (%s; fallback %s or %s) — latch still works\n",
+                    PATH_SYSTEM_EMERGENCY_WAV,
+                    PATH_EMERGENCY_WAV_ROOT,
+                    "/showduino/audio/emergency.wav");
     }
   } else {
     Serial.println("[AUDIO] SD not mounted — system WAV unavailable");
@@ -867,8 +916,16 @@ void stageAudioStop() {
 }
 
 bool stageAudioStartEmergency() {
+  Serial.printf("[AUDIO] Emergency requested: %s\n", PATH_SYSTEM_EMERGENCY_WAV);
   stageAudioStopNotifications();
   scanAssets();
+  if (!sResolvedValid[(size_t)soundIndex(SystemSound::Emergency)]) {
+    Serial.printf("[AUDIO] EMERGENCY FAILED: asset missing or invalid (%s)\n",
+                  PATH_SYSTEM_EMERGENCY_WAV);
+  } else {
+    Serial.printf("[AUDIO] Emergency asset: %s\n",
+                  stageAudioResolvedPath(SystemSound::Emergency));
+  }
   if (!playInternal(SystemSound::Emergency, true, false)) {
     sSafetyEmergency = true;
     sCurrent = SystemSound::Emergency;
@@ -1112,5 +1169,3 @@ bool stageAudioHandleCommand(const char *command, char *reply, size_t replyLen) 
 
   return false;
 }
-
-

@@ -8,6 +8,9 @@
 #include "AudioNodeState.h"
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
+#include "AudioPixelEngine.h"
+#include "AudioPixelProtocol.h"
+#include "AudioPixelNodeState.h"
 #include "EspNowNodeTransport.h"
 #include "input/AudioInput.h"
 #include "input/AudioInputConfig.h"
@@ -48,6 +51,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <nav>
 <button data-t="status" class="on">STATUS</button>
 <button data-t="audio">AUDIO</button>
+<button data-t="pixel">PIXEL</button>
 <button data-t="library">LIBRARY</button>
 <button data-t="sound">SOUND INPUT</button>
 <button data-t="conn">CONNECTION</button>
@@ -71,6 +75,18 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <button class="act" data-c="AUDIO:NODE:RESUME">RESUME</button>
 <button class="act" data-c="AUDIO:NODE:STOP">STOP</button>
 <button class="act" data-c="AUDIO:NODE:TEST">TEST</button>
+</div>
+</div>
+</section>
+<section class="tab" id="pixel" hidden>
+<div class="card">
+<div class="kv" id="pixelkv"></div>
+<label>Pixel count</label><input id="pixcount" type="number" min="1" max="512">
+<div class="row">
+<button class="act" data-c="PIXEL:COUNT">SAVE COUNT</button>
+<button class="act" data-c="PIXEL:INIT">INITIALISE</button>
+<button class="act" data-c="PIXEL:TEST">TEST</button>
+<button class="act" data-c="PIXEL:BLACKOUT">BLACKOUT</button>
 </div>
 </div>
 </section>
@@ -136,11 +152,20 @@ async function load(){
     ['ESP-NOW',S.espNow],
     ['Granted',S.granted?'YES':'no']
   ]);
+  kv($('pixelkv'),[
+    ['State',S.pixel.state],
+    ['GPIO',S.pixel.gpio],
+    ['Configured',S.pixel.configured],
+    ['Active',S.pixel.count],
+    ['Ready',S.pixel.ready?'YES':'no'],
+    ['Emergency',S.pixel.emergency?'YES':'no',S.pixel.emergency?'bad':'']
+  ]);
+  if(document.activeElement!==$('pixcount')) $('pixcount').value=S.pixel.configured||0;
   kv($('diagkv'),[
     ['MAC',S.mac],
     ['Output',S.output],
     ['Fault',S.fault],
-    ['Pixel','GPIO22 status only']
+    ['Pixel','GPIO22 programmable show line']
   ]);
   $('vol').value=S.volume; $('volv').textContent=S.volume;
   $('name').value=S.name||'';
@@ -159,8 +184,13 @@ async function send(cmd){
   if(!r.ok) alert(r.message||r.error||'rejected');
   load();
 }
+function pixelCommand(op){
+  if(op==='COUNT') return 'PIXEL:COUNT:'+Math.max(1,Math.min(512,Number($('pixcount').value)||1));
+  return 'PIXEL:'+op;
+}
 document.querySelectorAll('button.act[data-c]').forEach(b=>b.onclick=()=>{
   let c=b.dataset.c;
+  if(c.startsWith('PIXEL:')) c=pixelCommand(c.slice(6));
   if(c==='AUDIO:NODE:PLAY'||c==='AUDIO:NODE:LOOP') c=c+':'+$('asset').value;
   send(c);
 });
@@ -252,7 +282,19 @@ static void handleStatus() {
   json += audioOwnerGranted() ? "true" : "false";
   json += ",\"mac\":\"";
   json += mac;
-  json += "\",\"sound\":{\"ready\":";
+  json += "\",\"pixel\":{\"state\":\"";
+  json += audioPixelNodeStateName();
+  json += "\",\"gpio\":";
+  json += String(audioPixelEnginePin());
+  json += ",\"configured\":";
+  json += String((unsigned)audioPixelEngineConfiguredCount());
+  json += ",\"count\":";
+  json += String((unsigned)audioPixelEngineCount());
+  json += ",\"ready\":";
+  json += audioPixelEngineReady() ? "true" : "false";
+  json += ",\"emergency\":";
+  json += audioPixelEngineEmergency() ? "true" : "false";
+  json += "},\"sound\":{\"ready\":";
   json += audioInputReady() ? "true" : "false";
   json += ",\"level\":";
   json += String((unsigned)audioInputLevel());
@@ -315,7 +357,11 @@ static void handleCommand() {
       return;
     }
   }
-  audioCommandApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_WEB);
+  if (!strncmp(cmd, "PIXEL:", 6)) {
+    audioPixelProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
+  } else {
+    audioCommandApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_WEB);
+  }
   const bool locked = audioNodeStateShowControlled();
   const bool diagnostic =
       strstr(cmd, "STATUS") == cmd + 0 ||
@@ -323,7 +369,8 @@ static void handleCommand() {
       strstr(cmd, "AUDIO:NODE:INVENTORY") != NULL ||
       strstr(cmd, "SOUND:STATUS") != NULL ||
       strstr(cmd, "SOUND:LEVEL") != NULL ||
-      strstr(cmd, "SOUND:CONFIG") != NULL;
+      strstr(cmd, "SOUND:CONFIG") != NULL ||
+      !strncmp(cmd, "PIXEL:", 6);
   if (locked && !diagnostic) {
     sServer.send(200, "application/json",
                  "{\"ok\":false,\"error\":\"SHOW_CONTROLLED\","

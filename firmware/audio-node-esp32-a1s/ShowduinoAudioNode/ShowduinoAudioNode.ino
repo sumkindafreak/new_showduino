@@ -15,7 +15,12 @@
 #include "src/EspNowNodeTransport.h"
 #include "src/LocalButtons.h"
 #include "src/NodeDiagnostics.h"
+#include "src/AudioPixelEngine.h"
+#include "src/AudioPixelIdentity.h"
+#include "src/AudioPixelProtocol.h"
+#include "src/AudioPixelNodeState.h"
 #include "src/input/AudioInput.h"
+#include "../../../firmware/shared-node/NodeConfig.h"
 #include "../../../protocol/showduino_audio_node.h"
 
 static String sUsbLine;
@@ -23,13 +28,24 @@ static String sUsbLine;
 static void onEspNowCommand(const char *command, uint32_t sequence) {
   SD_LOGT("ESPNOW", "RX seq=%lu cmd=%s", (unsigned long)sequence,
           command ? command : "");
-  audioCommandApply(command, sequence, SHOWDUINO_CMD_ORIGIN_SHOW);
+  const bool emergency = !strncmp(command, "EMERGENCY:STOP", 15) ||
+                         !strncmp(command, "EMERGENCY:CLEAR", 16) ||
+                         !strncmp(command, "EMERGENCY:PIXEL", 15);
+  if (!strncmp(command, "PIXEL:", 6) || emergency) {
+    audioPixelProtocolApply(command, sequence, SHOWDUINO_CMD_ORIGIN_SHOW);
+  }
+  if (!strncmp(command, "PIXEL:", 6) || emergency) {
+    if (emergency) audioCommandApply(command, sequence, SHOWDUINO_CMD_ORIGIN_SHOW);
+  } else {
+    audioCommandApply(command, sequence, SHOWDUINO_CMD_ORIGIN_SHOW);
+  }
 }
 
 static void handleUsbLine(const String &line) {
   if (!line.length()) return;
   if (nodeDiagHandleLine(line.c_str())) return;
-  audioCommandApply(line.c_str(), 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
+  if (!strncmp(line.c_str(), "PIXEL:", 6)) audioPixelProtocolApply(line.c_str(), 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
+  else audioCommandApply(line.c_str(), 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
 }
 
 static void pollUsb() {
@@ -89,6 +105,7 @@ static void pollButtons() {
 void setup() {
   Serial.begin(115200);
   delay(200);
+  audioPixelEngineSafeGpio();
   nodeDiagBegin();
   audioNodeStateBegin(SHOWDUINO_AUDIO_ST_BOOTING);
 
@@ -109,6 +126,13 @@ void setup() {
 
   audioCommandBegin(audioStorageConfig().volume);
   audioInputBegin();
+  nodeConfigBegin("sdaudio");
+  audioPixelNodeStateBegin(SHOWDUINO_PIXEL_ST_BOOTING);
+  char mac[24];
+  audioEspNowMacString(mac, sizeof(mac));
+  audioPixelIdentityBegin(mac);
+  audioPixelEngineApplyPersisted();
+  audioPixelProtocolBegin();
   nodeDiagPrintBootBanner();
   audioCommandAnnounce();
 }
@@ -120,6 +144,8 @@ void loop() {
   audioStorageLoop();
   audioInputService();
   audioCommandService();
+  audioPixelEngineService();
+  audioPixelProtocolService();
   nodeDiagServiceLed();
   nodeDiagMarkLoop(micros() - t0);
 }
