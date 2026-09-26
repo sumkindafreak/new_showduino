@@ -115,7 +115,7 @@ class SHDOModel {
       case 'relay':
         return { out: 'out1', mode: 'hold', state: true, pulseMs: 0, safeOff: true };
       case 'mosfet':
-        return { out: 'out1', mode: 'hold', state: true, duty: 100, pulseMs: 0, safeOff: true };
+        return { out: 'out1', mode: 'hold', state: true, duty: 100, pulseMs: 0, fadeInMs: 0, fadeOutMs: 0, safeOff: true };
       case 'pixel':
         if (typeof window !== 'undefined' && window.ShowduinoPixelAuthoring?.defaultPixelParams) {
           return window.ShowduinoPixelAuthoring.defaultPixelParams();
@@ -225,7 +225,20 @@ class SHDOModel {
       }
 
       if (clip.type === 'relay') clip.params = { ...SHDOModel._defaultParams('relay'), ...clip.params };
-      if (clip.type === 'mosfet') clip.params = { ...SHDOModel._defaultParams('mosfet'), ...clip.params };
+      if (clip.type === 'mosfet') {
+        const base = { ...SHDOModel._defaultParams('mosfet'), ...clip.params };
+        if (typeof window !== 'undefined' && window.ShowduinoMosfetAuthoring?.migrateParams) {
+          clip.params = window.ShowduinoMosfetAuthoring.migrateParams(base);
+        } else {
+          base.safeOff = true;
+          if (String(base.mode || '').toLowerCase() === 'pwm') base.mode = 'hold';
+          clip.params = base;
+        }
+        if (clip.routing) {
+          const id = window.ShowduinoMosfetAuthoring?.canonicalNodeId?.(clip.routing.nodeId);
+          if (id) clip.routing.nodeId = id;
+        }
+      }
       if (clip.type === 'audio') clip.params = { ...SHDOModel._defaultParams('audio'), ...clip.params };
       if (['dmx', 'lighting', 'prop'].includes(clip.type)) {
         clip.legacy = true;

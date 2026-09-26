@@ -20,16 +20,15 @@
     fx:      { icon: '◈', name: 'Other FX', subtitle: 'Fog, air, motor, servo and more', duration: 1500 }
   });
 
-  const PIXEL_EFFECTS = (window.ShowduinoPixelAuthoring?.EFFECTS || []).map((fx) => ({
-    id: fx.id,
-    name: fx.name,
-    family: fx.family,
-    params: fx.params
-  }));
-
-  function pixels() {
-    return window.ShowduinoPixelAuthoring || null;
-  }
+  const PIXEL_EFFECTS = Object.freeze([
+    ['solid','Solid'],['fade','Fade'],['pulse','Pulse'],['breathe','Breathe'],
+    ['flash','Flash'],['strobe','Strobe'],['lightning','Lightning'],['flicker','Flicker'],
+    ['fire','Fire'],['ember','Ember'],['sparkle','Sparkle'],['twinkle','Twinkle'],
+    ['chase','Chase'],['comet','Comet'],['scanner','Scanner'],['meteor','Meteor'],
+    ['wipe','Colour Wipe'],['theatre','Theatre Chase'],['wave','Wave'],['ripple','Ripple'],
+    ['rainbow','Rainbow'],['confetti','Confetti'],['police','Red / Blue'],
+    ['uv-flicker','UV Flicker'],['blackout','Blackout']
+  ].map(([id, name]) => ({ id, name })));
 
   let root = null;
   let activeTab = 'build';
@@ -154,13 +153,7 @@
     if (clip.type === 'audio') return basename(p.file) || 'Choose audio file';
     if (clip.type === 'relay') return `${String(p.out || 'out1').toUpperCase()} · ${String(p.mode || 'hold').toUpperCase()}${p.mode === 'pulse' && p.pulseMs ? ` · ${p.pulseMs}ms` : ''}`;
     if (clip.type === 'mosfet') return `${String(p.out || 'out1').toUpperCase()} · ${clamp(p.duty,0,100,100)}% · ${String(p.mode || 'hold').toUpperCase()}`;
-    if (clip.type === 'pixel') {
-      const fx = (PIXEL_EFFECTS.find((item) => item.id === (pixels()?.canonicalizeEffect?.(p.effect) || String(p.effect || '').toUpperCase())) || PIXEL_EFFECTS[1]);
-      const node = String(clip.routing?.nodeId || '').trim();
-      const device = pixels()?.findOutput?.(node, { project: project(), selectedId: node });
-      const label = device ? pixels().optionLabel(device).split(' · ')[0] : (node || 'No device');
-      return `${label} · Seg ${clamp(p.segment,0,15,0)} · ${fx?.name || p.effect || 'Solid'}`;
-    }
+    if (clip.type === 'pixel') return `${p.segmentName || 'Segment'} · ${PIXEL_EFFECTS.find((fx) => fx.id === p.effect)?.name || p.effect || 'Solid'} · L${clamp(p.line,1,32,1)}`;
     if (clip.type === 'trigger') return p.event || 'Choose event name';
     if (clip.type === 'fx') return `${p.effect || 'custom'} · ${clamp(p.intensity,0,100,100)}%`;
     return clip.type || 'Cue';
@@ -273,14 +266,6 @@
     if (unrouted.length) checks.push(['warn',`${unrouted.length} cue${unrouted.length === 1 ? '' : 's'} still need a device`]);
     const missingAudio = list.filter((clip) => clip.type === 'audio' && !String(clip.params?.file || '').trim());
     if (missingAudio.length) checks.push(['warn',`${missingAudio.length} sound cue${missingAudio.length === 1 ? '' : 's'} need a file`]);
-    const pixelApi = pixels();
-    if (pixelApi) {
-      list.filter((clip) => clip.type === 'pixel').forEach((clip) => {
-        const result = pixelApi.validatePixelClip(clip, pixelApi.getLiveSnapshot());
-        result.errors.forEach((item) => checks.push(['warn', item.message]));
-        result.warnings.forEach((item) => checks.push(['warn', item.message]));
-      });
-    }
     if (!checks.length && list.length) checks.push(['ok','Show looks ready to deploy']);
     return checks;
   }
@@ -346,15 +331,6 @@
 
   function nodeFieldHtml(draft) {
     if (draft.type === 'trigger') return '';
-    if (draft.type === 'pixel' && pixels()) {
-      return `<div class="sm-field sm-pixel-device"><label>PIXEL OUTPUT</label>${pixels().selectHtml({
-        id: 'sm-edit-node',
-        selectClass: 'sm-select sm-pixel-select',
-        selectedId: draft.routing?.nodeId || pixels().P4_LOGICAL_ID,
-        project: project(),
-        live: pixels().getLiveSnapshot()
-      })}</div>`;
-    }
     const nodes = knownNodes(draft.type);
     const listId = `sm-node-list-${draft.type}`;
     return `<div class="sm-field"><label>DEVICE</label><input class="sm-input" id="sm-edit-node" list="${listId}" placeholder="e.g. Audio Node 1" value="${esc(draft.routing?.nodeId || '')}"><datalist id="${listId}">${nodes.map((node) => `<option value="${esc(node)}"></option>`).join('')}</datalist></div>`;
@@ -396,33 +372,28 @@
 
     if (draft.type === 'mosfet') {
       return `<section class="sm-form-section"><h3>Powered output</h3>
-        <div class="sm-grid"><div class="sm-field"><label>OUTPUT</label><select class="sm-select" id="sm-mosfet-out">${Array.from({length:8},(_,i) => `<option value="out${i+1}" ${(p.out || 'out1') === `out${i+1}` ? 'selected' : ''}>OUT${i+1}</option>`).join('')}</select></div>
-        <div class="sm-field"><label>ACTION</label><select class="sm-select" id="sm-mosfet-mode"><option value="hold" ${(p.mode || 'hold') === 'hold' ? 'selected' : ''}>Hold</option><option value="pulse" ${p.mode === 'pulse' ? 'selected' : ''}>Pulse</option></select></div></div>
+        <div class="sm-grid"><div class="sm-field"><label>OUTPUT</label><select class="sm-select" id="sm-mosfet-out">${Array.from({length:4},(_,i) => `<option value="out${i+1}" ${(p.out || 'out1') === `out${i+1}` ? 'selected' : ''}>OUT${i+1}</option>`).join('')}</select></div>
+        <div class="sm-field"><label>ACTION</label><select class="sm-select" id="sm-mosfet-mode"><option value="hold" ${(p.mode || 'hold') === 'hold' || p.mode === 'pwm' ? 'selected' : ''}>Hold</option><option value="pulse" ${p.mode === 'pulse' ? 'selected' : ''}>Pulse</option><option value="fade" ${p.mode === 'fade' ? 'selected' : ''}>Fade</option></select></div></div>
         <div class="sm-field"><label>POWER · <span id="sm-mosfet-duty-value">${clamp(p.duty,0,100,100)}</span>%</label><input class="sm-input" id="sm-mosfet-duty" type="range" min="0" max="100" value="${clamp(p.duty,0,100,100)}"></div>
         <div class="sm-field" id="sm-mosfet-pulse-wrap"><label>PULSE LENGTH (MS)</label><input class="sm-input" id="sm-mosfet-pulse" type="number" min="10" step="10" value="${clamp(p.pulseMs || 500,10,600000,500)}"></div>
+        <div class="sm-grid"><div class="sm-field"><label>FADE IN (MS)</label><input class="sm-input" id="sm-mosfet-fade-in" type="number" min="0" step="10" value="${clamp(p.fadeInMs || 0,0,600000,0)}"></div><div class="sm-field"><label>FADE OUT (MS)</label><input class="sm-input" id="sm-mosfet-fade-out" type="number" min="0" step="10" value="${clamp(p.fadeOutMs || 0,0,600000,0)}"></div></div>
+        <p class="sm-help">Powered outputs always switch OFF when the cue/show stops.</p>
       </section>`;
     }
 
     if (draft.type === 'pixel') {
       const mode = p.segmentMode || 'range';
-      const effect = pixels()?.canonicalizeEffect?.(p.effect) || (p.effect || 'SOLID');
-      const segmentOptions = Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${clamp(p.segment,0,15,0) === i ? 'selected' : ''}>${i}</option>`).join('');
       return `<section class="sm-form-section"><h3>Pixels</h3>
-        <div class="sm-grid"><div class="sm-field"><label>SEGMENT</label><select class="sm-select" id="sm-pixel-segment">${segmentOptions}</select></div>
-        <div class="sm-field"><label>EFFECT</label><select class="sm-select" id="sm-pixel-effect">${pixelEffectOptions(effect)}</select></div></div>
-        <div class="sm-field" data-px-param="colour"><label>COLOUR</label><input class="sm-input" id="sm-pixel-colour" type="color" value="${rgbHex(p.r,p.g,p.b)}"></div>
-        <div class="sm-field" data-px-param="secondary"><label>SECONDARY COLOUR</label><input class="sm-input" id="sm-pixel-secondary" type="color" value="${esc(p.secondary || '#101820')}"></div>
-        <div class="sm-field" data-px-param="brightness"><label>BRIGHTNESS · <span id="sm-pixel-brightness-value">${clamp(p.brightness,0,255,255)}</span></label><input class="sm-input" id="sm-pixel-brightness" type="range" min="0" max="255" value="${clamp(p.brightness,0,255,255)}"></div>
-        <div class="sm-field" data-px-param="speed"><label>SPEED · <span id="sm-pixel-speed-value">${clamp(p.speed,1,100,50)}</span></label><input class="sm-input" id="sm-pixel-speed" type="range" min="1" max="100" value="${clamp(p.speed,1,100,50)}"></div>
-        <div class="sm-field" data-px-param="intensity"><label>INTENSITY · <span id="sm-pixel-intensity-value">${clamp(p.intensity,0,100,80)}</span></label><input class="sm-input" id="sm-pixel-intensity" type="range" min="0" max="100" value="${clamp(p.intensity,0,100,80)}"></div>
-        <div class="sm-field" data-px-param="randomness"><label>RANDOMNESS · <span id="sm-pixel-randomness-value">${clamp(p.randomness,0,100,70)}</span></label><input class="sm-input" id="sm-pixel-randomness" type="range" min="0" max="100" value="${clamp(p.randomness,0,100,70)}"></div>
-        <label class="sm-checkline" data-px-param="reverse"><input id="sm-pixel-reverse" type="checkbox" ${p.reverse ? 'checked' : ''}> Reverse direction</label>
-        <div class="sm-field"><label>DURATION (SECONDS)</label><input class="sm-input" id="sm-edit-duration" type="number" min="0.01" step="0.01" value="${(Math.max(10,Number(draft.durationMs || 1000))/1000).toFixed(2)}"></div>
+        <div class="sm-grid"><div class="sm-field"><label>LINE</label><input class="sm-input" id="sm-pixel-line" type="number" min="1" max="32" value="${clamp(p.line,1,32,1)}"></div><div class="sm-field"><label>SEGMENT NAME</label><input class="sm-input" id="sm-pixel-name" value="${esc(p.segmentName || 'Segment A')}"></div></div>
+        <div class="sm-grid"><div class="sm-field"><label>START PIXEL</label><input class="sm-input" id="sm-pixel-start" type="number" min="0" value="${clamp(p.startPixel,0,100000,0)}"></div><div class="sm-field"><label>LENGTH</label><input class="sm-input" id="sm-pixel-length" type="number" min="1" value="${clamp(p.length,1,100000,10)}"></div></div>
+        <div class="sm-field"><label>EFFECT</label><select class="sm-select" id="sm-pixel-effect">${pixelEffectOptions(p.effect || 'solid')}</select></div>
+        <div class="sm-grid"><div class="sm-field"><label>COLOUR</label><input class="sm-input" id="sm-pixel-colour" type="color" value="${rgbHex(p.r,p.g,p.b)}"></div><div class="sm-field"><label>BRIGHTNESS · <span id="sm-pixel-brightness-value">${clamp(p.brightness,0,255,255)}</span></label><input class="sm-input" id="sm-pixel-brightness" type="range" min="0" max="255" value="${clamp(p.brightness,0,255,255)}"></div></div>
         <div class="sm-pixel-shell"><div class="sm-pixel-strip" id="sm-editor-pixel-preview"></div></div>
-        <details class="sm-advanced"><summary>Range on this line</summary><div class="sm-advanced-body">
-          <div class="sm-grid"><div class="sm-field"><label>START PIXEL</label><input class="sm-input" id="sm-pixel-start" type="number" min="0" value="${clamp(p.startPixel,0,100000,0)}"></div><div class="sm-field"><label>LENGTH</label><input class="sm-input" id="sm-pixel-length" type="number" min="1" value="${clamp(p.length,1,100000,10)}"></div></div>
+        <button class="sm-btn" style="width:100%;margin-top:.5rem;" type="button" data-sm-editor-exit>Use 10-pixel exit sign pattern</button>
+        <details class="sm-advanced"><summary>Segment options</summary><div class="sm-advanced-body">
           <div class="sm-field"><label>SEGMENT MODE</label><select class="sm-select" id="sm-pixel-mode"><option value="range" ${mode === 'range' ? 'selected' : ''}>Normal range</option><option value="repeat-marker" ${mode === 'repeat-marker' ? 'selected' : ''}>Repeating marker groups</option></select></div>
           <div class="sm-grid" id="sm-pixel-group-fields" ${mode === 'repeat-marker' ? '' : 'hidden'}><div class="sm-field"><label>GROUP SIZE</label><input class="sm-input" id="sm-pixel-group" type="number" min="1" value="${clamp(p.groupSize,1,1000,10)}"></div><div class="sm-field"><label>ACTIVE PIXEL</label><input class="sm-input" id="sm-pixel-marker" type="number" min="0" value="${clamp(p.markerOffset,0,999,0)}"></div></div>
+          <div class="sm-field"><label>SPEED</label><input class="sm-input" id="sm-pixel-speed" type="number" min="1" max="1000" value="${clamp(p.speed,1,1000,120)}"></div>
           <label class="sm-checkline"><input id="sm-pixel-blackout" type="checkbox" ${p.blackoutAtEnd ? 'checked' : ''}> Blackout this segment when cue ends</label>
         </div></details>
       </section>`;
@@ -447,10 +418,10 @@
 
   function advancedCommonHtml(draft) {
     return `<details class="sm-advanced"><summary>Advanced cue settings</summary><div class="sm-advanced-body">
-      ${draft.type === 'pixel' ? '' : `<div class="sm-field"><label>DURATION (SECONDS)</label><input class="sm-input" id="sm-edit-duration" type="number" min="0.01" step="0.01" value="${(Math.max(10,Number(draft.durationMs || 1000))/1000).toFixed(2)}"></div>`}
+      <div class="sm-field"><label>DURATION (SECONDS)</label><input class="sm-input" id="sm-edit-duration" type="number" min="0.01" step="0.01" value="${(Math.max(10,Number(draft.durationMs || 1000))/1000).toFixed(2)}"></div>
       ${draft.type === 'trigger' ? '' : `<div class="sm-field"><label>ROUTING OUTPUT OVERRIDE</label><input class="sm-input" id="sm-edit-output" placeholder="Usually leave blank" value="${esc(draft.routing?.output || '')}"></div>`}
       ${draft.type === 'relay' ? `<label class="sm-checkline"><input id="sm-relay-safe" type="checkbox" ${draft.params?.safeOff !== false ? 'checked' : ''}> Force relay OFF when stopped</label>` : ''}
-      ${draft.type === 'mosfet' ? `<label class="sm-checkline"><input id="sm-mosfet-safe" type="checkbox" ${draft.params?.safeOff !== false ? 'checked' : ''}> Force output OFF when stopped</label>` : ''}
+      ${draft.type === 'mosfet' ? `<p class="sm-help">Powered outputs always switch OFF when the cue/show stops.</p>` : ''}
       ${draft.type === 'fx' ? `<label class="sm-checkline"><input id="sm-fx-safe" type="checkbox" ${draft.params?.safeStop !== false ? 'checked' : ''}> Stop this effect during emergency</label>` : ''}
     </div></details>`;
   }
@@ -487,7 +458,6 @@
   }
 
   function defaultNodeFor(type) {
-    if (type === 'pixel') return pixels()?.P4_LOGICAL_ID || 'p4';
     const nodes = knownNodes(type);
     return nodes.length === 1 ? nodes[0] : '';
   }
@@ -501,16 +471,11 @@
       : window.SHDOModel.createClip('pending', type, nextCueStart(), TYPE_META[type].duration, TYPE_META[type].name);
     editorDraft.routing = editorDraft.routing || { nodeId:'', output:'' };
     editorDraft.params = editorDraft.params || window.SHDOModel._defaultParams?.(type) || {};
-    if (type === 'pixel' && pixels()?.migratePixelParams) editorDraft.params = pixels().migratePixelParams(editorDraft.params);
     if (!existing && type !== 'trigger') editorDraft.routing.nodeId = defaultNodeFor(type);
-    if (type === 'pixel' && pixels()?.canonicalNodeId && editorDraft.routing.nodeId) {
-      editorDraft.routing.nodeId = pixels().canonicalNodeId(editorDraft.routing.nodeId) || editorDraft.routing.nodeId;
-    }
     if (exitTemplate && type === 'pixel') applyExitTemplateToDraft(editorDraft);
     pickerOpen = false;
     editorOpen = true;
     render();
-    if (type === 'pixel') pixels()?.refreshLiveOutputs?.().then(() => { if (editorOpen) render(); });
   }
 
   function closeEditor() {
@@ -526,7 +491,7 @@
     draft.durationMs = Math.max(3000, Number(draft.durationMs || 0));
     draft.params = {
       ...(draft.params || {}),
-      segment: Number.isFinite(Number(draft.params?.segment)) ? draft.params.segment : 0,
+      line:1,
       segmentMode:'repeat-marker',
       segmentName:'Exit Sign Markers',
       startPixel:0,
@@ -537,8 +502,8 @@
       g:220,
       b:80,
       brightness:255,
-      effect:'SOLID',
-      speed:50,
+      effect:'solid',
+      speed:120,
       blackoutAtEnd:false
     };
   }
@@ -554,9 +519,8 @@
       'sm-pixel-marker':'0',
       'sm-pixel-colour':'#00dc50',
       'sm-pixel-brightness':'255',
-      'sm-pixel-effect':'SOLID',
-      'sm-pixel-mode':'repeat-marker',
-      'sm-pixel-speed':'50'
+      'sm-pixel-effect':'solid',
+      'sm-pixel-mode':'repeat-marker'
     };
     Object.entries(values).forEach(([id,value]) => {
       const element = document.getElementById(id);
@@ -590,29 +554,8 @@
     document.getElementById('sm-pixel-brightness')?.addEventListener('input',(event) => {
       const out = document.getElementById('sm-pixel-brightness-value'); if (out) out.textContent = event.target.value;
     });
-    document.getElementById('sm-pixel-speed')?.addEventListener('input',(event) => {
-      const out = document.getElementById('sm-pixel-speed-value'); if (out) out.textContent = event.target.value;
-    });
-    document.getElementById('sm-pixel-intensity')?.addEventListener('input',(event) => {
-      const out = document.getElementById('sm-pixel-intensity-value'); if (out) out.textContent = event.target.value;
-    });
-    document.getElementById('sm-pixel-randomness')?.addEventListener('input',(event) => {
-      const out = document.getElementById('sm-pixel-randomness-value'); if (out) out.textContent = event.target.value;
-    });
 
-    const syncPixelParams = () => {
-      const effect = document.getElementById('sm-pixel-effect')?.value || 'SOLID';
-      document.querySelectorAll('[data-px-param]').forEach((el) => {
-        const param = el.getAttribute('data-px-param');
-        const show = !pixels() || pixels().effectSupports(effect, param);
-        el.hidden = !show;
-      });
-      renderEditorPixelPreview();
-    };
-    document.getElementById('sm-pixel-effect')?.addEventListener('change', syncPixelParams);
-    syncPixelParams();
-
-    ['sm-pixel-start','sm-pixel-length','sm-pixel-group','sm-pixel-marker','sm-pixel-colour','sm-pixel-mode','sm-pixel-brightness'].forEach((id) => {
+    ['sm-pixel-line','sm-pixel-start','sm-pixel-length','sm-pixel-group','sm-pixel-marker','sm-pixel-colour','sm-pixel-mode','sm-pixel-effect','sm-pixel-brightness'].forEach((id) => {
       document.getElementById(id)?.addEventListener('input',() => {
         if (id === 'sm-pixel-mode') {
           const fields = document.getElementById('sm-pixel-group-fields');
@@ -642,12 +585,9 @@
     }).join('');
   }
 
-  function derivedOutput(type, params, nodeId) {
+  function derivedOutput(type, params) {
     if (type === 'relay' || type === 'mosfet') return String(params.out || 'out1').toUpperCase();
-    if (type === 'pixel') {
-      const id = pixels()?.canonicalNodeId?.(nodeId) || '';
-      return pixels()?.isP4Id?.(id) ? 'P4 Show Pixel Line' : id;
-    }
+    if (type === 'pixel') return `LINE${clamp(params.line,1,32,1)}`;
     return '';
   }
 
@@ -660,8 +600,7 @@
     draft.startMs = parseTimeInput(document.getElementById('sm-edit-start')?.value);
     draft.durationMs = Math.max(10,Math.round(Math.max(.01,Number(document.getElementById('sm-edit-duration')?.value || (draft.durationMs / 1000) || 1)) * 1000));
 
-    let nodeId = draft.type === 'trigger' ? '' : (document.getElementById('sm-edit-node')?.value.trim() || '');
-    if (draft.type === 'pixel' && pixels()?.canonicalNodeId) nodeId = pixels().canonicalNodeId(nodeId) || nodeId;
+    const nodeId = draft.type === 'trigger' ? '' : (document.getElementById('sm-edit-node')?.value.trim() || '');
 
     if (draft.type === 'audio') {
       params.file = document.getElementById('sm-audio-file')?.value.trim() || '';
@@ -682,27 +621,25 @@
       params.mode = document.getElementById('sm-mosfet-mode')?.value || 'hold';
       params.duty = clamp(document.getElementById('sm-mosfet-duty')?.value,0,100,100);
       params.pulseMs = params.mode === 'pulse' ? clamp(document.getElementById('sm-mosfet-pulse')?.value,10,600000,500) : 0;
+      params.fadeInMs = clamp(document.getElementById('sm-mosfet-fade-in')?.value,0,600000,0);
+      params.fadeOutMs = clamp(document.getElementById('sm-mosfet-fade-out')?.value,0,600000,0);
       params.state = true;
-      params.safeOff = document.getElementById('sm-mosfet-safe') ? Boolean(document.getElementById('sm-mosfet-safe').checked) : params.safeOff !== false;
+      params.safeOff = true;
     }
 
     if (draft.type === 'pixel') {
       const [r,g,b] = hexRgb(document.getElementById('sm-pixel-colour')?.value);
-      params.segment = clamp(document.getElementById('sm-pixel-segment')?.value,0,15,0);
-      params.segmentName = `Segment ${params.segment}`;
+      params.line = clamp(document.getElementById('sm-pixel-line')?.value,1,32,1);
+      params.segmentName = document.getElementById('sm-pixel-name')?.value.trim() || 'Segment A';
       params.segmentMode = document.getElementById('sm-pixel-mode')?.value || 'range';
       params.startPixel = clamp(document.getElementById('sm-pixel-start')?.value,0,100000,0);
       params.length = clamp(document.getElementById('sm-pixel-length')?.value,1,100000,10);
       params.groupSize = clamp(document.getElementById('sm-pixel-group')?.value,1,1000,10);
       params.markerOffset = clamp(document.getElementById('sm-pixel-marker')?.value,0,params.groupSize-1,0);
       params.r = r; params.g = g; params.b = b;
-      params.secondary = document.getElementById('sm-pixel-secondary')?.value || params.secondary || '#101820';
       params.brightness = clamp(document.getElementById('sm-pixel-brightness')?.value,0,255,255);
-      params.effect = pixels()?.canonicalizeEffect?.(document.getElementById('sm-pixel-effect')?.value) || 'SOLID';
-      params.speed = clamp(document.getElementById('sm-pixel-speed')?.value,1,100,50);
-      params.intensity = clamp(document.getElementById('sm-pixel-intensity')?.value,0,100,80);
-      params.randomness = clamp(document.getElementById('sm-pixel-randomness')?.value,0,100,70);
-      params.reverse = Boolean(document.getElementById('sm-pixel-reverse')?.checked);
+      params.effect = document.getElementById('sm-pixel-effect')?.value || 'solid';
+      params.speed = clamp(document.getElementById('sm-pixel-speed')?.value,1,1000,120);
       params.blackoutAtEnd = Boolean(document.getElementById('sm-pixel-blackout')?.checked);
     }
 
@@ -720,7 +657,7 @@
     }
 
     const override = document.getElementById('sm-edit-output')?.value.trim() || '';
-    draft.routing = { nodeId, output: override || derivedOutput(draft.type,params,nodeId) };
+    draft.routing = { nodeId, output: override || derivedOutput(draft.type,params) };
     return draft;
   }
 

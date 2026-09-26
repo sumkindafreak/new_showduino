@@ -10,16 +10,33 @@
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches || false;
   const animeApi = window.anime || null;
 
-  function pixels() {
-    return window.ShowduinoPixelAuthoring || null;
-  }
-
-  const PIXEL_EFFECTS = Object.freeze((pixels()?.EFFECTS || []).map((effect) => ({
-    id: effect.id,
-    name: effect.name,
-    family: effect.family,
-    params: effect.params
-  })));
+  const PIXEL_EFFECTS = Object.freeze([
+    { id: 'solid', name: 'Solid', family: 'STATIC' },
+    { id: 'fade', name: 'Fade', family: 'LEVEL' },
+    { id: 'pulse', name: 'Pulse', family: 'LEVEL' },
+    { id: 'breathe', name: 'Breathe', family: 'LEVEL' },
+    { id: 'flash', name: 'Flash', family: 'IMPACT' },
+    { id: 'strobe', name: 'Strobe', family: 'IMPACT' },
+    { id: 'lightning', name: 'Lightning', family: 'IMPACT' },
+    { id: 'flicker', name: 'Flicker', family: 'ORGANIC' },
+    { id: 'fire', name: 'Fire', family: 'ORGANIC' },
+    { id: 'ember', name: 'Ember', family: 'ORGANIC' },
+    { id: 'sparkle', name: 'Sparkle', family: 'ORGANIC' },
+    { id: 'twinkle', name: 'Twinkle', family: 'ORGANIC' },
+    { id: 'chase', name: 'Chase', family: 'MOTION' },
+    { id: 'comet', name: 'Comet', family: 'MOTION' },
+    { id: 'scanner', name: 'Scanner', family: 'MOTION' },
+    { id: 'meteor', name: 'Meteor', family: 'MOTION' },
+    { id: 'wipe', name: 'Colour Wipe', family: 'MOTION' },
+    { id: 'theatre', name: 'Theatre Chase', family: 'MOTION' },
+    { id: 'wave', name: 'Wave', family: 'MOTION' },
+    { id: 'ripple', name: 'Ripple', family: 'MOTION' },
+    { id: 'rainbow', name: 'Rainbow', family: 'COLOUR' },
+    { id: 'confetti', name: 'Confetti', family: 'COLOUR' },
+    { id: 'police', name: 'Red / Blue', family: 'COLOUR' },
+    { id: 'uv-flicker', name: 'UV Flicker', family: 'COLOUR' },
+    { id: 'blackout', name: 'Blackout', family: 'UTILITY' }
+  ]);
 
   const LEGACY_TYPES = new Set(['dmx', 'lighting', 'prop']);
   const CURRENT_TRACK_TYPES = new Set(['mixed', 'audio', 'relay', 'mosfet', 'pixel', 'fx', 'trigger']);
@@ -49,30 +66,25 @@
   }
 
   function effectById(id) {
-    if (pixels()?.effectById) return pixels().effectById(id);
-    return PIXEL_EFFECTS.find((effect) => effect.id === id) || PIXEL_EFFECTS[1] || PIXEL_EFFECTS[0];
+    return PIXEL_EFFECTS.find((effect) => effect.id === id) || PIXEL_EFFECTS[0];
   }
 
   function ensurePixelParams(params) {
-    if (pixels()?.migratePixelParams) return pixels().migratePixelParams(params);
     const p = params || {};
-    p.segment = clamp(p.segment, 0, 15, 0);
+    p.line = clamp(p.line, 1, 32, 1);
     p.segmentMode = p.segmentMode || 'range';
-    p.segmentName = p.segmentName || `Segment ${p.segment}`;
+    p.segmentName = p.segmentName || 'Segment A';
     p.startPixel = clamp(p.startPixel ?? 0, 0, 100000, 0);
     p.length = clamp(p.length ?? p.count ?? 10, 1, 100000, 10);
     p.groupSize = clamp(p.groupSize ?? 10, 1, 1000, 10);
     p.markerOffset = clamp(p.markerOffset ?? 0, 0, Math.max(0, p.groupSize - 1), 0);
-    p.effect = effectById(p.effect || 'SOLID').id;
+    p.effect = effectById(p.effect || 'solid').id;
     p.r = clamp(p.r ?? 0, 0, 255, 0);
     p.g = clamp(p.g ?? 255, 0, 255, 255);
     p.b = clamp(p.b ?? 200, 0, 255, 200);
     p.secondary = p.secondary || '#101820';
     p.brightness = clamp(p.brightness ?? 255, 0, 255, 255);
-    p.speed = clamp(p.speed ?? 50, 1, 100, 50);
-    p.intensity = clamp(p.intensity ?? 80, 0, 100, 80);
-    p.randomness = clamp(p.randomness ?? 70, 0, 100, 70);
-    p.reverse = Boolean(p.reverse);
+    p.speed = clamp(p.speed ?? 120, 1, 1000, 120);
     p.fadeMs = clamp(p.fadeMs ?? 0, 0, 600000, 0);
     p.blackoutAtEnd = Boolean(p.blackoutAtEnd);
     return p;
@@ -156,7 +168,7 @@
   }
 
   function pixelLabHtml() {
-    const options = PIXEL_EFFECTS.map((effect) => `<button class="pixel-fx-option ${effect.id === 'LIGHTNING' ? 'active' : ''}" type="button" data-pixel-effect="${effect.id}" onclick="ShowduinoStudioV4.selectPixelEffect('${effect.id}')"><strong>${esc(effect.name)}</strong><span>${esc(effect.family)}</span></button>`).join('');
+    const options = PIXEL_EFFECTS.map((effect) => `<button class="pixel-fx-option ${effect.id === 'lightning' ? 'active' : ''}" type="button" data-pixel-effect="${effect.id}" onclick="ShowduinoStudioV4.selectPixelEffect('${effect.id}')"><strong>${esc(effect.name)}</strong><span>${esc(effect.family)}</span></button>`).join('');
     return `
       <div class="v4-panel pixel-lab-panel">
         <div class="v4-panel-head"><div><span class="v4-eyebrow">PIXEL FX LAB</span><h1>Design by segment.</h1><p>Build an effect for exactly the pixels you want, preview it in the browser, then drop the resulting clip onto the timeline.</p></div><div class="v4-button-row"><button class="v4-btn" onclick="ShowduinoStudioV4.applyExitSignTemplate()">10-pixel Exit Sign</button><button class="v4-btn primary" onclick="ShowduinoStudioV4.insertPixelLabClip()">Add to Timeline</button></div></div>
@@ -185,7 +197,7 @@
               ${fieldHtml('pixel-lab-speed','Speed',120,'number','min="1" max="1000"')}
             </div>
             <label class="v4-check"><input id="pixel-lab-blackout" type="checkbox"> Blackout segment when clip ends</label>
-            <input id="pixel-lab-effect" type="hidden" value="LIGHTNING">
+            <input id="pixel-lab-effect" type="hidden" value="lightning">
             <div class="v4-rule" style="margin-top:.65rem;">Segments are logical authoring ranges. Different clips on the same physical line can use different effects and ranges.</div>
           </section>
 
@@ -281,34 +293,22 @@
 
   function buildPixelInspector(clip) {
     const p = ensurePixelParams(clip.params || (clip.params = {}));
-    clip.routing = clip.routing || { nodeId: '', output: '' };
-    if (!clip.routing.nodeId) clip.routing.nodeId = pixels()?.P4_LOGICAL_ID || 'p4';
     const primary = hexFromRgb(p.r, p.g, p.b);
-    const deviceHtml = pixels() ? pixels().selectHtml({
-      id: 'v4-pixel-device',
-      selectClass: 'v4-pixel-select',
-      selectedId: clip.routing.nodeId,
-      project: currentProject(),
-      live: pixels().getLiveSnapshot()
-    }) : inspectorField('v4-pixel-device','Pixel output', clip.routing.nodeId || 'p4','text');
-    const segmentOptions = Array.from({ length: 16 }, (_, i) => ({ value: String(i), label: String(i) }));
     return `
-      <section class="v4-inspector-section"><h4>Pixel output</h4>
-        <div class="v4-field sd-pixel-device">${deviceHtml}</div>
-        <div class="v4-inspector-grid">${inspectorSelect('v4-pixel-segment','Segment', String(p.segment ?? 0), segmentOptions)}${inspectorSelect('v4-pixel-effect','Effect', p.effect, PIXEL_EFFECTS.map((effect) => ({ value: effect.id, label: `${effect.name} · ${effect.family}` })))}</div>
-      </section>
-      <section class="v4-inspector-section"><h4>Effect parameters</h4>
-        <div class="v4-inspector-grid" data-px-param="colour">${inspectorField('v4-pixel-colour','Colour',primary,'color')}<div data-px-param="secondary">${inspectorField('v4-pixel-secondary','Secondary',p.secondary,'color')}</div></div>
-        <div class="v4-inspector-grid">${inspectorField('v4-pixel-brightness','Brightness',p.brightness,'number','min="0" max="255"')}${inspectorField('v4-pixel-speed','Speed',p.speed,'number','min="1" max="100"')}</div>
-        <div class="v4-inspector-grid" data-px-param="intensity">${inspectorField('v4-pixel-intensity','Intensity',p.intensity ?? 80,'number','min="0" max="100"')}<div data-px-param="randomness">${inspectorField('v4-pixel-randomness','Randomness',p.randomness ?? 70,'number','min="0" max="100"')}</div></div>
-        <label class="v4-check" data-px-param="reverse"><input id="v4-pixel-reverse" type="checkbox" ${p.reverse ? 'checked' : ''}> Reverse direction</label>
-        <label class="v4-check"><input id="v4-pixel-blackout" type="checkbox" ${p.blackoutAtEnd ? 'checked' : ''}> Blackout segment at clip end</label>
-      </section>
-      <section class="v4-inspector-section"><h4>Range on this line</h4>
+      <section class="v4-inspector-section"><h4>Pixel segment</h4>
+        <div class="v4-inspector-grid">${inspectorField('v4-pixel-line','Pixel line',p.line,'number','min="1" max="32"')}${inspectorField('v4-pixel-segment-name','Segment name',p.segmentName,'text')}</div>
         ${inspectorSelect('v4-pixel-mode','Segment mode',p.segmentMode,[{value:'range',label:'Range: start + length'},{value:'repeat-marker',label:'Repeat marker groups'}])}
         <div class="v4-inspector-grid" id="v4-pixel-range-fields">${inspectorField('v4-pixel-start','Start pixel',p.startPixel,'number','min="0"')}${inspectorField('v4-pixel-length','Length',p.length,'number','min="1"')}</div>
         <div class="v4-inspector-grid" id="v4-pixel-marker-fields" ${p.segmentMode === 'repeat-marker' ? '' : 'style="display:none;"'}>${inspectorField('v4-pixel-group','Group size',p.groupSize,'number','min="1"')}${inspectorField('v4-pixel-marker','Active offset',p.markerOffset,'number','min="0"')}</div>
-        <div class="pixel-preview-shell"><div class="pixel-preview-label"><span>AUTHORING PREVIEW</span><span>SEG ${esc(p.segment ?? 0)}</span></div><div id="v4-inspector-pixel-preview" class="v4-pixel-strip"></div></div>
+      </section>
+      <section class="v4-inspector-section"><h4>Pixel effect</h4>
+        ${inspectorSelect('v4-pixel-effect','Effect',p.effect,PIXEL_EFFECTS.map((effect) => ({ value: effect.id, label: `${effect.name} · ${effect.family}` })))}
+        <div class="v4-inspector-grid">${inspectorField('v4-pixel-colour','Primary',primary,'color')}${inspectorField('v4-pixel-secondary','Secondary',p.secondary,'color')}</div>
+        <div class="v4-inspector-grid">${inspectorField('v4-pixel-brightness','Brightness',p.brightness,'number','min="0" max="255"')}${inspectorField('v4-pixel-speed','Speed',p.speed,'number','min="1" max="1000"')}</div>
+        ${inspectorField('v4-pixel-fade','Fade (ms)',p.fadeMs,'number','min="0" step="10"')}
+        <label class="v4-check"><input id="v4-pixel-blackout" type="checkbox" ${p.blackoutAtEnd ? 'checked' : ''}> Blackout segment at clip end</label>
+        <div class="pixel-preview-shell"><div class="pixel-preview-label"><span>AUTHORING PREVIEW</span><span>${esc(p.segmentName)}</span></div><div id="v4-inspector-pixel-preview" class="v4-pixel-strip"></div></div>
+        <div class="v4-button-row"><button id="v4-open-pixel-lab" class="v4-btn" type="button">Open Pixel FX Lab</button></div>
       </section>
       <div class="v4-rule danger"><strong>Emergency is locked:</strong> this clip can never override the P4 emergency rule. Emergency drives every pixel on every line bright white.</div>`;
   }
@@ -316,11 +316,12 @@
   function buildMosfetInspector(clip) {
     const p = ensureMosfetParams(clip.params || (clip.params = {}));
     return `
-      <section class="v4-inspector-section"><h4>MOSFET output</h4>
-        <div class="v4-inspector-grid">${inspectorField('v4-mosfet-output','Output',p.out,'text','placeholder="out1"')}${inspectorSelect('v4-mosfet-mode','Mode',p.mode,['hold','pulse','pwm'])}</div>
-        <div class="v4-inspector-grid">${inspectorField('v4-mosfet-duty','Duty / level %',p.duty,'number','min="0" max="100"')}${inspectorField('v4-mosfet-pulse','Pulse (ms)',p.pulseMs,'number','min="0"')}</div>
-        <label class="v4-check"><input id="v4-mosfet-state" type="checkbox" ${p.state ? 'checked' : ''}> Active state</label>
-        <label class="v4-check"><input id="v4-mosfet-safe" type="checkbox" ${p.safeOff ? 'checked' : ''}> Force OFF when stopped / safety reset</label>
+      <section class="v4-inspector-section"><h4>Lighting</h4>
+        <div class="v4-inspector-grid">${inspectorSelect('v4-mosfet-output','Output',p.out || 'out1',['out1','out2','out3','out4'])}${inspectorSelect('v4-mosfet-mode','Mode',(p.mode === 'pwm' ? 'hold' : (p.mode || 'hold')),['hold','pulse','fade'])}</div>
+        <div class="v4-inspector-grid">${inspectorField('v4-mosfet-duty','Level %',p.duty,'number','min="0" max="100"')}${inspectorField('v4-mosfet-pulse','Pulse (ms)',p.pulseMs,'number','min="0"')}</div>
+        <div class="v4-inspector-grid">${inspectorField('v4-mosfet-fade-in','Fade in (ms)',p.fadeInMs || 0,'number','min="0"')}${inspectorField('v4-mosfet-fade-out','Fade out (ms)',p.fadeOutMs || 0,'number','min="0"')}</div>
+        <label class="v4-check"><input id="v4-mosfet-state" type="checkbox" ${p.state !== false ? 'checked' : ''}> Active state</label>
+        <p class="v4-help">Powered outputs always switch OFF when the cue/show stops.</p>
       </section>`;
   }
 
@@ -390,7 +391,7 @@
       length: document.getElementById('pixel-lab-length')?.value,
       groupSize,
       markerOffset: clamp(document.getElementById('pixel-lab-marker-offset')?.value, 0, groupSize - 1, 0),
-      effect: document.getElementById('pixel-lab-effect')?.value || 'LIGHTNING',
+      effect: document.getElementById('pixel-lab-effect')?.value || 'lightning',
       r,g,b,
       secondary: document.getElementById('pixel-lab-secondary')?.value || '#101820',
       brightness: document.getElementById('pixel-lab-brightness')?.value,
@@ -460,7 +461,7 @@
     const effect = effectById(p.effect);
     const clip = window.SHDOModel.createClip(track.id, 'pixel', startMs, 3000, `${p.segmentName} · ${effect.name}`);
     clip.params = p;
-    clip.routing = { nodeId: pixels()?.P4_LOGICAL_ID || 'p4', output: pixels()?.P4_LABEL || 'P4 Show Pixel Line' };
+    clip.routing = { nodeId: '', output: `Pixel Line ${p.line}` };
     project.clips.push(clip);
     try { await window.ShowduinoProjects?.saveCurrentProject?.({ cloud: false }); } catch (_) {}
     refreshProjectStats();
@@ -481,17 +482,17 @@
     const missingAudio = clips.filter((clip) => clip.type === 'audio' && !String(clip.params?.file || '').trim());
     checks.push({ level: missingAudio.length ? 'warn' : 'ok', title: 'Audio references', detail: missingAudio.length ? `${missingAudio.length} audio cue${missingAudio.length === 1 ? '' : 's'} have no file assigned.` : 'Every audio cue has a file reference.', code: `${missingAudio.length} OPEN` });
 
-    const pixelApi = pixels();
-    if (pixelApi) {
-      currentClips.filter((clip) => clip.type === 'pixel').forEach((clip) => {
-        const result = pixelApi.validatePixelClip(clip, pixelApi.getLiveSnapshot());
-        result.errors.forEach((item) => checks.push({ level: 'error', title: 'Pixel authoring', detail: item.message, code: item.code }));
-        result.warnings.forEach((item) => checks.push({ level: 'warn', title: 'Pixel hardware', detail: item.message, code: item.code }));
-      });
-    }
+    const invalidPixels = clips.filter((clip) => {
+      if (clip.type !== 'pixel') return false;
+      const p = ensurePixelParams({ ...(clip.params || {}) });
+      return p.segmentMode === 'range' ? p.length < 1 || p.startPixel < 0 : p.groupSize < 1 || p.markerOffset >= p.groupSize;
+    });
+    checks.push({ level: invalidPixels.length ? 'error' : 'ok', title: 'Pixel segment bounds', detail: invalidPixels.length ? `${invalidPixels.length} pixel cue${invalidPixels.length === 1 ? '' : 's'} contain invalid segment/group bounds.` : 'Pixel segments and repeating marker groups are valid.', code: `${invalidPixels.length} ERR` });
 
-    const unsafeOutputs = clips.filter((clip) => (clip.type === 'relay' || clip.type === 'mosfet') && clip.params?.safeOff === false);
-    checks.push({ level: unsafeOutputs.length ? 'warn' : 'ok', title: 'Output stop behaviour', detail: unsafeOutputs.length ? `${unsafeOutputs.length} relay/MOSFET cue${unsafeOutputs.length === 1 ? '' : 's'} are configured not to force OFF on stop.` : 'Relay and MOSFET cues use safe OFF behaviour.', code: `${unsafeOutputs.length} REVIEW` });
+    const unsafeRelay = clips.filter((clip) => clip.type === 'relay' && clip.params?.safeOff === false);
+    const mosfetClips = clips.filter((clip) => clip.type === 'mosfet');
+    mosfetClips.forEach((clip) => { if (clip.params) clip.params.safeOff = true; });
+    checks.push({ level: unsafeRelay.length ? 'warn' : 'ok', title: 'Output stop behaviour', detail: unsafeRelay.length ? `${unsafeRelay.length} relay cue${unsafeRelay.length === 1 ? '' : 's'} are configured not to force OFF on stop.` : 'MOSFET cues always force OFF on stop; relay cues use safe OFF behaviour.', code: `${unsafeRelay.length} REVIEW` });
 
     const legacy = clips.filter((clip) => LEGACY_TYPES.has(clip.type));
     checks.push({ level: legacy.length ? 'warn' : 'ok', title: 'Legacy clip types', detail: legacy.length ? `${legacy.length} old DMX / lighting / prop cue${legacy.length === 1 ? '' : 's'} are preserved for compatibility but are outside the current system scope.` : 'No out-of-scope legacy clip types are present.', code: `${legacy.length} LEGACY` });
@@ -663,42 +664,24 @@
       const originalBindTypeInspector = proto._bindProfessionalTypeInspector;
       proto._bindProfessionalTypeInspector = function (clip) {
         if (clip.type === 'pixel') {
-          clip.params = ensurePixelParams(clip.params || {});
-          const p = clip.params;
-          clip.routing = clip.routing || { nodeId: '', output: '' };
+          const p = ensurePixelParams(clip.params || (clip.params = {}));
           const save = () => { this._refreshClipEl?.(clip.id); this._autosave?.(); renderPixelStrip(document.getElementById('v4-inspector-pixel-preview'), p, false); };
           const bind = (id, fn, eventName = 'change') => { const element = document.getElementById(id); element?.addEventListener(eventName, () => { fn(element); save(); }); };
-          const syncParams = () => {
-            document.querySelectorAll('#inspector-root [data-px-param], .v4-inspector-section [data-px-param]').forEach((el) => {
-              const param = el.getAttribute('data-px-param');
-              if (!param) return;
-              el.hidden = pixels() ? !pixels().effectSupports(p.effect, param) : false;
-            });
-          };
-          bind('v4-pixel-device', (el) => {
-            const id = pixels()?.canonicalNodeId?.(el.value) || el.value.trim();
-            clip.routing.nodeId = id;
-            clip.routing.output = pixels()?.isP4Id?.(id) ? pixels().P4_LABEL : id;
-            const routeNode = document.getElementById('route-node');
-            if (routeNode) routeNode.value = id;
-          });
-          bind('v4-pixel-segment', (el) => { p.segment = clamp(el.value,0,15,0); p.segmentName = `Segment ${p.segment}`; clip.label = `${pixels()?.optionLabel?.(pixels().findOutput(clip.routing.nodeId, { project: currentProject(), selectedId: clip.routing.nodeId })) || clip.routing.nodeId} · Seg ${p.segment} · ${effectById(p.effect).name}`; });
+          bind('v4-pixel-line', (el) => { p.line = clamp(el.value,1,32,1); });
+          bind('v4-pixel-segment-name', (el) => { p.segmentName = el.value.trim() || 'Segment'; clip.label = `${p.segmentName} · ${effectById(p.effect).name}`; });
           bind('v4-pixel-mode', (el) => { p.segmentMode = el.value; const a=document.getElementById('v4-pixel-range-fields'); const b=document.getElementById('v4-pixel-marker-fields'); if(a)a.style.display=p.segmentMode==='repeat-marker'?'none':'grid'; if(b)b.style.display=p.segmentMode==='repeat-marker'?'grid':'none'; });
           bind('v4-pixel-start', (el) => { p.startPixel = clamp(el.value,0,100000,0); });
           bind('v4-pixel-length', (el) => { p.length = clamp(el.value,1,100000,10); });
           bind('v4-pixel-group', (el) => { p.groupSize = clamp(el.value,1,1000,10); p.markerOffset = Math.min(p.markerOffset,p.groupSize-1); });
           bind('v4-pixel-marker', (el) => { p.markerOffset = clamp(el.value,0,Math.max(0,p.groupSize-1),0); });
-          bind('v4-pixel-effect', (el) => { p.effect = effectById(el.value).id; syncParams(); });
+          bind('v4-pixel-effect', (el) => { p.effect = effectById(el.value).id; clip.label = `${p.segmentName} · ${effectById(p.effect).name}`; });
           bind('v4-pixel-colour', (el) => { const [r,g,b]=rgbFromHex(el.value); p.r=r;p.g=g;p.b=b; clip.color=el.value; });
           bind('v4-pixel-secondary', (el) => { p.secondary = el.value; });
           bind('v4-pixel-brightness', (el) => { p.brightness = clamp(el.value,0,255,255); });
-          bind('v4-pixel-speed', (el) => { p.speed = clamp(el.value,1,100,50); });
-          bind('v4-pixel-intensity', (el) => { p.intensity = clamp(el.value,0,100,80); });
-          bind('v4-pixel-randomness', (el) => { p.randomness = clamp(el.value,0,100,70); });
-          bind('v4-pixel-reverse', (el) => { p.reverse = el.checked; });
+          bind('v4-pixel-speed', (el) => { p.speed = clamp(el.value,1,1000,120); });
+          bind('v4-pixel-fade', (el) => { p.fadeMs = clamp(el.value,0,600000,0); });
           bind('v4-pixel-blackout', (el) => { p.blackoutAtEnd = el.checked; });
-          syncParams();
-          pixels()?.refreshLiveOutputs?.().then(() => {});
+          document.getElementById('v4-open-pixel-lab')?.addEventListener('click', () => openPanel('playback'));
           window.setTimeout(() => renderPixelStrip(document.getElementById('v4-inspector-pixel-preview'), p, false), 0);
           return;
         }
@@ -708,11 +691,13 @@
           const save = () => { this._refreshClipEl?.(clip.id); this._autosave?.(); };
           const bind = (id, fn) => { const element=document.getElementById(id); element?.addEventListener('change',()=>{fn(element);save();}); };
           bind('v4-mosfet-output',(el)=>{p.out=el.value.trim()||'out1';});
-          bind('v4-mosfet-mode',(el)=>{p.mode=el.value;});
+          bind('v4-mosfet-mode',(el)=>{p.mode=(window.ShowduinoMosfetAuthoring?.normaliseMode?.(el.value)||el.value);});
           bind('v4-mosfet-duty',(el)=>{p.duty=clamp(el.value,0,100,100);});
           bind('v4-mosfet-pulse',(el)=>{p.pulseMs=clamp(el.value,0,600000,0);});
+          bind('v4-mosfet-fade-in',(el)=>{p.fadeInMs=clamp(el.value,0,600000,0);});
+          bind('v4-mosfet-fade-out',(el)=>{p.fadeOutMs=clamp(el.value,0,600000,0);});
           bind('v4-mosfet-state',(el)=>{p.state=el.checked;});
-          bind('v4-mosfet-safe',(el)=>{p.safeOff=el.checked;});
+          p.safeOff = true;
           return;
         }
 
@@ -749,7 +734,6 @@
     window.addEventListener('showduino:project-saved', refreshProjectStats);
     window.addEventListener('showduino:project-deployed', refreshProjectStats);
     window.addEventListener('showduino:v4-saved', refreshProjectStats);
-    window.ShowduinoPixelAuthoring?.refreshLiveOutputs?.();
   }
 
   window.ShowduinoStudioV4 = Object.freeze({

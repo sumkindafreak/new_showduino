@@ -1,11 +1,11 @@
 {
-  "buildHash": "9096c68ad43a",
-  "buildUtc": "2026-09-26T18:29:42Z",
+  "buildHash": "48ebbc5399ea",
+  "buildUtc": "2026-09-26T19:44:54Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
-  "assetCount": 41,
-  "rawBytes": 830368,
-  "embeddedBytes": 204351,
+  "assetCount": 42,
+  "rawBytes": 837212,
+  "embeddedBytes": 205901,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "a87aee212c6204e15b7b65ecc2efbff664a44ada",
+    "commit": "84254c8b8f43f817398a5731ef516706bf10fb18",
     "route": "/studio/",
-    "assetCount": 38,
-    "rawBytes": 666346,
-    "embeddedBytes": 166204,
+    "assetCount": 39,
+    "rawBytes": 673151,
+    "embeddedBytes": 167734,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -48,6 +48,7 @@
       "js/api.js",
       "js/shdo_model.js",
       "js/showduino-pixel-authoring.js",
+      "js/showduino-mosfet-authoring.js",
       "js/connection_detector.js",
       "js/timeline.js",
       "js/timeline-fx-daw.js",
@@ -78,6 +79,7 @@
       "css/studio-mobile-simple.css",
       "css/studio-v4.css",
       "js/shdo_model.js",
+      "js/showduino-mosfet-authoring.js",
       "js/showduino-pixel-authoring.js",
       "js/studio-deploy.js",
       "js/studio-mobile.js",
@@ -95,7 +97,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10661,
-      "embedded": 3464,
+      "embedded": 3465,
       "gzip": true
     },
     {
@@ -108,15 +110,15 @@
     {
       "path": "/js/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 141034,
-      "embedded": 31750,
+      "raw": 141073,
+      "embedded": 31769,
       "gzip": true
     },
     {
       "path": "/studio/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 11435,
-      "embedded": 3200,
+      "raw": 11494,
+      "embedded": 3208,
       "gzip": true
     },
     {
@@ -199,8 +201,8 @@
     {
       "path": "/studio/js/shdo_model.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 8435,
-      "embedded": 2427,
+      "raw": 9251,
+      "embedded": 2550,
       "gzip": true
     },
     {
@@ -208,6 +210,13 @@
       "mime": "text/javascript; charset=utf-8",
       "raw": 33474,
       "embedded": 7735,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/showduino-mosfet-authoring.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 6822,
+      "embedded": 2107,
       "gzip": true
     },
     {
@@ -241,8 +250,8 @@
     {
       "path": "/studio/js/timeline-professional-inspector.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 16653,
-      "embedded": 4327,
+      "raw": 16926,
+      "embedded": 4345,
       "gzip": true
     },
     {
@@ -297,8 +306,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19363,
-      "embedded": 5013,
+      "raw": 19845,
+      "embedded": 5039,
       "gzip": true
     },
     {
@@ -318,8 +327,8 @@
     {
       "path": "/studio/js/studio-deploy.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 17331,
-      "embedded": 5478,
+      "raw": 18314,
+      "embedded": 5655,
       "gzip": true
     },
     {
@@ -332,8 +341,8 @@
     {
       "path": "/studio/js/studio-mobile.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 52729,
-      "embedded": 12460,
+      "raw": 49910,
+      "embedded": 11793,
       "gzip": true
     },
     {
@@ -346,8 +355,8 @@
     {
       "path": "/studio/js/studio-v4.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 51300,
-      "embedded": 13350,
+      "raw": 51489,
+      "embedded": 13088,
       "gzip": true
     },
     {

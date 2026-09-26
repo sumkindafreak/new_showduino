@@ -174,7 +174,8 @@
     const prefixBase = pixels?.commandPrefix?.(device) ||
       (route === 'p4-show-pixels' ? 'PIXEL:' :
         (route === 'audio-node-pixels' ? 'AUDIO:NODE:PIXEL:' :
-          (route === 'pixel-node' && device?.binding?.nodeId ? `PIXEL:NODE:${device.binding.nodeId}:` : null)));
+          (route === 'estop-node-pixels' ? 'ESTOP:NODE:PIXEL:' :
+            (route === 'pixel-node' && device?.binding?.nodeId ? `PIXEL:NODE:${device.binding.nodeId}:` : null))));
     if (!prefixBase) {
       errors.push(`${clip.name}: pixel target is not bound to a Showduino pixel output.`);
       return;
@@ -268,7 +269,16 @@
           compilePixel(clip, action, device, slot, commands, errors, warnings);
         }
       } else if (type === 'mosfet') {
-        errors.push(`${clip.name}: MOSFET Node runtime is not implemented yet.`);
+        const mosfet = window.ShowduinoMosfetAuthoring;
+        if (!mosfet?.compileClip) {
+          errors.push(`${clip.name}: MOSFET authoring helper is unavailable.`);
+        } else {
+          const params = mosfet.migrateParams(action.params || clip.params || {});
+          const compiledClip = Object.assign({}, clip, { params, startMs: clip.startMs, durationMs: clip.durationMs, routing: clip.routing });
+          mosfet.compileClip(compiledClip, device, (timeMs, command) => {
+            addCommand(commands, errors, timeMs, command, clip.name);
+          }, errors);
+        }
       } else if (type === 'trigger') {
         errors.push(`${clip.name}: trigger/sensor runtime is not implemented yet.`);
       } else if (type === 'relay') {
