@@ -23,6 +23,64 @@ extern "C" {
 #define SHOWDUINO_WIRE_STATE_NODE_LAMP_PREFIX  "STATE:NODE:LAMP:"
 #define SHOWDUINO_WIRE_STATE_NODE_PIXEL_PREFIX "STATE:NODE:PIXEL:"
 #define SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_PREFIX "STATE:NODE:EMERGENCY:"
+#define SHOWDUINO_WIRE_STATE_NODE_MOSFET_PREFIX "STATE:NODE:MOSFET:"
+#define SHOWDUINO_WIRE_STATE_NODE_MOSFET_DETAIL_PREFIX "STATE:NODE:MOSFET:D:"
+
+typedef enum ShowduinoMosfetNodeWire {
+  SHOWDUINO_MOSFET_NODE_WIRE_OFFLINE = 0,
+  SHOWDUINO_MOSFET_NODE_WIRE_ONLINE,
+  SHOWDUINO_MOSFET_NODE_WIRE_FAULT,
+  SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY,
+  SHOWDUINO_MOSFET_NODE_WIRE_INVALID = -1
+} ShowduinoMosfetNodeWire;
+
+typedef struct ShowduinoMosfetDetailWire {
+  uint8_t online;
+  uint8_t seen;
+  char firstId[16];
+  char firstState[20];
+} ShowduinoMosfetDetailWire;
+
+static inline ShowduinoMosfetNodeWire showduino_parse_state_node_mosfet(const char *line) {
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_MOSFET_PREFIX) - 1;
+  if (!line || strncmp(line, SHOWDUINO_WIRE_STATE_NODE_MOSFET_PREFIX, prefixLen) != 0) {
+    return SHOWDUINO_MOSFET_NODE_WIRE_INVALID;
+  }
+  const char *v = line + prefixLen;
+  if (v[0] && v[1] == ':' && v[0] == 'D') return SHOWDUINO_MOSFET_NODE_WIRE_INVALID;
+  if (strcmp(v, "OFFLINE") == 0) return SHOWDUINO_MOSFET_NODE_WIRE_OFFLINE;
+  if (strcmp(v, "ONLINE") == 0 || strcmp(v, "ACTIVE") == 0) return SHOWDUINO_MOSFET_NODE_WIRE_ONLINE;
+  if (strcmp(v, "FAULT") == 0) return SHOWDUINO_MOSFET_NODE_WIRE_FAULT;
+  if (strcmp(v, "EMERGENCY") == 0) return SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
+  return SHOWDUINO_MOSFET_NODE_WIRE_INVALID;
+}
+
+static inline int showduino_parse_state_node_mosfet_detail(const char *line,
+                                                          ShowduinoMosfetDetailWire *out) {
+  if (!line || !out) return 0;
+  const size_t prefixLen = sizeof(SHOWDUINO_WIRE_STATE_NODE_MOSFET_DETAIL_PREFIX) - 1;
+  if (strncmp(line, SHOWDUINO_WIRE_STATE_NODE_MOSFET_DETAIL_PREFIX, prefixLen) != 0) return 0;
+  memset(out, 0, sizeof(*out));
+  const char *p = line + prefixLen;
+  out->online = (uint8_t)strtoul(p, NULL, 10);
+  const char *c1 = strchr(p, ':');
+  if (!c1) return 1;
+  out->seen = (uint8_t)strtoul(c1 + 1, NULL, 10);
+  const char *c2 = strchr(c1 + 1, ':');
+  if (!c2) return 1;
+  const char *c3 = strchr(c2 + 1, ':');
+  if (!c3) {
+    strncpy(out->firstId, c2 + 1, sizeof(out->firstId) - 1);
+    return 1;
+  }
+  size_t n = (size_t)(c3 - (c2 + 1));
+  if (n >= sizeof(out->firstId)) n = sizeof(out->firstId) - 1;
+  memcpy(out->firstId, c2 + 1, n);
+  out->firstId[n] = '\0';
+  strncpy(out->firstState, c3 + 1, sizeof(out->firstState) - 1);
+  return 1;
+}
+
 #define SHOWDUINO_WIRE_STATE_EMERGENCY_SOURCE_PREFIX "STATE:EMERGENCY:SOURCE:"
 #define SHOWDUINO_WIRE_STATE_SAFETY_PREFIX "STATE:SAFETY:"
 #define SHOWDUINO_WIRE_STATE_RELAY_PREFIX "STATE:RELAY:"

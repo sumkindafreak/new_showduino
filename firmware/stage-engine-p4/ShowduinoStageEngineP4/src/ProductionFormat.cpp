@@ -266,7 +266,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
   }
   const bool hardwareCue = strcmp(cue->type, "PIXEL") == 0 ||
                            strcmp(cue->type, "AUDIO") == 0 ||
-                           strcmp(cue->type, "LAMP") == 0;
+                           strcmp(cue->type, "LAMP") == 0 ||
+                           strcmp(cue->type, "MOSFET") == 0;
   const bool diagnosticCue = strcmp(cue->type, "TEST") == 0 ||
                              strcmp(cue->type, "LOG") == 0;
   if (!hardwareCue && !diagnosticCue) {
@@ -292,7 +293,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
   }
   if ((strcmp(cue->type, "PIXEL") == 0 && strncmp(cue->command, "PIXEL:", 6) != 0) ||
       (strcmp(cue->type, "AUDIO") == 0 && strncmp(cue->command, "AUDIO:NODE:", 11) != 0) ||
-      (strcmp(cue->type, "LAMP") == 0 && strncmp(cue->command, "LAMP:", 5) != 0)) {
+      (strcmp(cue->type, "LAMP") == 0 && strncmp(cue->command, "LAMP:", 5) != 0) ||
+      (strcmp(cue->type, "MOSFET") == 0 && strncmp(cue->command, "MOSFET:NODE:", 12) != 0)) {
     setResult(result, ProductionParseResult::InvalidCueAction);
     return false;
   }

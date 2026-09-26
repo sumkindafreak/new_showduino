@@ -168,6 +168,25 @@ int main() {
              result == ProductionParseResult::InvalidCueAction,
          "timeline rejects unsupported cue actions");
 
+  const char *mosfetOk =
+      "{\"formatVersion\":1,\"cues\":["
+      "{\"id\":\"m1\",\"timeMs\":0,\"type\":\"MOSFET\","
+      "\"command\":\"MOSFET:NODE:MOSFET-01:OUT:1:LEVEL:50\"}]}";
+  result = ProductionParseResult::Ok;
+  expect(parseTimeline(mosfetOk, cues, &timeline, &result),
+         "timeline accepts MOSFET:NODE cue");
+  expect(std::strcmp(cues[0].type, "MOSFET") == 0, "MOSFET cue type preserved");
+  expect(std::strncmp(cues[0].command, "MOSFET:NODE:", 12) == 0,
+         "MOSFET cue keeps MOSFET:NODE: prefix");
+
+  const char *mosfetBad =
+      "{\"formatVersion\":1,\"cues\":["
+      "{\"id\":\"m2\",\"timeMs\":0,\"type\":\"MOSFET\","
+      "\"command\":\"PIXEL:SOLID:255,0,0\"}]}";
+  result = ProductionParseResult::Ok;
+  expect(!parseTimeline(mosfetBad, cues, &timeline, &result),
+         "timeline rejects MOSFET type with non-MOSFET:NODE command");
+
   expect(!parseTimeline("{\"formatVersion\":1,\"cues\":[]}", cues, &timeline, &result),
          "timeline rejects empty cue array");
   expect(!parseTimeline("{\"formatVersion\":1,\"cues\":[{broken]}",

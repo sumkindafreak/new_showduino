@@ -11,6 +11,7 @@
 #include "showduino_version.h"
 #include "showduino_lamp_node.h"
 #include "showduino_pixel_node.h"
+#include "showduino_mosfet_node.h"
 
 /*
  * SHDO v2 authoring-document validator and P4 runtime projector.
@@ -277,6 +278,8 @@ struct ShdoParams {
   char file[80];
   char effect[24];
   char secondary[16];
+  char out[12];
+  char mode[12];
   uint32_t startPixel;
   uint32_t length;
   uint32_t count;
@@ -286,11 +289,18 @@ struct ShdoParams {
   uint32_t intensity;
   uint32_t randomness;
   uint32_t volume;
+  uint32_t duty;
+  uint32_t pulseMs;
+  uint32_t fadeInMs;
+  uint32_t fadeOutMs;
   bool reverse;
   bool loop;
   bool blackoutAtEnd;
+  bool safeOff;
+  bool haveSafeOff;
   bool haveR, haveG, haveB;
   bool haveLength, haveCount;
+  bool haveDuty;
 };
 
 struct ShdoClip {
@@ -413,6 +423,8 @@ static bool shdoParseParams(ShdoJson &r, ShdoParams *params) {
   params->intensity = 100;
   params->volume = 100;
   params->length = 1;
+  params->duty = 100;
+  params->safeOff = true;
   bool done = false;
   if (r.take('}')) return true;
   while (!done) {
@@ -424,6 +436,10 @@ static bool shdoParseParams(ShdoJson &r, ShdoParams *params) {
       if (!r.string(params->effect, sizeof(params->effect))) return false;
     } else if (strcmp(key, "secondary") == 0 || strcmp(key, "color") == 0) {
       if (!r.string(params->secondary, sizeof(params->secondary))) return false;
+    } else if (strcmp(key, "out") == 0) {
+      if (!r.string(params->out, sizeof(params->out))) return false;
+    } else if (strcmp(key, "mode") == 0) {
+      if (!r.string(params->mode, sizeof(params->mode))) return false;
     } else if (strcmp(key, "startPixel") == 0) {
       if (!r.u32(&params->startPixel)) return false;
     } else if (strcmp(key, "length") == 0) {
@@ -451,12 +467,24 @@ static bool shdoParseParams(ShdoJson &r, ShdoParams *params) {
       if (!r.u32(&params->randomness)) return false;
     } else if (strcmp(key, "volume") == 0) {
       if (!r.u32(&params->volume)) return false;
+    } else if (strcmp(key, "duty") == 0) {
+      if (!r.u32(&params->duty)) return false;
+      params->haveDuty = true;
+    } else if (strcmp(key, "pulseMs") == 0) {
+      if (!r.u32(&params->pulseMs)) return false;
+    } else if (strcmp(key, "fadeInMs") == 0) {
+      if (!r.u32(&params->fadeInMs)) return false;
+    } else if (strcmp(key, "fadeOutMs") == 0) {
+      if (!r.u32(&params->fadeOutMs)) return false;
     } else if (strcmp(key, "reverse") == 0) {
       if (!r.boolean(&params->reverse)) return false;
     } else if (strcmp(key, "loop") == 0) {
       if (!r.boolean(&params->loop)) return false;
     } else if (strcmp(key, "blackoutAtEnd") == 0) {
       if (!r.boolean(&params->blackoutAtEnd)) return false;
+    } else if (strcmp(key, "safeOff") == 0) {
+      if (!r.boolean(&params->safeOff)) return false;
+      params->haveSafeOff = true;
     } else if (!r.skipValue()) {
       return false;
     }
@@ -693,6 +721,112 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
     if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, cueType, cmd, status)) {
       return false;
     }
+  }
+  return true;
+}
+
+static uint8_t shdoMosfetChannel(const char *outToken) {
+  if (!outToken || !outToken[0]) return 1;
+  if ((outToken[0] == 'o' || outToken[0] == 'O') &&
+      (outToken[1] == 'u' || outToken[1] == 'U') &&
+      (outToken[2] == 't' || outToken[2] == 'T') &&
+      outToken[3] >= '1' && outToken[3] <= '4' && outToken[4] == '\0') {
+    return (uint8_t)(outToken[3] - '0');
+  }
+  if (outToken[0] >= '1' && outToken[0] <= '4' && outToken[1] == '\0') {
+    return (uint8_t)(outToken[0] - '0');
+  }
+  return 0;
+}
+
+static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
+                              ShdoCue *cues, uint16_t *count, ShdoStatus *status) {
+  if (!device) {
+    *status = SHDO_MISSING_DEVICE;
+    return false;
+  }
+  if (strcmp(device->route, "mosfet-node") != 0 &&
+      strcmp(device->type, "mosfet-node") != 0 &&
+      strcmp(device->type, "mosfet") != 0) {
+    *status = SHDO_UNSUPPORTED_DEVICE;
+    return false;
+  }
+  if (clip.params.haveSafeOff && !clip.params.safeOff) {
+    *status = SHDO_SAFETY_WEAKENED;
+    return false;
+  }
+  const char *nid = device->nodeId[0] ? device->nodeId : device->id;
+  if (!showduino_mosfet_id_ok(nid)) {
+    *status = SHDO_UNSUPPORTED_DEVICE;
+    return false;
+  }
+  uint8_t ch = shdoMosfetChannel(clip.params.out[0] ? clip.params.out : "out1");
+  if (!showduino_mosfet_channel_ok(ch)) {
+    *status = SHDO_UNSUPPORTED_ACTION;
+    return false;
+  }
+  uint32_t duty = clip.params.haveDuty ? shdoClampU32(clip.params.duty, 0, 100, 100)
+                                       : 100;
+  char mode[12];
+  shdoLowerCopy(mode, sizeof(mode), clip.params.mode[0] ? clip.params.mode : "hold");
+  if (strcmp(mode, "pwm") == 0) strncpy(mode, "hold", sizeof(mode) - 1);
+  char cmd[SHOWDUINO_SHDO_CMD_MAX];
+  auto addAt = [&](uint32_t t, const char *line) -> bool {
+    return shdoAddCue(cues, count, t, "MOSFET", line, status);
+  };
+
+  if (strcmp(mode, "pulse") == 0) {
+    uint32_t pulseMs = clip.params.pulseMs ? clip.params.pulseMs : clip.durationMs;
+    if (!pulseMs) pulseMs = 500;
+    pulseMs = shdoClampU32(pulseMs, 1, SHOWDUINO_MOSFET_DURATION_MAX_MS, 500);
+    if (duty == 0) {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+    } else {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:PULSE:%lu:%lu",
+               nid, (unsigned)ch, (unsigned long)duty, (unsigned long)pulseMs);
+    }
+    if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
+    if (!addAt(clip.startMs, cmd)) return false;
+  } else if (strcmp(mode, "fade") == 0) {
+    uint32_t fadeIn = shdoClampU32(clip.params.fadeInMs, 0, SHOWDUINO_MOSFET_DURATION_MAX_MS, 0);
+    uint32_t fadeOut = shdoClampU32(clip.params.fadeOutMs, 0, SHOWDUINO_MOSFET_DURATION_MAX_MS, 0);
+    if (fadeOut > clip.durationMs) fadeOut = clip.durationMs;
+    if (fadeIn > 0 && duty > 0) {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:%lu:%lu",
+               nid, (unsigned)ch, (unsigned long)duty, (unsigned long)fadeIn);
+    } else if (duty > 0) {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
+               nid, (unsigned)ch, (unsigned long)duty);
+    } else {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+    }
+    if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
+    if (!addAt(clip.startMs, cmd)) return false;
+    if (fadeOut > 0) {
+      uint32_t t = clip.startMs + clip.durationMs;
+      if (t >= fadeOut) t -= fadeOut;
+      else t = clip.startMs;
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:0:%lu",
+               nid, (unsigned)ch, (unsigned long)fadeOut);
+      if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
+      if (!addAt(t, cmd)) return false;
+      return true;
+    }
+  } else {
+    if (duty == 0) {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+    } else {
+      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
+               nid, (unsigned)ch, (unsigned long)duty);
+    }
+    if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
+    if (!addAt(clip.startMs, cmd)) return false;
+  }
+
+  if (clip.durationMs > 0) {
+    snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+    if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
+    if (!addAt(clip.startMs + clip.durationMs, cmd)) return false;
   }
   return true;
 }
@@ -1101,6 +1235,7 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
       if (strncmp(clip.command, "PIXEL:", 6) == 0) type = "PIXEL";
       else if (strncmp(clip.command, "AUDIO:NODE:", 11) == 0) type = "AUDIO";
       else if (strncmp(clip.command, "LAMP:", 5) == 0) type = "LAMP";
+      else if (strncmp(clip.command, "MOSFET:NODE:", 12) == 0) type = "MOSFET";
       else if (strncmp(clip.command, "INTERNAL:", 9) == 0) type = "TEST";
       else {
         return fail(SHDO_UNSUPPORTED_ACTION, "unsupported raw clip command");
@@ -1115,11 +1250,18 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
     if (strcmp(type, "dmx") == 0) {
       return fail(SHDO_DMX_OUT_OF_SCOPE, "DMX remains outside Showduino V1 scope");
     }
-    if (strcmp(type, "relay") == 0 || strcmp(type, "mosfet") == 0 ||
-        strcmp(type, "trigger") == 0) {
+    if (strcmp(type, "relay") == 0 || strcmp(type, "trigger") == 0) {
       return fail(SHDO_UNSUPPORTED_ACTION, "action is not implemented in Showduino V1");
     }
-    if (strcmp(type, "pixel") == 0) {
+    if (strcmp(type, "mosfet") == 0) {
+      if (!shdoCompileMosfet(clip, device, cueBuf, &compiled, &status)) {
+        return fail(status, status == SHDO_MISSING_DEVICE
+                                ? "mosfet clip is missing a bound MOSFET Node"
+                                : (status == SHDO_SAFETY_WEAKENED
+                                       ? "MOSFET safeOff=false is not permitted"
+                                       : shdoStatusName(status)));
+      }
+    } else if (strcmp(type, "pixel") == 0) {
       uint8_t di = 0;
       for (; di < deviceCount; ++di) {
         if (strcmp(devices[di].id, clip.targetDeviceId) == 0) break;
