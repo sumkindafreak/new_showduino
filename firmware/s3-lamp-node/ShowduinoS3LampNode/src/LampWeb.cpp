@@ -98,9 +98,7 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <p>PIXEL IDENTIFY lights 0–6 in turn for Jewel mapping. Blocked in SHOWDUINO and emergency. Tune a carbide flame, not seven RGB sliders.</p>
 </div></section>
 <section class="tab" id="aud" hidden><div class="card"><div class="kv" id="audkv"></div>
-<label>Volume <span id="volv"></span></label>
-<input id="vol" type="range" min="0" max="30" value="18">
-<div class="row"><button class="act ctrl" id="setvol">SET VOLUME</button></div>
+<p>Volume is controlled by the external amplifier gain. Audio FX relative +/- is not exposed as an absolute level.</p>
 <div class="row">
 <button class="act ctrl" id="flick">TEST FLICK</button>
 <button class="act ctrl" id="ignaud">TEST IGNITION</button>
@@ -108,7 +106,7 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <button class="act ctrl" id="emaud">TEST EMERGENCY</button>
 <button class="act ctrl" id="astop">STOP AUDIO</button>
 </div>
-<p>V1 library: flick.mp3, fire_ignite.mp3, flameloop.mp3, emergency.mp3. TEST EMERGENCY plays emergency.mp3 only — it does not assert a Showduino system emergency. Fermion is local lamp FX, not the Audio Node. NO_REPLY means the module has not answered UART yet — check 5 V, speaker, and GPIO17/18.</p>
+<p>V1 library: flick.wav, fire_ign.wav, flameloo.wav, emergency.wav. UART/FAT names: FLICK   WAV, FIRE_IGNWAV, FLAMELOOWAV, EMERGENCWAV. TEST EMERGENCY plays emergency.wav only — it does not assert a Showduino system emergency. Adafruit Audio FX is local lamp FX, not the Audio Node. NO_REPLY means the module has not answered UART yet — confirm UG→GND, 5 V, speaker, and GPIO17/18.</p>
 </div></section>
 <section class="tab" id="blow" hidden><div class="card"><div class="kv" id="blowkv"></div>
 <p><span id="blowdot" class="live"></span><span id="blowlive">BLOW IDLE</span></p>
@@ -205,18 +203,21 @@ async function load(){
     $('pixdbg').textContent=S.pixels.map((p,i)=>'P'+i+'  '+p.r+','+p.g+','+p.b).join('\n');
   }
   kv($('audkv'),[
-    ['Fermion',S.audioStatus,S.audioStatus==='OK'?'ok':'warn'],
+    ['Audio module',S.audioModule||'ADAFRUIT AUDIO FX'],
+    ['UART','9600'],
+    ['Status',S.audioStatus,S.audioStatus==='OK'?'ok':'warn'],
     ['UART replies',S.audioHeard?'YES':'NO',S.audioHeard?'ok':'warn'],
     ['Last UART RX',S.audioLastRx||'-'],
     ['Connected',S.audioPresent?'YES':'NO',S.audioPresent?'ok':'warn'],
     ['Semantic role',S.audioRole],
     ['Current file',S.audioFile||'-'],
-    ['Volume',S.audioVol],
+    ['UART/FAT name',S.audioFat||'-'],
+    ['Playing',S.audioPlaying?'YES':'NO',S.audioPlaying?'ok':'warn'],
+    ['Volume',S.audioVolNote||'AMP GAIN AUTHORITATIVE'],
     ['Expected V1 files',S.audioExpected],
-    ['File query',S.audioFileQuery,S.audioFileQuery==='UNSUPPORTED'?'warn':'ok'],
+    ['File query',S.audioFileQuery,S.audioFileQuery==='LIST'?'ok':'warn'],
     ['Audio diagnostic',S.audioError||'-']
   ]);
-  $('vol').value=S.audioVol; $('volv').textContent=S.audioVol;
   kv($('blowkv'),[
     ['Raw',S.micRaw],['Filtered',S.micFilt],['Baseline',S.micBase],
     ['Threshold',S.blowThresh],['Minimum duration',S.blowMinMs+' ms'],
@@ -270,8 +271,8 @@ async function load(){
     ['Jewel DATA',pin(S.pinJewel)],['Ignition button',pin(S.pinBtn)],
     ['Mic ADC',pin(S.pinMic)],['Light ADC',pin(S.pinLight)],
     ['Voltage ADC',pin(S.pinVolt)],['Motion',pin(S.pinMotion)],
-    ['Fermion TX',pin(S.pinAudTx)],
-    ['Fermion RX',pin(S.pinAudRx)],['Last command',S.lastCommand],
+    ['Audio FX TX',pin(S.pinAudTx)],
+    ['Audio FX RX',pin(S.pinAudRx)],['Last command',S.lastCommand],
     ['Last result',S.lastResult],['Fault',S.fault]
   ]);
   if(document.activeElement!==$('nid')) $('nid').value=S.id||'';
@@ -304,7 +305,6 @@ $('pixid').onclick=()=>cfg({pixelIdentify:1});
 $('fact').oninput=()=>$('factv').textContent=$('fact').value;
 $('flic').oninput=()=>$('flicv').textContent=$('flic').value;
 $('igsp').oninput=()=>$('igspv').textContent=$('igsp').value;
-$('setvol').onclick=()=>cfg({vol:+$('vol').value});
 $('ignite').onclick=()=>send('LAMP:IGNITE');
 $('ext').onclick=()=>send('LAMP:EXTINGUISH');
 $('steady').onclick=()=>send('LAMP:FX:STEADY_FLAME');
@@ -320,7 +320,6 @@ $('astop').onclick=()=>send('LAMP:AUDIO:STOP');
 $('btntest').onclick=()=>send('LAMP:IGNITE');
 $('reboot').onclick=()=>fetch('/api/reboot',{method:'POST'});
 $('bri').oninput=()=>$('briv').textContent=$('bri').value;
-$('vol').oninput=()=>$('volv').textContent=$('vol').value;
 load(); setInterval(load,1000);
 </script></body></html>
 )HTML";
@@ -493,7 +492,9 @@ static void handleStatus() {
   json += String((unsigned long)lampConfigVoltScaleNum());
   json += ",\"voltDen\":";
   json += String((unsigned long)lampConfigVoltScaleDen());
-  json += ",\"audioStatus\":\"";
+  json += ",\"audioModule\":\"";
+  json += lampAudioModuleName();
+  json += "\",\"audioStatus\":\"";
   json += lampAudioStatus();
   json += "\",\"audioHeard\":";
   json += lampAudioHeardReply() ? "true" : "false";
@@ -505,15 +506,19 @@ static void handleStatus() {
   json += lampAudioCurrentRole();
   json += "\",\"audioFile\":\"";
   jsonEsc(lampAudioCurrentFile(), json);
-  json += "\",\"audioExpected\":\"";
+  json += "\",\"audioFat\":\"";
+  jsonEsc(lampAudioCurrentFat(), json);
+  json += "\",\"audioPlaying\":";
+  json += lampAudioPlaying() ? "true" : "false";
+  json += ",\"audioExpected\":\"";
   jsonEsc(lampAudioExpectedFiles(), json);
   json += "\",\"audioFileQuery\":\"";
   json += lampAudioFileQueryStatus();
   json += "\",\"audioError\":\"";
   jsonEsc(lampAudioLastError(), json);
-  json += "\",\"audioVol\":";
-  json += String((unsigned)lampAudioVolume());
-  json += ",\"buttonStatus\":\"";
+  json += "\",\"audioVol\":0,\"audioVolNote\":\"";
+  jsonEsc(lampAudioVolumeNote(), json);
+  json += "\",\"buttonStatus\":\"";
   json += lampLocalStatus();
   json += "\",\"buttonPressed\":";
   json += lampLocalPressed() ? "true" : "false";
@@ -574,9 +579,9 @@ static void handleStatus() {
   json += ",\"pinVolt\":";
   json += String(SHOWDUINO_LAMP_VOLT_PIN);
   json += ",\"pinAudTx\":";
-  json += String(SHOWDUINO_LAMP_FERMION_TX_PIN);
+  json += String(SHOWDUINO_LAMP_AUDIO_FX_TX_PIN);
   json += ",\"pinAudRx\":";
-  json += String(SHOWDUINO_LAMP_FERMION_RX_PIN);
+  json += String(SHOWDUINO_LAMP_AUDIO_FX_RX_PIN);
   json += ",\"uptime\":";
   json += String((unsigned long)(millis() / 1000UL));
   json += "}";

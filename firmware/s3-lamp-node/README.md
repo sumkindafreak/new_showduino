@@ -4,7 +4,7 @@
 Status: ACTIVE firmware / physical GPIOs confirmed
 Role: Interactive carbide-lamp practical
 Hardware: ESP32-S3 development board (same family as the Comms Controller)
-Firmware: 0.4.2
+Firmware: 0.4.3
 ```
 
 This is the **production Lamp Node**.
@@ -24,7 +24,7 @@ ESP32-P4 Show Engine
 this S3 Lamp Node  (ESP-NOW)
 ```
 
-The same firmware is a standalone interactive carbide lamp and a managed Showduino node. The P4 is authoritative only after GRANT. SoftAP `Showduino-Lamp-<id>` (typically `192.168.5.1`) hosts the local WebUI with no internet required. The node runs a local carbide state machine, jewel flame renderer (boot blackout, flint spark, catch, living flame, puff, extinguish), blow-to-extinguish detector, and optional Fermion DFPlayer Pro effect audio (`flick.mp3`, `fire_ignite.mp3`, `flameloop.mp3`, `emergency.mp3`). The Jewel is the physical flame, not a status LED.
+The same firmware is a standalone interactive carbide lamp and a managed Showduino node. The P4 is authoritative only after GRANT. SoftAP `Showduino-Lamp-<id>` (typically `192.168.5.1`) hosts the local WebUI with no internet required. The node runs a local carbide state machine, jewel flame renderer (boot blackout, flint spark, catch, living flame, puff, extinguish), blow-to-extinguish detector, and optional Adafruit Audio FX effect audio (`flick.wav`, `fire_ign.wav`, `flameloo.wav`, `emergency.wav`). The Jewel is the physical flame, not a status LED.
 
 ## Sketch
 
@@ -50,14 +50,14 @@ Confirmed present:
 - light sensor (telemetry)
 - voltage sensor (health)
 - physical ignition / striker button
-- planned DFRobot Fermion DFPlayer Pro DFR0768 (UART local FX)
+- Adafruit Audio FX Sound Board (UART local FX, 9600 baud)
 
 Removed:
 
 - PCM / I2S audio board
 - separate amplifier
 
-GPIOs: Jewel GPIO8, button GPIO7 (to GND), mic GPIO4, light GPIO5, voltage GPIO6, Fermion UART GPIO17/18. See [`docs/s3-lamp-node.md`](../../docs/s3-lamp-node.md).
+GPIOs: Jewel GPIO8, button GPIO7 (to GND), mic GPIO4, light GPIO5, voltage GPIO6, Audio FX UART GPIO17/18. See [`docs/s3-lamp-node.md`](../../docs/s3-lamp-node.md).
 
 ## Protocol
 

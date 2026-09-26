@@ -243,14 +243,26 @@ int main() {
 
   expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_STRIKE)->role, "STRIKE") == 0,
          "strike role");
-  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_STRIKE)->file, "flick.mp3") == 0,
-         "strike → flick.mp3");
-  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_IGNITION)->file, "fire_ignite.mp3") == 0,
-         "ignition → fire_ignite.mp3");
-  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->file, "flameloop.mp3") == 0,
-         "burn → flameloop.mp3");
-  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_EMERGENCY)->file, "emergency.mp3") == 0,
-         "emergency → emergency.mp3");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_STRIKE)->file, "flick.wav") == 0,
+         "strike → flick.wav");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_STRIKE)->fat,
+                "FLICK   WAV") == 0,
+         "strike FAT preserves spaces");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_IGNITION)->file, "fire_ign.wav") == 0,
+         "ignition → fire_ign.wav");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_IGNITION)->fat,
+                "FIRE_IGNWAV") == 0,
+         "ignition FAT");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->file, "flameloo.wav") == 0,
+         "burn → flameloo.wav");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->fat,
+                "FLAMELOOWAV") == 0,
+         "burn FAT");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_EMERGENCY)->file, "emergency.wav") == 0,
+         "emergency → emergency.wav");
+  expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_EMERGENCY)->fat,
+                "EMERGENCWAV") == 0,
+         "emergency FAT");
   expect(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->loop == 1,
          "burn loops");
   expect(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_EMERGENCY)->loop == 1,
@@ -263,8 +275,11 @@ int main() {
          "emergency role");
   expect(showduino_lamp_sound_from_role("NOPE") == SHOWDUINO_LAMP_SND_NONE,
          "unknown role");
-  expect(showduino_lamp_v1_file_known("flick.mp3"), "v1 flick");
-  expect(showduino_lamp_v1_file_known("emergency.mp3"), "v1 emergency");
+  expect(showduino_lamp_v1_file_known("flick.wav"), "v1 flick");
+  expect(showduino_lamp_v1_file_known("emergency.wav"), "v1 emergency");
+  expect(!showduino_lamp_v1_file_known("flick.mp3"), "old flick.mp3 not required");
+  expect(!showduino_lamp_v1_file_known("fire_ignite.mp3"), "old fire_ignite.mp3 not required");
+  expect(!showduino_lamp_v1_file_known("flameloop.mp3"), "old flameloop.mp3 not required");
   expect(!showduino_lamp_v1_file_known("strike.wav"), "old strike.wav not required");
   expect(!showduino_lamp_v1_file_known("flare.wav"), "old flare.wav not required");
   expect(!showduino_lamp_v1_file_known("fire_out.mp3"), "no fire_out in V1");
@@ -272,7 +287,7 @@ int main() {
   expect(showduino_lamp_audio_transport_nonblocking(),
          "BURN_LOOP must be non-blocking background audio");
   expect(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_BURN_LOOP)->loop == 1,
-         "flameloop is a loop role, not a blocking wait");
+         "flameloo is a loop role, not a blocking wait");
   {
     ShowduinoCarbideMachine burn;
     showduino_carbide_reset(&burn, 0);
@@ -282,7 +297,7 @@ int main() {
     expect(burn.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "entered burn loop");
     showduino_carbide_apply(&burn, SHOWDUINO_CARBIDE_EV_BLOW, &cfg);
     expect(burn.sound == SHOWDUINO_LAMP_SND_NONE,
-           "extinguish interrupts BURN_LOOP without waiting for MP3 end");
+           "extinguish interrupts BURN_LOOP without waiting for WAV end");
     expect(showduino_lamp_effective_sound(SHOWDUINO_LAMP_SND_BURN_LOOP, 1) ==
                SHOWDUINO_LAMP_SND_EMERGENCY,
            "emergency interrupts BURN_LOOP immediately");
@@ -323,17 +338,48 @@ int main() {
              SHOWDUINO_LAMP_SND_NONE,
          "state→role silence");
 
-  expect(showduino_lamp_fermion_playmode(1) == 1, "loop is repeat-one");
-  expect(showduino_lamp_fermion_playmode(0) == 3, "oneshot is play-and-pause");
-  char play[40];
-  expect(showduino_lamp_fermion_playfile_cmd("flick.mp3", play, sizeof(play)) == 0,
-         "playfile ok");
-  expect(strcmp(play, "AT+PLAYFILE=/flick.mp3") == 0, "leading slash");
-  expect(showduino_lamp_fermion_playfile_cmd("/flameloop.mp3", play, sizeof(play)) == 0,
-         "already slashed");
-  expect(strcmp(play, "AT+PLAYFILE=/flameloop.mp3") == 0, "no double slash");
-  expect(showduino_lamp_fermion_playfile_cmd("", play, sizeof(play)) != 0,
-         "empty file rejected");
+  {
+    char play[16];
+    char stop[4];
+    expect(showduino_lamp_audio_fx_fat_valid("FLICK   WAV"), "flick fat len");
+    expect(showduino_lamp_audio_fx_fat_valid("FLICKWAV") == 0, "short fat rejected");
+    expect(showduino_lamp_audio_fx_play_sound_cmd(SHOWDUINO_LAMP_SND_STRIKE, play,
+                                                   sizeof(play)) == 0,
+           "strike play cmd");
+    expect(strcmp(play, "PFLICK   WAV\n") == 0, "PFLICK   WAV\\n preserves spaces");
+    expect(showduino_lamp_audio_fx_play_sound_cmd(SHOWDUINO_LAMP_SND_IGNITION, play,
+                                                   sizeof(play)) == 0,
+           "ignition play cmd");
+    expect(strcmp(play, "PFIRE_IGNWAV\n") == 0, "PFIRE_IGNWAV\\n");
+    expect(showduino_lamp_audio_fx_play_sound_cmd(SHOWDUINO_LAMP_SND_BURN_LOOP, play,
+                                                   sizeof(play)) == 0,
+           "burn play cmd");
+    expect(strcmp(play, "PFLAMELOOWAV\n") == 0, "PFLAMELOOWAV\\n");
+    expect(showduino_lamp_audio_fx_play_sound_cmd(SHOWDUINO_LAMP_SND_EMERGENCY, play,
+                                                   sizeof(play)) == 0,
+           "emergency play cmd");
+    expect(strcmp(play, "PEMERGENCWAV\n") == 0, "PEMERGENCWAV\\n");
+    expect(showduino_lamp_audio_fx_stop_cmd(stop, sizeof(stop)) == 0, "stop cmd");
+    expect(strcmp(stop, "q") == 0, "stop is q");
+    expect(showduino_lamp_audio_fx_play_cmd("", play, sizeof(play)) != 0,
+           "empty fat rejected");
+    expect(showduino_lamp_audio_fx_should_restart_on_done(SHOWDUINO_LAMP_SND_BURN_LOOP),
+           "done restarts flame loop");
+    expect(showduino_lamp_audio_fx_should_restart_on_done(SHOWDUINO_LAMP_SND_EMERGENCY),
+           "done may restart emergency");
+    expect(!showduino_lamp_audio_fx_should_restart_on_done(SHOWDUINO_LAMP_SND_NONE),
+           "done does not restart when NONE");
+    expect(!showduino_lamp_audio_fx_should_restart_on_done(SHOWDUINO_LAMP_SND_STRIKE),
+           "done does not restart strike");
+    expect(!showduino_lamp_audio_fx_should_restart_on_done(SHOWDUINO_LAMP_SND_IGNITION),
+           "done does not restart ignition");
+    /* Role NONE / EMERGENCY must not restart FLAMELOOWAV. */
+    expect(strcmp(showduino_lamp_sound_fat(SHOWDUINO_LAMP_SND_NONE), "") == 0,
+           "NONE has no flame file");
+    expect(strcmp(showduino_lamp_sound_fat(SHOWDUINO_LAMP_SND_EMERGENCY),
+                  "EMERGENCWAV") == 0,
+           "EMERGENCY done would restart emergency, not flame");
+  }
 
   /* Physical flame visual phases — host-testable timing, no delay(). */
   expect(showduino_carbide_visual(SHOWDUINO_CARBIDE_OFF, 0, cfg.igniteMs,

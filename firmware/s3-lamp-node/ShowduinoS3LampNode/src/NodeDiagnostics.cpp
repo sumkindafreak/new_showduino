@@ -49,12 +49,12 @@ void nodeDiagPrintPins() {
                 SHOWDUINO_LAMP_MOTION_PIN, lampMotionPhysicalStatus(),
                 showduino_motion_polarity_name(lampConfigMotionActiveLow()),
                 showduino_motion_action_name(lampConfigMotionAction()));
-  Serial.printf("  Fermion TX %s (%d)  RX %s (%d) baud=%lu\n",
-                showduino_lamp_gpio_label(SHOWDUINO_LAMP_FERMION_TX_PIN),
-                SHOWDUINO_LAMP_FERMION_TX_PIN,
-                showduino_lamp_gpio_label(SHOWDUINO_LAMP_FERMION_RX_PIN),
-                SHOWDUINO_LAMP_FERMION_RX_PIN,
-                (unsigned long)SHOWDUINO_LAMP_FERMION_BAUD);
+  Serial.printf("  Audio FX TX %s (%d)  RX %s (%d) baud=%lu\n",
+                showduino_lamp_gpio_label(SHOWDUINO_LAMP_AUDIO_FX_TX_PIN),
+                SHOWDUINO_LAMP_AUDIO_FX_TX_PIN,
+                showduino_lamp_gpio_label(SHOWDUINO_LAMP_AUDIO_FX_RX_PIN),
+                SHOWDUINO_LAMP_AUDIO_FX_RX_PIN,
+                (unsigned long)SHOWDUINO_LAMP_AUDIO_FX_BAUD);
   Serial.println("  Choose ADC1 (GPIO1-10 typical) for mic/light/voltage. Avoid ADC2 with Wi-Fi.");
 }
 
@@ -67,7 +67,7 @@ void nodeDiagPrintBootBanner() {
   Serial.printf("Firmware: %s\n", SHOWDUINO_LAMP_NODE_FW);
   Serial.printf("MAC: %s\n", mac);
   Serial.println("");
-  Serial.printf("DFPlayer: %s\n", lampAudioStatus());
+  Serial.printf("Audio FX: %s\n", lampAudioStatus());
   Serial.println("");
   Serial.println("Jewel:");
   Serial.printf("GPIO: %d\n", SHOWDUINO_LAMP_PIXEL_PIN);
@@ -136,13 +136,15 @@ void nodeDiagPrintStatus() {
                 (long)lampSensorsLightRaw(), (long)lampSensorsVoltRaw(),
                 (long)lampSensorsVoltMv(), lampSensorsVoltStatus(),
                 lampSensorsVoltWarn());
-  Serial.printf("AUDIO %s heard=%s rx=%s role=%s file=%s query=%s\n",
+  Serial.printf("AUDIO %s module=%s heard=%s rx=%s role=%s file=%s fat=%s playing=%s\n",
                 lampAudioStatus(),
+                lampAudioModuleName(),
                 lampAudioHeardReply() ? "YES" : "NO",
                 lampAudioLastRx(),
                 lampAudioCurrentRole(),
                 lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
-                lampAudioFileQueryStatus());
+                lampAudioCurrentFat()[0] ? lampAudioCurrentFat() : "-",
+                lampAudioPlaying() ? "YES" : "NO");
   Serial.printf("MOTION gpio=%d %s raw=%s state=%s pol=%s en=%s act=%s cd=%s\n",
                 lampMotionPin(), lampMotionPhysicalStatus(),
                 lampMotionRawName(), lampMotionStateName(),
@@ -189,11 +191,11 @@ bool nodeDiagHandleLine(const char *line) {
     return true;
   }
   if (!strcmp(line, "AUDIO:STATUS")) {
-    Serial.printf("AUDIO %s role=%s file=%s vol=%u query=%s expected=%s\n",
-                  lampAudioStatus(), lampAudioCurrentRole(),
+    Serial.printf("AUDIO %s module=%s role=%s file=%s fat=%s note=%s expected=%s\n",
+                  lampAudioStatus(), lampAudioModuleName(), lampAudioCurrentRole(),
                   lampAudioCurrentFile()[0] ? lampAudioCurrentFile() : "-",
-                  (unsigned)lampAudioVolume(), lampAudioFileQueryStatus(),
-                  lampAudioExpectedFiles());
+                  lampAudioCurrentFat()[0] ? lampAudioCurrentFat() : "-",
+                  lampAudioVolumeNote(), lampAudioExpectedFiles());
     return true;
   }
   if (!strcmp(line, "LAMP:STATUS")) {

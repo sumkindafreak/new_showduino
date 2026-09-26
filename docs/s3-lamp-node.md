@@ -1,6 +1,6 @@
 # Showduino S3 Lamp Node — carbide lamp
 
-Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.4.0**. Protocol **1.0**. SHDO package **v2**.
+Product: Showduino **1.0.0-rc.1**. Lamp firmware **0.4.3**. Protocol **1.0**. SHDO package **v2**.
 
 The production Lamp Node is an **ESP32-S3 interactive carbide-lamp simulator**. It is not a Pixel Node and not a second Audio Node.
 
@@ -15,7 +15,7 @@ S3 Communications Controller
         ↓ UART
 P4 Show Engine          ← authoritative show / emergency after GRANT
         ↓ ROUTE:LAMP:
-S3 Lamp Node            ← local carbide machine, jewel, blow, Fermion FX
+S3 Lamp Node            ← local carbide machine, jewel, blow, Audio FX
 ```
 
 Logical identity is `LAMP-01` / `LAMP-02` (NVS). MAC is not the production identity. Friendly name is presentation metadata.
@@ -24,7 +24,7 @@ Logical identity is `LAMP-01` / `LAMP-02` (NVS). MAC is not the production ident
 
 | Product mode | Internal owner | Meaning |
 |--------------|----------------|---------|
-| STANDALONE | SEARCHING or STANDALONE | Local striker, blow, Fermion, and WebUI may control the lamp |
+| STANDALONE | SEARCHING or STANDALONE | Local striker, blow, Audio FX, and WebUI may control the lamp |
 | SHOWDUINO | SHOW_CONTROLLED | P4 GRANT is live. WebUI is status / commissioning / diagnostics |
 | EMERGENCY | EMERGENCY | Jewel bright white. Button, WebUI, standalone, audio, and flame are overridden |
 
@@ -40,14 +40,14 @@ If Showduino disappears, GRANT keepalive must go stale (~8 s). A momentary packe
 
 Physical striker, optional motion IGNITE, and P4 `IGNITE` enter the **same** machine. Failed strikes exist only as a configurable percentage and default to **0**.
 
-The Jewel starts **black** (no boot / Wi-Fi / ownership colour). A press is one IGNITE event: flint spark (one or two pixels, ~50–150 ms) → dark gap → catch (~1–2 s, carbide blue-white → pale warmth) → living procedural flame. Short puff recoils and recovers. Sustained blow collapses to black and silence. Emergency is immediate bright white + `emergency.mp3`. PIXEL IDENTIFY walks pixels 0–6 for Jewel mapping; it is blocked in SHOWDUINO and emergency.
+The Jewel starts **black** (no boot / Wi-Fi / ownership colour). A press is one IGNITE event: flint spark (one or two pixels, ~50–150 ms) → dark gap → catch (~1–2 s, carbide blue-white → pale warmth) → living procedural flame. Short puff recoils and recovers. Sustained blow collapses to black and silence. Emergency is immediate bright white + `emergency.wav`. PIXEL IDENTIFY walks pixels 0–6 for Jewel mapping; it is blocked in SHOWDUINO and emergency.
 
 Without Showduino:
 
 - Ignition button: OFF → STRIKING → IGNITING → BURNING
 - Short puff: flame reacts / recovers
 - Sustained blow: EXTINGUISHING → OFF
-- Fermion plays `flick.mp3` → `fire_ignite.mp3` → looping `flameloop.mp3`
+- Audio FX plays `flick.wav` → `fire_ign.wav` → looping `flameloo.wav`
 
 No browser, Wi-Fi client, or internet is required for the physical lamp.
 
@@ -59,20 +59,20 @@ No browser, Wi-Fi client, or internet is required for the physical lamp.
 
 ## Local audio
 
-DFRobot Fermion DFPlayer Pro (DFR0768) over UART, 115200, no BUSY pin. Init is non-blocking: `AT`, `AT+FUNCTION=1` (MUSIC), `AT+AMP=ON`, volume. Play uses `AT+PLAYFILE=/name.mp3` and wiki PLAYMODE 1 (repeat one) / 3 (play once). Semantic roles map to the V1 four-file library:
+Adafruit Audio FX Sound Board over UART, **9600 8N1**, UG tied to GND for UART control mode. GPIO17 TX / GPIO18 RX. Init is non-blocking: boot delay, then `L\n` file list. Named playback uses `P` + exact 11-character FAT name + `\n`. Stop is `q`. Semantic roles map to the V1 four-file library:
 
-| Role | File | When |
-|------|------|------|
-| STRIKE | `flick.mp3` | STRIKING, once |
-| IGNITION | `fire_ignite.mp3` | IGNITING, once |
-| BURN_LOOP | `flameloop.mp3` | BURNING / LOW / UNSTABLE / FLARE / DYING, loop |
-| EMERGENCY | `emergency.mp3` | System emergency, loop |
+| Role | Windows file | UART/FAT name | When |
+|------|--------------|---------------|------|
+| STRIKE | `flick.wav` | `FLICK   WAV` | STRIKING, once |
+| IGNITION | `fire_ign.wav` | `FIRE_IGNWAV` | IGNITING, once |
+| BURN_LOOP | `flameloo.wav` | `FLAMELOOWAV` | BURNING / LOW / UNSTABLE / FLARE, loop on `done` |
+| EMERGENCY | `emergency.wav` | `EMERGENCWAV` | System emergency, loop on `done` |
 
-There is no `fire_out.mp3`. Extinguish stops `flameloop.mp3` and goes silent. Missing Fermion or missing files must not block the jewel. File enumeration is **UNSUPPORTED** — firmware does not invent present/missing. This is **not** the Showduino Audio Node.
+There is no extinguish WAV. Extinguish sends `q` and goes silent. Missing Audio FX or missing files must not block the jewel. File list is queried at boot (`LIST`). Absolute Fermion-style volume is not used — external amplifier gain is authoritative. This is **not** the Showduino Audio Node.
 
 ## Emergency (existing product policy — plus local audio)
 
-Emergency forces the jewel **bright white**, interrupts theatrical audio, and loops `emergency.mp3`. Clear stops emergency audio, returns to idle/OFF, and does **not** resume the previous flame or burn loop. The node cannot locally clear a system emergency. WebUI cannot clear it either. WebUI TEST EMERGENCY is an audio commissioning check only.
+Emergency forces the jewel **bright white**, interrupts theatrical audio, and loops `emergency.wav`. Clear stops emergency audio, returns to idle/OFF, and does **not** resume the previous flame or burn loop. The node cannot locally clear a system emergency. WebUI cannot clear it either. WebUI TEST EMERGENCY is an audio commissioning check only.
 
 ## Comms-loss (existing product policy — unchanged)
 
@@ -83,7 +83,7 @@ Emergency forces the jewel **bright white**, interrupts theatrical audio, and lo
 
 SSID is `Showduino-Lamp-<logical-id>`, for example `Showduino-Lamp-LAMP-01`. Password `showduino`. Typical IP `192.168.5.1` on the ESP-NOW channel. Join that 2.4 GHz SoftAP, then open `http://192.168.5.1` (not https, not a hostname). No internet, P4, Communications Controller, Director, or external server is required.
 
-In STANDALONE the WebUI may ignite, extinguish, set theatrical flame states, test Fermion roles, run PIXEL IDENTIFY, and adjust volume / brightness / flame activity / flicker / ignition speed.
+In STANDALONE the WebUI may ignite, extinguish, set theatrical flame states, test Audio FX roles, run PIXEL IDENTIFY, and adjust brightness / flame activity / flicker / ignition speed.
 
 In SHOWDUINO the WebUI is commissioning / status / diagnostics. Firmware rejects theatrical and audio-test commands from the browser. Identity, blow calibration, and reboot remain available.
 
@@ -105,8 +105,8 @@ Studio should author `LAMP-01 IGNITE` / `UNSTABLE_FLAME` / `EXTINGUISH`. SHDO v2
 | Ignition button | 7 | to GND, active-LOW |
 | Jewel DATA | 8 | 7 pixels |
 | Motion | 15 | digital, 3.3 V only; sensor physically unconfirmed |
-| Fermion TX | 17 | S3 TX → Fermion RX |
-| Fermion RX | 18 | S3 RX ← Fermion TX |
+| Audio FX TX | 17 | S3 TX → Audio FX RX (9600) |
+| Audio FX RX | 18 | S3 RX ← Audio FX TX |
 
 This physical board talks over a CH343 USB-UART on UART0. Flash and monitor with `CDCOnBoot=default` so application `Serial` stays on that UART, not native USB CDC:
 

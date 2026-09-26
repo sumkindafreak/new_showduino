@@ -75,15 +75,15 @@ int main() {
          "motion IGNITE uses LAMP:IGNITE");
   showduino_carbide_apply(&flame, showduino_motion_carbide_event(ign), &cfg);
   expect(flame.state == SHOWDUINO_CARBIDE_STRIKING, "same STRIKING path as striker");
-  expect(flame.sound == SHOWDUINO_LAMP_SND_STRIKE, "flick.mp3 role");
+  expect(flame.sound == SHOWDUINO_LAMP_SND_STRIKE, "flick.wav role");
   flame.nowMs += cfg.strikeMs;
   showduino_carbide_apply(&flame, SHOWDUINO_CARBIDE_EV_TICK, &cfg);
   expect(flame.state == SHOWDUINO_CARBIDE_IGNITING, "IGNITING");
-  expect(flame.sound == SHOWDUINO_LAMP_SND_IGNITION, "fire_ignite.mp3 role");
+  expect(flame.sound == SHOWDUINO_LAMP_SND_IGNITION, "fire_ign.wav role");
   flame.nowMs += cfg.igniteMs;
   showduino_carbide_apply(&flame, SHOWDUINO_CARBIDE_EV_TICK, &cfg);
   expect(flame.state == SHOWDUINO_CARBIDE_BURNING, "BURNING");
-  expect(flame.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "non-blocking flameloop role");
+  expect(flame.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "non-blocking flameloo role");
   expect(showduino_lamp_audio_transport_nonblocking(),
          "motion must not introduce blocking audio");
 
@@ -159,7 +159,7 @@ int main() {
                           showduino_motion_carbide_event(SHOWDUINO_MOTION_DECIDE_FLARE),
                           &cfg);
   expect(flame.state == SHOWDUINO_CARBIDE_FLARE, "flare applied");
-  expect(flame.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "flare keeps flameloop");
+  expect(flame.sound == SHOWDUINO_LAMP_SND_BURN_LOOP, "flare keeps flameloo");
   flame.nowMs += cfg.flareMs;
   showduino_carbide_apply(&flame, SHOWDUINO_CARBIDE_EV_TICK, &cfg);
   expect(flame.state == SHOWDUINO_CARBIDE_BURNING, "flare returns to burning");

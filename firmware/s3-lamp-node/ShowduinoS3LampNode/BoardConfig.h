@@ -18,8 +18,8 @@
  *   GPIO7  ignition button     GPIO7 -> switch -> GND
  *   GPIO8  NeoPixel Jewel DATA 7 pixels
  *   GPIO15 motion digital in   header-nominated; sensor NOT physically confirmed
- *   GPIO17 S3 TX -> Fermion RX
- *   GPIO18 S3 RX <- Fermion TX
+ *   GPIO17 S3 TX -> Adafruit Audio FX RX
+ *   GPIO18 S3 RX <- Adafruit Audio FX TX
  *
  * GPIO9 is not broken out on this module. Do not use it.
  * GPIO15 suitability (ESP32-S3): not strapping (0/3/45/46), not flash/PSRAM
@@ -32,7 +32,7 @@
  * only and must never be combined with the confirmed production map.
  */
 
-#define SHOWDUINO_LAMP_NODE_FW             "0.4.2"
+#define SHOWDUINO_LAMP_NODE_FW             "0.4.3"
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 
@@ -61,7 +61,7 @@
 #define SHOWDUINO_LAMP_SENSOR_MIC_MS       20UL
 #define SHOWDUINO_LAMP_SENSOR_LIGHT_MS     200UL
 #define SHOWDUINO_LAMP_SENSOR_VOLT_MS      500UL
-#define SHOWDUINO_LAMP_FERMION_BAUD        115200UL
+#define SHOWDUINO_LAMP_AUDIO_FX_BAUD       9600UL
 #define SHOWDUINO_LAMP_MOTION_DEBOUNCE_MS  50UL
 
 #ifndef SHOWDUINO_LAMP_MOTION_PIN_CONFIRMED
@@ -69,10 +69,10 @@
 #endif
 
 /*
- * Fermion DFPlayer Pro DFR0768 — local lamp FX only. UART 115200, no BUSY pin.
- * Powered from the lamp 5V rail with common ground. S3 UART is 3.3V.
- * Playback is fire-and-forget AT commands. flameloop.mp3 uses PLAYMODE=1
- * (repeat one). One-shot files use PLAYMODE=3. PLAYFILE paths start with /.
+ * Adafruit Audio FX Sound Board — local lamp FX only. UART 9600 8N1, UG tied
+ * to GND for UART control mode. Powered from the lamp 5V rail with common
+ * ground. S3 UART is 3.3V. Named playback uses P + exact 11-char FAT name.
+ * Flame ambience restarts on Audio FX "done" while BURN_LOOP is active.
  * The main loop never waits for a track to finish.
  */
 
@@ -93,8 +93,8 @@
 #define SHOWDUINO_LAMP_LIGHT_PIN           4
 #define SHOWDUINO_LAMP_VOLT_PIN            5
 #define SHOWDUINO_LAMP_MOTION_PIN          15
-#define SHOWDUINO_LAMP_FERMION_TX_PIN      17
-#define SHOWDUINO_LAMP_FERMION_RX_PIN      18
+#define SHOWDUINO_LAMP_AUDIO_FX_TX_PIN     17
+#define SHOWDUINO_LAMP_AUDIO_FX_RX_PIN     18
 #define SHOWDUINO_LAMP_PIN_SOURCE          "DEV_PLACEHOLDER"
 #elif SHOWDUINO_LAMP_PINS_CONFIRMED
 #define SHOWDUINO_LAMP_PIXEL_PIN           8
@@ -103,8 +103,8 @@
 #define SHOWDUINO_LAMP_LIGHT_PIN           5
 #define SHOWDUINO_LAMP_VOLT_PIN            6
 #define SHOWDUINO_LAMP_MOTION_PIN          15
-#define SHOWDUINO_LAMP_FERMION_TX_PIN      17
-#define SHOWDUINO_LAMP_FERMION_RX_PIN      18
+#define SHOWDUINO_LAMP_AUDIO_FX_TX_PIN     17
+#define SHOWDUINO_LAMP_AUDIO_FX_RX_PIN     18
 #define SHOWDUINO_LAMP_PIN_SOURCE          "PHYSICAL_CONFIRMED"
 #else
 #define SHOWDUINO_LAMP_PIXEL_PIN           (-1)
@@ -113,8 +113,8 @@
 #define SHOWDUINO_LAMP_LIGHT_PIN           (-1)
 #define SHOWDUINO_LAMP_VOLT_PIN            (-1)
 #define SHOWDUINO_LAMP_MOTION_PIN          (-1)
-#define SHOWDUINO_LAMP_FERMION_TX_PIN      (-1)
-#define SHOWDUINO_LAMP_FERMION_RX_PIN      (-1)
+#define SHOWDUINO_LAMP_AUDIO_FX_TX_PIN     (-1)
+#define SHOWDUINO_LAMP_AUDIO_FX_RX_PIN     (-1)
 #define SHOWDUINO_LAMP_PIN_SOURCE          "UNCONFIRMED"
 #endif
 
@@ -122,7 +122,7 @@
 #if SHOWDUINO_LAMP_MIC_PIN != 4 || SHOWDUINO_LAMP_LIGHT_PIN != 5 || \
     SHOWDUINO_LAMP_VOLT_PIN != 6 || SHOWDUINO_LAMP_BTN_IGNITE != 7 || \
     SHOWDUINO_LAMP_PIXEL_PIN != 8 || SHOWDUINO_LAMP_MOTION_PIN != 15 || \
-    SHOWDUINO_LAMP_FERMION_TX_PIN != 17 || SHOWDUINO_LAMP_FERMION_RX_PIN != 18
+    SHOWDUINO_LAMP_AUDIO_FX_TX_PIN != 17 || SHOWDUINO_LAMP_AUDIO_FX_RX_PIN != 18
 #error "Confirmed Lamp Node pin map does not match the physical wiring"
 #endif
 #if SHOWDUINO_LAMP_MIC_PIN < 1 || SHOWDUINO_LAMP_MIC_PIN > 10 || \

@@ -121,27 +121,40 @@ typedef struct ShowduinoBlowDetector {
 typedef struct ShowduinoLampSoundMap {
   ShowduinoLampSound id;
   const char *role;
-  const char *file;
+  const char *file;   /* human-readable Windows name */
+  const char *fat;    /* exact 11-char Audio FX UART/FAT name */
   uint16_t track;
   uint8_t loop;
 } ShowduinoLampSoundMap;
 
+/* Exact board-reported FAT/UART names (spaces are meaningful). */
+#define SHOWDUINO_LAMP_AUDIO_FX_FAT_LEN 11
+#define SHOWDUINO_LAMP_AUDIO_FX_FLICK      "FLICK   WAV"
+#define SHOWDUINO_LAMP_AUDIO_FX_IGNITION  "FIRE_IGNWAV"
+#define SHOWDUINO_LAMP_AUDIO_FX_FLAME     "FLAMELOOWAV"
+#define SHOWDUINO_LAMP_AUDIO_FX_EMERGENCY "EMERGENCWAV"
+
 static const ShowduinoLampSoundMap SHOWDUINO_LAMP_SOUND_TABLE[] = {
-  { SHOWDUINO_LAMP_SND_NONE,        "NONE",        "",                 0, 0 },
-  { SHOWDUINO_LAMP_SND_STRIKE,      "STRIKE",      "flick.mp3",        1, 0 },
-  { SHOWDUINO_LAMP_SND_IGNITION,    "IGNITION",    "fire_ignite.mp3",  2, 0 },
-  { SHOWDUINO_LAMP_SND_BURN_LOOP,   "BURN_LOOP",   "flameloop.mp3",    3, 1 },
-  { SHOWDUINO_LAMP_SND_EMERGENCY,   "EMERGENCY",   "emergency.mp3",    4, 1 }
+  { SHOWDUINO_LAMP_SND_NONE,      "NONE",      "",              "",
+    0, 0 },
+  { SHOWDUINO_LAMP_SND_STRIKE,    "STRIKE",    "flick.wav",     SHOWDUINO_LAMP_AUDIO_FX_FLICK,
+    1, 0 },
+  { SHOWDUINO_LAMP_SND_IGNITION,  "IGNITION",  "fire_ign.wav",  SHOWDUINO_LAMP_AUDIO_FX_IGNITION,
+    2, 0 },
+  { SHOWDUINO_LAMP_SND_BURN_LOOP, "BURN_LOOP", "flameloo.wav",  SHOWDUINO_LAMP_AUDIO_FX_FLAME,
+    3, 1 },
+  { SHOWDUINO_LAMP_SND_EMERGENCY, "EMERGENCY", "emergency.wav", SHOWDUINO_LAMP_AUDIO_FX_EMERGENCY,
+    4, 1 }
 };
 
 #define SHOWDUINO_LAMP_V1_FILE_COUNT 4
-#define SHOWDUINO_LAMP_FILE_QUERY_STATUS "UNSUPPORTED"
+#define SHOWDUINO_LAMP_FILE_QUERY_STATUS "LIST"
 
 static const char * const SHOWDUINO_LAMP_V1_FILES[SHOWDUINO_LAMP_V1_FILE_COUNT] = {
-  "flick.mp3",
-  "fire_ignite.mp3",
-  "flameloop.mp3",
-  "emergency.mp3"
+  "flick.wav",
+  "fire_ign.wav",
+  "flameloo.wav",
+  "emergency.wav"
 };
 
 #define SHOWDUINO_LAMP_SOUND_TABLE_LEN \
@@ -663,32 +676,54 @@ static inline int showduino_lamp_audio_blocks_machine(void) {
   return 0;
 }
 
-/* Official DFR0768 PLAYMODE: 1 = repeat one, 3 = play one and pause.
- * PLAYMODE=2 is repeat-all, not a single-file burn loop. */
-#define SHOWDUINO_LAMP_FERMION_PLAYMODE_LOOP  1u
-#define SHOWDUINO_LAMP_FERMION_PLAYMODE_ONCE  3u
-#define SHOWDUINO_LAMP_FERMION_FUNCTION_MUSIC 1u
-
-static inline uint8_t showduino_lamp_fermion_playmode(uint8_t loop) {
-  return loop ? (uint8_t)SHOWDUINO_LAMP_FERMION_PLAYMODE_LOOP
-              : (uint8_t)SHOWDUINO_LAMP_FERMION_PLAYMODE_ONCE;
+/* Adafruit Audio FX UART: P + exact 11-char FAT name + newline. */
+static inline int showduino_lamp_audio_fx_fat_valid(const char *fat83) {
+  size_t i;
+  if (!fat83) return 0;
+  for (i = 0; i < SHOWDUINO_LAMP_AUDIO_FX_FAT_LEN; ++i) {
+    if (fat83[i] == 0) return 0;
+  }
+  return fat83[SHOWDUINO_LAMP_AUDIO_FX_FAT_LEN] == 0;
 }
 
-/* Wiki path form is AT+PLAYFILE=/name.mp3 — a bare filename is rejected. */
-static inline int showduino_lamp_fermion_playfile_cmd(const char *file, char *out, size_t n) {
-  int wrote;
-  if (!file || !file[0] || !out || n < 18) return -1;
-  if (file[0] == '/') {
-    wrote = snprintf(out, n, "AT+PLAYFILE=%s", file);
-  } else {
-    wrote = snprintf(out, n, "AT+PLAYFILE=/%s", file);
-  }
-  if (wrote < 0 || (size_t)wrote >= n) return -1;
+static inline const char *showduino_lamp_sound_fat(ShowduinoLampSound id) {
+  const ShowduinoLampSoundMap *info = showduino_lamp_sound_info(id);
+  return (info && info->fat) ? info->fat : "";
+}
+
+/* out receives "P" + 11 chars + "\n" + NUL (14 bytes). Spaces preserved. */
+static inline int showduino_lamp_audio_fx_play_cmd(const char *fat83, char *out,
+                                                   size_t n) {
+  size_t i;
+  if (!showduino_lamp_audio_fx_fat_valid(fat83) || !out || n < 14) return -1;
+  out[0] = 'P';
+  for (i = 0; i < SHOWDUINO_LAMP_AUDIO_FX_FAT_LEN; ++i) out[1 + i] = fat83[i];
+  out[12] = '\n';
+  out[13] = 0;
   return 0;
 }
 
-/* Fermion playback is fire-and-forget AT UART. flameloop.mp3 uses
- * PLAYMODE=1 (repeat one). Firmware must never wait for track completion. */
+static inline int showduino_lamp_audio_fx_play_sound_cmd(ShowduinoLampSound id,
+                                                         char *out, size_t n) {
+  return showduino_lamp_audio_fx_play_cmd(showduino_lamp_sound_fat(id), out, n);
+}
+
+/* Stop is a single 'q' (no Fermion AT). */
+static inline int showduino_lamp_audio_fx_stop_cmd(char *out, size_t n) {
+  if (!out || n < 2) return -1;
+  out[0] = 'q';
+  out[1] = 0;
+  return 0;
+}
+
+/* Restart current looping role after Audio FX "done", never FLAME when role changed. */
+static inline int showduino_lamp_audio_fx_should_restart_on_done(
+    ShowduinoLampSound role) {
+  return role == SHOWDUINO_LAMP_SND_BURN_LOOP ||
+         role == SHOWDUINO_LAMP_SND_EMERGENCY;
+}
+
+/* Audio FX UART is fire-and-forget; firmware must never wait for WAV end. */
 static inline int showduino_lamp_audio_transport_nonblocking(void) {
   return 1;
 }
