@@ -27,6 +27,7 @@
 #include "nodes/LampNodeLink.h"
 #include "nodes/PixelNodeLink.h"
 #include "nodes/EmergencyNodeLink.h"
+#include "nodes/MosfetNodeLink.h"
 
 #ifndef SHOWDUINO_P4_STATIC_WEBUI
 #define SHOWDUINO_P4_STATIC_WEBUI 0
@@ -514,7 +515,8 @@ static void handleApiSystem() {
     json += "    \"audioNode\": \"" + String(audioNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
     json += "    \"lampNode\": \"" + String(lampNodeLinkStatus().online ? "ready" : "searching") + "\",\n";
     json += "    \"pixelNodes\": \"" + String(pixelNodeLinkOnlineCount() ? "ready" : "searching") + "\",\n";
-    json += "    \"emergencyNodes\": \"" + String(emergencyNodeLinkOnlineCount() ? "ready" : "searching") + "\"\n";
+    json += "    \"emergencyNodes\": \"" + String(emergencyNodeLinkOnlineCount() ? "ready" : "searching") + "\",\n";
+    json += "    \"mosfetNodes\": \"" + String(mosfetNodeLinkOnlineCount() ? "ready" : "searching") + "\"\n";
   json += "  },\n";
   json += "  \"ethernet\": {\n";
   json += "    \"link\": \"" + String(showNetworkLive().hasIp ? "UP" : (showNetworkLive().linkUp ? "UP" : "DOWN")) + "\",\n";
@@ -548,6 +550,8 @@ static void handleApiSystem() {
   pixelNodeLinkAppendJsonArray(json);
   json += ",\n  \"emergencyNodes\": ";
   emergencyNodeLinkAppendJsonArray(json);
+  json += ",\n  \"mosfetNodes\": ";
+  mosfetNodeLinkAppendJsonArray(json);
   json += ",\n  \"emergencyUpdatePolicy\": \"ONE_AT_A_TIME\"";
   json += ",\n  \"emergencySafetyFault\": ";
   json += emergencyNodeLinkSafetyFault() ? "true" : "false";
@@ -739,6 +743,7 @@ static void handleApiDevices() {
     bool more = true;
     pixelNodeLinkAppendDevicesJson(json, more);
     emergencyNodeLinkAppendDevicesJson(json, more);
+    mosfetNodeLinkAppendDevicesJson(json, more);
   }
   json += "\n  ]\n}\n";
   sendWebr(200, "application/json", json.c_str(), json.length());

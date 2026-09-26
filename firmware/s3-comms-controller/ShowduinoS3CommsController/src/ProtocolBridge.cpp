@@ -10,6 +10,7 @@
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_pixel_node.h"
 #include "../../../protocol/showduino_emergency_node.h"
+#include "../../../protocol/showduino_mosfet_node.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,14 +30,17 @@ static bool sHadAudio = false;
 static bool sHadLamp = false;
 static bool sHadPixel = false;
 static bool sHadEmergency = false;
+static bool sHadMosfet = false;
 static uint32_t sLastAudioSeenMs = 0;
 static uint32_t sLastLampSeenMs = 0;
 static uint32_t sLastPixelSeenMs = 0;
 static uint32_t sLastEmergencySeenMs = 0;
+static uint32_t sLastMosfetSeenMs = 0;
 static char sLastAudioAnnounce[96] = "";
 static char sLastLampAnnounce[96] = "";
 static char sLastPixelAnnounce[96] = "";
 static char sLastEmergencyAnnounce[96] = "";
+static char sLastMosfetAnnounce[96] = "";
 
 static bool isLocalDiag(const char *line) {
   return line && (!strcmp(line, "DIAG:PING") || !strcmp(line, "DIAG:PONG"));
@@ -152,6 +156,19 @@ static void notePixelDiscovery(const char *command) {
   }
 }
 
+static void noteMosfetDiscovery(const char *command) {
+  if (!command || strncmp(command, "ANNOUNCE:", 9) != 0) return;
+  if (!showduino_log_changed(sLastMosfetAnnounce, sizeof(sLastMosfetAnnounce), command)) {
+    return;
+  }
+  ShowduinoMosfetAnnounce an{};
+  if (showduino_mosfet_parse_announce(command, &an)) {
+    SD_LOGI("COMMS", "MOSFET Node discovered ID=%s", an.id[0] ? an.id : "-");
+    SD_LOGI("COMMS", "  FW: %s", an.firmware[0] ? an.firmware : "-");
+    SD_LOGI("COMMS", "  MAC: %s", an.mac[0] ? an.mac : "-");
+  }
+}
+
 static void forwardToAudioNode(const char *command, uint32_t sequence) {
   if (!command || !command[0]) return;
   if (espNowTransportSendToAudioNode(command, sequence)) {
@@ -216,6 +233,23 @@ static void forwardToEmergencyNode(const char *id, const char *command, uint32_t
   }
 }
 
+static void forwardToMosfetNode(const char *id, const char *command, uint32_t sequence) {
+  if (!id || !command || !command[0]) return;
+  if (espNowTransportSendToMosfetNode(id, command, sequence)) {
+    SD_LOGT("COMMS", "TX -> MOSFET %s seq=%lu cmd=%s", id, (unsigned long)sequence, command);
+    if (!isRoutineNodeCmd(command) &&
+        strncmp(command, "MOSFET:STATUS", 13) != 0 &&
+        strncmp(command, "MOSFET:OWN:GRANT", 16) != 0) {
+      SD_LOGD("COMMS", "P4 -> MOSFET %s: %s", id, command);
+    }
+  } else {
+    static uint32_t sHoldMs = 0;
+    if (showduino_log_rate_ok(&sHoldMs, millis(), 5000UL)) {
+      SD_LOGW("COMMS", "MOSFET Node %s route unavailable — no peer", id);
+    }
+  }
+}
+
 static void onNodeCommand(const char *nodeType, const char *command, uint32_t sequence) {
   if (!nodeType || !command) return;
   char line[SHOWDUINO_COMMS_LINE_MAX + 1];
@@ -246,6 +280,10 @@ static void onNodeCommand(const char *nodeType, const char *command, uint32_t se
     sLastEmergencySeenMs = millis();
     if (!sHadEmergency) sHadEmergency = true;
     noteEmergencyDiscovery(command);
+  } else if (!strcmp(nodeType, SHOWDUINO_LEGACY_NODETYPE_MOSFET)) {
+    sLastMosfetSeenMs = millis();
+    if (!sHadMosfet) sHadMosfet = true;
+    noteMosfetDiscovery(command);
   }
 
   if (!priority) {
@@ -309,6 +347,15 @@ static bool handleP4Route(const char *line) {
     }
   }
 
+  if (!strncmp(line, SHOWDUINO_LEGACY_ROUTE_MOSFET,
+               strlen(SHOWDUINO_LEGACY_ROUTE_MOSFET))) {
+    ShowduinoMosfetRoute rt{};
+    if (showduino_mosfet_parse_route(line, &rt)) {
+      forwardToMosfetNode(rt.id, rt.command, rt.sequence);
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -319,6 +366,7 @@ static void fanoutEmergency() {
   forwardToAudioNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   forwardToLampNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   espNowTransportSendToAllPixelNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
+  espNowTransportSendToAllMosfetNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   /* Observe-only for Emergency Nodes. CLEAR here means global clear observed. */
   espNowTransportSendToAllEmergencyNodes(
       sEmergencyActive ? SHOWDUINO_ESTOP_ACK_LATCHED : SHOWDUINO_ESTOP_GLOBAL_OBSERVED, 0);

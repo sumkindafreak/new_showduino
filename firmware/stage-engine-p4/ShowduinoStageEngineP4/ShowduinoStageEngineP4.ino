@@ -42,6 +42,7 @@
 #include "src/nodes/LampNodeLink.h"
 #include "src/nodes/PixelNodeLink.h"
 #include "src/nodes/EmergencyNodeLink.h"
+#include "src/nodes/MosfetNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_emergency_button.h"
 #include "../../../protocol/showduino_state_wire.h"
@@ -412,6 +413,7 @@ void triggerEmergency(EmergencySource source) {
   audioNodeLinkOnEmergency(true);
   lampNodeLinkOnEmergency(true);
   pixelNodeLinkOnEmergency(true);
+  mosfetNodeLinkOnEmergency(true);
   emergencyNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
@@ -479,6 +481,7 @@ static void applyEmergencyClear() {
   audioNodeLinkOnEmergency(false);
   lampNodeLinkOnEmergency(false);
   pixelNodeLinkOnEmergency(false);
+  mosfetNodeLinkOnEmergency(false);
   emergencyNodeLinkOnEmergency(false);
   gRuntime.onEmergencyCleared(millis(), &gEngine);
   Serial.println("[ESTOP] Emergency cleared");
@@ -648,6 +651,7 @@ void sendStatus() {
   audioNodeLinkPublishToDirector();
   lampNodeLinkPublishToDirector();
   pixelNodeLinkPublishToDirector();
+  mosfetNodeLinkPublishToDirector();
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -710,6 +714,7 @@ static void handleProductionCommand(const String &command) {
     if (gRuntime.handleUnload(now, &gEngine)) {
       gProductionStore.unload();
       showPixelsBlackout();
+      mosfetNodeLinkAllOff("PRODUCTION_UNLOAD");
       Serial.println("[PRODUCTION] Unloaded");
       sendCommandReply("PRODUCTION:UNLOAD:OK");
     }
@@ -861,6 +866,7 @@ void handleShowCommand(const String &command) {
     if (!emergencyLocked) {
       stageAudioStopShow();
       showPixelsBlackout();
+      mosfetNodeLinkAllOff("SHOW_STOP");
     }
     if (stopped) {
       SD_LOGI("P4", "Show STOP");
@@ -1191,6 +1197,11 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("NODE:MOSFET:")) {
+    mosfetNodeLinkHandleReport(command.c_str());
+    return;
+  }
+
   if (command.startsWith(SHOWDUINO_LEGACY_NODE_PREFIX)) {
     static uint32_t sLastUnhandledNodeMs = 0;
     if ((int32_t)(millis() - sLastUnhandledNodeMs) >= 5000) {
@@ -1229,6 +1240,17 @@ static void dispatchCommand(const String &command) {
     char reply[180];
     pixelNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply));
     if (reply[0]) sendCommandReply(reply);
+    return;
+  }
+
+  if (command.startsWith("MOSFET:NODE:") || command.startsWith("MOSFET:")) {
+    char reply[180];
+    if (mosfetNodeLinkHandleCommand(command.c_str(), reply, sizeof(reply))) {
+      if (reply[0]) sendCommandReply(reply);
+    } else if (command == "MOSFET:ALL:OFF" || command.startsWith("MOSFET:ALL:OFF")) {
+      mosfetNodeLinkAllOff("CMD");
+      sendCommandReply("MOSFET:ALL:OFF:OK");
+    }
     return;
   }
 
@@ -1644,6 +1666,7 @@ void setup() {
   lampNodeLinkBegin();
   pixelNodeLinkBegin();
   emergencyNodeLinkBegin();
+  mosfetNodeLinkBegin();
 
   stageStoreBegin();
   webApiBegin(bootMs);
@@ -1677,6 +1700,7 @@ void loop() {
   lampNodeLinkLoop();
   pixelNodeLinkLoop();
   emergencyNodeLinkLoop();
+  mosfetNodeLinkLoop();
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);

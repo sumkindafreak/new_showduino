@@ -17,13 +17,17 @@ bool espNowTransportSendToPixelNode(const char *id, const char *command, uint32_
 void espNowTransportSendToAllPixelNodes(const char *command, uint32_t sequence);
 bool espNowTransportSendToEmergencyNode(const char *id, const char *command, uint32_t sequence);
 void espNowTransportSendToAllEmergencyNodes(const char *command, uint32_t sequence);
+bool espNowTransportSendToMosfetNode(const char *id, const char *command, uint32_t sequence);
+void espNowTransportSendToAllMosfetNodes(const char *command, uint32_t sequence);
 bool espNowTransportHaveDirector();
 bool espNowTransportHaveAudioNode();
 bool espNowTransportHaveLampNode();
 bool espNowTransportHavePixelNode();
 bool espNowTransportHaveEmergencyNode();
+bool espNowTransportHaveMosfetNode();
 uint8_t espNowTransportPixelNodeCount();
 uint8_t espNowTransportEmergencyNodeCount();
+uint8_t espNowTransportMosfetNodeCount();
 void espNowTransportDirectorMac(uint8_t out[6]);
 void espNowTransportAudioNodeMac(uint8_t out[6]);
 void espNowTransportLampNodeMac(uint8_t out[6]);
