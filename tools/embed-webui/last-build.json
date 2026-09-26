@@ -1,11 +1,11 @@
 {
-  "buildHash": "3fa09007ae33",
-  "buildUtc": "2026-09-26T08:35:23Z",
+  "buildHash": "9096c68ad43a",
+  "buildUtc": "2026-09-26T08:56:17Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 41,
-  "rawBytes": 831759,
-  "embeddedBytes": 204431,
+  "rawBytes": 830368,
+  "embeddedBytes": 204351,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -32,8 +32,8 @@
     "commit": "6855741d390171dea1344425325a499b7dc92e4d",
     "route": "/studio/",
     "assetCount": 38,
-    "rawBytes": 667737,
-    "embeddedBytes": 166284,
+    "rawBytes": 666346,
+    "embeddedBytes": 166204,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -199,8 +199,8 @@
     {
       "path": "/studio/js/shdo_model.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 8675,
-      "embedded": 2442,
+      "raw": 8435,
+      "embedded": 2427,
       "gzip": true
     },
     {
@@ -241,8 +241,8 @@
     {
       "path": "/studio/js/timeline-professional-inspector.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 16926,
-      "embedded": 4345,
+      "raw": 16653,
+      "embedded": 4327,
       "gzip": true
     },
     {
@@ -297,8 +297,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19845,
-      "embedded": 5039,
+      "raw": 19363,
+      "embedded": 5013,
       "gzip": true
     },
     {
@@ -318,8 +318,8 @@
     {
       "path": "/studio/js/studio-deploy.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 17727,
-      "embedded": 5499,
+      "raw": 17331,
+      "embedded": 5478,
       "gzip": true
     },
     {
