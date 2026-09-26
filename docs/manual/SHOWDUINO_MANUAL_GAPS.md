@@ -304,7 +304,7 @@ Only ship/manualise a node as a normal supported accessory once its hardware acc
 **Category:** DOCUMENTATION GAP / SAFETY PROCEDURE TO CONFIRM  
 **Source:** `docs/emergency-node.md`
 
-The separate wireless Emergency Node design uses a local normally-closed loop, local latch and **assert-only** wireless policy. Its physical control and re-arm model differ from the main Showduino momentary GPIO25 button.
+The separate wireless Emergency Node design uses a **momentary pushbutton**, local software latch and **assert-only** wireless policy. Its physical control and clear-observation model differ from the main Showduino momentary GPIO25 button.
 
 ### Required resolution
 

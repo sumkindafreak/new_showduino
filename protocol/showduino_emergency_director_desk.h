@@ -71,7 +71,7 @@ static inline const char *showduino_emergency_desk_station_status(
   if (!st || !st->used) return "NOT DETECTED";
   if (!st->online) return "OFFLINE";
   if (st->latched) return "LATCHED";
-  if (st->input_open) return "OPEN";
+  if (st->input_open) return "PRESSED";
   return "READY";
 }
 

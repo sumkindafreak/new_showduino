@@ -1,9 +1,9 @@
 # Wireless Emergency Node
 
 ```text
-Status: SOFTWARE IMPLEMENTED / GPIO UNCONFIRMED / NOT PHYSICALLY VALIDATED
+Status: SOFTWARE IMPLEMENTED / GPIO UNCONFIRMED / OLED ADDED / NOT PHYSICALLY VALIDATED
 Role: EMERGENCY
-Firmware: 0.1.0
+Firmware: 0.2.0
 Product: Showduino 1.0.0-rc.1
 Protocol: 1.0
 SHDO: v2 unchanged
@@ -11,14 +11,14 @@ SHDO: v2 unchanged
 
 ## Purpose
 
-Distributed venue emergency buttons. Additional wireless stations that may assert the **same** P4 global emergency latch as the hardwired input.
+Distributed venue **wireless Emergency Buttons**. Additional stations that may assert the **same** P4 global emergency latch as the P4 main Emergency input.
 
-This is **not** a certified life-safety system. Wireless ESP-NOW does not replace hardwired E-stop, fire-alarm, evacuation, machinery-safety, or other regulatory systems an installation requires.
+This is **not** a certified life-safety system. Wireless ESP-NOW does not replace hardwired emergency stops, fire-alarm, evacuation, machinery-safety, or other regulatory systems an installation requires.
 
 ## Architecture
 
 ```text
-HARDWIRED NC E-STOP -------------------+
+P4 MAIN EMERGENCY BUTTON --------------+
                                       |
 ESTOP-01 C3 ---+                      |
 ESTOP-02 C3 ---+ ESP-NOW -> COMMS -> P4 +-> GLOBAL EMERGENCY LATCH
@@ -27,8 +27,8 @@ ESTOP-03 C3 ---+                      |
 
 | Piece | Role |
 |-------|------|
-| P4 GPIO25 hardwired path | Primary independent emergency input. Not routed through ESP-NOW. |
-| Emergency Node | Local NC input, local latch, ESP-NOW assert |
+| P4 GPIO25 main Emergency path | Primary independent Emergency input. Not routed through ESP-NOW. Separate Locate/clear policy. |
+| Wireless Emergency Node | Momentary pushbutton, local latch, ESP-NOW assert, SSD1306 status OLED |
 | Comms | Transport / discovery / priority UART forward |
 | P4 | Global emergency authority |
 | Director | Operator status and source display |
@@ -41,7 +41,7 @@ ESTOP-03 C3 ---+                      |
 No Emergency Node packet, WebUI, button-release, or reboot may clear:
 
 - P4 emergency
-- hardwired emergency
+- hardwired / main-button emergency
 - another station's emergency
 - the global latch
 
@@ -56,22 +56,33 @@ Clear remains the existing Showduino emergency-clear policy.
 - Routing uses logical ID, never MAC as operator identity
 - System limit: **8** stations (same ESP-NOW multi-peer cap as Pixel)
 
-## NC input
+## Momentary pushbutton
 
-Preferred: mushroom NC contact to GND, `INPUT_PULLUP`.
+Physical model: normally-open momentary button to GND, `INPUT_PULLUP` on **GPIO4**.
 
-- CLOSED / healthy → LOW
-- OPEN (pressed or local wire broken) → HIGH → emergency condition
+- RELEASED → HIGH
+- PRESSED → LOW → local latch + `ESTOP:ASSERT`
 
-V1 does **not** distinguish button press from a broken local conductor. Opening the loop is emergency.
-
-GPIO map is **unconfirmed**. Do not flash the C3 until the bench wiring is commissioned.
+GPIO4 remains **physically unverified** until bench commissioning. Do not set the verified flag until confirmed.
 
 ## Local latch
 
-OPEN latches locally. Closing the mushroom does not unlatch and does not send a clear.
+PRESS latches locally and asserts. RELEASE never unlatches and never sends a clear.
 
-After a legitimate global clear, the station enters `NEEDS_REARM`. Local re-arm (WebUI / optional GPIO9) only resets **this** station. It never clears P4 emergency. If the NC loop is still open, re-arm fails and the station re-asserts.
+After a legitimate global clear is **observed**:
+
+- button RELEASED → local station returns to NORMAL / READY automatically
+- button still PRESSED → station remains latched and re-asserts
+
+Optional GPIO9 long-press is **maintenance-only** local reset. It never clears P4 and is not required for normal operator use.
+
+## OLED
+
+Same proven C3 Pixel Node SSD1306 hardware:
+
+- SDA GPIO5 / SCL GPIO6 / 0x3C / 128×64 / 400 kHz / 180° / Pixel viewport crop
+
+OLED is output-only. Init failure must never block button detect, latch, or radio assert.
 
 ## Offline policy (V1)
 

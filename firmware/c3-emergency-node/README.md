@@ -1,19 +1,19 @@
 # Showduino C3 Emergency Node
 
 ```text
-Status: IMPLEMENTED / GPIO UNCONFIRMED / DO NOT FLASH YET
+Status: IMPLEMENTED / GPIO UNCONFIRMED / OLED ADDED
 Role: Specialist wireless emergency station (ASSERT ONLY)
-Hardware: ESP32-C3 (Super Mini class proposed)
-Firmware: 0.1.0
+Hardware: ESP32-C3 Super Mini OLED
+Firmware: 0.2.0
 Product: Showduino 1.0.0-rc.1
 Protocol: 1.0
 ```
 
-This is an **additional** distributed emergency station. It does **not** replace the P4 GPIO25 hardwired NC/E-stop path.
+This is an **additional** distributed wireless Emergency Button station. It does **not** replace the P4 GPIO25 hardwired main Emergency path.
 
 ```text
-HARDWIRED NC E-STOP -------------------+
-                                      |
+P4 MAIN EMERGENCY BUTTON ------------+
+                                    |
 ESTOP-xx C3 --- ESP-NOW -> COMMS -> P4 +-> GLOBAL EMERGENCY LATCH
 ```
 
@@ -37,18 +37,22 @@ Arduino FQBN:
 esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=dio
 ```
 
-Do **not** flash until the mushroom switch GPIO is physically confirmed.
+Do **not** mark GPIO verified until the momentary pushbutton on GPIO4 is physically confirmed.
 
-## Proposed GPIO (UNCONFIRMED)
+## Intended GPIO (button UNVERIFIED)
 
 | Function | GPIO | Notes |
 |----------|------|-------|
-| NC emergency input | **4** | INPUT_PULLUP. Closed=LOW healthy. Open=HIGH emergency. |
-| Local re-arm | **9** | BOOT. Long-press after global clear only. Never clears P4. |
+| Momentary emergency pushbutton | **4** | INPUT_PULLUP. RELEASED=HIGH. PRESSED=LOW → assert/latch. |
+| OLED SDA | **5** | Same as C3 Pixel Node |
+| OLED SCL | **6** | Same as C3 Pixel Node |
+| Maintenance local reset | **9** | BOOT long-press. Optional. Never clears P4. Not required for normal use. |
 | Status LED | **-1** | Optional. Not fitted in V1 software default. |
 | Buzzer | **-1** | Optional. Not required for V1. |
 
-Opening the local NC loop is an emergency whether the mushroom is pressed or the local conductor is broken. V1 does not claim wire-break versus press distinction.
+OLED: SSD1306 0x3C, 128×64, 400 kHz, 180° rotation, Pixel Node visible viewport.
+
+Press asserts and latches. Release never clears. After an authoritative P4 clear with the button released, the station returns to READY automatically. If the button is still held during that clear, the station remains latched and re-asserts.
 
 ## Sequential update / commissioning
 
@@ -68,10 +72,10 @@ ESTOP-02 update
 ESTOP-03 ...
 ```
 
-`HEALTHY` = booted, NC input readable, no local fault.  
+`HEALTHY` = booted, button readable, no local fault.  
 `LINKED` = Comms/P4 have a fresh announce/heartbeat for that logical ID.
 
-Taking every station offline together removes all wireless E-stop coverage and floods the desk with safety-node faults.
+Taking every station offline together removes all wireless emergency-button coverage and floods the desk with safety-node faults.
 
 ## SoftAP
 
@@ -79,12 +83,8 @@ Commissioning only: `Showduino-EStop-<id>` / `showduino` at `192.168.5.1`.
 
 Not required for emergency operation.
 
-## Offline policy (V1)
+## Host tests
 
-An Emergency Node going offline is a **SAFETY NODE FAULT / warning**.
-
-It does **not** automatically assert global emergency.
-
-## Not a certified life-safety system
-
-Wireless ESP-NOW does not replace hardwired E-stop, fire-alarm, evacuation, machinery-safety, or regulatory systems an installation requires.
+```text
+powershell -File tools/emergency-node-tests/run_tests.ps1
+```

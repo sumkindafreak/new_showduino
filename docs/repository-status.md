@@ -49,7 +49,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/audio-node-esp32-a1s/` | First specialist Audio Node — implemented, hardware test required |
 | `firmware/s3-lamp-node/` | S3 Lamp Node — ACTIVE carbide simulator (physical GPIOs confirmed) |
 | `firmware/c3-pixel-node/` | C3 Pixel Node — remote pixel specialist |
-| `firmware/c3-emergency-node/` | C3 Emergency Node — wireless assert-only E-stop (GPIO unconfirmed) |
+| `firmware/c3-emergency-node/` | C3 Emergency Node — wireless assert-only Emergency Button + OLED (GPIO unconfirmed) |
 | `firmware/c3-lamp-node/` | Historical C3 lamp — SUPERSEDED / reference |
 
 ---

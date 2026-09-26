@@ -2,7 +2,7 @@
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
 
-static int sOpen = 0;
+static int sPressed = 0;
 static int sRaw = 0;
 static int sDebounced = 0;
 static uint32_t sLastPoll = 0;
@@ -15,8 +15,8 @@ void emergencyInputBegin() {
   pinMode(SHOWDUINO_ESTOP_NODE_REARM_GPIO, INPUT_PULLUP);
 #endif
   sRaw = digitalRead(SHOWDUINO_ESTOP_NODE_GPIO);
-  sOpen = (sRaw == SHOWDUINO_ESTOP_NODE_OPEN_LEVEL) ? 1 : 0;
-  sDebounced = sOpen;
+  sPressed = (sRaw == SHOWDUINO_ESTOP_NODE_ACTIVE_LEVEL) ? 1 : 0;
+  sDebounced = sPressed;
   sLastPoll = 0;
   sEdgeMs = 0;
 }
@@ -26,21 +26,21 @@ void emergencyInputService() {
   if (sLastPoll && (now - sLastPoll) < SHOWDUINO_ESTOP_NODE_INPUT_POLL_MS) return;
   sLastPoll = now;
   sRaw = digitalRead(SHOWDUINO_ESTOP_NODE_GPIO);
-  const int open = (sRaw == SHOWDUINO_ESTOP_NODE_OPEN_LEVEL) ? 1 : 0;
-  if (open != sDebounced) {
+  const int pressed = (sRaw == SHOWDUINO_ESTOP_NODE_ACTIVE_LEVEL) ? 1 : 0;
+  if (pressed != sDebounced) {
     if (!sEdgeMs) sEdgeMs = now;
     if ((now - sEdgeMs) >= SHOWDUINO_EMERGENCY_DEBOUNCE_MS) {
-      sDebounced = open;
-      sOpen = open;
+      sDebounced = pressed;
+      sPressed = pressed;
       sEdgeMs = 0;
     }
   } else {
     sEdgeMs = 0;
-    sOpen = sDebounced;
+    sPressed = sDebounced;
   }
 }
 
-int emergencyInputOpen() { return sOpen; }
+int emergencyInputPressed() { return sPressed; }
 int emergencyInputRaw() { return sRaw; }
 
 int emergencyInputRearmHeld(uint32_t nowMs) {
@@ -48,6 +48,7 @@ int emergencyInputRearmHeld(uint32_t nowMs) {
   (void)nowMs;
   return 0;
 #else
+  /* Maintenance-only. Never clears P4. */
   const int down = (digitalRead(SHOWDUINO_ESTOP_NODE_REARM_GPIO) ==
                     SHOWDUINO_ESTOP_NODE_REARM_ACTIVE);
   if (!down) {

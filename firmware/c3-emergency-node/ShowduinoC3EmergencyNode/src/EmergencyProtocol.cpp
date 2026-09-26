@@ -54,7 +54,7 @@ static void sendStatus(uint32_t seq) {
   char line[96];
   snprintf(line, sizeof(line), "STATUS:%s:IN=%s:L=%u:A=%u:%s",
            showduino_emergency_state_name(gEmergencyMachine.state),
-           gEmergencyMachine.input_open ? "OPEN" : "CLOSED",
+           showduino_emergency_button_name(gEmergencyMachine.input_open),
            (unsigned)gEmergencyMachine.latched,
            (unsigned)gEmergencyMachine.acked,
            emergencyIdentityId());
@@ -74,7 +74,7 @@ void emergencyProtocolAnnounce() {
 
 void emergencyProtocolTryLocalRearm() {
   if (showduino_emergency_machine_rearm(&gEmergencyMachine)) {
-    SD_LOGI("ESTOP", "LOCAL REARM — station NORMAL. P4 emergency unchanged.");
+    SD_LOGI("ESTOP", "MAINTENANCE LOCAL RESET — station NORMAL. P4 emergency unchanged.");
     emergencyProtocolAnnounce();
   }
 }
@@ -122,7 +122,11 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
   }
   if (cmd == SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED) {
     showduino_emergency_machine_global_observed(&gEmergencyMachine);
-    SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — local station needs re-arm");
+    if (showduino_emergency_button_pressed(&gEmergencyMachine)) {
+      SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button still PRESSED, re-asserting");
+    } else {
+      SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button RELEASED, local NORMAL");
+    }
     emergencyProtocolAnnounce();
     return;
   }
@@ -165,7 +169,7 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
 
 void emergencyProtocolService() {
   emergencyInputService();
-  showduino_emergency_machine_input(&gEmergencyMachine, emergencyInputOpen());
+  showduino_emergency_machine_input(&gEmergencyMachine, emergencyInputPressed());
 
   const int radio = emergencyEspNowHaveComms() && emergencyEspNowReady() ? 1 : 0;
   if ((uint8_t)radio != sLastRadio) {

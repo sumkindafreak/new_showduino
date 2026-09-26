@@ -60,7 +60,7 @@ No local FX, segment, Locate, or WebUI test may override it.
 
 **Classification:** firmware implemented / GPIO unconfirmed / do not flash yet.
 
-Distributed wireless E-stop stations (`ESTOP-01` …). ASSERT ONLY. Never clear. P4 GPIO25 remains the independent hardwired path. Offline in V1 is a safety fault, not automatic global emergency. Update one station at a time: ESTOP-01 → reboot → healthy+linked → ESTOP-02. See [`emergency-node.md`](emergency-node.md).
+Distributed wireless Emergency Button stations (`ESTOP-01` …). Momentary pushbutton, ASSERT ONLY, never clear. SSD1306 OLED status (same as Pixel Node). P4 GPIO25 remains the independent main Emergency path. Offline in V1 is a safety fault, not automatic global emergency. Update one station at a time: ESTOP-01 → reboot → healthy+linked → ESTOP-02. See [`emergency-node.md`](emergency-node.md).
 
 ### 5. MOSFET Node
 

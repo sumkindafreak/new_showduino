@@ -37,7 +37,7 @@ extern "C" {
 #define SHOWDUINO_EMERGENCY_BURST_COUNT     6u
 #define SHOWDUINO_EMERGENCY_DEBOUNCE_MS     20u
 #define SHOWDUINO_EMERGENCY_CAPS \
-  "NC_INPUT,LOCAL_LATCH,ASSERT_ONLY,ESPNOW,HEARTBEAT,SOFTAP,NO_CLEAR,ONE_AT_A_TIME"
+  "MOMENTARY_BUTTON,LOCAL_LATCH,ASSERT_ONLY,ESPNOW,HEARTBEAT,SOFTAP,NO_CLEAR,ONE_AT_A_TIME,OLED"
 #define SHOWDUINO_EMERGENCY_UPDATE_POLICY   "ONE_AT_A_TIME"
 
 #define SHOWDUINO_ESTOP_ASSERT_PREFIX       "ESTOP:ASSERT:"
@@ -70,9 +70,14 @@ typedef enum ShowduinoEmergencyNodeCmd {
 } ShowduinoEmergencyNodeCmd;
 
 typedef enum ShowduinoEmergencyInput {
-  SHOWDUINO_ESTOP_IN_CLOSED = 0, /* NC healthy */
-  SHOWDUINO_ESTOP_IN_OPEN        /* button pressed or local loop open */
+  SHOWDUINO_ESTOP_IN_RELEASED = 0, /* momentary button released (HIGH) */
+  SHOWDUINO_ESTOP_IN_PRESSED = 1   /* momentary button pressed (LOW) */
 } ShowduinoEmergencyInput;
+
+/* Wire field input_open remains 1=active for Protocol 1.0 binary compatibility.
+ * Operator surfaces must display PRESSED/RELEASED, not OPEN/CLOSED. */
+#define SHOWDUINO_ESTOP_IN_CLOSED SHOWDUINO_ESTOP_IN_RELEASED
+#define SHOWDUINO_ESTOP_IN_OPEN   SHOWDUINO_ESTOP_IN_PRESSED
 
 typedef struct ShowduinoEmergencyAnnounce {
   char mac[18];
@@ -80,7 +85,7 @@ typedef struct ShowduinoEmergencyAnnounce {
   char state[20];
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1];
   char name[SHOWDUINO_EMERGENCY_NAME_MAX + 1];
-  uint8_t input_open;
+  uint8_t input_open; /* 1 = button pressed (legacy field name) */
   uint8_t latched;
   uint8_t acked;
 } ShowduinoEmergencyAnnounce;
@@ -252,13 +257,21 @@ static inline int showduino_emergency_parse_assert(const char *line,
   return showduino_emergency_id_ok(id);
 }
 
+static inline int showduino_emergency_button_pressed(const ShowduinoEmergencyMachine *m) {
+  return m && m->input_open != 0;
+}
+
+static inline const char *showduino_emergency_button_name(int pressed) {
+  return pressed ? "PRESSED" : "RELEASED";
+}
+
 static inline void showduino_emergency_machine_init(ShowduinoEmergencyMachine *m,
-                                                    int input_open) {
+                                                    int button_pressed) {
   if (!m) return;
   memset(m, 0, sizeof(*m));
-  m->input_open = input_open ? 1 : 0;
+  m->input_open = button_pressed ? 1 : 0;
   m->state = SHOWDUINO_ESTOP_ST_BOOTING;
-  if (input_open) {
+  if (button_pressed) {
     m->latched = 1;
     m->pending_assert = 1;
     m->burst_left = (uint8_t)SHOWDUINO_EMERGENCY_BURST_COUNT;
@@ -280,10 +293,10 @@ static inline void showduino_emergency_machine_set_radio(ShowduinoEmergencyMachi
 }
 
 static inline void showduino_emergency_machine_input(ShowduinoEmergencyMachine *m,
-                                                     int input_open) {
+                                                     int button_pressed) {
   if (!m) return;
-  m->input_open = input_open ? 1 : 0;
-  if (input_open && !m->latched) {
+  m->input_open = button_pressed ? 1 : 0;
+  if (button_pressed && !m->latched) {
     m->latched = 1;
     m->acked = 0;
     m->global_clear_seen = 0;
@@ -292,7 +305,7 @@ static inline void showduino_emergency_machine_input(ShowduinoEmergencyMachine *
     m->next_tx_ms = 0;
     m->state = SHOWDUINO_ESTOP_ST_LATCHED;
   }
-  /* Closing the contact never clears the latch. */
+  /* Button release never clears the local latch or P4 emergency. */
 }
 
 static inline void showduino_emergency_machine_ack(ShowduinoEmergencyMachine *m) {
@@ -302,17 +315,32 @@ static inline void showduino_emergency_machine_ack(ShowduinoEmergencyMachine *m)
   if (m->latched) m->state = SHOWDUINO_ESTOP_ST_LATCHED;
 }
 
+/* Observe authoritative P4 clear. Never originates clear.
+ * Released button → local NORMAL automatically.
+ * Still pressed → remain latched and re-assert. */
 static inline void showduino_emergency_machine_global_observed(ShowduinoEmergencyMachine *m) {
   if (!m) return;
+  m->acked = 0;
+  if (m->input_open) {
+    m->global_clear_seen = 0;
+    m->latched = 1;
+    m->pending_assert = 1;
+    m->burst_left = (uint8_t)SHOWDUINO_EMERGENCY_BURST_COUNT;
+    m->next_tx_ms = 0;
+    m->state = SHOWDUINO_ESTOP_ST_LATCHED;
+    return;
+  }
   m->global_clear_seen = 1;
   m->pending_assert = 0;
   m->burst_left = 0;
-  if (m->latched) m->state = SHOWDUINO_ESTOP_ST_NEEDS_REARM;
+  m->latched = 0;
+  m->state = SHOWDUINO_ESTOP_ST_NORMAL;
+  m->global_clear_seen = 0;
 }
 
+/* Maintenance-only local reset. Never clears P4. Prefer auto path above. */
 static inline int showduino_emergency_machine_rearm(ShowduinoEmergencyMachine *m) {
   if (!m) return 0;
-  if (!m->global_clear_seen) return 0;
   if (m->input_open) {
     m->latched = 1;
     m->pending_assert = 1;
@@ -322,10 +350,13 @@ static inline int showduino_emergency_machine_rearm(ShowduinoEmergencyMachine *m
     m->state = SHOWDUINO_ESTOP_ST_LATCHED;
     return 0;
   }
+  if (!m->latched && m->state == SHOWDUINO_ESTOP_ST_NORMAL) return 1;
+  if (!m->global_clear_seen && m->latched) return 0;
   m->latched = 0;
   m->acked = 0;
   m->pending_assert = 0;
   m->burst_left = 0;
+  m->global_clear_seen = 0;
   m->state = SHOWDUINO_ESTOP_ST_NORMAL;
   return 1;
 }
@@ -408,7 +439,9 @@ static inline int showduino_emergency_parse_announce(const char *line,
       out->name[n] = '\0';
       p = colon ? colon + 1 : NULL;
     } else if (!strncmp(p, "IN=", 3)) {
-      out->input_open = (uint8_t)(!strncmp(p + 3, "OPEN", 4) ? 1 : 0);
+      /* PRESSED/OPEN = active; RELEASED/CLOSED = idle (compat). */
+      out->input_open = (uint8_t)((!strncmp(p + 3, "PRESSED", 7) ||
+                                   !strncmp(p + 3, "OPEN", 4)) ? 1 : 0);
       colon = strchr(p, ':');
       p = colon ? colon + 1 : NULL;
     } else if (!strncmp(p, "L=", 2)) {
@@ -436,7 +469,7 @@ static inline int showduino_emergency_format_announce(const ShowduinoEmergencyAn
            in->state[0] ? in->state : "UNKNOWN",
            in->id[0] ? in->id : SHOWDUINO_EMERGENCY_ID_DEFAULT,
            in->name[0] ? in->name : "-",
-           in->input_open ? "OPEN" : "CLOSED",
+           showduino_emergency_button_name(in->input_open),
            (unsigned)in->latched,
            (unsigned)in->acked);
   return 1;

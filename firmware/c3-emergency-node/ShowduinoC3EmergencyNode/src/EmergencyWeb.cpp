@@ -6,6 +6,7 @@
 #include "EmergencyIdentity.h"
 #include "EmergencyProtocol.h"
 #include "EmergencyInput.h"
+#include "EmergencyDisplay.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
@@ -26,21 +27,23 @@ body{margin:0;background:#111;color:#ddd;font:15px/1.35 sans-serif}
 header{padding:12px 16px;background:#1a1a1a;border-bottom:2px solid #c33}
 h1{margin:0;font-size:18px}
 .card{background:#1c1c1c;border:1px solid #2a2a2a;border-radius:8px;padding:12px;margin:12px}
-.kv{display:grid;grid-template-columns:140px 1fr;gap:4px 10px;font-size:13px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:4px 10px;font-size:13px}
 label{display:block;margin:8px 0 4px;color:#aaa}
 input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;box-sizing:border-box}
 button{background:#2a2a2a;color:#fff;border:1px solid #444;padding:10px 14px;border-radius:4px;margin:8px 8px 0 0}
 .warn{color:#fc6}.err{color:#f66}.ok{color:#6c6}
 </style></head><body>
-<header><h1 id="title">Emergency Node</h1></header>
+<header><h1 id="title">Wireless Emergency Button</h1></header>
 <div class="card"><div class="kv" id="kv"></div>
 <label>Logical ID</label><input id="nid" maxlength="12">
 <label>Friendly location</label><input id="nname" maxlength="20">
 <button id="save">SAVE IDENTITY</button>
-<button id="rearm">LOCAL RE-ARM</button>
-<p class="warn">This page cannot clear the P4 global emergency. Local re-arm only resets this station after Showduino has already cleared.</p>
+<button id="rearm">MAINTENANCE LOCAL RESET</button>
+<p class="warn">ASSERT ONLY — this page cannot clear the P4 global emergency.</p>
+<p class="warn">Momentary pushbutton: press asserts and latches. Release never clears. After an authoritative P4 clear with the button released, this station returns to READY automatically.</p>
+<p class="warn">Maintenance local reset never clears P4. Normal operators do not need it.</p>
 <p class="warn">Update one station at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.</p>
-<p>Emergency operation does not require this page, Wi-Fi, or a browser.</p>
+<p>Emergency operation does not require this page, Wi-Fi, OLED, or a browser.</p>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -49,10 +52,12 @@ async function load(){
   $('title').textContent=(S.id||'ESTOP')+' — '+(S.name||'Emergency');
   $('nid').value=S.id||''; $('nname').value=S.name||'';
   const rows=[
-    ['Input',S.input||'—',S.input==='OPEN'?'err':'ok'],
-    ['Local latch',S.latched?'LATCHED':'CLEAR',S.latched?'err':'ok'],
-    ['Acked',S.acked?'YES':'NO',''],
+    ['Emergency pushbutton',S.input||'—',S.input==='PRESSED'?'err':'ok'],
+    ['Local latch',S.latched?'YES':'NO',S.latched?'err':'ok'],
+    ['Emergency',S.latched?'ASSERTED':'READY',S.latched?'err':'ok'],
+    ['Global observed',S.state||'—',''],
     ['Radio',S.radio?'LINKED':'SEARCHING',S.radio?'ok':'warn'],
+    ['OLED',S.oled||'—',S.oled==='READY'?'ok':'warn'],
     ['Channel',String(S.channel||'—'),''],
     ['RSSI',String(S.rssi||'—'),''],
     ['Firmware',S.firmware||'—',''],
@@ -79,7 +84,7 @@ static void sendStatus() {
   json += "\",\n  \"name\": \"";
   json += emergencyIdentityName();
   json += "\",\n  \"input\": \"";
-  json += gEmergencyMachine.input_open ? "OPEN" : "CLOSED";
+  json += showduino_emergency_button_name(gEmergencyMachine.input_open);
   json += "\",\n  \"latched\": ";
   json += gEmergencyMachine.latched ? "true" : "false";
   json += ",\n  \"acked\": ";
@@ -88,7 +93,9 @@ static void sendStatus() {
   json += showduino_emergency_state_name(gEmergencyMachine.state);
   json += "\",\n  \"radio\": ";
   json += emergencyEspNowHaveComms() ? "true" : "false";
-  json += ",\n  \"channel\": ";
+  json += ",\n  \"oled\": \"";
+  json += emergencyDisplayReady() ? "READY" : "FAIL";
+  json += "\",\n  \"channel\": ";
   json += String((unsigned)emergencyEspNowChannel());
   json += ",\n  \"rssi\": ";
   json += String((int)emergencyEspNowRssi());

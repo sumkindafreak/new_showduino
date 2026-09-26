@@ -203,7 +203,7 @@ Two addressable ambient LEDs provide state/attention indications. They are prese
 
 The main Showduino Emergency input is a **momentary pushbutton**, wired to the P4's local Emergency input. The software latch remains active when the button is released.
 
-This must not be confused with separate wireless Emergency Node accessories, which use their own local normally-closed input/latch design.
+This must not be confused with separate wireless Emergency Node accessories, which use their own momentary pushbutton, local latch and assert-only design.
 
 ## 4.4 P4 local show-pixel line
 
@@ -921,7 +921,7 @@ Absolute rules:
 - update/commission Emergency Nodes one at a time;
 - an offline Emergency Node is reported as a safety-node fault/warning rather than automatically asserting global Emergency.
 
-The wireless Emergency Node's local NC/mushroom behaviour is separate from the main Showduino momentary button.
+The wireless Emergency Node's momentary pushbutton behaviour is separate from the main Showduino Emergency button.
 
 ## 19.5 MOSFET Node
 

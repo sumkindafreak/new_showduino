@@ -44,28 +44,47 @@ int main() {
   }
   expect(!showduino_emergency_id_ok("LAMP-01"), "LAMP-01 is not an Emergency ID");
   expect(!showduino_emergency_id_ok("e8:06:90:9b:7b:a8"), "MAC is not operator identity");
+  expect(strstr(SHOWDUINO_EMERGENCY_CAPS, "MOMENTARY_BUTTON") != NULL,
+         "caps declare momentary button");
+  expect(strstr(SHOWDUINO_EMERGENCY_CAPS, "NC_INPUT") == NULL,
+         "caps no longer declare NC_INPUT");
 
+  /* TEST 1 — NORMAL BOOT */
   {
     ShowduinoEmergencyMachine m;
     showduino_emergency_machine_init(&m, 0);
-    expect(!m.latched && m.state == SHOWDUINO_ESTOP_ST_NORMAL, "BOOT + NC CLOSED -> NORMAL");
+    expect(!m.latched && m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "BOOT + button RELEASED -> NORMAL");
+    expect(!m.pending_assert, "boot released: no assert");
   }
+  /* TEST 2 — BUTTON HELD DURING BOOT */
   {
     ShowduinoEmergencyMachine m;
     showduino_emergency_machine_init(&m, 1);
     expect(m.latched && m.state == SHOWDUINO_ESTOP_ST_LATCHED,
-           "BOOT + NC OPEN -> LOCAL EMERGENCY LATCH");
-    expect(m.pending_assert, "boot-open pending assert");
+           "BOOT + button PRESSED -> LOCAL EMERGENCY LATCH");
+    expect(m.pending_assert, "boot-pressed pending assert");
   }
+  /* TEST 3 — PRESS */
   {
     ShowduinoEmergencyMachine m;
     showduino_emergency_machine_init(&m, 0);
     showduino_emergency_machine_input(&m, 1);
-    expect(m.latched, "NORMAL + NC OPENS -> latch");
+    expect(m.latched && m.pending_assert, "RELEASED then PRESSED -> latch+assert");
+  }
+  /* TEST 4 — RELEASE DOES NOT CLEAR */
+  {
+    ShowduinoEmergencyMachine m;
+    showduino_emergency_machine_init(&m, 0);
+    showduino_emergency_machine_input(&m, 1);
     showduino_emergency_machine_input(&m, 0);
-    expect(m.latched, "button returns closed -> latch remains");
+    expect(m.latched, "button RELEASED -> latch remains");
+    expect(m.state == SHOWDUINO_ESTOP_ST_LATCHED, "still LATCHED after release");
+    expect(!showduino_emergency_is_clear_token("ESTOP:ASSERT:ESTOP-01:X"),
+           "assert is not a clear token");
   }
 
+  /* TEST 8 — RADIO LOSS */
   {
     ShowduinoEmergencyMachine m;
     showduino_emergency_machine_init(&m, 1);
@@ -95,25 +114,73 @@ int main() {
     showduino_emergency_machine_init(&m, 1);
     showduino_emergency_machine_ack(&m);
     expect(m.acked && m.latched, "P4 ACK acknowledges without clearing");
-    expect(showduino_emergency_machine_rearm(&m) == 0, "ACK is not a re-arm / clear");
+    expect(showduino_emergency_machine_rearm(&m) == 0,
+           "ACK alone is not a maintenance reset while latched without clear");
     expect(m.latched, "latched after ACK");
   }
 
+  /* TEST 5 — GLOBAL CLEAR + RELEASED BUTTON */
   {
     ShowduinoEmergencyMachine m;
     showduino_emergency_machine_init(&m, 1);
     showduino_emergency_machine_input(&m, 0);
     showduino_emergency_machine_global_observed(&m);
-    expect(m.state == SHOWDUINO_ESTOP_ST_NEEDS_REARM, "global clear observed -> needs rearm");
+    expect(!m.latched && m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "global clear + RELEASED -> auto NORMAL");
     expect(!showduino_emergency_machine_want_tx(&m, 5000),
-           "after global clear, node stops asserting");
-    expect(showduino_emergency_machine_rearm(&m) == 1, "local rearm after global clear");
-    expect(!m.latched && m.state == SHOWDUINO_ESTOP_ST_NORMAL, "rearm returns NORMAL");
+           "after global clear released, node stops asserting");
   }
 
+  /* TEST 6 — GLOBAL CLEAR WHILE BUTTON HELD */
+  {
+    ShowduinoEmergencyMachine m;
+    showduino_emergency_machine_init(&m, 1);
+    showduino_emergency_machine_set_radio(&m, 1);
+    showduino_emergency_machine_global_observed(&m);
+    expect(m.latched && m.state == SHOWDUINO_ESTOP_ST_LATCHED,
+           "global clear while PRESSED -> remain latched");
+    expect(m.pending_assert, "re-assert while button held");
+    expect(showduino_emergency_machine_want_tx(&m, 0),
+           "button held after clear still wants TX");
+  }
+
+  /* TEST 7 — SECOND PRESS after clear */
+  {
+    ShowduinoEmergencyMachine m;
+    showduino_emergency_machine_init(&m, 0);
+    showduino_emergency_machine_input(&m, 1);
+    showduino_emergency_machine_input(&m, 0);
+    showduino_emergency_machine_global_observed(&m);
+    expect(m.state == SHOWDUINO_ESTOP_ST_NORMAL, "ready after clear");
+    showduino_emergency_machine_input(&m, 1);
+    expect(m.latched && m.pending_assert, "second press asserts again");
+  }
+
+  /* Repeatability */
+  {
+    ShowduinoEmergencyMachine m;
+    int i;
+    showduino_emergency_machine_init(&m, 0);
+    for (i = 0; i < 3; i++) {
+      showduino_emergency_machine_input(&m, 1);
+      expect(m.latched, "repeat press latches");
+      showduino_emergency_machine_input(&m, 0);
+      expect(m.latched, "repeat release keeps latch");
+      showduino_emergency_machine_global_observed(&m);
+      expect(m.state == SHOWDUINO_ESTOP_ST_NORMAL, "repeat clear -> READY");
+    }
+  }
+
+  /* TEST 9 — NO CLEAR TOKENS */
   expect(showduino_emergency_parse_command("ESTOP:CLEAR") ==
              SHOWDUINO_ESTOP_CMD_REJECT_CLEAR,
          "ESTOP:CLEAR rejected");
+  expect(showduino_emergency_parse_command("EMERGENCY:CLEAR_REQUEST") ==
+             SHOWDUINO_ESTOP_CMD_REJECT_CLEAR,
+         "CLEAR_REQUEST rejected");
+  expect(showduino_emergency_parse_command("EMERGENCY:CLEAR_CONFIRM") ==
+             SHOWDUINO_ESTOP_CMD_REJECT_CLEAR,
+         "CLEAR_CONFIRM rejected");
   expect(showduino_emergency_parse_command("EMERGENCY:CLEAR") ==
              SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED,
          "P4 fan-out CLEAR is observed, not a node clear command");
@@ -152,14 +219,20 @@ int main() {
     ShowduinoEmergencyAnnounce an;
     char line[96];
     expect(showduino_emergency_parse_announce(
-               "ANNOUNCE:AA:BB:CC:DD:EE:FF:0.1.0:LATCHED:ID=ESTOP-03:N=MAZE EXIT:IN=OPEN:L=1:A=0",
+               "ANNOUNCE:AA:BB:CC:DD:EE:FF:0.2.0:LATCHED:ID=ESTOP-03:N=MAZE EXIT:IN=PRESSED:L=1:A=0",
                &an) == 1,
-           "parse announce");
+           "parse announce PRESSED");
     expect_str(an.id, "ESTOP-03", "announce id");
     expect_str(an.name, "MAZE EXIT", "announce name");
-    expect(an.latched && an.input_open, "announce latch/input");
+    expect(an.latched && an.input_open, "announce latch/pressed");
+    expect(showduino_emergency_parse_announce(
+               "ANNOUNCE:AA:BB:CC:DD:EE:FF:0.2.0:LATCHED:ID=ESTOP-03:N=X:IN=OPEN:L=1:A=0",
+               &an) == 1,
+           "legacy IN=OPEN still parses as pressed");
+    expect(an.input_open, "OPEN compat = pressed");
     showduino_emergency_format_announce(&an, line, sizeof(line));
     expect(strstr(line, "ID=ESTOP-03") != NULL, "format announce keeps ID");
+    expect(strstr(line, "IN=PRESSED") != NULL, "format announce uses PRESSED");
   }
 
   {
@@ -198,6 +271,17 @@ int main() {
            "safety fault wire");
     expect(showduino_parse_state_safety_estop_fault("STATE:SAFETY:ESTOP:OK") == 0,
            "safety ok wire");
+  }
+
+  /* TEST 10 — OLED failure independence (conceptual host proof) */
+  expect(!showduino_emergency_is_clear_token("OLED:FAIL"),
+         "OLED failure is not a clear token");
+  {
+    ShowduinoEmergencyMachine m;
+    showduino_emergency_machine_init(&m, 0);
+    showduino_emergency_machine_input(&m, 1);
+    expect(m.latched && m.pending_assert,
+           "latch/assert path does not require OLED");
   }
 
   std::printf("\n");
