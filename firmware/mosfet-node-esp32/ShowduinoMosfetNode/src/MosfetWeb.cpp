@@ -94,6 +94,7 @@ async function load(){
   kv($('identkv'),[
     ['GPIO',String(S.identifierGpio||25)],
     ['Count',String(S.identifierCount||4)],
+    ['Mode','dual-duty: green=OUT; purple/cyan/turquoise/violet=status'],
     ['Ready',S.identifierReady?'yes':'no'],
     ['Verified',S.identifierVerified?'VERIFIED':'SOFTWARE DEFINED / HARDWARE UNVERIFIED']
   ]);

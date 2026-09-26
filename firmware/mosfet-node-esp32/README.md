@@ -1,4 +1,4 @@
-# Showduino MOSFET Node 0.1.1
+# Showduino MOSFET Node 0.1.2
 
 ```text
 Status: SOFTWARE IMPLEMENTED
@@ -15,7 +15,7 @@ Supersedes: Relay Node product concept (Relay remains legacy/reference only)
 |------|--------|
 | PCB | ESP32_MOS_X4 / 303E32NMOS4 |
 | MCU | ESP32-WROOM family (Arduino ESP32 Dev Module) |
-| Firmware | `0.1.1` |
+| Firmware | `0.1.2` |
 | Outputs | OUT1–OUT4 |
 | SoftAP | `Showduino-MOSFET-01` @ `192.168.5.1` / password `showduino` |
 
@@ -37,14 +37,14 @@ PCB silk marks **5–60 V DC** input. Do not invent channel/board amperage, ther
 
 ## Identifier NeoPixels (local only)
 
-Four WS2812 / NeoPixel LEDs on **GPIO25** visually mirror the four MOSFET outputs.
+Four WS2812 / NeoPixel LEDs on **GPIO25** do double duty: primarily channel indicators, secondarily a dim four-position status display when that channel is OFF.
 
-| Pixel | Maps to |
-|-------|---------|
-| 0 | OUT1 |
-| 1 | OUT2 |
-| 2 | OUT3 |
-| 3 | OUT4 |
+| Pixel | Primary (OUT active) | Idle status role (OUT off) |
+|-------|----------------------|----------------------------|
+| 0 | OUT1 green @ duty | Wi-Fi SoftAP — purple |
+| 1 | OUT2 green @ duty | ESP-NOW — cyan (amber chase while searching) |
+| 2 | OUT3 green @ duty | P4 ownership — turquoise |
+| 3 | OUT4 green @ duty | Node health — violet |
 
 **NOT** a Showduino theatrical Pixel Line. Not a Pixel Node. Not Studio/SHDO Pixel authoring. Not a separate ESP-NOW peer or logical identity.
 
@@ -55,19 +55,47 @@ GPIO25 → 330 Ω series → DIN Pixel 0 → Pixel 1 → Pixel 2 → Pixel 3
 Common ground required. Suitable 5 V pixel supply (do not assume unlimited onboard 5 V).
 ```
 
-Behaviour:
+### Colour language
 
-- OUT level 0% → indicator OFF  
-- OUT level > 0% → green, brightness scaled from actual engine level (cap 64)  
-- FADE / PULSE follow real output duty in real time  
-- ALL OFF / Emergency / authority loss → all four OFF  
-- `MOSFET:IDENTIFY` → ~5 s white chase on the four pixels; **MOSFET outputs unchanged**
+| Colour | Meaning |
+|--------|---------|
+| GREEN | Physical MOSFET output energised (brightness tracks 0–100% duty, cap 64) |
+| PURPLE | Wi-Fi SoftAP up |
+| MAGENTA | WebUI client activity / fault half |
+| CYAN | ESP-NOW linked |
+| TURQUOISE | P4 ownership granted |
+| AMBER | Searching / degraded |
+| VIOLET | Local healthy / boot |
+| WHITE | IDENTIFY chase |
+| BLACK / OFF | Safe / Emergency / fail-safe |
+
+**Absolute rules:** green is never used for Wi-Fi, health, ESP-NOW, or ownership. Red is not part of the normal status vocabulary (Emergency = all LEDs OFF, matching MOSFET outputs OFF).
+
+Idle status brightness is **8–12 / 255** (default 10) so a healthy box is not a Christmas tree. Channel state always wins over that pixel’s diagnostic role.
+
+### Priority (highest first)
+
+1. Emergency / fail-safe → ALL OFF  
+2. Fault → alternating magenta ↔ amber  
+3. IDENTIFY → white chase ~5 s (outputs unchanged)  
+4. Active MOSFET output → green @ actual duty  
+5. Node status / Wi-Fi / link → odd-colour indication on OFF pixels  
+
+### Transient animations
+
+| Event | Behaviour |
+|-------|-----------|
+| BOOT | Violet 1 → 2 → 3 → 4 once |
+| ESP-NOW searching | Slow amber chase on OFF pixels |
+| P4 grant received | Quick turquoise sweep 1 → 2 → 3 → 4, then normal |
+| WebUI client connected | Magenta → OFF → Magenta on free pixels, then normal |
+| IDENTIFY | White chase continuously for ~5 s |
 
 Adafruit_NeoPixel (`NEO_GRB` + `NEO_KHZ800`). Fail-soft: if allocation/begin fails, MOSFET outputs still operate normally.
 
 ## Fail-safe
 
-ALL OFF on: boot, reset, power restore, no P4 ownership, ownership loss, comms loss, fault, emergency, show stop/complete, production unload. Recovery never restores stale ON/PWM/pulse/fade — fresh authorised command only. Identifier pixels follow the same ALL OFF rule.
+ALL OFF on: boot, reset, power restore, no P4 ownership, ownership loss, comms loss, fault, emergency, show stop/complete, production unload. Recovery never restores stale ON/PWM/pulse/fade — fresh authorised command only. Identifier pixels follow the same ALL OFF rule under Emergency / authority fail-safe.
 
 ## Commands (node-local)
 

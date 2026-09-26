@@ -152,6 +152,45 @@ int main() {
   expect(fadeGreen[0] >= 28 && fadeGreen[0] <= 36, "ident follows fade midpoint");
   expect(fadeGreen[0] != 64, "ident not jumped to final during fade");
 
+  /* Dual-duty compose: green reserved for active outs; status uses odd colours. */
+  {
+    ShowduinoMosfetIdentStatus st = {};
+    st.softApUp = 1;
+    st.espNowLinked = 1;
+    st.searching = 0;
+    st.owned = 1;
+    st.healthy = 1;
+    st.fault = 0;
+    st.statusBright = 10;
+    uint8_t idle[4] = {0, 0, 0, 0};
+    ShowduinoMosfetRgb rgb[4];
+    showduino_mosfet_identifier_compose(idle, 64, &st, rgb);
+    expect(rgb[0].r == 10 && rgb[0].g == 0 && rgb[0].b == 10, "P0 purple SoftAP");
+    expect(rgb[1].r == 0 && rgb[1].g == 10 && rgb[1].b == 10, "P1 cyan ESP-NOW");
+    expect(rgb[2].r == 0 && rgb[2].g == 10 && rgb[2].b == 15, "P2 turquoise owned");
+    expect(rgb[3].r > 0 && rgb[3].g == 0 && rgb[3].b > 0, "P3 violet healthy");
+    expect(!showduino_mosfet_rgb_is_output_green(rgb[0]), "status not green P0");
+    expect(!showduino_mosfet_rgb_is_output_green(rgb[1]), "status not green P1");
+    expect(!showduino_mosfet_rgb_is_output_green(rgb[2]), "status not green P2");
+    expect(!showduino_mosfet_rgb_is_output_green(rgb[3]), "status not green P3");
+
+    uint8_t mixed[4] = {0, 60, 0, 0};
+    showduino_mosfet_identifier_compose(mixed, 64, &st, rgb);
+    expect(showduino_mosfet_rgb_is_output_green(rgb[1]), "OUT2 green wins");
+    expect(rgb[1].g == 38, "OUT2 green @ 60% of 64"); /* 60*64/100 = 38 */
+    expect(rgb[0].r == 10 && rgb[0].b == 10 && rgb[0].g == 0, "P0 still purple");
+    expect(rgb[2].g == 10 && rgb[2].b == 15, "P2 still turquoise");
+    expect(rgb[3].g == 0 && rgb[3].b > 0, "P3 still violet");
+
+    ShowduinoMosfetRgb greenOnly = showduino_mosfet_rgb_green(100, 64);
+    expect(greenOnly.r == 0 && greenOnly.g == 64 && greenOnly.b == 0,
+           "green helper is pure green");
+    expect(showduino_mosfet_rgb_purple(10).g == 0, "purple never green");
+    expect(showduino_mosfet_rgb_cyan(10).r == 0, "cyan no red");
+    expect(showduino_mosfet_rgb_amber(10).b == 0, "amber no blue");
+    expect(showduino_mosfet_rgb_magenta(10).g == 0, "magenta never green");
+  }
+
   if (gFails) { std::printf("%d FAILURES\n", gFails); return 1; }
   std::printf("ALL TESTS PASSED\n");
   return 0;

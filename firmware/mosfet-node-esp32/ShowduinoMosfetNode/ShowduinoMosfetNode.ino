@@ -1,8 +1,9 @@
 /*
-  Showduino MOSFET Node 0.1.1 — ESP32_MOS_X4 / 303E32NMOS4
+  Showduino MOSFET Node 0.1.2 — ESP32_MOS_X4 / 303E32NMOS4
 
   Four low-voltage powered outputs with PWM / pulse / fade.
   Local 4× NeoPixel identifiers on GPIO25 (NOT a theatrical Pixel Line).
+  Green = energised MOSFET only; OFF channels carry dim status colours.
   Fail-safe: ALL OFF on boot, authority loss, emergency, show stop.
   GPIO map is SOFTWARE DEFINED — physical verification required.
 */

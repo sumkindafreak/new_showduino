@@ -15,5 +15,7 @@ void mosfetNodeStateSetFault(const char *reason);
 bool mosfetNodeStateOwned();
 bool mosfetNodeStateEmergency();
 bool mosfetNodeStateEnteredShow(); /* true once on first grant transition */
+bool mosfetNodeStateConsumeEnteredShow(); /* read+clear grant edge */
+bool mosfetNodeStateFault();
 
 #endif

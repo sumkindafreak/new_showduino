@@ -117,26 +117,28 @@ Software pin map is defined; physical validation is required before production u
 8. [ ] Emergency STOP → immediate OFF. Clear → remains OFF. Fresh command works.
 9. [ ] Only after pass may `SHOWDUINO_MOSFET_GPIO_VERIFIED` become 1.
 
-### Identifier NeoPixels (GPIO25) — local indicators only
+### Identifier NeoPixels (GPIO25) — local indicators + dim status
 
-Not a theatrical Pixel Line. Four WS2812 on one data pin.
+Not a theatrical Pixel Line. Four WS2812 on one data pin. Green = energised MOSFET only.
 
 1. [ ] MOSFET outputs disconnected from real attraction loads.
 2. [ ] Connect four NeoPixels in series.
 3. [ ] GPIO25 → 330 Ω → DIN Pixel 0 → Pixel 1 → Pixel 2 → Pixel 3.
 4. [ ] Common ground. Safe 5 V pixel supply (do not overload onboard 5 V).
-5. [ ] Boot — all four indicators OFF.
-6. [ ] OUT1 100% → Pixel 0 green only.
-7. [ ] OUT2 100% → Pixel 1 green only.
-8. [ ] OUT3 100% → Pixel 2 green only.
-9. [ ] OUT4 100% → Pixel 3 green only.
-10. [ ] Test 25/50/75% brightness tracking.
+5. [ ] Boot — violet chase 1→2→3→4 once, then dim status (not bright Christmas tree).
+6. [ ] Idle healthy owned: P0 purple, P1 cyan, P2 turquoise, P3 violet @ ~8–12 brightness. No green.
+7. [ ] OUT1 100% → Pixel 0 green; other OFF pixels keep status colours.
+8. [ ] OUT2 100% → Pixel 1 green only (wins over cyan/amber role).
+9. [ ] OUT3 / OUT4 same for pixels 2 / 3.
+10. [ ] Test 25/50/75% green brightness tracking.
 11. [ ] PULSE / FADE follow real output.
-12. [ ] ALL OFF → all LEDs off.
-13. [ ] IDENTIFY → 4-pixel white chase; MOSFET outputs unchanged.
-14. [ ] Emergency during active output → outputs OFF and all identifiers OFF.
-15. [ ] Authority loss → outputs and identifiers OFF; reconnect does not restore stale state.
-16. [ ] Only then mark `SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED` = 1.
+12. [ ] ALL OFF → greens off; status colours may remain on OFF channels.
+13. [ ] ESP-NOW searching (no ownership) → slow amber bounce; reconnect grant → turquoise sweep once.
+14. [ ] WebUI client join → brief magenta double-pulse on free pixels.
+15. [ ] IDENTIFY → 4-pixel white chase; MOSFET outputs unchanged.
+16. [ ] Fault → magenta ↔ amber; Emergency → outputs OFF and **all** identifiers OFF.
+17. [ ] Authority loss → outputs OFF and identifiers OFF; reconnect does not restore stale state.
+18. [ ] Only then mark `SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED` = 1.
 
 ## Studio / persist
 

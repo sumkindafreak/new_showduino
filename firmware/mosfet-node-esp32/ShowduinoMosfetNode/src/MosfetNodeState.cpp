@@ -39,6 +39,7 @@ void mosfetNodeStateOnGrant(uint32_t nowMs) {
   if (before != SHOWDUINO_OWNER_SHOW_CONTROLLED &&
       sOwner.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED) {
     mosfetOutputEngineAllOff("FIRST_GRANT");
+    sEnteredShowEdge = true;
   } else {
     showduino_owner_apply(&sOwner, SHOWDUINO_OWNER_EV_KEEP, nowMs,
                           SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
@@ -74,3 +75,11 @@ bool mosfetNodeStateEmergency() {
   return sState == SHOWDUINO_MOSFET_ST_EMERGENCY;
 }
 bool mosfetNodeStateEnteredShow() { return sEnteredShowEdge; }
+bool mosfetNodeStateConsumeEnteredShow() {
+  if (!sEnteredShowEdge) return false;
+  sEnteredShowEdge = false;
+  return true;
+}
+bool mosfetNodeStateFault() {
+  return sState == SHOWDUINO_MOSFET_ST_FAULT;
+}
