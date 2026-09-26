@@ -91,7 +91,7 @@ The Director's configured automatic display-off behaviour turns off its **backli
 | --- | --- | --- |
 | **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
-| **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **MP3** files on its local **Fermion DFPlayer Pro** module. This is *not* the general-purpose attraction Audio Node. |
+| **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
 ### Playing a sound with the Director
 
@@ -125,9 +125,9 @@ For example, a supported 16-bit PCM file stored at \`/showduino/audio/effects/th
 
 **No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
 
-### And what about MP3 on the Lamp?
+### And what about local Lamp sounds?
 
-The Lamp Node is a specialised prop. Its local MP3 library uses **\`flick.mp3\`**, **\`fire_ignite.mp3\`**, **\`flameloop.mp3\`** and **\`emergency.mp3\`** on the Fermion module. Those names are tied to the lamp's actions; loading a random MP3 onto the Show Engine will **not** make it appear in the Audio Node library.
+The Lamp Node is a specialised prop. Its local Audio FX library uses **`flick.wav`**, **`fire_ign.wav`**, **`flameloo.wav`** and **`emergency.wav`** on the Adafruit Audio FX board. Those roles are tied to the lamp's actions; loading a random soundtrack onto the Show Engine or Audio Node will **not** make it appear as Lamp local audio.
 
 See the [Audio Node guide](../../docs/audio-node.md) and [Lamp Node guide](../../docs/s3-lamp-node.md) for format limits and technical setup.
 
@@ -143,16 +143,20 @@ Examples include fire flicker inside a lantern, lightning in a haunted corridor,
 
 ### Which lighting device do I use?
 
-- **Main Show Pixel Line:** pixels connected to the Show Engine's **GPIO23** output. The current local engine supports up to **1,024 configured pixels** and 16 segment slots.
-- **Pixel Node:** a small separate ESP32-C3 controller for a remote pixel strip. Its current configured limit is **1–512 pixels** per node.
+- **Main Show Pixel Line:** pixels connected to the Show Engine's **GPIO23** output. The current local engine supports segmented looks with 16 segment slots.
+- **Pixel Node:** a small separate ESP32-C3 controller for a remote pixel strip. Software supports a configured maximum of **512** pixels per node, subject to physical timing/current validation.
+- **Audio Node Pixel Line:** the same physical Audio Node can also drive a Showduino Pixel Line on **GPIO22**. It is still the Audio Node — not a fake LED peer. Programme audio remains its primary role.
+- **Emergency Node Pixel Line:** a wireless **ESTOP-xx** station can also host a Showduino Pixel Line on **GPIO2** on the same peer. Studio/SHDO can address that capability; do not invent a separate LED identity for it.
 - **Emergency/signage pixels:** the Show Engine's separate **GPIO24** output. These are reserved for Showduino's defined emergency/signage behaviour, **not** for ordinary production lighting.
 - **Lamp Node Jewel:** a seven-pixel light inside the simulated carbide lamp; its behaviour is controlled by the lamp.
+
+Studio presents Pixel-capable outputs through the same Pixel editor model. Prefer selecting the intended Pixel output there rather than trying to hand-edit protocol prefixes on the Director.
 
 ### What does the Director do with lighting?
 
 Use **NODES** to see whether a remote Pixel Node has joined and to open available node information. **DIAGNOSTICS -> PIXELS** displays available pixel health/status. A Pixel Node needs a valid configured length and its line initialised before it can light correctly.
 
-The Director is **not intended to be a full timeline/lighting editor**. A show designer prepares lighting looks and cue timings through the Showduino browser commissioning/Studio tools, then the operator **loads and runs the prepared show** on the Director. The browser **Outputs** page is the more detailed local pixel-commissioning surface. The Studio authoring workflow is evolving and not every visual action is guaranteed to compile and run on the current RC hardware.
+The Director is **not intended to be a full timeline/lighting editor**. A show designer prepares lighting looks and cue timings through the Showduino browser System Console / Studio tools, then the operator **loads and runs the prepared show** on the Director. The browser **Outputs** page is the more detailed local pixel-commissioning surface. Studio Pixel authoring now covers the shared FX set for the P4 line, standalone Pixel Nodes and Audio Node pixels; Emergency Node pixel authoring follows the firmware/SHDO route and may still be catching up in some Studio snapshots.
 
 **If lights unexpectedly go bright white:** check **EMERGENCY** before calling it a lighting fault. The Showduino emergency override is designed to make the entire configured show-pixel line and remote pixel lines white. Effects do not automatically restart when Emergency is cleared.
 
@@ -164,7 +168,7 @@ The Director is **not intended to be a full timeline/lighting editor**. A show d
 
 ![Illustration of the interactive Lamp Node](illustrations/lamp.svg)
 
-**Interactive Lamp Node:** the simulated carbide lamp has a physical striker button, animated flame LEDs, microphone-based blow detection and its own local MP3 sound effects. In standalone mode it can ignite and be blown out without the main Showduino show; when Showduino owns it, new show commands are authoritative. The Director **NODES -> LAMP NODE** panel exposes its state and available actions, including **IGNITE**, **EXTINGUISH**, **FLARE** and **REFRESH** as permitted by the current state.
+**Interactive Lamp Node:** the simulated carbide lamp has a physical striker button, animated flame LEDs, microphone-based blow detection and its own local Adafruit Audio FX WAV effects. In standalone mode it can ignite and be blown out without the main Showduino show; when Showduino owns it, new show commands are authoritative. The Director **NODES -> LAMP NODE** page exposes its state and available actions, including **IGNITE**, **EXTINGUISH**, jewel/flame commissioning checks and **REFRESH** as permitted by the current state.
 
 **Sensors and switches:** an installer can connect supported inputs so the Show Engine receives trigger signals. What a specific door switch or motion detector *does* depends on the prepared show and the supported cue/runtime path; seeing a sensor in the system does not mean every possible reaction is already configured.
 
@@ -200,7 +204,7 @@ Only after the real-world incident has been resolved and the area is safe:
 
 **To find a sleeping or misplaced Director:** hold the same main button for eight seconds. Emergency asserts on the initial press; Locate then forces the Director screen on and flashes its ambient lights. The **first touch acknowledges Locate only**. It does **not** clear Emergency.
 
-**Wireless Emergency Nodes** are separate accessories with their own input/latch design. They can **assert** but cannot **clear** the central Emergency. Do not assume their buttons use the main-unit's eight-second Locate gesture. The full emergency and clear procedure still needs physical sign-off on the actual installed hardware.
+**Wireless Emergency Nodes** are separate accessories with their own momentary pushbutton, OLED status and assert-only latch design. The same physical station may also provide a Showduino Pixel Line. They can **assert** but cannot **clear** the central Emergency. Do not assume their buttons use the main-unit's eight-second Locate gesture. The full emergency and clear procedure still needs physical sign-off on the actual installed hardware.
 
 ---
 

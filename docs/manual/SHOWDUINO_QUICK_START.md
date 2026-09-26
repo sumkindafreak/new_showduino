@@ -1,7 +1,7 @@
 # SHOWDUINO — Quick Start
 
 **For:** operators, attraction owners and first-time users  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `9f304cdc65786c0e8d306987010a97eb5a3ad587` · 16 September 2026  
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e` · 26 September 2026  
 **Status:** Release-candidate quick start. Read the full User Manual before putting a new installation into public operation.
 
 ---
@@ -84,7 +84,7 @@ The current local **system console** provides:
 - System
 - Settings
 
-The fuller Studio/SHDO authoring experience is still being integrated. At this baseline, do **not** assume the complete `New Attraction → Scene → Devices → Timeline → Deploy` commercial journey is finished just because Studio source/design work exists.
+The fuller Studio/SHDO authoring experience is substantially more capable than earlier RC wording, but persistent mixed-device production storage on the P4 is still limited. At this baseline, do **not** assume every authored timeline cue is already a finished persistent on-device show.
 
 For a first practical RC test, use an already installed production or the documented commissioning/deploy path rather than inventing files manually.
 
@@ -92,7 +92,7 @@ For a first practical RC test, use an already installed production or the docume
 
 # 5. Load and run a production
 
-On the Director, the main current pages include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **DIAGNOSTICS**, **SETTINGS** and **SYSTEM LOGS**.
+On the Director, the main current pages include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **AUDIO NODE**, **LAMP NODE**, **DIAGNOSTICS**, **SETTINGS** and **SYSTEM LOGS**.
 
 **Settings → Display → CALIBRATE** realigns the touchscreen. A valid calibration is stored on the Director and loads at boot. If none is stored, factory mapping is used.
 

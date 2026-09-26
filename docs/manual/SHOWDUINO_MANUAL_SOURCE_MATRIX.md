@@ -1,9 +1,11 @@
 # Showduino Commercial Manual — Source Matrix
 
-**Manual baseline date:** 16 September 2026  
+**Manual baseline date:** 26 September 2026  
 **Repository:** `sumkindafreak/new_showduino`  
 **Baseline branch:** `main`  
-**Starting SHA:** `9f304cdc65786c0e8d306987010a97eb5a3ad587`  
+**Starting SHA (original commercial pass):** `9f304cdc65786c0e8d306987010a97eb5a3ad587`  
+**Current documentation baseline SHA:** `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
+**Manual revision:** 0.2-RC  
 **Product:** Showduino `1.0.0-rc.1`
 
 This matrix traces customer-facing manual claims back to the repository snapshot used for this documentation pass.
@@ -48,7 +50,7 @@ This matrix traces customer-facing manual claims back to the repository snapshot
 | Hardware tour | P4 GPIO23 = local Show Pixel line, GPIO24 = safety signage pixels, GPIO25 = physical Emergency | `docs/hardware-pinout.md` | `docs/final-hardware-architecture.md` | P4 BoardConfig | YES — CODE | HARDWARE REQUIRED | Final enclosure connector labels not yet frozen. Gap 018. |
 | First power-on | Bench/release sequence is P4 → Comms → Director | `docs/physical-test-checklist.md` | `docs/v1-feature-matrix.md` | component boot code | YES — DOCUMENTED | HARDWARE REQUIRED | Commercial PSU/enclosure sequence still needs final hardware acceptance. |
 | First power-on | Home/venue Wi-Fi is optional | `docs/network-gateway.md` | `docs/v1-feature-matrix.md` | Comms gateway | YES — CODE | HARDWARE REQUIRED | Local SoftAP remains product access path. |
-| Director | Active page set includes HOME, PRODUCTIONS, SHOW DETAILS, LIVE, DIAGNOSTICS, NODES, AUDIO NODE, SETTINGS, AUDIO, SYSTEM LOGS plus system-modal pages | Director `DisplayPages.h` | `ShowduinoUi.h` | active legacy/current shell | YES — CODE | UI HARDWARE REQUIRED | Exact page titles verified from code. |
+| Director | Active page set includes HOME, PRODUCTIONS, SHOW DETAILS, LIVE, DIAGNOSTICS, NODES, AUDIO NODE, LAMP NODE, SETTINGS, AUDIO, SYSTEM LOGS plus system-modal pages | Director `DisplayPages.h` | `ShowduinoUi.h` | active current shell | YES — CODE | UI HARDWARE REQUIRED | Exact page titles verified from code. Gap 014 partially resolved for titles. |
 | Director | OS 2.0 shell is disabled at baseline | Director `BoardConfig.h` | OS2 source tree | `#define SHOWDUINO_OS2_SHELL 0` | YES — CODE | n/a | Do not document disabled OS2 as current. Gap 013. |
 | Director / display | Display auto-off is backlight dim/off only; Director remains executing | `backlight.cpp` | Director main loop | backlight service | YES — CODE | HARDWARE REQUIRED | Not MCU deep sleep. |
 | Director / display | Auto-off can be disabled with timeout 0; brightness and timeout are configurable | `backlight.cpp`, Director `.ino` | `ShowduinoUi.h` | active Director config | YES — CODE | HARDWARE REQUIRED | UI labels/settings should follow current build. |
@@ -60,7 +62,7 @@ This matrix traces customer-facing manual claims back to the repository snapshot
 | Network | Network page does not display/log saved password | `docs/network-gateway.md` | `networkGatewayDraft.js`, `Network.js` | Comms gateway | YES — CODE | HARDWARE REQUIRED | Password transient in UI draft and NVS storage path. |
 | Browser / Studio | Browser UI is hosted by Comms S3 PROGMEM; P4 remains authority | `web/showduino-studio/README.md` | `docs/architecture.md` | S3 web bundle + P4 Web API | YES — CODE | HARDWARE REQUIRED | Browser can remain reachable even if P4 is offline; P4 controls disable. |
 | Browser / Studio | S3 system console routes: Home, Productions, Live, Outputs, Devices, Network, System, Settings | `web/showduino-studio/README.md` | JS page files | `web/showduino-studio/js/pages/` | YES — CODE | UI HARDWARE REQUIRED | Settings partial; several pages foundations/expanding. |
-| Browser / Studio | `/studio/` full authoring path is not a complete native on-device SHDO workflow | `docs/studio/README.md` | `web/showduino-studio/README.md` | embedded Studio snapshot | PARTIAL | HARDWARE REQUIRED | Gap 006/008. |
+| Browser / Studio | `/studio/` authoring snapshot includes Pixel/audio authoring; not a complete persistent mixed-device on-device SHDO workflow | `docs/studio/README.md` | `web/studio-v4-overlay/`, `web/showduino-studio/README.md` | embedded Studio snapshot | PARTIAL | HARDWARE REQUIRED | Gap 006 partially resolved; Gap 007/008 remain. |
 | Authoring | SHDO v2 is active portable authoring/interchange contract | `protocol/showduino_version.h` | `docs/studio/production-format.md` | protocol SHDO headers/compiler | YES — CONTRACT | HARDWARE REQUIRED | P4 runtime store is a compiled/subset representation, not direct arbitrary authoring JSON execution. |
 | Production deployment | Deploy commit does not auto-load or auto-start | `docs/production-storage.md` | deployment protocol | P4 ProductionDeploy/Store | YES — CODE | HARDWARE REQUIRED | Emergency aborts commit. |
 | Production storage | P4 SD path `/showduino/productions/<id>/manifest.json + timeline.json` | `docs/production-storage.md` | `docs/p4-sd-storage.md` | ProductionStore | YES — CODE | HARDWARE REQUIRED | Current runtime format v1. |
@@ -68,13 +70,18 @@ This matrix traces customer-facing manual claims back to the repository snapshot
 | RAM Studio deploy | `/api/studio-timeline` supports commissioning timeline with PIXEL + AUDIO:NODE, no autoStart | `web/showduino-studio/README.md` | `docs/studio/README.md` | S3 API → P4 | YES — CODE | HARDWARE REQUIRED | Separate from persistent production storage. |
 | Pixels | P4 GPIO23 segmented engine supports up to 16 segment slots and shared FX vocabulary | `docs/audio-pixel-engine.md` | `docs/command-protocol.md` | `src/ShowPixels.*`, `protocol/showduino_pixel_fx.h` | YES — CODE | HARDWARE REQUIRED | Current default count 100; configured max capacity differs from installed line. |
 | Pixels | Production-file PIXEL cues are not complete in persistent v1 | `docs/audio-pixel-engine.md` | `docs/production-storage.md` | parser/runtime integration | NO — PLANNED | NO | Do not present commissioning controls as complete show authoring. |
-| Audio Node | Attraction/programme WAV playback is specialist Audio Node | `docs/audio-node.md` | `docs/audio-pixel-engine.md` | `firmware/audio-node-esp32/` | YES — CODE | HARDWARE REQUIRED | WAV current; MP3/Ogg/FLAC planned. |
+| Audio Node | Attraction/programme WAV playback is specialist Audio Node | `docs/audio-node.md` | `docs/audio-pixel-engine.md` | `firmware/audio-node-esp32-a1s/` | YES — CODE | HARDWARE REQUIRED | WAV current; MP3/Ogg/FLAC planned. |
+| Audio Node | Same peer exposes full Showduino Pixel Line on GPIO22 (shared FX / segments / max 512 software target) | `docs/audio-pixel-engine.md` | Audio Pixel engine source | `AudioPixelEngine.*`, Studio `audio-node-pixels` | YES — CODE | HARDWARE REQUIRED | Not a fake LED identity. Emergency white override + clear-to-black. |
 | Audio Node | Emergency stops/mutes attraction audio; clear returns safe idle/no resume | `docs/audio-node.md` | Audio Node protocol/tests | Audio Node firmware | YES — CODE | HARDWARE REQUIRED | P4 reconciles Node Emergency state. |
+| Director Audio | Dedicated AUDIO NODE page: discovery, inventory paths, play/loop/pause/resume/stop, volume, status/diagnostics | `page_05_audio_node.*` | `DirectorAudioNodeControl.*` | Director firmware | YES — CODE | HARDWARE REQUIRED | Theatrical locks while show-controlled/running remain. |
 | Node ownership | Nodes may be STANDALONE or SHOW_CONTROLLED; P4 GRANT creates Showduino ownership | `docs/standalone-node-architecture.md` | node firmware | ownership state machines | YES — CODE | HARDWARE REQUIRED | Live ON/FX/PLAY is not persisted as boot state. |
-| Lamp Node | S3 Lamp is active; physical pins confirmed; replaces earlier C3/Relay direction | `docs/repository-status.md` | `docs/standalone-node-architecture.md` | `firmware/s3-lamp-node/` | YES — CODE | PARTIAL | Some sensor details remain unconfirmed. |
+| Lamp Node | S3 Lamp is active; physical pins confirmed; replaces earlier C3/Relay direction | `docs/repository-status.md` | `docs/s3-lamp-node.md` | `firmware/s3-lamp-node/` | YES — CODE | PARTIAL | Some sensor details remain unconfirmed. |
+| Lamp Node | Local audio is Adafruit Audio FX UART WAV (`flick.wav`, `fire_ign.wav`, `flameloo.wav`, `emergency.wav`) — not Fermion DFPlayer MP3 | `docs/s3-lamp-node.md` | Lamp BoardConfig / Audio FX path | `firmware/s3-lamp-node/` | YES — CODE | PARTIAL | Commit `d0ec3e2`. Separate from attraction Audio Node and P4 system audio. |
+| Director Lamp | Dedicated LAMP NODE page with ignite/extinguish and commissioning controls | `page_lamp_node.*` | `DirectorLampNodeControl.*` | Director firmware | YES — CODE | HARDWARE REQUIRED | Commit `a6a96d5`. |
 | Pixel Node | C3 Pixel Node firmware/routing exists | `docs/repository-status.md` | `docs/command-protocol.md` | `firmware/c3-pixel-node/` | YES — CODE | NO — HARDWARE REQUIRED | Treat as RC accessory, not fully signed-off commercial node. |
-| Emergency Node | Wireless Emergency + Pixel Node is assert-only and cannot clear P4 emergency; Pixel on GPIO2 is a capability of ESTOP-xx | `docs/emergency-node.md` | `docs/command-protocol.md` | `firmware/c3-emergency-node/` + `firmware/shared-pixel/` | YES — CODE | NO — GPIO UNCONFIRMED | Momentary pushbutton + OLED + full Pixel engine; separate from P4 main button. |
+| Emergency Node | Wireless Emergency + Pixel Node is assert-only and cannot clear P4 emergency; Pixel on GPIO2 is a capability of ESTOP-xx | `docs/emergency-node.md` | `docs/command-protocol.md` | `firmware/c3-emergency-node/` + `firmware/shared-pixel/` | YES — CODE | NO — GPIO UNCONFIRMED | Momentary pushbutton + OLED + full Pixel engine; separate from P4 main button. Commits `64308f1`, `343d917`. |
 | Emergency Node | Up to 8 logical Emergency stations; offline is safety-node warning, not automatic global emergency | `docs/emergency-node.md` | protocol header | Emergency Node link | YES — CODE | NO — HARDWARE REQUIRED | One-at-a-time update policy. |
+| Emergency Node | SHDO/Studio route `estop-node-pixels` / `ESTOP:NODE:PIXEL:` exists; Studio inventory surfacing may still lag | `protocol/showduino_shdo.h` | `docs/emergency-node.md` | P4 `EmergencyNodeLink.cpp`, Studio overlay | PARTIAL | NO — HARDWARE REQUIRED | Gap 021. |
 | MOSFET Node | MOSFET Node is planned, not implemented | `docs/repository-status.md` | `docs/standalone-node-architecture.md` | none active | NO — PLANNED | NO | Not normal manual feature. |
 | Relay Node | Old Relay Node is retired/legacy | `docs/repository-status.md` | `docs/command-protocol.md` | legacy firmware remains | LEGACY | n/a | Must not be advertised as current. |
 | DMX | DMX production work is parked/out of scope | `docs/command-protocol.md` | README/architecture | no current production path | NO — PLANNED/PARKED | n/a | Do not expose as shipping production feature. |
@@ -120,4 +127,4 @@ At minimum, this manual pass inspected or searched the active versions of:
 
 ## Baseline acquisition note
 
-This pass was performed against the remote GitHub repository through the connected GitHub service. The execution container could not resolve `github.com`, so a local clone/pull and local `git status` could not be completed. To avoid touching unrelated work, all documentation changes were isolated on branch `docs/commercial-user-manual-2026-09-16`, created directly from the exact `main` starting SHA above. No firmware files were modified.
+This synchronisation pass was performed against a local clone of `sumkindafreak/new_showduino` on branch `main` at SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e`, updating the commercial manuals from the original 16 September 2026 baseline (`9f304cdc…`). No firmware files were modified.

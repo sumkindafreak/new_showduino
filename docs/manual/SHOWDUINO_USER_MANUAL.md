@@ -4,10 +4,10 @@
 
 # User Manual
 
-**Manual revision:** 0.1-RC — repository-verified documentation baseline  
+**Manual revision:** 0.2-RC — synchronised to current `main` architecture  
 **Applicable product:** Showduino `1.0.0-rc.1`  
-**Repository baseline:** `main` at `9f304cdc65786c0e8d306987010a97eb5a3ad587`  
-**Baseline date:** 16 September 2026  
+**Repository baseline:** `main` at `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
+**Baseline date:** 26 September 2026  
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
 
 ---
@@ -65,7 +65,12 @@ Nodes act on requests routed by the Show Engine. They are not independent show a
 
 The Communications Controller hosts a local browser interface for system status, commissioning, productions, outputs, devices, networking and diagnostics.
 
-The repository currently uses the name **Studio** for more than one related surface. The on-device browser console is active, while the complete long-term attraction/scene authoring workflow is still being integrated. Section 10 explains this boundary.
+The repository currently uses the name **Studio** for more than one related surface:
+
+- the **Showduino System Console** (active S3-hosted commissioning/status UI);
+- the embedded **Showduino Studio** authoring snapshot at `/studio/` (SHDO v2 project/timeline/pixel authoring).
+
+The System Console is the day-to-day browser front door. Studio authoring is substantially more capable than earlier RC wording suggested, but persistent mixed-device production storage on the P4 still has important limits. Section 10 explains the current boundary.
 
 ## 1.2 Local operation is deliberate
 
@@ -326,6 +331,8 @@ No Internet connection is required for the local interface.
 
 # 7. Director touchscreen
 
+Active page IDs/titles at this baseline include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **AUDIO NODE**, **LAMP NODE**, **DIAGNOSTICS**, **SETTINGS**, **AUDIO** and **SYSTEM LOGS**, plus system/modal screens such as **EMERGENCY**.
+
 The current baseline uses the active `ShowduinoUi` page set. A newer OS 2.0 shell exists in source but is disabled at this baseline and is therefore not documented as the shipping UI here.
 
 ## 7.1 HOME
@@ -387,14 +394,25 @@ A Node can be offline while the P4 itself remains healthy. Diagnose the failed p
 ## 7.6 AUDIO NODE
 
 **What it does**  
-Displays Audio Node state and the current control/diagnostic surface.
+Provides live Audio Node discovery, track browsing/selection, playback controls (play, loop, pause, resume, stop), volume, current file/status and related diagnostics when the Node is online.
 
 **When to use it**  
 For programme-audio commissioning and status checks.
 
-The P4 system speaker is not a replacement for an offline attraction Audio Node.
+The P4 system speaker is not a replacement for an offline attraction Audio Node. Where the Audio Node also exposes its optional GPIO22 Pixel Line, theatrical pixel looks for that line are authored through Studio/Outputs rather than as a separate Director lighting desk.
 
-## 7.7 DIAGNOSTICS
+## 7.7 LAMP NODE
+
+**What it does**  
+Shows Lamp Node online/state and exposes operator controls such as **IGNITE**, **EXTINGUISH**, jewel/flame commissioning checks, refresh and local lamp-audio role tests where the current firmware permits them.
+
+**When to use it**  
+For interactive Lamp commissioning and live prop checks when a Lamp Node is part of the attraction.
+
+**Important**  
+Lamp local sound effects are produced by the Lamp's own Adafruit Audio FX board. They are not attraction programme tracks from the Audio Node.
+
+## 7.8 DIAGNOSTICS
 
 **What it does**  
 Provides system/connection information intended to identify which component is actually unavailable.
@@ -402,7 +420,7 @@ Provides system/connection information intended to identify which component is a
 **When to use it**  
 When the Director, P4, Communications link, storage or Nodes do not match the expected state.
 
-## 7.8 SETTINGS
+## 7.9 SETTINGS
 
 **What it does**  
 Contains current Director/operator settings, including display behaviour and software/network status surfaces where implemented.
@@ -410,11 +428,11 @@ Contains current Director/operator settings, including display behaviour and sof
 **When to use it**  
 For routine configuration rather than live show control.
 
-## 7.9 AUDIO
+## 7.10 AUDIO
 
 This page relates to the Director/P4 system-audio presentation supported by the current UI. Attraction programme audio remains the responsibility of the Audio Node.
 
-## 7.10 SYSTEM LOGS
+## 7.11 SYSTEM LOGS
 
 **What it does**  
 Shows operator/system log information useful for diagnosis.
@@ -422,7 +440,7 @@ Shows operator/system log information useful for diagnosis.
 **When to use it**  
 After a fault, rejected request or unexpected connection event.
 
-## 7.11 System screens
+## 7.12 System screens
 
 The Director also defines full-screen states including:
 
@@ -565,7 +583,15 @@ It is the current browser front door for status, commissioning and system manage
 
 ## 10.2 The authoring Studio
 
-Showduino also has an SHDO v2 authoring model and Studio V4 work for production creation/timeline editing.
+Showduino also has an SHDO v2 authoring model and an embedded Studio V4 snapshot (typically at `/studio/`) for project/attraction creation, scenes, timeline editing, device/output selection and Pixel cue authoring.
+
+Current authoring/commissioning reality at this baseline:
+
+- shared Pixel editor vocabulary (25 effects) for the P4 Show Pixel Line, standalone Pixel Nodes and the Audio Node GPIO22 Pixel Line;
+- audio cues and RAM timeline commissioning for current `PIXEL` / `AUDIO:NODE` (including Audio Node pixel commands where routed);
+- SHDO v2 export/package support in the authoring model;
+- local RAM timeline deploy through `/api/studio-timeline` (`autoStart` remains false);
+- Emergency Node GPIO2 Pixel capability exists in firmware/protocol (`estop-node-pixels` / `ESTOP:NODE:PIXEL:`), with Studio inventory follow-up still noted in repository docs where the public HTTPS Studio snapshot has not yet finished surfacing every ESTOP pixel output.
 
 The complete commercial journey of:
 
@@ -585,9 +611,11 @@ DEPLOY
 PLAY
 ```
 
-is the intended product experience, but it is **not yet one fully integrated on-device workflow at this baseline**.
+is substantially closer than earlier RC wording, but it is **still not one fully finished persistent on-device workflow**. In particular, the P4's persistent production format v1 remains limited (see Section 14).
 
-The local browser console must therefore not be described as a complete production authoring system when it currently provides a mixture of commissioning, production inventory and limited deploy/runtime functions.
+Public HTTPS Studio builds may also need to **export** packages when the browser cannot talk directly to local Showduino hardware. The local SoftAP System Console remains the direct on-site path.
+
+The local browser console must therefore not be described as a complete production authoring system when it currently provides a mixture of commissioning, production inventory, Studio authoring and limited deploy/runtime functions.
 
 ## 10.3 Editing versus running
 
@@ -609,10 +637,11 @@ The final customer-facing attraction/scene creation workflow is still an open in
 The repository has:
 
 - an active SHDO v2 production/interchange contract;
-- an S3-hosted browser console;
+- an S3-hosted browser System Console;
+- an embedded Studio V4 authoring snapshot with Pixel and audio authoring;
 - a persistent P4 production store;
-- an SHDO deployment/compiler path foundation;
-- a separate RAM timeline commissioning path for current `PIXEL` and `AUDIO:NODE` commands.
+- an SHDO deployment/compiler path foundation, including Audio Node and Emergency Node pixel routes in the compiler;
+- a separate RAM timeline commissioning path for current `PIXEL` and `AUDIO:NODE` commands (including Audio Node pixel routing where configured).
 
 ## 11.2 What is not yet safe to promise as a finished workflow
 
@@ -644,11 +673,11 @@ Showduino is intended to let owners work with meaningful devices rather than mem
 
 Current product/device concepts include:
 
-- attraction **Audio Node**;
-- specialist **Lamp Node**;
-- local **Show Pixel Line**;
-- specialist **Pixel Node** foundation;
-- **Emergency Node** foundation;
+- attraction **Audio Node** (programme audio, with optional GPIO22 Showduino Pixel Line on the same peer);
+- specialist **Lamp Node** (interactive carbide lamp + local Adafruit Audio FX sounds);
+- local **Show Pixel Line** (P4 GPIO23);
+- specialist **Pixel Node** foundation (standalone C3);
+- **Wireless Emergency + Pixel Node** (`ESTOP-xx`: assert-only Emergency plus optional GPIO2 Pixel Line on the same peer);
 - P4 Plug-in Bus devices;
 - future **MOSFET Node**.
 
@@ -672,8 +701,8 @@ At the current repository baseline, do not confuse that design direction with th
 
 The live browser system can send a RAM timeline through `/api/studio-timeline` for current commissioning use. The supported current subset is:
 
-- `PIXEL` commands;
-- `AUDIO:NODE` commands.
+- `PIXEL` commands (including routes compiled for specialist pixel-capable peers where the toolchain supports them);
+- `AUDIO:NODE` commands (including Audio Node pixel commands where routed).
 
 `autoStart` is false. Deploying the RAM timeline does not automatically run it.
 
@@ -828,6 +857,13 @@ This firmware path is implemented and still requires physical hardware acceptanc
 
 # 17. Outputs and pixels
 
+Pixel capability can exist on several Showduino devices. Studio presents those outputs through the same Pixel editor model wherever the current authoring surface has wired them:
+
+- P4 Show Pixel Line (GPIO23);
+- standalone C3 Pixel Node;
+- Audio Node GPIO22 Pixel Line (same Audio peer — not a fake LED identity);
+- Wireless Emergency Node GPIO2 Pixel Line (same ESTOP peer — not a fake LED identity).
+
 ## 17.1 P4 Show Pixel Line
 
 The P4 local Show Pixel Line supports up to 16 segment slots in the current engine. Each segment can have a range, effect, primary/secondary colour, brightness, speed, intensity, randomness, direction and duration.
@@ -836,17 +872,21 @@ The shared current FX vocabulary includes:
 
 `OFF/BLACKOUT`, `SOLID`, `FADE_IN`, `FADE_OUT`, `PULSE`, `BREATHE`, `FLICKER`, `CANDLE`, `FIRE`, `LIGHTNING`, `STROBE`, `RANDOM_STROBE`, `CHASE`, `BOUNCE`, `COMET`, `WIPE`, `REVERSE_WIPE`, `BUILD`, `SPARKLE`, `TWINKLE`, `GLITCH`, `WARNING`, `PORTAL`, `RAINBOW`, and `CUSTOM_SEQUENCE`.
 
+That is **25** current Showduino FX entries shared across the Pixel-capable peers listed above.
+
 These are current engine/commissioning capabilities. Persistent production-file PIXEL cue support is not yet complete.
 
 ## 17.2 Outputs browser page
 
-The current **Outputs** page includes commissioning controls for the local Show Pixel Line and Audio Node, plus signage/Emergency state information.
+The current **Outputs** page includes commissioning controls for the local Show Pixel Line and Audio Node, plus signage/Emergency state information. Specialist Pixel Nodes and pixel-capable Audio/Emergency peers appear according to what the live inventory reports.
 
 While Emergency is active, normal pixel controls must not override the Emergency state.
 
 ## 17.3 Pixel hardware acceptance
 
-The repository still requires physical commissioning of the P4 pixel paths. Before a production installation, validate:
+The repository still requires physical commissioning of pixel paths. Software may accept a configured maximum of **512** pixels on specialist Pixel / Audio / Emergency pixel lines (P4 Show Pixel capacity differs and must follow the installed configuration). That software ceiling is **not** the same thing as a commercially signed-off timing/current result for a long line.
+
+Before a production installation, validate:
 
 - configured pixel count;
 - logic level/buffer;
@@ -855,7 +895,8 @@ The repository still requires physical commissioning of the P4 pixel paths. Befo
 - power injection;
 - common ground;
 - all-white Emergency current demand;
-- clear-to-blackout/signage behaviour.
+- clear-to-blackout/signage behaviour;
+- Emergency and Audio Node pixel-line timing where those accessories are used.
 
 ---
 
@@ -875,6 +916,8 @@ Current playback support is WAV PCM. MP3, Ogg and FLAC are planned rather than c
 
 Current Audio Node operations include play, loop, stop, pause, resume, volume, fade and duck/unduck.
 
+The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
+
 ## 18.3 Audio Node Emergency behaviour
 
 Emergency:
@@ -883,7 +926,8 @@ Emergency:
 - mutes the codec/amplifier path;
 - cancels fade/duck state;
 - rejects new attraction playback;
-- does not auto-resume after clear.
+- forces the Audio Node Pixel Line (where configured) to bright white while Emergency is active;
+- does not auto-resume audio or the previous theatrical pixel effect after clear (pixel clear behaviour returns the line to a safe idle/black state until a new command).
 
 ## 18.4 Standalone versus Show-controlled
 
@@ -899,19 +943,32 @@ Node support at this release candidate is intentionally described by maturity ra
 
 ## 19.1 Audio Node
 
-Implemented in software and part of the active architecture; still requires final hardware acceptance. Programme audio is its primary role.
+Implemented in software and part of the active architecture; still requires final hardware acceptance. Programme audio is its primary role. The optional GPIO22 Pixel Line on the same peer uses the shared Showduino Pixel model and Studio `audio-node-pixels` routing where available.
 
 ## 19.2 S3 Lamp Node
 
 Active specialist-node firmware with confirmed principal physical pins. It can operate as a Showduino-controlled or standalone interactive lamp device. Some optional sensor details remain subject to commissioning.
 
+Local Lamp sound effects use an **Adafruit Audio FX Sound Board** (UART 9600 8N1) with the current four WAV roles: strike (`flick.wav`), ignition (`fire_ign.wav`), burn loop (`flameloo.wav`) and emergency (`emergency.wav`). Those sounds are local Lamp behaviour and are separate from the attraction Audio Node and from P4 system audio. Emergency lamp audio is local Lamp behaviour, not P4 system audio.
+
+The Director **LAMP NODE** page provides live state and operator actions such as ignite/extinguish and commissioning checks. Do not treat every local WebUI diagnostic control as a normal public-operator workflow.
+
 ## 19.3 C3 Pixel Node
 
 Software/routing exists and uses the same Showduino FX vocabulary, but physical hardware acceptance remains required.
 
-## 19.4 Wireless Emergency Node
+## 19.4 Wireless Emergency + Pixel Node
 
-Software exists, but its GPIO choice remains unconfirmed and the accessory is not physically validated at this baseline.
+Software implements a wireless **ESTOP-xx** peer with:
+
+- momentary Emergency pushbutton (INPUT_PULLUP; pressed LOW) — GPIO chosen in current firmware as **GPIO4**, still **physically unconfirmed** until bench commissioning;
+- local latch on press; release does **not** clear global Emergency;
+- assert-only policy (nodes never originate global clear);
+- SSD1306 128×64 OLED status display;
+- full shared Showduino Pixel engine on **GPIO2** (same peer — no fake LED identity);
+- software target up to **512** pixels / 16 segment slots / 25 FX, subject to physical timing validation;
+- Emergency overrides theatrical pixels to bright white; legitimate clear returns the Pixel Line to black (previous effect does not auto-resume);
+- if the button is still held when global clear is observed, the station must not simply become ready.
 
 Absolute rules:
 
@@ -921,7 +978,7 @@ Absolute rules:
 - update/commission Emergency Nodes one at a time;
 - an offline Emergency Node is reported as a safety-node fault/warning rather than automatically asserting global Emergency.
 
-The wireless Emergency Node's momentary pushbutton behaviour is separate from the main Showduino Emergency button.
+The wireless Emergency Node's momentary pushbutton behaviour is separate from the main Showduino Emergency button and does not use the main-unit 8-second Locate gesture.
 
 ## 19.5 MOSFET Node
 
@@ -1204,14 +1261,14 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | Local Showduino SoftAP | Implemented; production credential provisioning gap remains |
 | Optional venue Wi-Fi | Implemented; hardware acceptance still required |
 | P4 system/safety audio | Implemented foundation; physical acceptance required |
-| Audio Node | Implemented software; hardware acceptance required |
-| S3 Lamp Node | Active; principal pins confirmed |
+| Audio Node | Programme audio + optional GPIO22 Pixel Line; hardware acceptance required |
+| S3 Lamp Node | Active; Adafruit Audio FX local WAV; principal pins confirmed |
 | P4 segmented Show Pixels | Implemented; hardware acceptance required |
 | C3 Pixel Node | Software/routing active; hardware acceptance required |
-| Wireless Emergency Node | Software implemented; GPIO/physical acceptance incomplete |
+| Wireless Emergency + Pixel Node | Software implemented (momentary + OLED + GPIO2 Pixel); GPIO/physical acceptance incomplete |
 | Persistent production store | Implemented foundation; format v1 TEST/LOG cue limitation |
 | SHDO v2 | Active authoring/interchange contract |
-| Full integrated attraction/scene Studio workflow | Partial / not yet a finished on-device workflow |
+| System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
 | Comms self-OTA | Implemented in software; physical proof required |
 | System-wide OTA | Not implemented |
 | MOSFET Node | Planned |
@@ -1243,7 +1300,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 
 **SoftAP / access point** — the Wi-Fi network created by Showduino itself for local browser access.
 
-**Studio** — Showduino's browser authoring/commissioning family. At this RC baseline, distinguish the active S3 system console from the fuller Studio V4 authoring workflow still being integrated.
+**Studio** — Showduino's browser authoring/commissioning family. At this RC baseline, distinguish the active S3 **System Console** from the embedded **Studio** authoring snapshot; persistent mixed-device production storage remains limited.
 
 **Timeline** — the ordered time-based show actions owned/executed by the Show Engine once loaded.
 
@@ -1265,14 +1322,14 @@ For this manual revision the source baseline is:
 
 ```text
 Showduino platform: 1.0.0-rc.1
-P4 source:           0.6.4 at baseline HEAD
+P4 source:           0.6.5 at baseline HEAD
 Comms source:        0.5.2 at baseline HEAD
 Director manifest:   0.9.7-director (release manifest; current source lacks an equivalent clear BoardConfig version constant)
-Repository SHA:      9f304cdc65786c0e8d306987010a97eb5a3ad587
-Date:                16 September 2026
+Repository SHA:      8c49ebd21dff2123527e3aa5a7360a9e4527025e
+Date:                26 September 2026
 ```
 
-The committed release manifest still lists P4 0.6.3 and Comms 0.5.1, so the exact repository SHA is intentionally retained as the documentation baseline until release inventory is refreshed.
+The committed release manifest still lists older P4/Comms component numbers than live `BoardConfig.h` values on this SHA, so the exact repository SHA is intentionally retained as the documentation baseline until release inventory is refreshed.
 
 ---
 

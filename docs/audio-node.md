@@ -214,7 +214,8 @@ P4 stores `AUDIO_NODE_SOUND_TRIGGER` with subtype LEVEL / TRANSIENT / SUSTAINED 
 - Boot: safe idle → ESP-NOW → search ~8 s for **P4 GRANT**. Grant → `SHOW_CONTROLLED`. Else → `STANDALONE` + SoftAP `Showduino-Audio-XXXX` on channel 1.
 - P4 GRANT loss (no GRANT keepalive for 8 s): STOP, MUTE, IDLE, then standalone WebUI. No auto-resume.
 - While `SHOW_CONTROLLED`, local keys, USB theatrical commands, and the node WebUI cannot PLAY/STOP/VOLUME. Firmware rejects them (`SHOW_CONTROLLED`). Hiding UI is not sufficient.
-- GPIO22 remains a **status-only** diagnostic WS2812. Never a programme pixel.
+- GPIO22 remains owned by the Audio Node peer as a **full Showduino Pixel Line** (shared engine, segments, 25 FX, software max 512). It is **not** a separate LED-node identity.
+- Emergency forces the configured Pixel Line bright white; clear returns black / safe idle without auto-resuming the previous theatrical effect.
 
 ## 7. Local commissioning
 
@@ -231,23 +232,11 @@ P4 stores `AUDIO_NODE_SOUND_TRIGGER` with subtype LEVEL / TRANSIENT / SUSTAINED 
 
 Local keys never override emergency. PLAY/PREV/NEXT/VOLUME never hijack a P4-owned session.
 
-### GPIO22 status pixel (diagnostics only)
+### GPIO22 Showduino Pixel Line
 
-| State | Pattern |
-|-------|---------|
-| BOOTING | slow dim blue (~700 ms) |
-| SEARCHING (no P4 GRANT) | amber blink (~350 ms) |
-| STANDALONE | slow violet |
-| SHOW_CONTROLLED + IDLE | steady green |
-| Fresh ESP-NOW RX (P4-owned) | brief bright-green kick |
-| PLAYING / LOOPING | cyan |
-| LOADING / STOPPING | cyan blink (~180 ms) |
-| PAUSED | slow purple blink (~900 ms) |
-| NO_STORAGE | three short orange flashes, pause |
-| FAULT | fast red blink (~110 ms) |
-| EMERGENCY | bright white |
+GPIO22 is the Audio Node's Showduino Pixel output on the **same** Audio peer. Configure count, initialise the line, then use the shared Pixel segment/FX commands (also exposed through Studio `audio-node-pixels` / `AUDIO:NODE:PIXEL:`).
 
-`LED:TEST` forces a 1.5 s rapid pattern. `RUN:TEST` is silent and does not blast the speaker. Audible test is `AUDIO:TEST` at the current volume.
+Legacy diagnostic colour patterns from earlier status-only firmware are superseded by the full Pixel engine. `PIXEL:TEST` / `LED:TEST` remain commissioning helpers.
 
 USB: `HELP` `STATUS` `MAC` `STORAGE:STATUS` `ASSET:LIST` `AUDIO:*` `SOUND:*` `KEYS:STATUS` `LED:TEST` `CODEC:STATUS` `RUN:TEST`. No arbitrary filesystem writes. Path traversal rejected. `SOUND:MONITOR` is 10 Hz Serial only.
 

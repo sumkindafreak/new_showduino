@@ -1,7 +1,7 @@
 # SHOWDUINO — Pre-Opening Checklist
 
 **Use:** before admitting guests / beginning public operation  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `9f304cdc65786c0e8d306987010a97eb5a3ad587`  
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
 **Date:** ____________________  **Attraction/production:** ____________________  **Operator:** ____________________
 
 > **People first. Show second. Hardware third.** If any check reveals a safety concern, keep the attraction closed until the physical issue and Showduino state are understood.
@@ -55,6 +55,7 @@ Remember: venue Wi-Fi/Internet status is not the same thing as P4 health.
 - [ ] Dedicated signage pixels change to bright white where installed.
 - [ ] Attraction Audio Node stops/mutes where installed.
 - [ ] Other installed Emergency-capable Nodes enter their defined Emergency state.
+- [ ] Pixel lines on Audio Node GPIO22 and/or Wireless Emergency GPIO2 go bright white where those pixel capabilities are installed and in use.
 - [ ] Normal show controls do not override Emergency.
 
 ### Clear
@@ -95,6 +96,8 @@ For wireless Emergency Nodes:
 - [ ] Each installed station expected for this attraction is visible/healthy.
 - [ ] Any offline Emergency Node warning has been investigated before opening.
 - [ ] No station is left locally latched/NEEDS REARM.
+- [ ] Press-test each installed station's momentary Emergency button in a controlled condition (assert only — clear still uses the Director workflow).
+- [ ] Where an ESTOP station also drives show pixels, confirm Emergency white / clear-to-black behaviour for that line.
 
 Wireless Emergency Nodes are **assert-only** and must never be used as a way to clear the P4 Emergency latch.
 
@@ -131,6 +134,8 @@ Do not use the P4 system speaker as a substitute for missing attraction/programm
 ## 7. Pixels / lighting outputs
 
 - [ ] P4 Show Pixel line initialises correctly / N/A.
+- [ ] Audio Node Pixel Line (GPIO22) initialises correctly where used / N/A.
+- [ ] Wireless Emergency Pixel Line (GPIO2) initialises correctly where used / N/A.
 - [ ] Configured segment ranges match the physical installation.
 - [ ] Controlled effect/colour test behaves as expected.
 - [ ] No flicker/data corruption caused by wiring or power issues.
