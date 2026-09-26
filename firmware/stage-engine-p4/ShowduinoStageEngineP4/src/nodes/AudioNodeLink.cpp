@@ -240,8 +240,10 @@ void audioNodeLinkLoop() {
       route(sSeq++, "EMERGENCY:STOP");
     } else {
       route(sSeq++, "AUDIO:NODE:OWN:GRANT");
+      if (sSt.pixelCapable) route(sSeq++, "PIXEL:OWN:GRANT");
     }
     route(sSeq++, "AUDIO:NODE:STATUS");
+    if (sSt.pixelCapable) route(sSeq++, "PIXEL:STATUS");
   }
   if (sSt.online && (millis() - sInvMs) >= 15000UL) {
     sInvMs = millis();
@@ -320,8 +322,36 @@ bool audioNodeLinkHandleReport(const char *line) {
   if (!strncmp(p, "AUDIO:CAPS:", 11)) {
     if (strcmp(sSt.capabilities, p + 11) != 0) {
       strncpy(sSt.capabilities, p + 11, sizeof(sSt.capabilities) - 1);
+      sSt.capabilities[sizeof(sSt.capabilities) - 1] = '\0';
       SD_LOGD("AUDIO", "Caps: %s", sSt.capabilities);
     }
+    if (strstr(sSt.capabilities, "PIXEL")) sSt.pixelCapable = true;
+    return true;
+  }
+  if (!strncmp(p, "PIXEL:CAPS:", 11)) {
+    strncpy(sSt.pixelCaps, p + 11, sizeof(sSt.pixelCaps) - 1);
+    sSt.pixelCaps[sizeof(sSt.pixelCaps) - 1] = '\0';
+    sSt.pixelCapable = true;
+    SD_LOGD("AUDIO", "Pixel caps: %s", sSt.pixelCaps);
+    return true;
+  }
+  if (!strncmp(p, "PIXEL:STATUS:", 13)) {
+    /* PIXEL:STATUS:READY:GPIO=22:CONFIGURED=10:COUNT=10:MAX=512:BRIGHTNESS=255:EMERGENCY=0 */
+    sSt.pixelCapable = true;
+    const char *body = p + 13;
+    sSt.pixelReady = (strncmp(body, "READY", 5) == 0);
+    const char *gpio = strstr(body, "GPIO=");
+    const char *cfg = strstr(body, "CONFIGURED=");
+    const char *cnt = strstr(body, "COUNT=");
+    const char *mx = strstr(body, "MAX=");
+    const char *bri = strstr(body, "BRIGHTNESS=");
+    const char *em = strstr(body, "EMERGENCY=");
+    if (gpio) sSt.pixelPin = (uint8_t)atoi(gpio + 5);
+    if (cfg) sSt.pixelConfigured = (uint16_t)atoi(cfg + 11);
+    if (cnt) sSt.pixelCount = (uint16_t)atoi(cnt + 6);
+    if (mx) sSt.pixelMax = (uint16_t)atoi(mx + 4);
+    if (bri) sSt.pixelBrightness = (uint8_t)atoi(bri + 11);
+    if (em) sSt.pixelEmergency = atoi(em + 10) != 0;
     return true;
   }
   if (!strncmp(p, "AUDIO:META:", 11)) {
@@ -547,6 +577,53 @@ bool audioNodeLinkHandleCommand(const char *command, char *reply, size_t replyLe
   if (!command || strncmp(command, "AUDIO:NODE:", 11) != 0) return false;
   if (reply && replyLen) reply[0] = '\0';
 
+  /* Audio Node GPIO22 pixel engine — same ESP-NOW peer, not a fake LED-XX identity. */
+  if (!strncmp(command, "AUDIO:NODE:PIXEL:", 17)) {
+    const char *pixelCmd = command + 17; /* "PIXEL:..." expected */
+    char forwarded[96];
+    if (!pixelCmd[0]) {
+      if (reply && replyLen) strncpy(reply, "ERR:AUDIO:NODE:PIXEL:BAD_COMMAND", replyLen - 1);
+      return true;
+    }
+    if (!strncmp(pixelCmd, "PIXEL:", 6)) {
+      strncpy(forwarded, pixelCmd, sizeof(forwarded) - 1);
+    } else {
+      snprintf(forwarded, sizeof(forwarded), "PIXEL:%s", pixelCmd);
+    }
+    forwarded[sizeof(forwarded) - 1] = '\0';
+
+    const bool alwaysOk =
+        !strcmp(forwarded, "PIXEL:STATUS") ||
+        !strcmp(forwarded, "PIXEL:OFF") ||
+        !strcmp(forwarded, "PIXEL:BLACKOUT");
+    if (emergencyLocked && !alwaysOk) {
+      if (reply && replyLen) strncpy(reply, "REJECTED:AUDIO:NODE:PIXEL:EMERGENCY_ACTIVE", replyLen - 1);
+      return true;
+    }
+    if (!sSt.online && !alwaysOk) {
+      if (reply && replyLen) strncpy(reply, "REJECTED:AUDIO:NODE:PIXEL:OFFLINE", replyLen - 1);
+      return true;
+    }
+    if (!sSt.pixelCapable && !alwaysOk) {
+      /* Still forward STATUS so the node can advertise capability. */
+      if (strcmp(forwarded, "PIXEL:STATUS") != 0 &&
+          strncmp(forwarded, "PIXEL:COUNT:", 12) != 0 &&
+          strcmp(forwarded, "PIXEL:INIT") != 0) {
+        /* Allow COUNT/INIT/STATUS before CAPS observed; reject theatrical FX only if clearly offline. */
+      }
+    }
+
+    const uint32_t seq = sSeq++;
+    sSt.pending = true;
+    sSt.pendingSeq = seq;
+    strncpy(sSt.lastLife, "PENDING", sizeof(sSt.lastLife) - 1);
+    route(seq, forwarded);
+    if (reply && replyLen) {
+      snprintf(reply, replyLen, "AUDIO:NODE:PIXEL:PENDING:%lu", (unsigned long)seq);
+    }
+    return true;
+  }
+
   if (!strncmp(command, "AUDIO:NODE:SOUND:", 17)) {
     const char *sub = command + 17;
     if (!strncmp(sub, "LOCAL_TEST_TRIGGER", 18)) {
@@ -671,7 +748,27 @@ void audioNodeLinkAppendJson(String &json) {
   json += String((unsigned long)sSt.lastSeq);
   json += ",\n    \"capabilities\": \"";
   json += sSt.capabilities;
-  json += "\",\n    \"inventoryTotal\": ";
+  json += "\",\n    \"pixel\": {\n";
+  json += "      \"capable\": ";
+  json += sSt.pixelCapable ? "true" : "false";
+  json += ",\n      \"ready\": ";
+  json += sSt.pixelReady ? "true" : "false";
+  json += ",\n      \"pin\": ";
+  json += String((unsigned)sSt.pixelPin);
+  json += ",\n      \"configured\": ";
+  json += String((unsigned)sSt.pixelConfigured);
+  json += ",\n      \"count\": ";
+  json += String((unsigned)sSt.pixelCount);
+  json += ",\n      \"max\": ";
+  json += String((unsigned)sSt.pixelMax);
+  json += ",\n      \"brightness\": ";
+  json += String((unsigned)sSt.pixelBrightness);
+  json += ",\n      \"emergency\": ";
+  json += sSt.pixelEmergency ? "true" : "false";
+  json += ",\n      \"caps\": \"";
+  json += sSt.pixelCaps;
+  json += "\"\n    }";
+  json += ",\n    \"inventoryTotal\": ";
   json += String((unsigned)sSt.inventoryTotal);
   json += ",\n    \"inventoryPage\": ";
   json += String((unsigned)sSt.inventoryPage);

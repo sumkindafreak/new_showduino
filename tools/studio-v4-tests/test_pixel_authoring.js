@@ -204,10 +204,10 @@ check('save/reload preserves exact logical targets', () => {
   assert.strictEqual(list[0].logicalId, 'p4');
 });
 
-check('audio and lamp devices are not pixel outputs', () => {
+check('audio and lamp devices are not pixel outputs without PIXEL capability', () => {
   authoring.ingestLivePayloads([{
     devices: [
-      { id: 'audio-node', role: 'AUDIO', name: 'Audio Node', online: true },
+      { id: 'audio-node', role: 'AUDIO', name: 'Audio Node', online: true, capabilities: 'WAV,PLAY,LOOP' },
       { id: 'lamp-node', role: 'LAMP', name: 'Lamp Node', online: true },
       { id: 'LED-04', role: 'PIXEL', friendlyName: 'Finale', online: true, initialised: true, pixelCount: 40 }
     ]
@@ -217,6 +217,33 @@ check('audio and lamp devices are not pixel outputs', () => {
   assert.ok(!ids.includes('audio-node'));
   assert.ok(!ids.includes('lamp-node'));
   assert.ok(ids.includes('LED-04'));
+});
+
+check('pixel-capable Audio Node appears as one GPIO22 output, not LED-XX', () => {
+  authoring.ingestLivePayloads([{
+    devices: [
+      {
+        id: 'audio-node',
+        role: 'AUDIO',
+        name: 'Audio Node',
+        online: true,
+        capabilities: 'WAV,PLAY,PIXEL',
+        outputs: [
+          { id: 'audio', kind: 'audio', label: 'Audio Playback' },
+          { id: 'gpio22', kind: 'pixel', label: 'NeoPixel Line — GPIO22', pin: 22, maxPixels: 512, pixelCount: 10, initialised: true, route: 'audio-node-pixels' }
+        ]
+      }
+    ]
+  }]);
+  const list = authoring.listPixelOutputs({});
+  const ids = list.map((item) => item.logicalId);
+  assert.ok(ids.includes('audio-node'));
+  assert.ok(!ids.some((id) => /^LED-/i.test(id)));
+  const audio = list.find((item) => item.logicalId === 'audio-node');
+  assert.strictEqual(audio.route, 'audio-node-pixels');
+  assert.strictEqual(authoring.commandPrefix({ binding: { route: audio.route, nodeId: audio.logicalId } }), 'AUDIO:NODE:PIXEL:');
+  assert.strictEqual(audio.pin, 22);
+  assert.strictEqual(audio.initialised, true);
 });
 
 check('select HTML truncates via CSS class and preserves values', () => {

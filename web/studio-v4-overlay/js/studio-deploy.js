@@ -17,6 +17,38 @@
   const TIMELINE_COMMAND_MAX = 63;
   const TIMELINE_MAX_CUES = 2048;
   const PIXEL_SEGMENT_SLOTS = 16;
+  const TARGET_STORAGE_KEY = 'showduino_target_url';
+
+  function normaliseTarget(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const withScheme = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+    try {
+      const url = new URL(withScheme);
+      if (!url.hostname) return '';
+      url.pathname = '';
+      url.search = '';
+      url.hash = '';
+      return url.origin;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function configuredTarget() {
+    try { return normaliseTarget(window.localStorage?.getItem(TARGET_STORAGE_KEY)); }
+    catch (_) { return ''; }
+  }
+
+  function setConfiguredTarget(value) {
+    const target = normaliseTarget(value);
+    if (String(value || '').trim() && !target) throw new Error('Enter a valid Showduino hostname or IP address.');
+    try {
+      if (target) window.localStorage?.setItem(TARGET_STORAGE_KEY, target);
+      else window.localStorage?.removeItem(TARGET_STORAGE_KEY);
+    } catch (_) {}
+    return target;
+  }
 
   function notify(message, level) {
     if (typeof window.studioLog === 'function') window.studioLog(message, level || 'INFO');
@@ -49,6 +81,8 @@
 
   function localHosts() {
     const values = [];
+    const saved = configuredTarget();
+    if (saved) values.push(saved);
     if (browserAllowsDirectLocalSend() && window.location.origin) values.push(window.location.origin);
     values.push('http://showduino.local', 'http://showduino-studio.local', 'http://192.168.4.1');
     return Array.from(new Set(values));
@@ -83,7 +117,10 @@
   }
 
   async function findLocalShowduino() {
-    if (!browserAllowsDirectLocalSend()) return null;
+    // A configured target is also useful while the public Studio is open:
+    // Test can report reachability/capability. Actual deployment remains
+    // protected below and still requires a local HTTP Studio origin.
+    if (!browserAllowsDirectLocalSend() && !configuredTarget()) return null;
     for (const host of localHosts()) {
       const found = await probe(host);
       if (found) return found;
@@ -133,13 +170,16 @@
 
   function compilePixel(clip, action, device, segmentSlot, commands, errors, warnings) {
     const pixels = window.ShowduinoPixelAuthoring;
-    const prefixBase = pixels ? pixels.commandPrefix(device) : (device?.binding?.route === 'p4-show-pixels' ? 'PIXEL:' : null);
+    const route = device?.binding?.route || '';
+    const prefixBase = pixels?.commandPrefix?.(device) ||
+      (route === 'p4-show-pixels' ? 'PIXEL:' :
+        (route === 'audio-node-pixels' ? 'AUDIO:NODE:PIXEL:' :
+          (route === 'pixel-node' && device?.binding?.nodeId ? `PIXEL:NODE:${device.binding.nodeId}:` : null)));
     if (!prefixBase) {
       errors.push(`${clip.name}: pixel target is not bound to a Showduino pixel output.`);
       return;
     }
-    const slot = pixels ? pixels.authoredSegment(action.params || {}, segmentSlot) : segmentSlot;
-    if (slot >= PIXEL_SEGMENT_SLOTS) {
+    if (segmentSlot >= PIXEL_SEGMENT_SLOTS) {
       errors.push(`${clip.name}: scene needs more than ${PIXEL_SEGMENT_SLOTS} pixel segment slots.`);
       return;
     }
@@ -170,7 +210,7 @@
     const intensity = Math.round(clamp(params.intensity, 0, 100, 100));
     const randomness = Math.round(clamp(params.randomness, 0, 100, 0));
     const reverse = params.reverse ? 1 : 0;
-    const prefix = `${prefixBase}SEGMENT:${slot}`;
+    const prefix = `${prefixBase}SEGMENT:${segmentSlot}`;
 
     addCommand(commands, errors, clip.startMs, `${prefix}:RANGE:${start}:${count}`, clip.name);
     addCommand(commands, errors, clip.startMs, `${prefix}:FX:${effect}`, clip.name);
@@ -187,11 +227,12 @@
       addCommand(commands, errors, clip.startMs + clip.durationMs, `${prefix}:STOP`, `${clip.name} stop`);
     }
 
-    const live = pixels?.getLiveSnapshot?.();
-    const check = pixels?.validatePixelTarget?.(device?.binding?.nodeId || '', live);
-    (check?.warnings || []).forEach((warning) => {
-      warnings.push(`${clip.name}: ${warning.message}`);
-    });
+    if (Array.isArray(warnings) && pixels?.validatePixelTarget) {
+      const check = pixels.validatePixelTarget(device?.binding?.nodeId || '', pixels.getLiveSnapshot?.());
+      (check?.warnings || []).forEach((warning) => {
+        warnings.push(`${clip.name}: ${warning.message}`);
+      });
+    }
   }
 
   function compileShdoForStage(shdo) {
@@ -336,14 +377,19 @@
       }
     });
 
-    actions.appendChild(button);
+    const more = document.getElementById('studio-header-more');
+    if (more) actions.insertBefore(button, more.parentElement || more);
+    else actions.appendChild(button);
   }
 
   window.ShowduinoDeploy = Object.freeze({
     findLocalShowduino,
     deployCurrentProject,
     browserAllowsDirectLocalSend,
-    compileShdoForStage
+    compileShdoForStage,
+    getConfiguredTarget: configuredTarget,
+    setConfiguredTarget,
+    normaliseTarget
   });
 
   document.addEventListener('DOMContentLoaded', initialise);

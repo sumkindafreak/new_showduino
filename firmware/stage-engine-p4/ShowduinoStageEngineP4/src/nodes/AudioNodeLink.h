@@ -20,11 +20,21 @@ struct AudioNodeStatus {
   char asset[64] = "";
   char lastLife[16] = "";
   char lastError[24] = "";
-  char capabilities[128] = SHOWDUINO_AUDIO_CAPS;
+  char capabilities[160] = SHOWDUINO_AUDIO_CAPS;
   char codec[12] = "ES8388";
   char storage[16] = "UNKNOWN";
   char output[12] = "SPEAKER";
   char inventory[SHOWDUINO_AUDIO_INV_PER_PAGE][40] = {};
+  /* GPIO22 NeoPixel line on the same physical Audio Node (not a second peer). */
+  bool pixelCapable = false;
+  bool pixelReady = false;
+  bool pixelEmergency = false;
+  uint8_t pixelPin = 22;
+  uint16_t pixelConfigured = 0;
+  uint16_t pixelCount = 0;
+  uint16_t pixelMax = 512;
+  uint8_t pixelBrightness = 255;
+  char pixelCaps[96] = "";
   bool soundReady = false;
   bool soundArmed = false;
   bool soundCalibrated = false;

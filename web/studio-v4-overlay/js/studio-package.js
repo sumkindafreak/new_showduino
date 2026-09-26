@@ -51,37 +51,40 @@
     })[type] || '#888888';
   }
 
-  function pixelAuthoring() {
-    return window.ShowduinoPixelAuthoring || null;
-  }
-
   function deviceTypeForClip(clip) {
-    const node = String(clip?.routing?.nodeId || '').trim();
-    const pixels = pixelAuthoring();
+    const node = String(clip?.routing?.nodeId || '').trim().toLowerCase();
+    const pixels = window.ShowduinoPixelAuthoring;
     switch (clip?.type) {
       case 'audio': return 'audio-node';
       case 'mosfet': return 'mosfet-node';
       case 'trigger': return 'input-node';
-      case 'pixel': return pixels ? pixels.typeForNodeId(node) : (pixelsIsP4(node) ? 'p4-pixel-line' : 'pixel-node');
+      case 'pixel':
+        if (pixels?.typeForNodeId) return pixels.typeForNodeId(node);
+        if (node === 'p4' || node === 'p4-local' || node.includes('show-pixel')) return 'p4-pixel-line';
+        if (node === 'audio-node' || (node.includes('audio') && node.includes('pixel')) || node === 'gpio22') {
+          return 'audio-node-pixels';
+        }
+        return 'pixel-node';
       case 'lighting': return 'lantern-node';
       case 'video': return 'projection';
       default: return 'custom';
     }
   }
 
-  function pixelsIsP4(node) {
-    const id = String(node || '').trim().toLowerCase();
-    return id === 'p4' || id === 'p4-local' || id === 'p4-show-pixels' || id.includes('show-pixel');
-  }
-
   function bindingRouteForClip(clip) {
-    const node = String(clip?.routing?.nodeId || '').trim();
-    const pixels = pixelAuthoring();
+    const node = String(clip?.routing?.nodeId || '').trim().toLowerCase();
+    const pixels = window.ShowduinoPixelAuthoring;
     switch (clip?.type) {
       case 'audio': return 'audio-node';
       case 'mosfet': return 'mosfet-node';
       case 'trigger': return 'input-node';
-      case 'pixel': return pixels ? pixels.routeForNodeId(node) : (pixelsIsP4(node) ? 'p4-show-pixels' : 'pixel-node');
+      case 'pixel':
+        if (pixels?.routeForNodeId) return pixels.routeForNodeId(node);
+        if (node === 'p4' || node === 'p4-local' || node.includes('show-pixel')) return 'p4-show-pixels';
+        if (node === 'audio-node' || (node.includes('audio') && node.includes('pixel')) || node === 'gpio22') {
+          return 'audio-node-pixels';
+        }
+        return 'pixel-node';
       case 'lighting': return 'lantern-node';
       case 'video': return 'projection';
       default: return 'unbound';
@@ -147,60 +150,39 @@
       const outputRaw = String(clip?.routing?.output || '').trim();
       if (!nodeId) return;
 
-        const pixels = pixelAuthoring();
-        const logical = clip.type === 'pixel' && pixels ? pixels.canonicalNodeId(nodeId) : nodeId;
-        const type = deviceTypeForClip(clip);
-        const key = `${type}|${String(logical).toLowerCase()}|${outputRaw.toLowerCase()}`;
-        let deviceId = routeMap.get(key);
-        if (!deviceId && clip.type === 'pixel' && pixels) {
-          const candidate = pixels.packageDeviceId(logical);
-          const existing = devices.find((device) => String(device.id) === String(candidate) ||
-            (device.binding && String(device.binding.nodeId || '').toLowerCase() === String(logical).toLowerCase() &&
-              (device.binding.route === pixels.P4_ROUTE || device.binding.route === pixels.PIXEL_ROUTE)));
-          if (existing) deviceId = existing.id;
-          else if (ids.has(String(candidate))) deviceId = candidate;
-        }
-        if (!deviceId) {
-          if (clip.type === 'pixel' && pixels) {
-            const ready = pixels.shdoDeviceForNode(logical, {
-              name: outputRaw && !pixels.isP4Id(logical) ? `${logical} — ${outputRaw}` : undefined,
-              metadata: { derivedFromLegacyRouting: true }
-            });
-            if (ready) {
-              deviceId = ready.id;
-              if (!ids.has(deviceId)) {
-                devices.push(ready);
-                ids.add(deviceId);
-              }
-              routeMap.set(key, deviceId);
-              clipTargets.set(clip.id, deviceId);
-              return;
-            }
-          }
-          const base = `device-${slug(nodeId)}-${slug(outputRaw || clip.type, clip.type || 'output')}`;
-          deviceId = base;
-          let suffix = 2;
-          while (ids.has(deviceId)) deviceId = `${base}-${suffix++}`;
+      const type = deviceTypeForClip(clip);
+      const key = `${type}|${nodeId.toLowerCase()}|${outputRaw.toLowerCase()}`;
+      let deviceId = routeMap.get(key);
+      if (!deviceId) {
+        const base = `device-${slug(nodeId)}-${slug(outputRaw || clip.type, clip.type || 'output')}`;
+        deviceId = base;
+        let suffix = 2;
+        while (ids.has(deviceId)) deviceId = `${base}-${suffix++}`;
 
-          const binding = { route: bindingRouteForClip(clip), nodeId: logical || nodeId };
-          if (outputRaw) {
-            if (/^\d+$/.test(outputRaw)) binding.output = Number(outputRaw);
-            else binding.outputLabel = outputRaw;
-          }
-
-          devices.push({
-            id: deviceId,
-            name: outputRaw ? `${nodeId} · ${outputRaw}` : nodeId,
-            type,
-            enabled: true,
-            binding,
-            capabilities: {},
-            metadata: { derivedFromLegacyRouting: true }
-          });
-          ids.add(deviceId);
-          routeMap.set(key, deviceId);
+        const binding = { route: bindingRouteForClip(clip), nodeId };
+        if (outputRaw) {
+          if (/^\d+$/.test(outputRaw)) binding.output = Number(outputRaw);
+          else binding.outputLabel = outputRaw;
         }
-        clipTargets.set(clip.id, deviceId);
+        if (binding.route === 'audio-node-pixels') {
+          binding.nodeId = 'audio-node';
+          binding.outputLabel = binding.outputLabel || 'gpio22';
+          binding.parentNodeId = 'audio-node';
+        }
+
+        devices.push({
+          id: deviceId,
+          name: outputRaw ? `${nodeId} · ${outputRaw}` : nodeId,
+          type,
+          enabled: true,
+          binding,
+          capabilities: {},
+          metadata: { derivedFromLegacyRouting: true }
+        });
+        ids.add(deviceId);
+        routeMap.set(key, deviceId);
+      }
+      clipTargets.set(clip.id, deviceId);
     });
 
     return { devices, clipTargets };

@@ -700,7 +700,21 @@ static void handleApiDevices() {
     json += an.state;
     json += "\",\n      \"capabilities\": \"";
     json += an.capabilities;
-    json += "\"\n    }";
+    json += "\",\n      \"outputs\": [\n";
+    json += "        {\"id\":\"audio\",\"kind\":\"audio\",\"label\":\"Audio Playback\"}";
+    if (an.pixelCapable || strstr(an.capabilities, "PIXEL")) {
+      json += ",\n        {\"id\":\"gpio22\",\"kind\":\"pixel\",\"label\":\"NeoPixel Line — GPIO22\",";
+      json += "\"pin\":";
+      json += String((unsigned)(an.pixelPin ? an.pixelPin : 22));
+      json += ",\"maxPixels\":";
+      json += String((unsigned)(an.pixelMax ? an.pixelMax : 512));
+      json += ",\"pixelCount\":";
+      json += String((unsigned)an.pixelConfigured);
+      json += ",\"initialised\":";
+      json += an.pixelReady ? "true" : "false";
+      json += ",\"route\":\"audio-node-pixels\"}";
+    }
+    json += "\n      ]\n    }";
   }
   const LampNodeStatus &ln = lampNodeLinkStatus();
   if (ln.seen) {

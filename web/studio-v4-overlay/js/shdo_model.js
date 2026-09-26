@@ -117,14 +117,14 @@ class SHDOModel {
       case 'mosfet':
         return { out: 'out1', mode: 'hold', state: true, duty: 100, pulseMs: 0, safeOff: true };
       case 'pixel':
-        if (window.ShowduinoPixelAuthoring?.defaultPixelParams) {
+        if (typeof window !== 'undefined' && window.ShowduinoPixelAuthoring?.defaultPixelParams) {
           return window.ShowduinoPixelAuthoring.defaultPixelParams();
         }
         return {
-          segment: 0,
           line: 1,
+          segment: 0,
           segmentMode: 'range',
-          segmentName: 'Segment 0',
+          segmentName: 'Segment A',
           startPixel: 0,
           length: 10,
           groupSize: 10,
@@ -209,23 +209,20 @@ class SHDOModel {
       clip.routing.output = clip.routing.output || '';
       clip.params = clip.params && typeof clip.params === 'object' ? clip.params : SHDOModel._defaultParams(clip.type);
 
-        if (clip.type === 'pixel') {
+      if (clip.type === 'pixel') {
+        if (typeof window !== 'undefined' && window.ShowduinoPixelAuthoring?.migratePixelParams) {
+          clip.params = window.ShowduinoPixelAuthoring.migratePixelParams(clip.params);
+        } else {
           const defaults = SHDOModel._defaultParams('pixel');
-          const hadSegment = clip.params && (clip.params.segment != null || clip.params.segmentId != null);
-          if (typeof clip.params.length === 'undefined' && typeof clip.params.count !== 'undefined') clip.params.length = clip.params.count || 10;
-          if (window.ShowduinoPixelAuthoring?.migratePixelParams) {
-            clip.params = window.ShowduinoPixelAuthoring.migratePixelParams(clip.params);
-          } else {
-            clip.params = { ...defaults, ...clip.params };
+          if (typeof clip.params.length === 'undefined' && typeof clip.params.count !== 'undefined') {
+            clip.params.length = clip.params.count || 10;
           }
-          if (!hadSegment && clip.params) delete clip.params.segment;
-          clip.params.startPixel = Math.max(0, Number(clip.params.startPixel) || 0);
-          clip.params.length = Math.max(1, Number(clip.params.length) || 10);
-          clip.routing = clip.routing && typeof clip.routing === 'object' ? clip.routing : { nodeId: '', output: '' };
-          if (clip.routing.nodeId && window.ShowduinoPixelAuthoring?.canonicalNodeId) {
-            clip.routing.nodeId = window.ShowduinoPixelAuthoring.canonicalNodeId(clip.routing.nodeId) || clip.routing.nodeId;
-          }
+          clip.params = { ...defaults, ...clip.params };
         }
+        if (clip.routing.nodeId && typeof window !== 'undefined' && window.ShowduinoPixelAuthoring?.canonicalNodeId) {
+          clip.routing.nodeId = window.ShowduinoPixelAuthoring.canonicalNodeId(clip.routing.nodeId) || clip.routing.nodeId;
+        }
+      }
 
       if (clip.type === 'relay') clip.params = { ...SHDOModel._defaultParams('relay'), ...clip.params };
       if (clip.type === 'mosfet') clip.params = { ...SHDOModel._defaultParams('mosfet'), ...clip.params };

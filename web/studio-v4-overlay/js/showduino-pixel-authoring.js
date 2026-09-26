@@ -16,9 +16,15 @@
   var P4_LABEL = 'P4 Show Pixel Line';
   var PIXEL_ROUTE = 'pixel-node';
   var PIXEL_TYPE = 'pixel-node';
+  var AUDIO_LOGICAL_ID = 'audio-node';
+  var AUDIO_PIXEL_DEVICE_ID = 'audio-node-pixels';
+  var AUDIO_PIXEL_ROUTE = 'audio-node-pixels';
+  var AUDIO_PIXEL_TYPE = 'audio-node-pixels';
+  var AUDIO_PIXEL_LABEL = 'Audio Node NeoPixel Line — GPIO22';
   var PIXEL_SEGMENT_SLOTS = 16;
   var P4_MAX_PIXELS = 1024;
   var PIXEL_NODE_MAX_PIXELS = 512;
+  var AUDIO_PIXEL_MAX_PIXELS = 512;
   var PIXEL_NODE_ID_MAX = 12;
   var PIXEL_NODE_NAME_MAX = 20;
 
@@ -30,6 +36,18 @@
     'show-pixel': true,
     gpio23: true,
     'p4-gpio23': true
+  };
+
+  var AUDIO_PIXEL_ALIASES = {
+    'audio-node': true,
+    'audio-node-pixels': true,
+    audio: true,
+    'audio-1': true,
+    'audio-01': true,
+    'audio_01': true,
+    'aud-01': true,
+    'gpio22': true,
+    'audio-gpio22': true
   };
 
   var EFFECTS = Object.freeze([
@@ -136,16 +154,25 @@
     return id.indexOf('show-pixel') >= 0 || id === 'p4 show pixel line';
   }
 
+  function isAudioPixelId(value) {
+    var id = text(value).toLowerCase();
+    if (!id) return false;
+    if (AUDIO_PIXEL_ALIASES[id]) return true;
+    if (id.indexOf('audio') >= 0 && (id.indexOf('pixel') >= 0 || id.indexOf('gpio22') >= 0)) return true;
+    return false;
+  }
+
   function canonicalNodeId(value) {
     var id = text(value);
     if (!id) return '';
     if (isP4Id(id)) return P4_LOGICAL_ID;
+    if (isAudioPixelId(id)) return AUDIO_LOGICAL_ID;
     return id;
   }
 
   function pixelNodeIdOk(value) {
     var id = text(value);
-    if (!id || isP4Id(id)) return false;
+    if (!id || isP4Id(id) || isAudioPixelId(id)) return false;
     if (id.length < 2 || id.length > PIXEL_NODE_ID_MAX) return false;
     if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(id)) return false;
     return true;
@@ -171,17 +198,22 @@
   function routeForNodeId(nodeId) {
     var id = canonicalNodeId(nodeId);
     if (!id) return '';
-    return isP4Id(id) ? P4_ROUTE : PIXEL_ROUTE;
+    if (isP4Id(id)) return P4_ROUTE;
+    if (isAudioPixelId(id)) return AUDIO_PIXEL_ROUTE;
+    return PIXEL_ROUTE;
   }
 
   function typeForNodeId(nodeId) {
-    return isP4Id(nodeId) ? P4_TYPE : PIXEL_TYPE;
+    if (isP4Id(nodeId)) return P4_TYPE;
+    if (isAudioPixelId(nodeId)) return AUDIO_PIXEL_TYPE;
+    return PIXEL_TYPE;
   }
 
   function packageDeviceId(nodeId) {
     var id = canonicalNodeId(nodeId);
     if (!id) return '';
     if (isP4Id(id)) return P4_DEVICE_ID;
+    if (isAudioPixelId(id)) return AUDIO_PIXEL_DEVICE_ID;
     return id;
   }
 
@@ -206,7 +238,47 @@
       maxPixels: Number(lighting.showPixelsMax) > 0 ? Number(lighting.showPixelsMax) : P4_MAX_PIXELS,
       segments: PIXEL_SEGMENT_SLOTS,
       state: !online ? 'OFFLINE' : (initialised ? 'READY' : 'NOT INITIALISED'),
-      source: 'p4'
+      source: 'p4',
+      parentDeviceId: 'p4',
+      outputKind: 'pixel'
+    };
+  }
+
+  function defaultAudioPixelOutput(live) {
+    var audio = live && live.audioNode ? live.audioNode : null;
+    if (!audio) return null;
+    var capable = audio.pixelCapable === true ||
+      (String(audio.capabilities || '').indexOf('PIXEL') >= 0) ||
+      (Array.isArray(audio.outputs) && audio.outputs.some(function (o) {
+        return String(o && o.kind || '').toLowerCase() === 'pixel';
+      }));
+    if (!capable) return null;
+    var pixel = audio.pixel ? audio.pixel : {};
+    var online = audio.online === true;
+    var initialised = pixel.ready === true || pixel.initialised === true;
+    var pixelCount = Number(pixel.configured || pixel.count || pixel.pixelCount || 0) || 0;
+    var maxPixels = Number(pixel.max || pixel.maxPixels || AUDIO_PIXEL_MAX_PIXELS) || AUDIO_PIXEL_MAX_PIXELS;
+    var pin = Number(pixel.pin || 22) || 22;
+    return {
+      logicalId: AUDIO_LOGICAL_ID,
+      deviceId: AUDIO_PIXEL_DEVICE_ID,
+      route: AUDIO_PIXEL_ROUTE,
+      type: AUDIO_PIXEL_TYPE,
+      name: AUDIO_PIXEL_LABEL,
+      friendlyName: 'AUDIO-01 — NeoPixel Line GPIO' + pin,
+      online: online,
+      missing: false,
+      initialised: initialised,
+      pixelCount: pixelCount,
+      maxPixels: maxPixels,
+      segments: PIXEL_SEGMENT_SLOTS,
+      state: !online ? 'OFFLINE' : (initialised ? 'READY' : 'NOT INITIALISED'),
+      source: 'live',
+      parentDeviceId: AUDIO_LOGICAL_ID,
+      parentRole: 'AUDIO',
+      outputKind: 'pixel',
+      outputLabel: 'gpio22',
+      pin: pin
     };
   }
 
@@ -246,22 +318,26 @@
   function placeholderOutput(nodeId, name, flags) {
     var id = canonicalNodeId(nodeId);
     var p4 = isP4Id(id);
+    var audio = isAudioPixelId(id);
     flags = flags || {};
     return {
-      logicalId: p4 ? P4_LOGICAL_ID : id,
+      logicalId: p4 ? P4_LOGICAL_ID : (audio ? AUDIO_LOGICAL_ID : id),
       deviceId: packageDeviceId(id),
       route: routeForNodeId(id),
       type: typeForNodeId(id),
-      name: text(name) || (p4 ? P4_LABEL : id),
-      friendlyName: text(name) || (p4 ? P4_LABEL : id),
+      name: text(name) || (p4 ? P4_LABEL : (audio ? AUDIO_PIXEL_LABEL : id)),
+      friendlyName: text(name) || (p4 ? P4_LABEL : (audio ? AUDIO_PIXEL_LABEL : id)),
       online: false,
       missing: flags.missing !== false,
       initialised: false,
       pixelCount: 0,
-      maxPixels: p4 ? P4_MAX_PIXELS : PIXEL_NODE_MAX_PIXELS,
+      maxPixels: p4 ? P4_MAX_PIXELS : (audio ? AUDIO_PIXEL_MAX_PIXELS : PIXEL_NODE_MAX_PIXELS),
       segments: PIXEL_SEGMENT_SLOTS,
       state: flags.missing === false ? 'OFFLINE' : 'MISSING',
-      source: 'project'
+      source: 'project',
+      parentDeviceId: audio ? AUDIO_LOGICAL_ID : (p4 ? 'p4' : id),
+      outputKind: 'pixel',
+      outputLabel: audio ? 'gpio22' : ''
     };
   }
 
@@ -292,7 +368,8 @@
       var logical = canonicalNodeId(id);
       if (!logical) return;
       if (isP4Id(logical)) logical = P4_LOGICAL_ID;
-      else if (!pixelNodeIdOk(logical) && !isP4Id(logical)) return;
+      else if (isAudioPixelId(logical)) logical = AUDIO_LOGICAL_ID;
+      else if (!pixelNodeIdOk(logical)) return;
       var key = logical.toLowerCase();
       for (var i = 0; i < found.length; i++) {
         if (found[i].logicalId.toLowerCase() === key) {
@@ -307,7 +384,8 @@
     devices.forEach(function (device) {
       var route = text(device && device.binding && device.binding.route);
       var nodeId = text(device && device.binding && device.binding.nodeId) || text(device && device.id);
-      if (route === P4_ROUTE || route === PIXEL_ROUTE || text(device && device.type).indexOf('pixel') >= 0) {
+      if (route === P4_ROUTE || route === PIXEL_ROUTE || route === AUDIO_PIXEL_ROUTE ||
+          text(device && device.type).indexOf('pixel') >= 0) {
         remember(nodeId || device.id, device && device.name);
       }
     });
@@ -342,6 +420,8 @@
     }
 
     add(defaultP4Output(live));
+    var audioOut = defaultAudioPixelOutput(live);
+    if (audioOut) add(audioOut);
 
     var nodes = (live && Array.isArray(live.nodes)) ? live.nodes : [];
     nodes.forEach(function (node) {
@@ -369,8 +449,10 @@
 
   function optionLabel(output) {
     if (!output) return 'Select pixel output';
-    var id = output.logicalId === P4_LOGICAL_ID ? P4_LABEL : output.logicalId;
-    var friendly = output.friendlyName && output.friendlyName !== output.logicalId && output.logicalId !== P4_LOGICAL_ID
+    var id = output.logicalId === P4_LOGICAL_ID ? P4_LABEL
+      : (isAudioPixelId(output.logicalId) ? AUDIO_PIXEL_LABEL : output.logicalId);
+    var friendly = output.friendlyName && output.friendlyName !== output.logicalId &&
+      output.logicalId !== P4_LOGICAL_ID && !isAudioPixelId(output.logicalId)
       ? output.friendlyName
       : '';
     var title = friendly ? (id + ' — ' + friendly) : id;
@@ -385,7 +467,8 @@
 
   function statusText(output) {
     if (!output) return 'No device selected';
-    if (output.logicalId !== P4_LOGICAL_ID && !pixelNodeIdOk(output.logicalId) && !isP4Id(output.logicalId)) {
+    if (output.logicalId !== P4_LOGICAL_ID && !isAudioPixelId(output.logicalId) &&
+        !pixelNodeIdOk(output.logicalId) && !isP4Id(output.logicalId)) {
       return 'Malformed Pixel Node ID';
     }
     if (output.missing) return 'This production expects this output, but it is not currently available.';
@@ -395,12 +478,15 @@
     if (output.online) bits.push('ONLINE');
     if (output.pixelCount > 0) bits.push(output.pixelCount + ' PIXELS');
     if (output.initialised) bits.push('INITIALISED');
+    if (isAudioPixelId(output.logicalId)) bits.push('GPIO22');
     return bits.join(' · ') || 'READY';
   }
 
   function statusKind(output) {
     if (!output || !output.logicalId) return 'error';
-    if (output.logicalId !== P4_LOGICAL_ID && !pixelNodeIdOk(output.logicalId)) return 'error';
+    if (output.logicalId !== P4_LOGICAL_ID && !isAudioPixelId(output.logicalId) && !pixelNodeIdOk(output.logicalId)) {
+      return 'error';
+    }
     if (output.missing || output.online === false || !output.initialised) return 'warn';
     return 'ok';
   }
@@ -447,22 +533,29 @@
     var logical = canonicalNodeId(nodeId);
     if (!logical) return null;
     var p4 = isP4Id(logical);
+    var audio = isAudioPixelId(logical);
     var device = {
       id: packageDeviceId(logical),
-      name: extras.name || (p4 ? P4_LABEL : logical),
+      name: extras.name || (p4 ? P4_LABEL : (audio ? AUDIO_PIXEL_LABEL : logical)),
       type: typeForNodeId(logical),
       enabled: true,
       binding: {
         route: routeForNodeId(logical),
-        nodeId: p4 ? P4_LOGICAL_ID : logical
+        nodeId: p4 ? P4_LOGICAL_ID : (audio ? AUDIO_LOGICAL_ID : logical)
       },
       capabilities: {
         segmentedPixels: true,
-        maxPixels: extras.maxPixels || (p4 ? P4_MAX_PIXELS : PIXEL_NODE_MAX_PIXELS),
+        maxPixels: extras.maxPixels || (p4 ? P4_MAX_PIXELS : (audio ? AUDIO_PIXEL_MAX_PIXELS : PIXEL_NODE_MAX_PIXELS)),
         segments: PIXEL_SEGMENT_SLOTS
       },
       metadata: extras.metadata || {}
     };
+    if (audio) {
+      device.binding.outputLabel = 'gpio22';
+      device.binding.parentNodeId = AUDIO_LOGICAL_ID;
+      device.metadata.parentRole = 'AUDIO';
+      device.metadata.pin = extras.pin || 22;
+    }
     if (extras.pixelStart != null) device.binding.pixelStart = Number(extras.pixelStart) || 0;
     if (extras.pixelCount != null) device.binding.pixelCount = Number(extras.pixelCount) || 0;
     return device;
@@ -472,6 +565,7 @@
     var route = text(device && device.binding && device.binding.route);
     var nodeId = text(device && device.binding && device.binding.nodeId);
     if (route === P4_ROUTE || (!route && isP4Id(nodeId))) return 'PIXEL:';
+    if (route === AUDIO_PIXEL_ROUTE || isAudioPixelId(nodeId)) return 'AUDIO:NODE:PIXEL:';
     if (route === PIXEL_ROUTE) {
       if (!pixelNodeIdOk(nodeId)) return null;
       return 'PIXEL:NODE:' + nodeId + ':';
@@ -547,7 +641,7 @@
       errors.push({ code: 'NO_DEVICE', kind: 'authoring', message: 'No device selected' });
       return { ok: false, errors: errors, warnings: warnings, output: null };
     }
-    if (!isP4Id(logical) && !pixelNodeIdOk(logical)) {
+    if (!isP4Id(logical) && !isAudioPixelId(logical) && !pixelNodeIdOk(logical)) {
       errors.push({ code: 'BAD_ID', kind: 'authoring', message: 'Malformed Pixel Node ID' });
       return { ok: false, errors: errors, warnings: warnings, output: null };
     }
@@ -597,6 +691,7 @@
     var lighting = null;
     var system = null;
     var p4Online = null;
+    var audioNode = null;
     var nodes = [];
     var seen = {};
     function rememberNode(node) {
@@ -616,10 +711,34 @@
       if (payload.role === 'stage' || payload.audioNode || payload.lampNode) system = payload;
       if (payload.p4Online === false) p4Online = false;
       if (payload.p4Online === true) p4Online = true;
+      if (payload.audioNode && typeof payload.audioNode === 'object') audioNode = payload.audioNode;
       if (Array.isArray(payload.pixelNodes)) payload.pixelNodes.forEach(rememberNode);
       if (Array.isArray(payload.devices)) {
         payload.devices.forEach(function (device) {
           var role = text(device && (device.role || device.type)).toUpperCase();
+          if (role === 'AUDIO' || text(device && device.id).toLowerCase() === 'audio-node') {
+            audioNode = {
+              id: device.id || 'audio-node',
+              online: device.online,
+              capabilities: device.capabilities || '',
+              outputs: device.outputs || [],
+              pixelCapable: Array.isArray(device.outputs) && device.outputs.some(function (o) {
+                return String(o && o.kind || '').toLowerCase() === 'pixel';
+              }) || String(device.capabilities || '').indexOf('PIXEL') >= 0,
+              pixel: (function () {
+                var out = Array.isArray(device.outputs) ? device.outputs.filter(function (o) {
+                  return String(o && o.kind || '').toLowerCase() === 'pixel';
+                })[0] : null;
+                return out ? {
+                  pin: out.pin || 22,
+                  max: out.maxPixels || AUDIO_PIXEL_MAX_PIXELS,
+                  configured: out.pixelCount || 0,
+                  ready: out.initialised === true
+                } : {};
+              })()
+            };
+            return;
+          }
           if (role !== 'PIXEL' && role !== 'PIXEL-NODE' && role !== 'PIXEL_NODE') return;
           rememberNode({
             id: device.id,
@@ -636,11 +755,13 @@
     });
     if (system && system.p4Online === false) p4Online = false;
     if (system && system.p4Online === true && p4Online == null) p4Online = true;
+    if (system && system.audioNode && !audioNode) audioNode = system.audioNode;
     liveSnapshot = {
       fetched: true,
       p4Online: p4Online,
       lighting: lighting,
       system: system,
+      audioNode: audioNode,
       nodes: nodes
     };
     return liveSnapshot;
@@ -680,6 +801,12 @@
     P4_LABEL: P4_LABEL,
     PIXEL_ROUTE: PIXEL_ROUTE,
     PIXEL_TYPE: PIXEL_TYPE,
+    AUDIO_LOGICAL_ID: AUDIO_LOGICAL_ID,
+    AUDIO_PIXEL_DEVICE_ID: AUDIO_PIXEL_DEVICE_ID,
+    AUDIO_PIXEL_ROUTE: AUDIO_PIXEL_ROUTE,
+    AUDIO_PIXEL_TYPE: AUDIO_PIXEL_TYPE,
+    AUDIO_PIXEL_LABEL: AUDIO_PIXEL_LABEL,
+    AUDIO_PIXEL_MAX_PIXELS: AUDIO_PIXEL_MAX_PIXELS,
     PIXEL_SEGMENT_SLOTS: PIXEL_SEGMENT_SLOTS,
     P4_MAX_PIXELS: P4_MAX_PIXELS,
     PIXEL_NODE_MAX_PIXELS: PIXEL_NODE_MAX_PIXELS,
@@ -687,6 +814,7 @@
     clamp: clamp,
     sameId: sameId,
     isP4Id: isP4Id,
+    isAudioPixelId: isAudioPixelId,
     canonicalNodeId: canonicalNodeId,
     pixelNodeIdOk: pixelNodeIdOk,
     canonicalizeEffect: canonicalizeEffect,
@@ -713,7 +841,7 @@
     findOutput: findOutput,
     getLiveSnapshot: function () { return liveSnapshot; },
     resetLiveSnapshot: function () {
-      liveSnapshot = { fetched: false, p4Online: null, lighting: null, system: null, nodes: [] };
+      liveSnapshot = { fetched: false, p4Online: null, lighting: null, system: null, audioNode: null, nodes: [] };
     }
   };
 
