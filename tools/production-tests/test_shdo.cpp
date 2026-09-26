@@ -141,6 +141,72 @@ int main() {
   expect(sawNodePrefix, "compiled commands target PIXEL:NODE:LED-03");
   expect(sawFlicker, "compiled FX is FLICKER");
 
+  static const char *kAudioPixels =
+      "{\n"
+      "  \"schema\": \"showduino-production-v2\",\n"
+      "  \"package\": { \"version\": 2 },\n"
+      "  \"project\": { \"id\": \"audio_pixels\", \"name\": \"Audio Node Pixels\" },\n"
+      "  \"architecture\": {\n"
+      "    \"runtimeAuthority\": \"esp32-p4-show-engine\",\n"
+      "    \"transport\": \"esp32-s3-comms-controller\"\n"
+      "  },\n"
+      "  \"safety\": {\n"
+      "    \"policy\": \"firmware-authoritative\",\n"
+      "    \"productionCannotDisable\": true,\n"
+      "    \"emergency\": {\n"
+      "      \"autoResume\": false,\n"
+      "      \"requiresManualClear\": true,\n"
+      "      \"stopTimeline\": true,\n"
+      "      \"pixelOverride\": \"all-white\"\n"
+      "    }\n"
+      "  },\n"
+      "  \"devices\": [{\n"
+      "    \"id\": \"audio-node\",\n"
+      "    \"type\": \"audio-node\",\n"
+      "    \"binding\": { \"route\": \"audio-node\", \"nodeId\": \"audio-node\" }\n"
+      "  },{\n"
+      "    \"id\": \"audio-node-pixels\",\n"
+      "    \"type\": \"audio-node-pixels\",\n"
+      "    \"binding\": { \"route\": \"audio-node-pixels\", \"nodeId\": \"audio-node\", \"outputLabel\": \"gpio22\", \"pixelStart\": 0, \"pixelCount\": 10 }\n"
+      "  }],\n"
+      "  \"clips\": [{\n"
+      "    \"id\": \"ambience\",\n"
+      "    \"type\": \"audio\",\n"
+      "    \"targetDeviceId\": \"audio-node\",\n"
+      "    \"startMs\": 0,\n"
+      "    \"durationMs\": 5000,\n"
+      "    \"params\": { \"file\": \"chamber.wav\", \"volume\": 80 }\n"
+      "  },{\n"
+      "    \"id\": \"fire\",\n"
+      "    \"type\": \"pixel\",\n"
+      "    \"targetDeviceId\": \"audio-node-pixels\",\n"
+      "    \"startMs\": 0,\n"
+      "    \"params\": { \"effect\": \"FIRE\", \"startPixel\": 0, \"count\": 10, \"brightness\": 200, \"speed\": 55 }\n"
+      "  }]\n"
+      "}\n";
+
+  ShdoCue audioPxCues[48]{};
+  uint16_t audioPxCount = 0;
+  const ShdoStatus audioPxOk = shdoCompile(kAudioPixels, std::strlen(kAudioPixels), &manifest,
+                                           audioPxCues, 48, &audioPxCount, err, sizeof(err));
+  expect(audioPxOk == SHDO_OK, "audio-node-pixels SHDO compiles");
+  bool sawAudioPlay = false;
+  bool sawAudioPixelFire = false;
+  bool sawFakeLed = false;
+  for (uint16_t i = 0; i < audioPxCount; ++i) {
+    if (std::strstr(audioPxCues[i].command, "AUDIO:NODE:PLAY:chamber.wav") != nullptr) {
+      sawAudioPlay = true;
+    }
+    if (std::strstr(audioPxCues[i].command, "AUDIO:NODE:PIXEL:SEGMENT:0:FX:FIRE") != nullptr) {
+      sawAudioPixelFire = true;
+    }
+    if (std::strstr(audioPxCues[i].command, "PIXEL:NODE:LED") != nullptr) sawFakeLed = true;
+    expect(std::strlen(audioPxCues[i].command) < 64, "audio pixel command fits SHDO cmd max");
+  }
+  expect(sawAudioPlay, "audio playback compiles on same parent node");
+  expect(sawAudioPixelFire, "audio pixel FX uses AUDIO:NODE:PIXEL prefix");
+  expect(!sawFakeLed, "audio pixels must not invent LED-XX identity");
+
   static const char *kMissingPixel =
       "{\n"
       "  \"schema\": \"showduino-production-v2\",\n"

@@ -602,6 +602,7 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   }
   char prefix[40];
   prefix[0] = '\0';
+  const char *cueType = "PIXEL";
   if (strcmp(device->route, "p4-show-pixels") == 0) {
     strncpy(prefix, "PIXEL:", sizeof(prefix) - 1);
   } else if (strcmp(device->route, "pixel-node") == 0) {
@@ -611,10 +612,15 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
       return false;
     }
     snprintf(prefix, sizeof(prefix), "PIXEL:NODE:%s:", nid);
+  } else if (strcmp(device->route, "audio-node-pixels") == 0) {
+    /* Same physical Audio Node peer as AUDIO:NODE:* — not a fake LED-XX identity. */
+    strncpy(prefix, "AUDIO:NODE:PIXEL:", sizeof(prefix) - 1);
+    cueType = "AUDIO";
   } else {
     *status = SHDO_UNSUPPORTED_DEVICE;
     return false;
   }
+  prefix[sizeof(prefix) - 1] = '\0';
   if (slot >= SHOWDUINO_SHDO_PIXEL_SLOTS) {
     *status = SHDO_TOO_MANY_CUES;
     return false;
@@ -642,7 +648,7 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   shdoEffectToken(clip.params.effect, fx, sizeof(fx));
   char cmd[SHOWDUINO_SHDO_CMD_MAX];
   auto add = [&](const char *line) -> bool {
-    return shdoAddCue(cues, count, clip.startMs, "PIXEL", line, status);
+    return shdoAddCue(cues, count, clip.startMs, cueType, line, status);
   };
   snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:RANGE:%lu:%lu",
            prefix, (unsigned)slot, (unsigned long)start, (unsigned long)pixCount);
@@ -680,7 +686,7 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   if (!add(cmd)) return false;
   if (clip.durationMs > 0 && clip.params.blackoutAtEnd) {
     snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:STOP", prefix, (unsigned)slot);
-    if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "PIXEL", cmd, status)) {
+    if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, cueType, cmd, status)) {
       return false;
     }
   }
