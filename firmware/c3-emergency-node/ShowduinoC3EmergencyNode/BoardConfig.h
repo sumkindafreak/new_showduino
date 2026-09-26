@@ -18,7 +18,7 @@
  * OLED: same SSD1306 geometry as the C3 Pixel Node (SDA5/SCL6).
  */
 
-#define SHOWDUINO_EMERGENCY_NODE_FW             "0.2.0"
+#define SHOWDUINO_EMERGENCY_NODE_FW             "0.3.0"
 #define SHOWDUINO_EMERGENCY_NODE_BOARD          "ESP32-C3 Super Mini OLED"
 #define SHOWDUINO_EMERGENCY_NODE_GPIO_VERIFIED  0
 
@@ -37,10 +37,20 @@
 #define SHOWDUINO_ESTOP_NODE_REARM_ACTIVE       LOW
 #define SHOWDUINO_ESTOP_NODE_REARM_LONG_MS      800UL
 
-/* Optional status LED / NeoPixel. -1 = not fitted. */
+/* Optional status LED (separate from Show Pixel Line). -1 = not fitted. */
 #define SHOWDUINO_ESTOP_NODE_LED_GPIO           (-1)
 #define SHOWDUINO_ESTOP_NODE_LED_NEOPIXEL       0
 #define SHOWDUINO_ESTOP_NODE_LED_ACTIVE         HIGH
+
+/*
+ * Full Showduino Pixel Controller capability on the same ESTOP peer.
+ * Recommend 330 ohm series resistor on data (same as C3 Pixel Node).
+ * Max pixels: SHOWDUINO_PIXEL_NODE_MAX_PIXELS (512) — validate on hardware.
+ */
+#define SHOWDUINO_ESTOP_PIXEL_DATA_PIN          2
+#define SHOWDUINO_PIXEL_DATA_PIN                SHOWDUINO_ESTOP_PIXEL_DATA_PIN
+#define SHOWDUINO_PIXEL_ORDER                   (NEO_GRB + NEO_KHZ800)
+#define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS      330
 
 /* Optional local buzzer. -1 = not fitted. Non-blocking. */
 #define SHOWDUINO_ESTOP_NODE_BUZZER_GPIO        (-1)

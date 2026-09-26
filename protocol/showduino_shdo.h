@@ -616,6 +616,10 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
     /* Same physical Audio Node peer as AUDIO:NODE:* — not a fake LED-XX identity. */
     strncpy(prefix, "AUDIO:NODE:PIXEL:", sizeof(prefix) - 1);
     cueType = "AUDIO";
+  } else if (strcmp(device->route, "estop-node-pixels") == 0) {
+    /* Same physical Emergency Node peer as ESTOP:NODE:* — not a fake LED-XX identity. */
+    strncpy(prefix, "ESTOP:NODE:PIXEL:", sizeof(prefix) - 1);
+    cueType = "ESTOP";
   } else {
     *status = SHDO_UNSUPPORTED_DEVICE;
     return false;

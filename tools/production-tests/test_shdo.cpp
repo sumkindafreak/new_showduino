@@ -207,6 +207,58 @@ int main() {
   expect(sawAudioPixelFire, "audio pixel FX uses AUDIO:NODE:PIXEL prefix");
   expect(!sawFakeLed, "audio pixels must not invent LED-XX identity");
 
+  const char *kEstopPixels =
+      "{\n"
+      "  \"schema\": \"showduino-production-v2\",\n"
+      "  \"package\": { \"version\": 2 },\n"
+      "  \"project\": { \"id\": \"estop_pixels\", \"name\": \"Estop Node Pixels\" },\n"
+      "  \"architecture\": {\n"
+      "    \"runtimeAuthority\": \"esp32-p4-show-engine\",\n"
+      "    \"transport\": \"esp32-s3-comms-controller\"\n"
+      "  },\n"
+      "  \"safety\": {\n"
+      "    \"policy\": \"firmware-authoritative\",\n"
+      "    \"productionCannotDisable\": true,\n"
+      "    \"emergency\": {\n"
+      "      \"autoResume\": false,\n"
+      "      \"requiresManualClear\": true,\n"
+      "      \"stopTimeline\": true,\n"
+      "      \"pixelOverride\": \"all-white\"\n"
+      "    }\n"
+      "  },\n"
+      "  \"devices\": [{\n"
+      "    \"id\": \"estop-node-pixels\",\n"
+      "    \"type\": \"estop-node-pixels\",\n"
+      "    \"binding\": { \"route\": \"estop-node-pixels\", \"nodeId\": \"ESTOP-01\", \"outputLabel\": \"gpio2\", \"pixelStart\": 0, \"pixelCount\": 30 }\n"
+      "  }],\n"
+      "  \"clips\": [{\n"
+      "    \"id\": \"fire\",\n"
+      "    \"type\": \"pixel\",\n"
+      "    \"targetDeviceId\": \"estop-node-pixels\",\n"
+      "    \"startMs\": 0,\n"
+      "    \"params\": { \"effect\": \"FIRE\", \"startPixel\": 0, \"count\": 30, \"brightness\": 200, \"speed\": 55 }\n"
+      "  }]\n"
+      "}\n";
+
+  ShdoCue estopPxCues[48]{};
+  uint16_t estopPxCount = 0;
+  const ShdoStatus estopPxOk = shdoCompile(kEstopPixels, std::strlen(kEstopPixels), &manifest,
+                                           estopPxCues, 48, &estopPxCount, err, sizeof(err));
+  expect(estopPxOk == SHDO_OK, "estop-node-pixels SHDO compiles");
+  bool sawEstopPixelFire = false;
+  bool sawEstopFakeLed = false;
+  for (uint16_t i = 0; i < estopPxCount; ++i) {
+    if (std::strstr(estopPxCues[i].command, "ESTOP:NODE:PIXEL:SEGMENT:0:FX:FIRE") != nullptr) {
+      sawEstopPixelFire = true;
+    }
+    if (std::strstr(estopPxCues[i].command, "PIXEL:NODE:LED") != nullptr ||
+        std::strstr(estopPxCues[i].command, "LED-01") != nullptr) {
+      sawEstopFakeLed = true;
+    }
+  }
+  expect(sawEstopPixelFire, "estop pixel FX uses ESTOP:NODE:PIXEL prefix");
+  expect(!sawEstopFakeLed, "estop pixels must not invent LED-XX identity");
+
   static const char *kMissingPixel =
       "{\n"
       "  \"schema\": \"showduino-production-v2\",\n"

@@ -1,20 +1,24 @@
-# Showduino C3 Emergency Node
+# Showduino C3 Emergency + Pixel Node
 
 ```text
-Status: IMPLEMENTED / GPIO UNCONFIRMED / OLED ADDED
-Role: Specialist wireless emergency station (ASSERT ONLY)
+Status: IMPLEMENTED / GPIO UNCONFIRMED / PIXEL CAPABILITY ADDED
+Role: Specialist wireless emergency station (ASSERT ONLY) + full Show Pixel Line
 Hardware: ESP32-C3 Super Mini OLED
-Firmware: 0.2.0
+Firmware: 0.3.0
 Product: Showduino 1.0.0-rc.1
 Protocol: 1.0
 ```
 
 This is an **additional** distributed wireless Emergency Button station. It does **not** replace the P4 GPIO25 hardwired main Emergency path.
 
+The same physical peer (`ESTOP-01` … `ESTOP-08`) also provides the **full Showduino Pixel Controller** on **GPIO2**. Pixel is a **capability** of the Emergency Node — not a fake `LED-xx` identity.
+
 ```text
 P4 MAIN EMERGENCY BUTTON ------------+
                                     |
 ESTOP-xx C3 --- ESP-NOW -> COMMS -> P4 +-> GLOBAL EMERGENCY LATCH
+   | GPIO4 momentary Emergency pushbutton
+   | GPIO2 WS2812 Show Pixel Line (full FX engine)
 ```
 
 ## Absolute rule
@@ -25,10 +29,18 @@ An Emergency Node must **never CLEAR**.
 
 There is no `ESTOP:CLEAR`. Button release does not clear. WebUI does not clear. Reboot does not clear P4 emergency.
 
+Emergency handling always has priority over theatrical Pixel processing.
+
 ## Sketch
 
 ```text
 firmware/c3-emergency-node/ShowduinoC3EmergencyNode/
+```
+
+Shared Pixel engine:
+
+```text
+firmware/shared-pixel/
 ```
 
 Arduino FQBN:
@@ -39,52 +51,26 @@ esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=dio
 
 Do **not** mark GPIO verified until the momentary pushbutton on GPIO4 is physically confirmed.
 
-## Intended GPIO (button UNVERIFIED)
+## GPIO
 
-| Function | GPIO | Notes |
-|----------|------|-------|
-| Momentary emergency pushbutton | **4** | INPUT_PULLUP. RELEASED=HIGH. PRESSED=LOW → assert/latch. |
-| OLED SDA | **5** | Same as C3 Pixel Node |
-| OLED SCL | **6** | Same as C3 Pixel Node |
-| Maintenance local reset | **9** | BOOT long-press. Optional. Never clears P4. Not required for normal use. |
-| Status LED | **-1** | Optional. Not fitted in V1 software default. |
-| Buzzer | **-1** | Optional. Not required for V1. |
+| Pin | Function |
+|-----|----------|
+| GPIO2 | Show Pixel data (WS2812 / NeoPixel, GRB 800 kHz). Recommend **330 Ω** series resistor. |
+| GPIO4 | Momentary Emergency pushbutton (`INPUT_PULLUP`, pressed LOW) |
+| GPIO5 | OLED SDA |
+| GPIO6 | OLED SCL |
+| GPIO9 | Optional maintenance local reset (long-press). Never clears P4. |
 
-OLED: SSD1306 0x3C, 128×64, 400 kHz, 180° rotation, Pixel Node visible viewport.
+## Pixel capability
 
-Press asserts and latches. Release never clears. After an authoritative P4 clear with the button released, the station returns to READY automatically. If the button is still held during that clear, the station remains latched and re-asserts.
+- Same command model as `firmware/c3-pixel-node/`
+- Up to **512** pixels (validate loop timing / Emergency responsiveness on hardware)
+- All **25** Showduino FX, segments, COUNT/INIT, persistence, Locate, commissioning TEST
+- Studio / SHDO route: `estop-node-pixels` → `ESTOP:NODE:PIXEL:<cmd>`
+- P4 strips prefix and forwards `PIXEL:<cmd>` to the same ESTOP ESP-NOW peer
 
-## Sequential update / commissioning
-
-Never flash or reboot two Emergency Nodes at the same time.
-
-```text
-ESTOP-01 update
-        ↓
-      reboot
-        ↓
- healthy + linked
-        ↓
-ESTOP-02 update
-        ↓
- healthy + linked
-        ↓
-ESTOP-03 ...
-```
-
-`HEALTHY` = booted, button readable, no local fault.  
-`LINKED` = Comms/P4 have a fresh announce/heartbeat for that logical ID.
-
-Taking every station offline together removes all wireless emergency-button coverage and floods the desk with safety-node faults.
+When Emergency is latched: entire configured line → **Emergency White**. After legitimate clear with button released: line goes **BLACK** and does **not** auto-resume prior FX.
 
 ## SoftAP
 
-Commissioning only: `Showduino-EStop-<id>` / `showduino` at `192.168.5.1`.
-
-Not required for emergency operation.
-
-## Host tests
-
-```text
-powershell -File tools/emergency-node-tests/run_tests.ps1
-```
+SSID pattern: `Showduino-EStop-<id>` — password `showduino`. Compact PIXELS page for COUNT/INIT/TEST/segments.

@@ -37,7 +37,7 @@ extern "C" {
 #define SHOWDUINO_EMERGENCY_BURST_COUNT     6u
 #define SHOWDUINO_EMERGENCY_DEBOUNCE_MS     20u
 #define SHOWDUINO_EMERGENCY_CAPS \
-  "MOMENTARY_BUTTON,LOCAL_LATCH,ASSERT_ONLY,ESPNOW,HEARTBEAT,SOFTAP,NO_CLEAR,ONE_AT_A_TIME,OLED"
+  "MOMENTARY_BUTTON,LOCAL_LATCH,ASSERT_ONLY,ESPNOW,HEARTBEAT,SOFTAP,NO_CLEAR,ONE_AT_A_TIME,OLED,PIXEL"
 #define SHOWDUINO_EMERGENCY_UPDATE_POLICY   "ONE_AT_A_TIME"
 
 #define SHOWDUINO_ESTOP_ASSERT_PREFIX       "ESTOP:ASSERT:"
@@ -46,6 +46,29 @@ extern "C" {
 #define SHOWDUINO_ESTOP_STATUS              "ESTOP:STATUS"
 #define SHOWDUINO_ESTOP_OWN_GRANT           "ESTOP:OWN:GRANT"
 #define SHOWDUINO_ESTOP_REARM               "ESTOP:REARM"
+#define SHOWDUINO_ESTOP_NODE_PIXEL_PREFIX   "ESTOP:NODE:PIXEL:"
+
+/* Strip ESTOP:NODE:PIXEL: → PIXEL: for same-peer forwarding (no fake LED id). */
+static inline int showduino_emergency_strip_pixel_command(const char *raw,
+                                                         char *out, size_t n) {
+  const char *rest;
+  if (!raw || !out || n < 8) return 0;
+  if (!strncmp(raw, SHOWDUINO_ESTOP_NODE_PIXEL_PREFIX,
+               strlen(SHOWDUINO_ESTOP_NODE_PIXEL_PREFIX))) {
+    rest = raw + strlen(SHOWDUINO_ESTOP_NODE_PIXEL_PREFIX);
+  } else if (!strncmp(raw, "EMERGENCY:NODE:PIXEL:", 21)) {
+    rest = raw + 21;
+  } else {
+    return 0;
+  }
+  if (!rest[0]) return 0;
+  if (!strncmp(rest, "PIXEL:", 6)) {
+    snprintf(out, n, "%s", rest);
+  } else {
+    snprintf(out, n, "PIXEL:%s", rest);
+  }
+  return out[0] ? 1 : 0;
+}
 
 typedef enum ShowduinoEmergencyNodeState {
   SHOWDUINO_ESTOP_ST_UNKNOWN = 0,

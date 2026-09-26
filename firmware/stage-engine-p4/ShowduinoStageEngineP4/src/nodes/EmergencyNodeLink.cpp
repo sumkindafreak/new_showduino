@@ -309,6 +309,10 @@ void emergencyNodeLinkLoop() {
       if (!sNodes[i].used || !sNodes[i].online) continue;
       routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_OWN_GRANT);
       routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_STATUS);
+      if (sNodes[i].pixelCapable) {
+        routeTo(sNodes[i].id, sSeq++, "PIXEL:OWN:GRANT");
+        routeTo(sNodes[i].id, sSeq++, "PIXEL:STATUS");
+      }
     }
   }
   if ((millis() - sPublishMs) >= 3000UL) publishState(true);
@@ -387,6 +391,69 @@ bool emergencyNodeLinkHandleReport(const char *line) {
     return true;
   }
 
+  if (!strncmp(p, "ESTOP:CAPS:", 11) || !strncmp(p, "EMERGENCY:CAPS:", 15)) {
+    const char *caps = strchr(p, ':');
+    if (caps) caps = strchr(caps + 1, ':');
+    if (caps) {
+      ++caps;
+      EmergencyNodeStatus *only = nullptr;
+      uint8_t nOn = 0;
+      for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+        if (sNodes[i].used && sNodes[i].online) {
+          nOn++;
+          only = &sNodes[i];
+        }
+      }
+      if (nOn == 1 && only && strstr(caps, "PIXEL")) {
+        only->pixelCapable = true;
+      }
+    }
+    return true;
+  }
+  if (!strncmp(p, "PIXEL:CAPS:", 11)) {
+    EmergencyNodeStatus *only = nullptr;
+    uint8_t nOn = 0;
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (sNodes[i].used && sNodes[i].online) {
+        nOn++;
+        only = &sNodes[i];
+      }
+    }
+    if (nOn == 1 && only) {
+      strncpy(only->pixelCaps, p + 11, sizeof(only->pixelCaps) - 1);
+      only->pixelCapable = true;
+    }
+    return true;
+  }
+  if (!strncmp(p, "PIXEL:STATUS:", 13)) {
+    EmergencyNodeStatus *only = nullptr;
+    uint8_t nOn = 0;
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (sNodes[i].used && sNodes[i].online) {
+        nOn++;
+        only = &sNodes[i];
+      }
+    }
+    if (nOn == 1 && only) {
+      only->pixelCapable = true;
+      const char *body = p + 13;
+      only->pixelReady = (strncmp(body, "READY", 5) == 0);
+      const char *gpio = strstr(body, "GPIO=");
+      const char *cfg = strstr(body, "CONFIGURED=");
+      const char *cnt = strstr(body, "COUNT=");
+      const char *mx = strstr(body, "MAX=");
+      const char *bri = strstr(body, "BRIGHTNESS=");
+      const char *em = strstr(body, "EMERGENCY=");
+      if (gpio) only->pixelPin = (uint8_t)atoi(gpio + 5);
+      if (cfg) only->pixelConfigured = (uint16_t)atoi(cfg + 11);
+      if (cnt) only->pixelCount = (uint16_t)atoi(cnt + 6);
+      if (mx) only->pixelMax = (uint16_t)atoi(mx + 4);
+      if (bri) only->pixelBrightness = (uint8_t)atoi(bri + 11);
+      if (em) only->pixelEmergency = atoi(em + 10) != 0;
+    }
+    return true;
+  }
+
   return true;
 }
 
@@ -397,6 +464,90 @@ bool emergencyNodeLinkHandleCommand(const char *command, char *reply, size_t rep
     if (reply && replyLen) strncpy(reply, "REJECTED:ESTOP:NO_CLEAR", replyLen - 1);
     return true;
   }
+
+  /* Same-peer Pixel capability — strip ESTOP:NODE:PIXEL: → PIXEL: */
+  if (!strncmp(command, "ESTOP:NODE:PIXEL:", 17) ||
+      !strncmp(command, "EMERGENCY:NODE:PIXEL:", 21)) {
+    const char *pixelCmd = command + (!strncmp(command, "ESTOP:NODE:PIXEL:", 17) ? 17 : 21);
+    char forwarded[120];
+    if (!pixelCmd[0]) {
+      if (reply && replyLen) strncpy(reply, "ERR:ESTOP:NODE:PIXEL:BAD_COMMAND", replyLen - 1);
+      return true;
+    }
+    if (!strncmp(pixelCmd, "PIXEL:", 6)) {
+      strncpy(forwarded, pixelCmd, sizeof(forwarded) - 1);
+    } else {
+      snprintf(forwarded, sizeof(forwarded), "PIXEL:%s", pixelCmd);
+    }
+    forwarded[sizeof(forwarded) - 1] = '\0';
+
+    const bool alwaysOk =
+        !strcmp(forwarded, "PIXEL:STATUS") ||
+        !strcmp(forwarded, "PIXEL:OFF") ||
+        !strcmp(forwarded, "PIXEL:BLACKOUT");
+    if (emergencyLocked && !alwaysOk) {
+      if (reply && replyLen) strncpy(reply, "REJECTED:ESTOP:NODE:PIXEL:EMERGENCY_ACTIVE", replyLen - 1);
+      return true;
+    }
+
+    EmergencyNodeStatus *target = nullptr;
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (!sNodes[i].used || !sNodes[i].online) continue;
+      if (!target) target = &sNodes[i];
+      if (sNodes[i].pixelCapable) {
+        target = &sNodes[i];
+        break;
+      }
+    }
+    if (!target || !target->id[0]) {
+      if (reply && replyLen) strncpy(reply, "REJECTED:ESTOP:NODE:PIXEL:OFFLINE", replyLen - 1);
+      return true;
+    }
+
+    const uint32_t seq = sSeq++;
+    routeTo(target->id, seq, forwarded);
+    if (reply && replyLen) {
+      snprintf(reply, replyLen, "ESTOP:NODE:PIXEL:PENDING:%lu", (unsigned long)seq);
+    }
+    return true;
+  }
+
+  /* ESTOP:NODE:ESTOP-01:PIXEL:... */
+  if (!strncmp(command, "ESTOP:NODE:", 11) || !strncmp(command, "EMERGENCY:NODE:", 15)) {
+    const char *p = !strncmp(command, "ESTOP:NODE:", 11) ? command + 11 : command + 15;
+    const char *c = strchr(p, ':');
+    if (c && !strncmp(c + 1, "PIXEL:", 6)) {
+      char id[SHOWDUINO_EMERGENCY_ID_MAX + 1] = "";
+      size_t n = (size_t)(c - p);
+      if (n > SHOWDUINO_EMERGENCY_ID_MAX) n = SHOWDUINO_EMERGENCY_ID_MAX;
+      memcpy(id, p, n);
+      id[n] = 0;
+      const char *pixelCmd = c + 1;
+      char forwarded[120];
+      strncpy(forwarded, pixelCmd, sizeof(forwarded) - 1);
+      forwarded[sizeof(forwarded) - 1] = '\0';
+      const bool alwaysOk =
+          !strcmp(forwarded, "PIXEL:STATUS") ||
+          !strcmp(forwarded, "PIXEL:OFF") ||
+          !strcmp(forwarded, "PIXEL:BLACKOUT");
+      if (emergencyLocked && !alwaysOk) {
+        if (reply && replyLen) strncpy(reply, "REJECTED:ESTOP:NODE:PIXEL:EMERGENCY_ACTIVE", replyLen - 1);
+        return true;
+      }
+      EmergencyNodeStatus *st = findById(id);
+      if (!st || !st->online) {
+        if (reply && replyLen) strncpy(reply, "REJECTED:ESTOP:NODE:PIXEL:OFFLINE", replyLen - 1);
+        return true;
+      }
+      const uint32_t seq = sSeq++;
+      routeTo(st->id, seq, forwarded);
+      if (reply && replyLen) {
+        snprintf(reply, replyLen, "ESTOP:NODE:PIXEL:PENDING:%lu", (unsigned long)seq);
+      }
+      return true;
+    }
+  }
+
   if (!strcmp(command, "ESTOP:STATUS") || !strncmp(command, "ESTOP:NODE:", 11) ||
       !strncmp(command, "EMERGENCY:NODE:", 15)) {
     emergencyNodeLinkPublishToDirector();
@@ -455,7 +606,9 @@ void emergencyNodeLinkAppendJsonArray(String &json) {
     json += st.mac;
     json += "\",\n      \"firmware\": \"";
     json += st.firmware;
-    json += "\",\n      \"lastContactMs\": ";
+    json += "\",\n      \"pixelCapable\": ";
+    json += st.pixelCapable ? "true" : "false";
+    json += ",\n      \"lastContactMs\": ";
     json += String((unsigned long)age);
     json += "\n    }";
   }
@@ -485,6 +638,10 @@ void emergencyNodeLinkAppendDevicesJson(String &json, bool &first) {
     json += st.firmware;
     json += "\",\n      \"state\": \"";
     json += st.state;
-    json += "\"\n    }";
+    json += "\",\n      \"capabilities\": [\"EMERGENCY\"";
+    if (st.pixelCapable) json += ", \"PIXEL\"";
+    json += "],\n      \"pixelCapable\": ";
+    json += st.pixelCapable ? "true" : "false";
+    json += "\n    }";
   }
 }

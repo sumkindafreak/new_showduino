@@ -1,4 +1,6 @@
 #include "showduino_emergency_node.h"
+#include "showduino_pixel_fx.h"
+#include "showduino_pixel_node.h"
 #include "showduino_state_wire.h"
 #include <cstdio>
 #include <cstring>
@@ -48,6 +50,44 @@ int main() {
          "caps declare momentary button");
   expect(strstr(SHOWDUINO_EMERGENCY_CAPS, "NC_INPUT") == NULL,
          "caps no longer declare NC_INPUT");
+  expect(strstr(SHOWDUINO_EMERGENCY_CAPS, "PIXEL") != NULL,
+         "caps declare PIXEL capability on same ESTOP peer");
+
+  /* PIXEL same-peer routing — no fake LED identity */
+  {
+    char fwd[96];
+    expect(showduino_emergency_strip_pixel_command(
+               "ESTOP:NODE:PIXEL:SEGMENT:0:FX:FIRE", fwd, sizeof(fwd)) == 1,
+           "strip ESTOP:NODE:PIXEL prefix");
+    expect_str(fwd, "PIXEL:SEGMENT:0:FX:FIRE", "forwards inner PIXEL command");
+    expect(showduino_emergency_strip_pixel_command(
+               "ESTOP:NODE:PIXEL:STATUS", fwd, sizeof(fwd)) == 1,
+           "strip STATUS");
+    expect_str(fwd, "PIXEL:STATUS", "STATUS forward");
+    expect(showduino_emergency_strip_pixel_command(
+               "ESTOP:NODE:PIXEL:COUNT:150", fwd, sizeof(fwd)) == 1,
+           "strip COUNT");
+    expect_str(fwd, "PIXEL:COUNT:150", "COUNT forward");
+    expect(strstr(fwd, "LED-") == NULL && strstr(fwd, "PIXEL:NODE:") == NULL,
+           "no fake LED / PIXEL:NODE identity");
+    expect(showduino_emergency_strip_pixel_command("ESTOP:STATUS", fwd, sizeof(fwd)) == 0,
+           "non-pixel ESTOP commands are not stripped");
+  }
+
+  {
+    expect((int)ShowduinoPixelFx::Count == 25, "shared FX vocabulary remains 25");
+    ShowduinoPixelFx fx = ShowduinoPixelFx::Off;
+    expect(showduinoPixelFxFromName("FIRE", &fx) && fx == ShowduinoPixelFx::Fire, "FIRE resolves");
+    expect(showduinoPixelFxFromName("FLICKER", &fx) && fx == ShowduinoPixelFx::Flicker, "FLICKER resolves");
+    expect(showduinoPixelFxFromName("WARNING", &fx) && fx == ShowduinoPixelFx::Warning, "WARNING resolves");
+    expect(showduinoPixelFxFromName("RAINBOW", &fx) && fx == ShowduinoPixelFx::Rainbow, "RAINBOW resolves");
+    expect(showduinoPixelFxFromName("CUSTOM_SEQUENCE", &fx) && fx == ShowduinoPixelFx::CustomSequence,
+           "CUSTOM_SEQUENCE resolves");
+    expect(showduino_pixel_count_ok(1, 512) && showduino_pixel_count_ok(512, 512),
+           "COUNT 1..512 accepted");
+    expect(!showduino_pixel_count_ok(0, 512) && !showduino_pixel_count_ok(513, 512),
+           "COUNT 0 and max+1 rejected");
+  }
 
   /* TEST 1 — NORMAL BOOT */
   {

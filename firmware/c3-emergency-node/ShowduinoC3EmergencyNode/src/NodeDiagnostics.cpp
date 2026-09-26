@@ -3,6 +3,7 @@
 #include "EmergencyProtocol.h"
 #include "EmergencyInput.h"
 #include "EmergencyDisplay.h"
+#include "EstopPixelEngine.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
@@ -29,9 +30,9 @@ void nodeDiagPrintBootBanner() {
   emergencyEspNowMacString(mac, sizeof(mac));
   Serial.println("================================================");
   Serial.printf(" SHOWDUINO %s\n", SHOWDUINO_PLATFORM_VERSION);
-  Serial.println(" COMPONENT: EMERGENCY NODE");
+  Serial.println(" COMPONENT: EMERGENCY + PIXEL NODE");
   Serial.println(" ESP32-C3 Super Mini OLED");
-  Serial.println(" Momentary Emergency Pushbutton");
+  Serial.println(" Momentary Emergency Pushbutton + Show Pixel Line");
   Serial.println("================================================");
   Serial.printf("FW: %s\n", SHOWDUINO_EMERGENCY_NODE_FW);
   Serial.printf("PROTOCOL: %s\n", SHOWDUINO_EMERGENCY_PROTOCOL);
@@ -45,6 +46,12 @@ void nodeDiagPrintBootBanner() {
   Serial.printf("BUTTON: %s  LATCH: %s\n",
                 showduino_emergency_button_name(gEmergencyMachine.input_open),
                 gEmergencyMachine.latched ? "YES" : "NO");
+  Serial.printf("PIXEL GPIO: %d  COUNT: %u  INIT: %s  MAX: %u  EMERG_WHITE: %s\n",
+                SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
+                (unsigned)pixelEngineConfiguredCount(),
+                pixelEngineReady() ? "YES" : "NO",
+                (unsigned)pixelEngineMax(),
+                pixelEngineEmergency() ? "YES" : "NO");
   Serial.printf("OLED SDA: GPIO%d  SCL: GPIO%d\n",
                 SHOWDUINO_ESTOP_OLED_SDA, SHOWDUINO_ESTOP_OLED_SCL);
   Serial.printf("OLED: 0x%02X %s  %s\n",
@@ -59,17 +66,19 @@ void nodeDiagPrintBootBanner() {
 }
 
 void nodeDiagPrintHelp() {
-  Serial.println("[CONSOLE] Emergency Node commissioning commands:");
-  Serial.println("  HELP | STATUS | MAC");
+  Serial.println("[CONSOLE] Emergency + Pixel Node commissioning commands:");
+  Serial.println("  HELP | STATUS | MAC | PINS | PIXEL:STATUS");
   Serial.println("  ESTOP:STATUS | ESTOP:REARM (maintenance only)");
   Serial.println("  ESTOP:ID:ESTOP-01 | ESTOP:NAME:ENTRANCE");
+  Serial.println("  PIXEL:COUNT:<n> | PIXEL:INIT | PIXEL:TEST | PIXEL:OFF | PIXEL:LOCATE");
+  Serial.println("  ESTOP:NODE:PIXEL:<cmd>  (same peer — no fake LED identity)");
   Serial.println("  ESTOP:CLEAR is rejected. This node cannot clear P4 emergency.");
 }
 
 void nodeDiagPrintStatus() {
   char mac[24];
   emergencyEspNowMacString(mac, sizeof(mac));
-  Serial.printf("[ESTOP] id=%s name=%s btn=%s latch=%u ack=%u radio=%u oled=%s ch=%u rssi=%d mac=%s heap=%u loop=%luus\n",
+  Serial.printf("[ESTOP] id=%s name=%s btn=%s latch=%u ack=%u radio=%u oled=%s ch=%u rssi=%d mac=%s heap=%u loop=%luus max=%luus\n",
                 emergencyIdentityId(), emergencyIdentityName(),
                 showduino_emergency_button_name(gEmergencyMachine.input_open),
                 (unsigned)gEmergencyMachine.latched,
@@ -80,7 +89,16 @@ void nodeDiagPrintStatus() {
                 (int)emergencyEspNowRssi(),
                 mac,
                 (unsigned)ESP.getFreeHeap(),
-                (unsigned long)sLoopUs);
+                (unsigned long)sLoopUs,
+                (unsigned long)sLoopMaxUs);
+  Serial.printf("[ESTOP-PIX] gpio=%d cfg=%u init=%u segs=%u bri=%u emerg=%u max=%u\n",
+                SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
+                (unsigned)pixelEngineConfiguredCount(),
+                pixelEngineReady() ? 1U : 0U,
+                (unsigned)pixelEngineActiveSegments(),
+                (unsigned)pixelEngineGlobalBrightness(),
+                pixelEngineEmergency() ? 1U : 0U,
+                (unsigned)pixelEngineMax());
 }
 
 bool nodeDiagHandleLine(const char *line) {
@@ -99,6 +117,16 @@ bool nodeDiagHandleLine(const char *line) {
   if (!strcmp(line, "OLED:TEST")) {
     emergencyDisplayOledTest();
     return true;
+  }
+  if (!strcmp(line, "PINS")) {
+    Serial.printf("BTN=GPIO%d PIX=GPIO%d OLED_SDA=GPIO%d OLED_SCL=GPIO%d REARM=GPIO%d\n",
+                  SHOWDUINO_ESTOP_NODE_GPIO, SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
+                  SHOWDUINO_ESTOP_OLED_SDA, SHOWDUINO_ESTOP_OLED_SCL,
+                  SHOWDUINO_ESTOP_NODE_REARM_GPIO);
+    return true;
+  }
+  if (!strcmp(line, "PIXEL:STATUS") || !strncmp(line, "PIXEL:", 6)) {
+    return false; /* let emergencyProtocolApply handle PIXEL:* */
   }
   return false;
 }

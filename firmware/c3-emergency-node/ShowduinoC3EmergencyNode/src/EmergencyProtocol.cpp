@@ -2,9 +2,12 @@
 #include "EmergencyIdentity.h"
 #include "EmergencyInput.h"
 #include "EmergencyWeb.h"
+#include "EstopPixelEngine.h"
+#include "EstopPixelProtocol.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
+#include "../../../protocol/showduino_pixel_node.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_node_packet.h"
 
@@ -14,6 +17,7 @@ static uint32_t sLastAnnounce = 0;
 static uint32_t sApDueMs = 0;
 static uint32_t sSeq = 1;
 static uint8_t sLastRadio = 0;
+static uint8_t sPrevLatched = 0;
 
 static void requestSoftAp() {
   if (!sApDueMs) sApDueMs = millis() + 400UL;
@@ -61,20 +65,36 @@ static void sendStatus(uint32_t seq) {
   sendLine(line, seq);
 }
 
+static void sendPixelCaps(uint32_t seq) {
+  char caps[120];
+  snprintf(caps, sizeof(caps), "ESTOP:CAPS:%s", SHOWDUINO_EMERGENCY_CAPS);
+  sendLine(caps, seq);
+  char pcaps[96];
+  snprintf(pcaps, sizeof(pcaps), "PIXEL:CAPS:%s", SHOWDUINO_PIXEL_CAPS);
+  emergencyEspNowSend(pcaps, seq);
+}
+
 void emergencyProtocolBegin() {
   sLastAnnounce = 0;
+  sPrevLatched = gEmergencyMachine.latched ? 1 : 0;
   requestSoftAp();
+  estopPixelProtocolBegin();
+  if (gEmergencyMachine.latched) {
+    estopPixelProtocolOnEmergencyLatch(true);
+  }
 }
 
 void emergencyProtocolAnnounce() {
   char line[SHOWDUINO_NODE_COMMAND_MAX];
   formatAnnounce(line, sizeof(line));
   sendLine(line, 0);
+  sendPixelCaps(0);
 }
 
 void emergencyProtocolTryLocalRearm() {
   if (showduino_emergency_machine_rearm(&gEmergencyMachine)) {
     SD_LOGI("ESTOP", "MAINTENANCE LOCAL RESET — station NORMAL. P4 emergency unchanged.");
+    estopPixelProtocolOnGlobalClearNormal();
     emergencyProtocolAnnounce();
   }
 }
@@ -83,6 +103,15 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
   if (!command || !command[0]) return;
   if (emergencyEspNowHaveComms()) {
     showduino_emergency_machine_set_radio(&gEmergencyMachine, 1);
+  }
+
+  /* Pixel capability on same peer — before ESTOP:NODE:<id> parsing. */
+  if (!strncmp(command, "ESTOP:NODE:PIXEL:", 17) ||
+      !strncmp(command, "EMERGENCY:NODE:PIXEL:", 21) ||
+      !strncmp(command, "PIXEL:", 6) ||
+      !strcmp(command, "PIXEL:OWN:GRANT")) {
+    estopPixelProtocolApply(command, sequence);
+    return;
   }
 
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1] = "";
@@ -100,6 +129,10 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
       id[n] = 0;
       work = c + 1;
       if (id[0] && !showduino_emergency_id_equal(id, emergencyIdentityId())) return;
+      if (!strncmp(work, "PIXEL:", 6)) {
+        estopPixelProtocolApply(work, sequence);
+        return;
+      }
     }
   }
 
@@ -124,8 +157,10 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
     showduino_emergency_machine_global_observed(&gEmergencyMachine);
     if (showduino_emergency_button_pressed(&gEmergencyMachine)) {
       SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button still PRESSED, re-asserting");
+      estopPixelProtocolOnEmergencyLatch(true);
     } else {
       SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button RELEASED, local NORMAL");
+      estopPixelProtocolOnGlobalClearNormal();
     }
     emergencyProtocolAnnounce();
     return;
@@ -133,6 +168,7 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
   if (cmd == SHOWDUINO_ESTOP_CMD_OWN_GRANT) {
     requestSoftAp();
     sendLine("ESTOP:OWNED", sequence);
+    estopPixelProtocolApply("PIXEL:OWN:GRANT", sequence);
     return;
   }
   if (cmd == SHOWDUINO_ESTOP_CMD_STATUS) {
@@ -185,6 +221,7 @@ void emergencyProtocolService() {
     emergencyProtocolTryLocalRearm();
   }
 
+  /* Transmit ESTOP assert BEFORE any Pixel render. */
   if (showduino_emergency_machine_want_tx(&gEmergencyMachine, now)) {
     char cmd[48];
     showduino_emergency_format_assert(emergencyIdentityId(), emergencyIdentityName(),
@@ -192,6 +229,14 @@ void emergencyProtocolService() {
     sendLine(cmd, sSeq++);
     showduino_emergency_machine_sent(&gEmergencyMachine, now);
   }
+
+  const uint8_t latched = gEmergencyMachine.latched ? 1 : 0;
+  if (latched && !sPrevLatched) {
+    estopPixelProtocolOnEmergencyLatch(true);
+  }
+  sPrevLatched = latched;
+
+  estopPixelProtocolService();
 
   if (sApDueMs && (int32_t)(now - sApDueMs) >= 0) {
     sApDueMs = 0;

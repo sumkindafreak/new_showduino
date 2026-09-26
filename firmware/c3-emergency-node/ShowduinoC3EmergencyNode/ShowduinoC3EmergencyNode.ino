@@ -1,11 +1,19 @@
 /*
-  Showduino C3 Emergency Node
+  Showduino C3 Emergency + Pixel Node
 
   Specialist ESP-NOW station. May ASSERT the P4 global emergency latch.
   Must never CLEAR it.
 
-  Momentary pushbutton (GPIO4, INPUT_PULLUP, active LOW) is sampled before
-  Serial, SoftAP, OLED, or WebUI start. OLED failure never blocks assert.
+  Same physical peer ESTOP-xx also provides full Showduino Pixel Controller
+  on GPIO2 (WS2812). Pixel is a capability — not a fake LED-xx identity.
+
+  Boot priority:
+    1. Emergency GPIO4 sample
+    2. Emergency state machine
+    3. Pixel GPIO2 safe (LOW)
+    4. Serial / radio
+    5. Pixel engine persist/init
+    6. OLED / WebUI
 */
 
 #include <Arduino.h>
@@ -15,6 +23,7 @@
 #include "src/EmergencyIdentity.h"
 #include "src/EmergencyProtocol.h"
 #include "src/EmergencyDisplay.h"
+#include "src/EstopPixelEngine.h"
 #include "src/EspNowEmergencyTransport.h"
 #include "src/NodeDiagnostics.h"
 #include "../../shared-node/NodeConfig.h"
@@ -54,16 +63,20 @@ static void pollUsb() {
 }
 
 void setup() {
-  /* Sample momentary button before Serial, SoftAP, OLED, or WebUI. */
+  /* 1–2: Emergency input before anything that can delay assert. */
   emergencyInputBegin();
   showduino_emergency_machine_init(&gEmergencyMachine, emergencyInputPressed());
   emergencyIndicateBegin();
+
+  /* 3: Pixel data line safe (no garbage WS2812) before radio/OLED. */
+  pixelEngineSafeGpio();
 
   Serial.begin(115200);
 
   nodeDiagBegin();
   nodeConfigBegin("sdestop");
 
+  /* 4: radio */
   const bool radioOk = emergencyEspNowBegin();
   emergencyEspNowSetHandler(onEspNowCommand);
 
@@ -74,6 +87,15 @@ void setup() {
   showduino_emergency_machine_set_radio(&gEmergencyMachine,
                                         radioOk && emergencyEspNowReady());
 
+  /* 5: Pixel engine allocation (after Emergency + radio). */
+  Serial.printf("[ESTOP] Free heap before Pixel INIT path: %u\n",
+                (unsigned)ESP.getFreeHeap());
+  pixelEngineApplyPersisted();
+  Serial.printf("[ESTOP] Free heap after Pixel persist/init: %u (cfg=%u)\n",
+                (unsigned)ESP.getFreeHeap(),
+                (unsigned)pixelEngineConfiguredCount());
+
+  /* 6: OLED last — failure never blocks assert. */
   const bool oledOk = emergencyDisplayBegin();
 
   if (gEmergencyMachine.latched) {
@@ -84,6 +106,9 @@ void setup() {
   if (!oledOk) {
     Serial.println("[ESTOP] OLED unavailable — assert path unaffected");
   }
+  Serial.printf("[ESTOP] Show Pixel Line GPIO%d (recommend %u ohm series)\n",
+                SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
+                (unsigned)SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS);
 
   sLastLatch = gEmergencyMachine.latched;
   sLastPressed = (uint8_t)emergencyInputPressed();

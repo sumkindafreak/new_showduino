@@ -56,11 +56,11 @@ Every pixel-capable node implements the global Showduino emergency rule:
 
 No local FX, segment, Locate, or WebUI test may override it.
 
-### 4. C3 Emergency Node
+### 4. C3 Emergency + Pixel Node
 
-**Classification:** firmware implemented / GPIO unconfirmed / do not flash yet.
+**Classification:** firmware implemented / GPIO unconfirmed / Pixel capability on GPIO2.
 
-Distributed wireless Emergency Button stations (`ESTOP-01` …). Momentary pushbutton, ASSERT ONLY, never clear. SSD1306 OLED status (same as Pixel Node). P4 GPIO25 remains the independent main Emergency path. Offline in V1 is a safety fault, not automatic global emergency. Update one station at a time: ESTOP-01 → reboot → healthy+linked → ESTOP-02. See [`emergency-node.md`](emergency-node.md).
+Distributed wireless Emergency Button stations (`ESTOP-01` …). Momentary pushbutton, ASSERT ONLY, never clear. SSD1306 OLED status. Same physical peer also hosts the **full Showduino Pixel Controller** on GPIO2 (`ESTOP:NODE:PIXEL:` — no fake LED identity). Shared engine: `firmware/shared-pixel/`. Standalone C3 Pixel Node remains supported. P4 GPIO25 remains the independent main Emergency path. Offline in V1 is a safety fault, not automatic global emergency. Update one station at a time: ESTOP-01 → reboot → healthy+linked → ESTOP-02. See [`emergency-node.md`](emergency-node.md).
 
 ### 5. MOSFET Node
 

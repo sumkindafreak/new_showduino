@@ -123,6 +123,13 @@ There is no wireless `ESTOP:CLEAR`. An Emergency Node must never clear P4 emerge
 Update/commission stations one at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.
 The System Update Manager must call `showduino_emergency_update_gate()` before advancing. Gate failure or timeout is `SAFETY_NODE_UPDATE_FAILED`. Phase 1 does not install firmware.
 
+Same-peer Pixel capability (no fake `LED-xx` identity):
+
+```text
+ESTOP:NODE:PIXEL:<pixel command>
+```
+
+P4 strips the prefix and forwards `PIXEL:<pixel command>` to the same ESTOP ESP-NOW peer (mirror of `AUDIO:NODE:PIXEL:`). SHDO route: `estop-node-pixels`.
 ### Global pixel emergency law
 
 Every pixel-capable output must implement:

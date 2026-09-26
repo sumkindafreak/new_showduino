@@ -2,6 +2,7 @@
 #include "EmergencyIdentity.h"
 #include "EmergencyProtocol.h"
 #include "EmergencyInput.h"
+#include "EstopPixelEngine.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 
@@ -47,31 +48,32 @@ static void paint() {
       lineAt(0, 9, "BUTTON HELD");
       snprintf(l3, sizeof(l3), "%.12s", emergencyIdentityId());
       lineAt(0, 18, l3);
-      lineAt(0, 27, linked ? "ASSERTED" : "LINK LOST");
+      lineAt(0, 27, pixelEngineReady() ? "PIX WHITE" : (linked ? "ASSERTED" : "LINK LOST"));
     } else if (!linked) {
       snprintf(l2, sizeof(l2), "%.12s", emergencyIdentityId());
       lineAt(0, 9, l2);
-      lineAt(0, 18, "LATCHED");
-      lineAt(0, 27, "LINK LOST");
+      lineAt(0, 18, "ASSERTED");
+      lineAt(0, 27, "PIX WHITE");
     } else {
       snprintf(l2, sizeof(l2), "%.12s", emergencyIdentityId());
       lineAt(0, 9, l2);
       lineAt(0, 18, "ASSERTED");
-      lineAt(0, 27, "LINK OK");
+      lineAt(0, 27, "PIX WHITE");
     }
   } else if (!linked || st == SHOWDUINO_ESTOP_ST_SEARCHING ||
              st == SHOWDUINO_ESTOP_ST_BOOTING) {
     snprintf(l1, sizeof(l1), "%.12s", emergencyIdentityId());
     lineAt(0, 0, l1);
     lineAt(0, 9, "SEARCHING");
-    lineAt(0, 18, "FOR COMMS...");
+    snprintf(l3, sizeof(l3), "PIX %u", (unsigned)pixelEngineConfiguredCount());
+    lineAt(0, 18, l3);
     lineAt(0, 27, "READY");
   } else {
     snprintf(l1, sizeof(l1), "%.12s", emergencyIdentityId());
-    snprintf(l2, sizeof(l2), "%.12s", emergencyIdentityName());
     lineAt(0, 0, l1);
-    lineAt(0, 9, l2);
-    lineAt(0, 18, "READY");
+    lineAt(0, 9, "READY");
+    snprintf(l3, sizeof(l3), "PIX %u", (unsigned)pixelEngineConfiguredCount());
+    lineAt(0, 18, l3);
     lineAt(0, 27, "LINK OK");
   }
 
@@ -80,14 +82,16 @@ static void paint() {
 }
 
 static void makeSig(char *out, size_t n) {
-  snprintf(out, n, "%u|%u|%d|%d|%d|%s|%s",
+  snprintf(out, n, "%u|%u|%d|%d|%d|%s|%u|%u|%u",
            (unsigned)gEmergencyMachine.state,
            (unsigned)gEmergencyMachine.latched,
            emergencyInputPressed(),
            emergencyEspNowHaveComms() ? 1 : 0,
            (int)gEmergencyMachine.pending_assert,
            emergencyIdentityId(),
-           emergencyIdentityName());
+           (unsigned)pixelEngineConfiguredCount(),
+           pixelEngineReady() ? 1U : 0U,
+           pixelEngineEmergency() ? 1U : 0U);
 }
 
 bool emergencyDisplayBegin() {

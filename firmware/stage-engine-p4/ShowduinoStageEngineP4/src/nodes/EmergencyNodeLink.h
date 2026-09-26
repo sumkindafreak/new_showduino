@@ -11,12 +11,21 @@ struct EmergencyNodeStatus {
   bool inputOpen = false;
   bool latched = false;
   bool acked = false;
+  bool pixelCapable = false;
+  bool pixelReady = false;
+  bool pixelEmergency = false;
+  uint8_t pixelPin = 2;
+  uint8_t pixelBrightness = 255;
+  uint16_t pixelConfigured = 0;
+  uint16_t pixelCount = 0;
+  uint16_t pixelMax = 512;
   uint32_t lastRxMs = 0;
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1] = "";
   char name[SHOWDUINO_EMERGENCY_NAME_MAX + 1] = "";
   char mac[18] = "";
   char firmware[12] = "";
   char state[20] = "OFFLINE";
+  char pixelCaps[96] = "";
 };
 
 void emergencyNodeLinkBegin();
