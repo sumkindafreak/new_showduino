@@ -2,6 +2,7 @@
 #include "../CommsUart.h"
 #include "../../BoardConfig.h"
 #include "../../../protocol/showduino_deploy.h"
+#include "../../../protocol/showduino_web_tunnel.h"
 
 #include <string.h>
 
@@ -40,38 +41,40 @@ static void finishProxyBody() {
   sProxyReady = true;
 }
 
+/* After timeout/malformed frames, discard residual body bytes so the
+ * line-oriented desk parser can recover. Yields so emergency/ESP-NOW service
+ * continues during drain (worst-case full BODY_MAX ~2 s @ 115200). */
+static void drainStaleTunnelBytes(uint32_t quietMs, uint32_t maxMs) {
+  const uint32_t start = millis();
+  uint32_t lastByte = start;
+  while ((int32_t)(millis() - start) < (int32_t)maxMs) {
+    int drained = 0;
+    while (commsUartAvailable() > 0) {
+      (void)commsUartRead();
+      drained++;
+      lastByte = millis();
+      if ((drained & 0x3F) == 0) {
+        if (sPumpFn) sPumpFn();
+        yield();
+      }
+    }
+    if ((int32_t)(millis() - lastByte) >= (int32_t)quietMs) break;
+    if (sPumpFn) sPumpFn();
+    delay(1);
+    yield();
+  }
+  commsUartClearLineBuffer();
+}
+
 static bool parseWebrHeader(const char *line) {
-  if (!line || strncmp(line, SHOWDUINO_WEB_TUNNEL_RESP_PREFIX,
-                       strlen(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX)) != 0) {
-    return false;
-  }
+  ShowduinoWebrHeader hdr;
+  if (!showduino_webr_parse_header(line, &hdr)) return false;
 
-  /* WEBR:<status>:<bodyLen>[:<mime>] */
-  const char *p = line + strlen(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX);
-  int status = 0;
-  while (*p >= '0' && *p <= '9') {
-    status = status * 10 + (*p - '0');
-    p++;
-  }
-  if (*p != ':') return false;
-  p++;
-  size_t bodyLen = 0;
-  while (*p >= '0' && *p <= '9') {
-    bodyLen = bodyLen * 10 + (size_t)(*p - '0');
-    p++;
-  }
-
-  sProxyMime = "";
-  if (*p == ':') {
-    sProxyMime = String(p + 1);
-    sProxyMime.trim();
-  }
-
-  sProxyStatus = status;
-  if (bodyLen > SHOWDUINO_WEB_TUNNEL_BODY_MAX) bodyLen = SHOWDUINO_WEB_TUNNEL_BODY_MAX;
-  sBodyExpected = bodyLen;
+  sProxyMime = hdr.mime;
+  sProxyStatus = hdr.status;
+  sBodyExpected = hdr.bodyLen;
   sProxyBody = "";
-  sProxyBody.reserve((unsigned)bodyLen + 1);
+  sProxyBody.reserve((unsigned)sBodyExpected + 1);
   sBodyReceived = 0;
   if (sBodyExpected == 0) {
     finishProxyBody();
@@ -89,6 +92,10 @@ bool commsWebTunnelConsumingBytes() {
   return sRxState == TUNNEL_AWAIT_BODY;
 }
 
+bool commsWebTunnelWaiting() {
+  return sProxyWaiting;
+}
+
 void commsWebTunnelOnByte(char c) {
   if (sRxState != TUNNEL_AWAIT_BODY) return;
   sProxyBody += c;
@@ -102,7 +109,52 @@ bool commsWebTunnelOnLine(const char *line) {
               strlen(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX)) != 0) {
     return false;
   }
-  return parseWebrHeader(line);
+  if (!parseWebrHeader(line)) {
+    /* Malformed WEBR while waiting — recover; surface as transport error. */
+    Serial.println("[WEBUI] Malformed WEBR header — draining UART");
+    drainStaleTunnelBytes(40, 500);
+    sProxyStatus = 502;
+    sProxyBody = "{\"ok\":false,\"error\":\"webr_malformed\"}\n";
+    sProxyMime = "application/json";
+    sProxyReady = true;
+    sRxState = TUNNEL_IDLE;
+    sProxyWaiting = true; /* still complete the waiter */
+    return true;
+  }
+  return true;
+}
+
+static bool waitForProxy(String &bodyOut, int &statusOut, String &mimeOut,
+                         uint32_t timeoutMs) {
+  const uint32_t deadline = millis() + timeoutMs;
+  uint32_t lastYield = millis();
+  while ((int32_t)(millis() - deadline) < 0) {
+    if (sPumpFn) sPumpFn();
+    if (sProxyReady) {
+      bodyOut = sProxyBody;
+      statusOut = sProxyStatus;
+      mimeOut = sProxyMime;
+      resetProxyWait();
+      return true;
+    }
+    /* Chunked scheduling: yield often so ESP-NOW / emergency keep running
+     * during long WEBR bodies (~2 s for BODY_MAX at 115200). */
+    if ((millis() - lastYield) >= 5UL) {
+      lastYield = millis();
+      yield();
+    } else {
+      delay(1);
+    }
+  }
+
+  Serial.println("[WEBUI] UART <- P4 timeout (no complete WEBR)");
+  if (sRxState == TUNNEL_AWAIT_BODY) {
+    drainStaleTunnelBytes(50, 2500);
+  } else {
+    drainStaleTunnelBytes(30, 200);
+  }
+  resetProxyWait();
+  return false;
 }
 
 bool commsWebTunnelGet(const char *path, String &bodyOut, int &statusOut,
@@ -111,31 +163,12 @@ bool commsWebTunnelGet(const char *path, String &bodyOut, int &statusOut,
 
   resetProxyWait();
   sProxyWaiting = true;
-
   if (sPumpFn) sPumpFn();
 
-  /* Existing P4 parser: WEB/GET/<path> */
   char req[SHOWDUINO_COMMS_LINE_MAX + 1];
   snprintf(req, sizeof(req), "%sGET%s", SHOWDUINO_WEB_TUNNEL_REQ_PREFIX, path);
   commsUartWriteLine(req);
-
-  const uint32_t deadline = millis() + timeoutMs;
-  while ((int32_t)(millis() - deadline) < 0) {
-    if (sPumpFn) sPumpFn();
-    if (sProxyReady) {
-      bodyOut = sProxyBody;
-      statusOut = sProxyStatus;
-      mimeOut = sProxyMime;
-      resetProxyWait();
-      return true;
-    }
-    delay(1);
-    yield();
-  }
-
-  Serial.println("[WEBUI] UART <- P4 timeout (no WEBR:)");
-  resetProxyWait();
-  return false;
+  return waitForProxy(bodyOut, statusOut, mimeOut, timeoutMs);
 }
 
 bool commsWebTunnelPost(const char *path, String &bodyOut, int &statusOut,
@@ -144,30 +177,12 @@ bool commsWebTunnelPost(const char *path, String &bodyOut, int &statusOut,
 
   resetProxyWait();
   sProxyWaiting = true;
-
   if (sPumpFn) sPumpFn();
 
   char req[SHOWDUINO_COMMS_LINE_MAX + 1];
   snprintf(req, sizeof(req), "%sPOST%s", SHOWDUINO_WEB_TUNNEL_REQ_PREFIX, path);
   commsUartWriteLine(req);
-
-  const uint32_t deadline = millis() + timeoutMs;
-  while ((int32_t)(millis() - deadline) < 0) {
-    if (sPumpFn) sPumpFn();
-    if (sProxyReady) {
-      bodyOut = sProxyBody;
-      statusOut = sProxyStatus;
-      mimeOut = sProxyMime;
-      resetProxyWait();
-      return true;
-    }
-    delay(1);
-    yield();
-  }
-
-  Serial.println("[WEBUI] UART <- P4 timeout (no WEBR:)");
-  resetProxyWait();
-  return false;
+  return waitForProxy(bodyOut, statusOut, mimeOut, timeoutMs);
 }
 
 bool commsWebTunnelPostBody(const char *method, const char *path,
@@ -184,24 +199,7 @@ bool commsWebTunnelPostBody(const char *method, const char *path,
   char req[SHOWDUINO_COMMS_LINE_MAX + 1];
   snprintf(req, sizeof(req), "%s%u:%s:%s",
            SHOWDUINO_WEB_BODY_REQ_PREFIX, (unsigned)len, method, path);
-  commsUartWriteLine(req);
-  if (len && data) commsUartWriteBytes(data, len);
-
-  const uint32_t deadline = millis() + timeoutMs;
-  while ((int32_t)(millis() - deadline) < 0) {
-    if (sPumpFn) sPumpFn();
-    if (sProxyReady) {
-      bodyOut = sProxyBody;
-      statusOut = sProxyStatus;
-      mimeOut = sProxyMime;
-      resetProxyWait();
-      return true;
-    }
-    delay(1);
-    yield();
-  }
-
-  Serial.println("[WEBUI] UART <- P4 timeout (no WEBR: for WEB/BODY)");
-  resetProxyWait();
-  return false;
+  /* Atomic header+body so desk STATUS/DIAG cannot interleave mid-frame. */
+  commsUartWriteLineAndBytes(req, data, len);
+  return waitForProxy(bodyOut, statusOut, mimeOut, timeoutMs);
 }

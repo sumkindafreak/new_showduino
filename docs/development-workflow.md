@@ -78,7 +78,11 @@ USB CDC on the S3 is for programming/debug. The P4 UART uses UART1 GPIO17/18, no
 
 The Waveshare onboard C6 is unused reserved hardware. Factory SDIO and ESP-Hosted are **not** the current Director transport. See [`docs/future-p4-c6-sdio-transport.md`](future-p4-c6-sdio-transport.md).
 
-**FUTURE / RESERVED / NOT IMPLEMENTED** on this S3: BLE, Wi-Fi SoftAP/STA, WebUI proxy, OTA.
+**Implemented on this S3:** Wi-Fi SoftAP (AP+STA), PROGMEM Studio WebUI, UART `WEB/`/`WEBR:`/`WEB/BODY:` proxy to P4, optional venue STA gateway, Comms self-OTA (Phase 2A).
+
+**FUTURE / RESERVED / NOT IMPLEMENTED** on this S3: BLE, Bluetooth Classic, Ethernet/E1.31 on Comms, system-wide OTA, public HTTPS cloud control (see `docs/public-https-control-proposal.md`).
+
+Local browser control documentation: [`docs/browser-control.md`](browser-control.md).
 
 ### ESP32-P4 Stage Engine
 

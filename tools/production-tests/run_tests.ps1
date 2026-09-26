@@ -70,4 +70,12 @@ Write-Host "Compiling WEB/BODY framing tests..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $webBodyOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$webTunnelOut = Join-Path $here "web_tunnel_tests.exe"
+Write-Host "Compiling WEB/WEBR tunnel framing tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $webTunnelOut (Join-Path $here "test_web_tunnel.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $webTunnelOut
 exit $LASTEXITCODE

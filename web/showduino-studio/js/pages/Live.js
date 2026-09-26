@@ -32,8 +32,12 @@ export async function LivePage(container) {
       const data = await postCommand(cmd);
       if (isP4Offline(data)) {
         lastResult = 'P4 OFFLINE — command did not reach the Show Engine.';
+      } else if (data && data.lifecycle === 'duplicate') {
+        lastResult = `DUPLICATE requestId ${data.requestId || ''} — action not replayed. ${data.replies || ''}`.trim();
+      } else if (data && data.lifecycle === 'rejected') {
+        lastResult = `REJECTED: ${data.replies || data.error || JSON.stringify(data)}`;
       } else {
-        lastResult = data.replies || JSON.stringify(data);
+        lastResult = `${data.lifecycle || 'accepted'}: ${data.replies || JSON.stringify(data)}`;
       }
     } catch (err) {
       lastResult = err.message;

@@ -217,7 +217,6 @@ static void proxyDeploy(const char *path) {
     return;
   }
   if (mime.length() == 0) mime = "application/json";
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
   sServer.sendHeader("Cache-Control", "no-store");
   sServer.send(status > 0 ? status : 200, mime.c_str(), resp);
 }
@@ -267,7 +266,6 @@ static void handleStudioTimelineUpload() {
   }
 
   if (mime.length() == 0) mime = "application/json";
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
   sServer.sendHeader("Cache-Control", "no-store");
   sServer.send(status > 0 ? status : 200, mime.c_str(), body);
 }

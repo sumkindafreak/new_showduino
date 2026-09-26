@@ -34,14 +34,15 @@
  *   - Ethernet / E1.31
  *   - OTA for any component other than this Comms Controller
  * Comms self-OTA (Phase 2A) writes the inactive OTA slot only.
+ * SoftAP WebUI + UART web tunnel + optional venue STA gateway ARE implemented.
  * System-wide OTA does not exist. Do not initialise Bluetooth libraries here.
  */
 
 /* Once a version has been physically installed or accepted as a distributed
  * build, never replace that same version string with a different binary.
- * 0.5.1 remains the published prerelease OTA candidate; today's tester build
- * carries the refreshed embedded Studio and is therefore 0.5.2. */
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.2"
+ * 0.5.2 remains the prior embedded-Studio build; browser-control hardening
+ * is 0.5.3. */
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.3"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
 #define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0
@@ -54,10 +55,20 @@
 #define SHOWDUINO_WEBUI_ENABLED 1
 #endif
 #define SHOWDUINO_WEBUI_AP_SSID "Showduino"
-/* Documented bench WPA2 secret. Change before a public venue. Not an open AP. */
-#define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
 #define SHOWDUINO_WEBUI_MDNS "showduino"
 
+/* Venue credentials live in LocalSecrets.h (gitignored). Bench default only
+ * applies when that file is absent — change before any public venue. */
+#if __has_include("LocalSecrets.h")
+#include "LocalSecrets.h"
+#endif
+#ifndef SHOWDUINO_WEBUI_AP_PASSWORD
+#define SHOWDUINO_WEBUI_AP_PASSWORD "showduino"
+#endif
+#ifndef SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
+#define SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR 0
+#endif
+/* SHOWDUINO_WEBUI_CONTROL_TOKEN — optional; define in LocalSecrets.h */
 #define USB_DEBUG_BAUD 115200
 
 #define SHOWDUINO_COMMS_UART_BAUD      115200

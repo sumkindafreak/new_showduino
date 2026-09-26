@@ -9,6 +9,8 @@
 #include "../../BoardConfig.h"
 #include "../../../protocol/showduino_version.h"
 #include "../../../protocol/showduino_radio.h"
+#include "../../../protocol/showduino_web_tunnel.h"
+#include "../../../protocol/showduino_deploy.h"
 
 #if SHOWDUINO_WEBUI_ENABLED
 
@@ -24,6 +26,8 @@ static bool sFault = false;
 static uint8_t sChannel = SHOWDUINO_ESPNOW_CHANNEL;
 static char sIp[16] = "0.0.0.0";
 static unsigned long sLastApCheckMs = 0;
+static ShowduinoWebDupRing sCmdDupRing;
+static bool sCmdDupInit = false;
 
 static const char *wifiModeWord(wifi_mode_t mode) {
   switch (mode) {
@@ -34,17 +38,28 @@ static const char *wifiModeWord(wifi_mode_t mode) {
   }
 }
 
+/* SoftAP Studio is same-origin. Do not advertise wildcard credentialed CORS —
+ * a public HTTPS site cannot safely talk to this SoftAP via permissive CORS. */
 static void sendJson(int code, const String &body) {
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
   sServer.sendHeader("Cache-Control", "no-store");
   sServer.send(code, "application/json", body);
 }
 
 static void sendCors() {
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
   sServer.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  sServer.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  sServer.sendHeader("Access-Control-Allow-Headers", "Content-Type, X-Showduino-Token");
   sServer.send(204);
+}
+
+static bool controlTokenOk() {
+#ifdef SHOWDUINO_WEBUI_CONTROL_TOKEN
+  const char *need = SHOWDUINO_WEBUI_CONTROL_TOKEN;
+  if (!need || !need[0]) return true;
+  if (!sServer.hasHeader("X-Showduino-Token")) return false;
+  return sServer.header("X-Showduino-Token") == String(need);
+#else
+  return true;
+#endif
 }
 
 static bool proxyGetToP4(const String &path, uint32_t timeoutMs = 1800) {
@@ -55,7 +70,6 @@ static bool proxyGetToP4(const String &path, uint32_t timeoutMs = 1800) {
     return false;
   }
   if (mime.length() == 0) mime = "application/json";
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
   sServer.sendHeader("Cache-Control", "no-store");
   sServer.send(status > 0 ? status : 200, mime.c_str(), body);
   return true;
@@ -150,11 +164,16 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "AUDIO:NODE:RESUME" || cmd == "AUDIO:NODE:STATUS" ||
       cmd == "AUDIO:NODE:TEST" || cmd == "AUDIO:NODE:DUCK" ||
       cmd == "AUDIO:NODE:UNDUCK" || cmd == "AUDIO:NODE:INVENTORY" ||
-      cmd == "EMERGENCY:STOP" || cmd == "EMERGENCY:CLEAR_CONFIRM" ||
-      cmd == "EMERGENCY:CLEAR_CANCEL" || cmd == "STATUS:REQUEST" ||
+      cmd == "EMERGENCY:STOP" ||
+      cmd == "STATUS:REQUEST" ||
       cmd == "TIME:REQUEST") {
     return true;
   }
+#if SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
+  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
+    return true;
+  }
+#endif
   if (cmd.startsWith("TIME:SET:")) {
     String arg = cmd.substring(9);
     arg.trim();
@@ -237,41 +256,120 @@ static bool webCommandAllowed(const String &cmd) {
 }
 
 static bool extractCmd(const String &body, String &cmd) {
-  const int key = body.indexOf("\"cmd\"");
-  if (key < 0) return false;
-  const int colon = body.indexOf(':', key);
-  const int q1 = body.indexOf('"', colon);
-  const int q2 = body.indexOf('"', q1 + 1);
-  if (q1 < 0 || q2 < 0) return false;
-  cmd = body.substring(q1 + 1, q2);
-  cmd.trim();
-  return cmd.length() > 0;
+  char buf[96];
+  if (showduino_web_json_string_field(body.c_str(), "cmd", buf, sizeof(buf))) {
+    cmd = buf;
+    cmd.trim();
+    return cmd.length() > 0;
+  }
+  return false;
+}
+
+static bool extractRequestId(const String &body, String &rid) {
+  char buf[SHOWDUINO_WEB_REQID_MAX];
+  if (!showduino_web_json_string_field(body.c_str(), "requestId", buf, sizeof(buf))) {
+    rid = "";
+    return false;
+  }
+  if (!showduino_web_request_id_ok(buf)) {
+    rid = "";
+    return false;
+  }
+  rid = buf;
+  return true;
 }
 
 static void handleApiCommand() {
+  if (!controlTokenOk()) {
+    sendJson(401, "{\"ok\":false,\"error\":\"unauthorized\",\"lifecycle\":\"rejected\"}\n");
+    return;
+  }
+
+  const String plain = sServer.arg("plain");
+  if (plain.length() > 512) {
+    sendJson(413, "{\"ok\":false,\"error\":\"body_too_large\",\"lifecycle\":\"rejected\"}\n");
+    return;
+  }
+
   String cmd;
-  if (!extractCmd(sServer.arg("plain"), cmd)) {
-    sendJson(400, "{\"ok\":false,\"error\":\"missing_cmd\"}\n");
+  if (!extractCmd(plain, cmd)) {
+    sendJson(400, "{\"ok\":false,\"error\":\"missing_cmd\",\"lifecycle\":\"rejected\","
+                  "\"note\":\"Use {\\\"cmd\\\":\\\"SHOW:START\\\"} or category/action mapping in Studio\"}\n");
     return;
   }
   normalizeWebCmd(cmd);
   if (!webCommandAllowed(cmd)) {
-    sendJson(403, "{\"ok\":false,\"error\":\"command_not_allowed\"}\n");
+    sendJson(403, "{\"ok\":false,\"error\":\"command_not_allowed\",\"lifecycle\":\"rejected\","
+                  "\"note\":\"Unsupported or unsafe browser action\"}\n");
     return;
   }
 
-  String path = "/api/command/" + cmd;
-  String body;
+  if (!sCmdDupInit) {
+    showduino_web_dup_init(&sCmdDupRing);
+    sCmdDupInit = true;
+  }
+
+  String requestId;
+  extractRequestId(plain, requestId);
+  if (requestId.length()) {
+    const char *cached = nullptr;
+    int cachedStatus = 0;
+    if (showduino_web_dup_find(&sCmdDupRing, requestId.c_str(), &cached, &cachedStatus)) {
+      String dup = cached ? String(cached) : String("{\"ok\":true}");
+      if (dup.indexOf("\"duplicate\"") < 0) {
+        /* Annotate without replaying the action. */
+        if (dup.endsWith("}\n")) {
+          dup = dup.substring(0, dup.length() - 2) +
+                ",\"duplicate\":true,\"lifecycle\":\"duplicate\"}\n";
+        } else if (dup.endsWith("}")) {
+          dup = dup.substring(0, dup.length() - 1) +
+                ",\"duplicate\":true,\"lifecycle\":\"duplicate\"}";
+        }
+      }
+      sendJson(cachedStatus > 0 ? cachedStatus : 200, dup);
+      return;
+    }
+  }
+
+  /* Prefer WEB/BODY JSON so requestId reaches P4; path POST remains fallback. */
+  String tunnelBody;
   String mime;
   int status = 0;
-  if (!commsWebTunnelPost(path.c_str(), body, status, mime, 4000)) {
-    sendJson(503, "{\"ok\":false,\"error\":\"p4_offline\",\"p4Online\":false,\"note\":\"P4 OFFLINE\"}\n");
+  bool ok = false;
+  if (requestId.length()) {
+    String envelope = "{\"cmd\":\"";
+    envelope += cmd;
+    envelope += "\",\"requestId\":\"";
+    envelope += requestId;
+    envelope += "\"}";
+    ok = commsWebTunnelPostBody("POST", "/api/command",
+                                (const uint8_t *)envelope.c_str(), envelope.length(),
+                                tunnelBody, status, mime, 4000);
+  } else {
+    String path = "/api/command/" + cmd;
+    ok = commsWebTunnelPost(path.c_str(), tunnelBody, status, mime, 4000);
+  }
+  if (!ok) {
+    sendJson(503, "{\"ok\":false,\"error\":\"p4_offline\",\"p4Online\":false,"
+                  "\"lifecycle\":\"rejected\",\"note\":\"P4 OFFLINE — not replayed\"}\n");
     return;
   }
   if (mime.length() == 0) mime = "application/json";
-  sServer.sendHeader("Access-Control-Allow-Origin", "*");
+  if (requestId.length() && tunnelBody.length() && tunnelBody.length() < 180) {
+    showduino_web_dup_remember(&sCmdDupRing, requestId.c_str(),
+                               status > 0 ? status : 200, tunnelBody.c_str());
+  } else if (requestId.length() && tunnelBody.length()) {
+    /* Remember a compact duplicate stub — never auto-replay the action. */
+    String stub = "{\"ok\":true,\"requestId\":\"";
+    stub += requestId;
+    stub += "\",\"lifecycle\":\"accepted\",\"duplicate\":false,\"cmd\":\"";
+    stub += cmd;
+    stub += "\"}";
+    showduino_web_dup_remember(&sCmdDupRing, requestId.c_str(),
+                               status > 0 ? status : 200, stub.c_str());
+  }
   sServer.sendHeader("Cache-Control", "no-store");
-  sServer.send(status > 0 ? status : 200, mime.c_str(), body);
+  sServer.send(status > 0 ? status : 200, mime.c_str(), tunnelBody);
 }
 
 static String assetPathFromUri(String uri) {

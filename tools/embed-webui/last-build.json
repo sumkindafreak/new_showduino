@@ -1,11 +1,11 @@
 {
-  "buildHash": "552dde7ebedd",
-  "buildUtc": "2026-09-26T20:27:47Z",
+  "buildHash": "0934ad233f41",
+  "buildUtc": "2026-09-26T22:12:04Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 834101,
-  "embeddedBytes": 205748,
+  "rawBytes": 839853,
+  "embeddedBytes": 206735,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -32,8 +32,8 @@
     "commit": "8a53b1665eec19dc2230b68e98d315b9e3b45b33",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 670040,
-    "embeddedBytes": 167581,
+    "rawBytes": 673151,
+    "embeddedBytes": 167734,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -110,8 +110,8 @@
     {
       "path": "/js/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 141073,
-      "embedded": 31769,
+      "raw": 143714,
+      "embedded": 32603,
       "gzip": true
     },
     {
@@ -201,8 +201,8 @@
     {
       "path": "/studio/js/shdo_model.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 8998,
-      "embedded": 2537,
+      "raw": 9251,
+      "embedded": 2550,
       "gzip": true
     },
     {
@@ -250,8 +250,8 @@
     {
       "path": "/studio/js/timeline-professional-inspector.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 16653,
-      "embedded": 4327,
+      "raw": 16926,
+      "embedded": 4345,
       "gzip": true
     },
     {
@@ -306,8 +306,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19363,
-      "embedded": 5013,
+      "raw": 19845,
+      "embedded": 5039,
       "gzip": true
     },
     {
@@ -327,8 +327,8 @@
     {
       "path": "/studio/js/studio-deploy.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 17908,
-      "embedded": 5634,
+      "raw": 18314,
+      "embedded": 5655,
       "gzip": true
     },
     {
@@ -341,8 +341,8 @@
     {
       "path": "/studio/js/studio-mobile.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 48971,
-      "embedded": 11752,
+      "raw": 49910,
+      "embedded": 11793,
       "gzip": true
     },
     {
@@ -355,8 +355,8 @@
     {
       "path": "/studio/js/studio-v4.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 50731,
-      "embedded": 13054,
+      "raw": 51489,
+      "embedded": 13088,
       "gzip": true
     },
     {

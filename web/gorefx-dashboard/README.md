@@ -1,26 +1,18 @@
 # GoreFX Dashboard for Showduino v1
 
 ```text
-Status: LEGACY / SUPERSEDED
-Canonical browser UI: web/showduino-studio/ hosted by the Communications S3.
+Status: LEGACY / SUPERSEDED / DEMO ONLY
+Canonical browser UI: web/showduino-studio/ hosted by the Communications S3 SoftAP.
+This dashboard records mock commands only — it is NOT connected to /api/command.
 ```
 
-This folder retains the earlier GoreFX dashboard idea. Do not treat it as the current Showduino Studio.
+This folder retains the earlier GoreFX dashboard idea. Do not treat it as the current Showduino Studio. Buttons append to an in-memory mock log; they do not control a P4.
 
 ## Purpose
 
-GoreFX is the full web dashboard for Showduino.
+Historical / demo React shell for dashboard UX experiments.
 
-It should provide:
-
-- Live controls
-- Timeline editor
-- Show library
-- Audio manager
-- Diagnostics
-- Settings
-- Emergency stop
-- Future community/show sharing features
+It should **not** be presented as live Showduino control unless wired through the same SoftAP API documented in `docs/browser-control.md`.
 
 ## Source References
 
@@ -47,7 +39,7 @@ The strongest current dashboard base uses:
 - Tailwind CSS
 - shadcn/ui
 
-This is the recommended v1 web foundation.
+Canonical product path for live control is **SoftAP Studio** (`web/showduino-studio/`), not this mock.
 
 ## Initial v1 Scope
 

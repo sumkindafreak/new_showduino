@@ -29,3 +29,4 @@ Thumbs.db
 *.pem
 credentials.json
 secrets.json
+**/LocalSecrets.h

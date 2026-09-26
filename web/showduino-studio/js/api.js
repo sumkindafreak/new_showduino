@@ -1,12 +1,23 @@
 const BASE = '';
 
+let sRequestSeq = 0;
+
 export function isP4Offline(data) {
   return !data || data.p4Online === false || data.stageLink === 'offline' || data.error === 'p4_offline';
 }
 
+function controlHeaders(extra = {}) {
+  const headers = { Accept: 'application/json', ...extra };
+  try {
+    const token = localStorage.getItem('showduino.controlToken');
+    if (token) headers['X-Showduino-Token'] = token;
+  } catch (_) {}
+  return headers;
+}
+
 async function request(path, options = {}) {
   const res = await fetch(BASE + path, {
-    headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: controlHeaders(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...options
   });
   if (!res.ok) {
@@ -15,7 +26,7 @@ async function request(path, options = {}) {
     if (data && (data.error === 'p4_offline' || data.p4Online === false)) {
       return data;
     }
-    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}${data && data.reason ? ' ' + data.reason : ''}`);
+    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}${data && data.reason ? ' ' + data.reason : ''}${data && data.lifecycle ? ' [' + data.lifecycle + ']' : ''}`);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -38,23 +49,81 @@ export function fetchTime() { return request('/api/time'); }
 export function fetchCapabilities() { return request('/api/capabilities'); }
 export function fetchStorage() { return request('/api/storage'); }
 export function fetchLighting() { return request('/api/lighting'); }
+
+/**
+ * Canonical browser → SoftAP → P4 command contract.
+ * Wire verb is always a Showduino colon command in `cmd`.
+ *
+ * Accepted input shapes:
+ *   "SHOW:START"
+ *   { cmd: "SHOW:START", requestId?: string }
+ *   { category, action, payload?, source?, destination?, priority? }
+ *
+ * Extra fields (source/destination/priority/payload) are accepted for UI
+ * compatibility and ignored by transport unless folded into `cmd`.
+ */
 export function normalizeShowCommand(cmd) {
-  const raw = (typeof cmd === 'string' ? cmd : (cmd && (cmd.cmd || cmd.action)) || '').trim();
-  const category = String((cmd && cmd.category) || '').toLowerCase();
-  const action = String((cmd && cmd.action) || raw).toLowerCase();
-  const upper = raw.toUpperCase();
-  if (upper === 'PANIC' || upper === 'EMERGENCY:PANIC' || upper === 'ESTOP' ||
-      upper === 'E-STOP' || upper === 'EMERGENCY:STOP' ||
-      action === 'panic' ||
-      (category === 'emergency' && (action === 'stop' || action === 'panic' || action === 'activate' || action === 'estop'))) {
+  if (typeof cmd === 'string') {
+    return mapAliases(cmd.trim());
+  }
+  if (!cmd || typeof cmd !== 'object') return '';
+
+  if (cmd.cmd && typeof cmd.cmd === 'string' && cmd.cmd.trim()) {
+    return mapAliases(cmd.cmd.trim());
+  }
+
+  const category = String(cmd.category || '').toLowerCase();
+  const action = String(cmd.action || '').toLowerCase();
+  const payload = cmd.payload != null ? String(cmd.payload) : '';
+
+  if (category === 'emergency' &&
+      (action === 'stop' || action === 'panic' || action === 'activate' || action === 'estop')) {
     return 'EMERGENCY:STOP';
   }
-  return raw;
+  if (category === 'show' || category === 'runtime') {
+    if (action === 'start' || action === 'run') return 'SHOW:START';
+    if (action === 'pause') return 'SHOW:PAUSE';
+    if (action === 'resume') return 'SHOW:RESUME';
+    if (action === 'stop') return 'SHOW:STOP';
+    if (action === 'status') return 'STATUS:REQUEST';
+  }
+  if (category === 'status' || action === 'status') return 'STATUS:REQUEST';
+  if (payload && /^[A-Z0-9:_.=-]+$/i.test(payload)) return mapAliases(payload);
+  return mapAliases(action);
 }
 
-export function postCommand(cmd) {
+function mapAliases(raw) {
+  const upper = String(raw || '').toUpperCase();
+  if (upper === 'PANIC' || upper === 'EMERGENCY:PANIC' || upper === 'ESTOP' ||
+      upper === 'E-STOP' || upper === 'EMERGENCY:STOP') {
+    return 'EMERGENCY:STOP';
+  }
+  return String(raw || '').trim();
+}
+
+function nextRequestId() {
+  sRequestSeq += 1;
+  return `web-${Date.now().toString(36)}-${sRequestSeq}`;
+}
+
+export function postCommand(cmd, options = {}) {
   const value = normalizeShowCommand(cmd);
-  return request('/api/command', { method: 'POST', body: JSON.stringify({ cmd: value }) });
+  if (!value) {
+    return Promise.reject(new Error('missing_cmd'));
+  }
+  const requestId = (options && options.requestId) ||
+    (cmd && typeof cmd === 'object' && cmd.requestId) ||
+    nextRequestId();
+  const body = { cmd: value, requestId };
+  /* Preserve optional metadata for logs/UI; P4 ignores unknown fields. */
+  if (cmd && typeof cmd === 'object') {
+    if (cmd.source) body.source = cmd.source;
+    if (cmd.destination) body.destination = cmd.destination;
+    if (cmd.category) body.category = cmd.category;
+    if (cmd.action) body.action = cmd.action;
+    if (cmd.priority != null) body.priority = cmd.priority;
+  }
+  return request('/api/command', { method: 'POST', body: JSON.stringify(body) });
 }
 
 export function postPanic() {

@@ -283,10 +283,14 @@ static bool webCommandAllowed(const String &cmd) {
   }
   if (cmd == "PRODUCTION:UNLOAD" || cmd == "PLUGIN:SCAN" ||
       cmd == "AUDIO:STOP" || cmd == "AUDIO:LOCAL:STOP" ||
-      cmd == "EMERGENCY:STOP" || cmd == "EMERGENCY:CLEAR_CONFIRM" ||
-      cmd == "EMERGENCY:CLEAR_CANCEL" || cmd == "STATUS:REQUEST") {
+      cmd == "EMERGENCY:STOP" || cmd == "STATUS:REQUEST") {
     return true;
   }
+#if defined(SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR) && SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
+  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
+    return true;
+  }
+#endif
   if (cmd.startsWith("PRODUCTION:LOAD:")) {
     String id = cmd.substring(16);
     id.trim();
@@ -1069,31 +1073,103 @@ static void handleApiLighting() {
   sendWebr(200, "application/json", json.c_str(), json.length());
 }
 
-static void handleApiCommand(const String &cmdIn) {
+static ShowduinoWebDupRing sWebCmdDup;
+static bool sWebCmdDupInit = false;
+
+static void handleApiCommandEx(const String &cmdIn, const char *body) {
   String cmd = cmdIn;
   cmd.trim();
   normalizeWebCmd(cmd);
   gWebApiLogger.logHttpRequest("POST", "/api/command");
+
+  if (!sWebCmdDupInit) {
+    showduino_web_dup_init(&sWebCmdDup);
+    sWebCmdDupInit = true;
+  }
+
+  char requestId[SHOWDUINO_WEB_REQID_MAX];
+  requestId[0] = '\0';
+  if (body && body[0]) {
+    char fromBody[96];
+    if ((!cmd.length()) &&
+        showduino_web_json_string_field(body, "cmd", fromBody, sizeof(fromBody))) {
+      cmd = fromBody;
+      cmd.trim();
+      normalizeWebCmd(cmd);
+    }
+    if (showduino_web_json_string_field(body, "requestId", requestId, sizeof(requestId))) {
+      if (!showduino_web_request_id_ok(requestId)) requestId[0] = '\0';
+    }
+  }
+
+  if (requestId[0]) {
+    const char *cached = nullptr;
+    int cachedStatus = 0;
+    if (showduino_web_dup_find(&sWebCmdDup, requestId, &cached, &cachedStatus)) {
+      String dup = cached ? String(cached) : String("{\"ok\":true}");
+      if (dup.indexOf("\"lifecycle\":\"duplicate\"") < 0) {
+        if (dup.endsWith("}\n")) {
+          dup = dup.substring(0, dup.length() - 2) +
+                ",\"duplicate\":true,\"lifecycle\":\"duplicate\"}\n";
+        } else if (dup.endsWith("}")) {
+          dup = dup.substring(0, dup.length() - 1) +
+                ",\"duplicate\":true,\"lifecycle\":\"duplicate\"}";
+        }
+      }
+      sendWebr(cachedStatus > 0 ? cachedStatus : 200, "application/json",
+               dup.c_str(), dup.length());
+      return;
+    }
+  }
+
   if (!webCommandAllowed(cmd)) {
     const char *err =
-        "{\"ok\":false,\"error\":\"command_not_allowed\","
+        "{\"ok\":false,\"error\":\"command_not_allowed\",\"lifecycle\":\"rejected\","
         "\"note\":\"WebUI may only dispatch the P4-validated whitelist\"}\n";
     sendWebr(403, "application/json", err, strlen(err));
     return;
   }
+
   String replies;
   replies.reserve(512);
   stageWebDispatchCommand(cmd.c_str(), &replies);
-  String json = "{\n  \"ok\": true,\n  \"cmd\": ";
+  const bool rejected = replies.indexOf("REJECTED:") >= 0 ||
+                        replies.indexOf("ERR:") >= 0 ||
+                        replies.indexOf("UNSUPPORTED:") >= 0;
+  String json = "{\n  \"ok\": ";
+  json += rejected ? "false" : "true";
+  json += ",\n  \"cmd\": ";
   appendQuoted(json, cmd.c_str());
+  if (requestId[0]) {
+    json += ",\n  \"requestId\": ";
+    appendQuoted(json, requestId);
+  }
+  json += ",\n  \"lifecycle\": \"";
+  json += rejected ? "rejected" : "accepted";
+  json += "\",\n  \"duplicate\": false";
   json += ",\n  \"replies\": ";
   appendQuoted(json, replies.c_str());
   json += ",\n  \"showState\": \"";
   json += showStateName(gRuntime.rt.state);
   json += "\",\n  \"emergencyActive\": ";
   json += emergencyLocked ? "true" : "false";
-  json += "\n}\n";
-  sendWebr(200, "application/json", json.c_str(), json.length());
+  json += ",\n  \"note\": \"accepted means Show Engine dispatch — confirm via /api/show state\"\n}\n";
+  const int httpStatus = rejected ? 409 : 200;
+  if (requestId[0] && json.length() < (int)sizeof(sWebCmdDup.slots[0].resultJson)) {
+    showduino_web_dup_remember(&sWebCmdDup, requestId, httpStatus, json.c_str());
+  } else if (requestId[0]) {
+    char stub[192];
+    snprintf(stub, sizeof(stub),
+             "{\"ok\":%s,\"requestId\":\"%s\",\"lifecycle\":\"%s\",\"duplicate\":false,\"cmd\":\"%s\"}",
+             rejected ? "false" : "true", requestId, rejected ? "rejected" : "accepted",
+             cmd.c_str());
+    showduino_web_dup_remember(&sWebCmdDup, requestId, httpStatus, stub);
+  }
+  sendWebr(httpStatus, "application/json", json.c_str(), json.length());
+}
+
+static void handleApiCommand(const String &cmdIn) {
+  handleApiCommandEx(cmdIn, nullptr);
 }
 
 static void handleStaticFile(const String &urlPath) {
@@ -1183,15 +1259,11 @@ bool webApiDispatch(const char *method, const char *pathIn, const char *body) {
     if (path.startsWith("/api/command")) {
       String cmd;
       if (body && body[0]) {
-        const String b = body;
-        const int key = b.indexOf("\"cmd\"");
-        const int colon = key >= 0 ? b.indexOf(':', key) : -1;
-        const int q1 = colon >= 0 ? b.indexOf('"', colon) : -1;
-        const int q2 = q1 >= 0 ? b.indexOf('"', q1 + 1) : -1;
-        if (q1 >= 0 && q2 > q1) cmd = b.substring(q1 + 1, q2);
+        handleApiCommandEx("", body);
+        return true;
       }
       if (cmd.length() == 0) {
-        const char *err = "{\"ok\":false,\"error\":\"missing_cmd\"}\n";
+        const char *err = "{\"ok\":false,\"error\":\"missing_cmd\",\"lifecycle\":\"rejected\"}\n";
         sendWebr(400, "application/json", err, strlen(err));
         return true;
       }

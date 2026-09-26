@@ -25,6 +25,7 @@ function App() {
   const projectJson = useMemo(() => serializeProject(demoProject), []);
 
   const sendCommand = (button: (typeof commandButtons)[number]) => {
+    /* DEMO ONLY — records mock commands. Does not call SoftAP /api/command. */
     const command = makeCommand(button.type, button.label, button.raw, 'mock');
     setCommands((current) => [command, ...current].slice(0, 14));
   };

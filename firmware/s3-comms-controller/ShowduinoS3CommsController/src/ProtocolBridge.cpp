@@ -539,7 +539,12 @@ void protocolBridgeLoop() {
     }
     if (!strncmp(line, SHOWDUINO_WEB_TUNNEL_RESP_PREFIX,
                  strlen(SHOWDUINO_WEB_TUNNEL_RESP_PREFIX))) {
+      /* Orphan WEBR (no waiter) — never forward web payloads to Director. */
       continue;
+    }
+    if (commsWebTunnelWaiting()) {
+      /* Desk status may arrive before WEBR; keep forwarding. Web frames only
+       * via OnLine above. */
     }
     if (!strcmp(line, "DIAG:PING")) {
       SD_LOGT("COMMS", "UART RX: DIAG:PING");

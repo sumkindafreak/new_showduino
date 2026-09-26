@@ -2,6 +2,8 @@
 #include "../BoardConfig.h"
 
 #include <string.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 static bool sReady = false;
 static bool sEverRx = false;
@@ -10,6 +12,7 @@ static uint32_t sRxCount = 0;
 static uint32_t sTxCount = 0;
 static uint32_t sDropped = 0;
 static String sBuf;
+static SemaphoreHandle_t sTxLock = nullptr;
 
 void commsUartBegin() {
   /* Leave TX idle as input until the UART driver takes it, so an unpowered
@@ -21,6 +24,7 @@ void commsUartBegin() {
   Serial1.begin(SHOWDUINO_COMMS_UART_BAUD, SHOWDUINO_COMMS_UART_CONFIG,
                 SHOWDUINO_COMMS_UART_RX_PIN, SHOWDUINO_COMMS_UART_TX_PIN);
   delay(20);
+  if (!sTxLock) sTxLock = xSemaphoreCreateMutex();
   sReady = true;
   sBuf = "";
 }
@@ -29,18 +33,40 @@ bool commsUartReady() {
   return sReady;
 }
 
+void commsUartLockTx() {
+  if (sTxLock) xSemaphoreTake(sTxLock, portMAX_DELAY);
+}
+
+void commsUartUnlockTx() {
+  if (sTxLock) xSemaphoreGive(sTxLock);
+}
+
 void commsUartWriteLine(const char *line) {
   if (!sReady || !line || !line[0]) return;
+  commsUartLockTx();
   Serial1.println(line);
   Serial1.flush();
   sTxCount++;
+  commsUartUnlockTx();
 }
 
 void commsUartWriteBytes(const uint8_t *data, size_t len) {
   if (!sReady || !data || len == 0) return;
+  commsUartLockTx();
   Serial1.write(data, len);
   Serial1.flush();
   sTxCount++;
+  commsUartUnlockTx();
+}
+
+void commsUartWriteLineAndBytes(const char *line, const uint8_t *data, size_t len) {
+  if (!sReady || !line || !line[0]) return;
+  commsUartLockTx();
+  Serial1.println(line);
+  if (data && len) Serial1.write(data, len);
+  Serial1.flush();
+  sTxCount++;
+  commsUartUnlockTx();
 }
 
 bool commsUartReadLine(char *out, size_t outSize) {
@@ -86,6 +112,10 @@ bool commsUartReadLine(char *out, size_t outSize) {
     }
   }
   return false;
+}
+
+void commsUartClearLineBuffer() {
+  sBuf = "";
 }
 
 int commsUartAvailable() {

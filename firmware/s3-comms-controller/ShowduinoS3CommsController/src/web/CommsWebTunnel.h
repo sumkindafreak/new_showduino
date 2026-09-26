@@ -8,6 +8,7 @@ typedef void (*CommsWebPumpFn)();
 void commsWebTunnelBegin();
 void commsWebTunnelSetPump(CommsWebPumpFn fn);
 bool commsWebTunnelConsumingBytes();
+bool commsWebTunnelWaiting();
 void commsWebTunnelOnByte(char c);
 bool commsWebTunnelOnLine(const char *line);
 
