@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include "showduino_mosfet_node.h"
 #include "showduino_mosfet_engine.h"
+#include "showduino_mosfet_identifier.h"
 
 static int gFails = 0;
 static void expect(bool ok, const char *msg) {
@@ -95,6 +96,61 @@ int main() {
   char cmd[80];
   std::snprintf(cmd, sizeof(cmd), "MOSFET:NODE:MOSFET-08:OUT:4:PULSE:100:600000");
   expect(std::strlen(cmd) <= 63, "timeline cmd <= 63");
+
+  expect(showduino_mosfet_classify_command("MOSFET:IDENTIFY") ==
+             SHOWDUINO_MOSFET_CMD_IDENTIFY,
+         "classify IDENTIFY");
+  expect(showduino_mosfet_classify_command("MOSFET:NODE:MOSFET-01:IDENTIFY") ==
+             SHOWDUINO_MOSFET_CMD_IDENTIFY,
+         "classify NODE IDENTIFY");
+  expect(std::strstr(SHOWDUINO_MOSFET_CAPS, "IDENTIFY") != nullptr, "caps has IDENTIFY");
+  expect(std::strstr(SHOWDUINO_MOSFET_CAPS, ",PIXEL") == nullptr &&
+             std::strstr(SHOWDUINO_MOSFET_CAPS, "PIXEL,") == nullptr &&
+             std::strcmp(SHOWDUINO_MOSFET_CAPS, "PIXEL") != 0,
+         "caps excludes PIXEL token");
+
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO_DEFAULT == 25, "ident GPIO 25");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_COUNT_DEFAULT == 4, "ident count 4");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED_DEFAULT == 0, "ident unverified");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_FOR_OUT(1) == 0, "pixel0↔OUT1");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_FOR_OUT(2) == 1, "pixel1↔OUT2");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_FOR_OUT(3) == 2, "pixel2↔OUT3");
+  expect(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_FOR_OUT(4) == 3, "pixel3↔OUT4");
+
+  uint8_t levelsOff[4] = {0, 0, 0, 0};
+  uint8_t greenOff[4] = {1, 1, 1, 1};
+  showduino_mosfet_identifier_frame(levelsOff, 64, greenOff);
+  expect(greenOff[0]==0 && greenOff[1]==0 && greenOff[2]==0 && greenOff[3]==0,
+         "ident all off");
+
+  uint8_t levelsAct[4] = {100, 0, 50, 25};
+  uint8_t greenAct[4] = {0};
+  showduino_mosfet_identifier_frame(levelsAct, 64, greenAct);
+  expect(greenAct[0] == 64, "ident OUT1 full (capped)");
+  expect(greenAct[1] == 0, "ident OUT2 off");
+  expect(greenAct[2] == 32, "ident OUT3 half");
+  expect(greenAct[3] == 16, "ident OUT4 quarter");
+
+  expect(showduino_mosfet_can_accept(SHOWDUINO_MOSFET_ST_SHOW_CONTROLLED,
+                                     SHOWDUINO_MOSFET_CMD_IDENTIFY,
+                                     SHOWDUINO_CMD_ORIGIN_SHOW) == SHOWDUINO_MOSFET_FAIL_NONE,
+         "IDENTIFY allowed while owned");
+  expect(showduino_mosfet_can_accept(SHOWDUINO_MOSFET_ST_EMERGENCY,
+                                     SHOWDUINO_MOSFET_CMD_IDENTIFY,
+                                     SHOWDUINO_CMD_ORIGIN_SHOW) == SHOWDUINO_MOSFET_FAIL_EMERGENCY,
+         "IDENTIFY rejected in emergency");
+
+  /* Fade tracking uses engine current level, not target */
+  ShowduinoMosfetEngine fadeEng;
+  showduino_mosfet_engine_begin(&fadeEng, writeCb);
+  showduino_mosfet_engine_fade(&fadeEng, 1, 100, 1000, 0);
+  showduino_mosfet_engine_tick(&fadeEng, 500);
+  uint8_t fadeLv[4];
+  showduino_mosfet_engine_levels(&fadeEng, fadeLv);
+  uint8_t fadeGreen[4];
+  showduino_mosfet_identifier_frame(fadeLv, 64, fadeGreen);
+  expect(fadeGreen[0] >= 28 && fadeGreen[0] <= 36, "ident follows fade midpoint");
+  expect(fadeGreen[0] != 64, "ident not jumped to final during fade");
 
   if (gFails) { std::printf("%d FAILURES\n", gFails); return 1; }
   std::printf("ALL TESTS PASSED\n");

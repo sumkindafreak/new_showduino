@@ -2812,6 +2812,14 @@ private:
       if (commandCallback) commandCallback(line);
       return;
     }
+    if (command == PAGE04_CMD_MOSFET_IDENTIFY) {
+      if (emergencyLocked) return;
+      const char *id = mosfetDetail_.firstId[0] ? mosfetDetail_.firstId : "MOSFET-01";
+      char line[64];
+      snprintf(line, sizeof(line), "MOSFET:NODE:%s:IDENTIFY", id);
+      if (commandCallback) commandCallback(line);
+      return;
+    }
     if (command == PAGE_LAMP_CMD_BACK) {
       showNodes();
       maybeRestoreEmergencyOverlay();

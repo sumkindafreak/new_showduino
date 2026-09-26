@@ -2,6 +2,7 @@
 #include "MosfetIdentity.h"
 #include "MosfetNodeState.h"
 #include "MosfetOutputEngine.h"
+#include "MosfetIdentifierPixels.h"
 #include "EspNowMosfetTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_mosfet_node.h"
@@ -102,6 +103,11 @@ bool mosfetProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOri
   }
   if (cls == SHOWDUINO_MOSFET_CMD_TEST) {
     mosfetProtocolLocalTest();
+    replyStatus(sequence);
+    return true;
+  }
+  if (cls == SHOWDUINO_MOSFET_CMD_IDENTIFY) {
+    mosfetIdentifierPixelsIdentify();
     replyStatus(sequence);
     return true;
   }

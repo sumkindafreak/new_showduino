@@ -1,4 +1,5 @@
 #include "MosfetOutputEngine.h"
+#include "MosfetIdentifierPixels.h"
 #include "../BoardConfig.h"
 
 static ShowduinoMosfetEngine sEng;
@@ -55,6 +56,7 @@ void mosfetOutputEngineLoop() {
 
 void mosfetOutputEngineAllOff(const char *reason) {
   showduino_mosfet_engine_all_off(&sEng, reason ? reason : "ALL_OFF");
+  mosfetIdentifierPixelsAllOff();
   Serial.printf("[MOSFET] ALL OFF (%s)\n", reason ? reason : "");
 }
 

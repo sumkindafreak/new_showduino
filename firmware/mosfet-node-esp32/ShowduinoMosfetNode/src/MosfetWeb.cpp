@@ -2,6 +2,7 @@
 #include "MosfetIdentity.h"
 #include "MosfetNodeState.h"
 #include "MosfetOutputEngine.h"
+#include "MosfetIdentifierPixels.h"
 #include "MosfetProtocol.h"
 #include "EspNowMosfetTransport.h"
 #include "../BoardConfig.h"
@@ -37,7 +38,9 @@ label{display:block;margin:8px 0 4px;color:#aaa}
 input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;box-sizing:border-box}
 .kv{display:grid;grid-template-columns:140px 1fr;gap:4px 10px;font-size:13px}
 .warn{color:#fc6}
-.ch{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2a2a2a}
+.ch{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a2a2a}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#333;margin-right:8px;vertical-align:middle}
+.dot.on{background:#2ecc71;box-shadow:0 0 6px #2ecc71}
 </style></head><body>
 <header><h1 id="title">Showduino MOSFET Node</h1><div id="owner">…</div></header>
 <div id="banner" class="banner" hidden></div>
@@ -61,6 +64,11 @@ input{background:#111;color:#fff;border:1px solid #444;padding:8px;width:100%;bo
 <button class="act" id="alloff">ALL OFF</button>
 </div>
 </div>
+<div class="card"><h3>Identifier pixels</h3>
+<p class="warn">Local OUT1–OUT4 indicators only. Not a theatrical Pixel Line.</p>
+<div class="kv" id="identkv"></div>
+<div class="row"><button class="act" id="identify">IDENTIFY NODE</button></div>
+</div>
 <div class="card"><div class="kv" id="syskv"></div></div>
 </main>
 <script>
@@ -82,18 +90,26 @@ async function load(){
     ['ESP-NOW',S.espnow?'linked':'searching'],['Owner',S.owned?'yes':'no']
   ]);
   const outs=S.outputs||[];
-  $('outs').innerHTML=outs.map((o,i)=>`<div class="ch"><span>OUT${i+1} ${o.name||''}</span><span>${o.level||0}%</span></div>`).join('');
+  $('outs').innerHTML=outs.map((o,i)=>`<div class="ch"><span><span class="dot ${o.level>0?'on':''}"></span>OUT${i+1} ${o.name||''}</span><span>${o.level||0}%</span></div>`).join('');
+  kv($('identkv'),[
+    ['GPIO',String(S.identifierGpio||25)],
+    ['Count',String(S.identifierCount||4)],
+    ['Ready',S.identifierReady?'yes':'no'],
+    ['Verified',S.identifierVerified?'VERIFIED':'SOFTWARE DEFINED / HARDWARE UNVERIFIED']
+  ]);
   kv($('syskv'),[
     ['PWM',(S.pwmHz||1000)+' Hz / '+(S.pwmBits||8)+'-bit'],
     ['Pins',(S.pins||[]).join(', ')],
     ['SoftAP',S.ssid||''],['IP',S.ip||'']
   ]);
   ['test','saveid','saveout'].forEach(id=>{$(id).disabled=owned||em;});
+  $('identify').disabled=em;
 }
 $('saveid').onclick=async()=>{await fetch('/api/identity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:$('nid').value,name:$('nname').value})});load();};
 $('saveout').onclick=async()=>{await fetch('/api/outname',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ch:+$('och').value,name:$('oname').value})});load();};
 $('test').onclick=async()=>{await fetch('/api/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ch:+$('tch').value,level:+$('tlv').value})});load();};
 $('alloff').onclick=async()=>{await fetch('/api/alloff',{method:'POST'});load();};
+$('identify').onclick=async()=>{await fetch('/api/identify',{method:'POST'});load();};
 load(); setInterval(load,2000);
 </script></body></html>
 )HTML";
@@ -117,6 +133,10 @@ static void handleStatus() {
   json += "\"emergency\":" + String(mosfetNodeStateEmergency() ? "true" : "false") + ",";
   json += "\"espnow\":" + String(mosfetEspNowHaveComms() ? "true" : "false") + ",";
   json += "\"gpioVerified\":" + String(SHOWDUINO_MOSFET_GPIO_VERIFIED ? "true" : "false") + ",";
+  json += "\"identifierGpio\":" + String(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO) + ",";
+  json += "\"identifierCount\":" + String(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_COUNT) + ",";
+  json += "\"identifierReady\":" + String(mosfetIdentifierPixelsReady() ? "true" : "false") + ",";
+  json += "\"identifierVerified\":" + String(SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED ? "true" : "false") + ",";
   json += "\"pwmHz\":" + String(SHOWDUINO_MOSFET_PWM_HZ) + ",";
   json += "\"pwmBits\":" + String(SHOWDUINO_MOSFET_PWM_BITS) + ",";
   json += "\"pins\":[" + String(SHOWDUINO_MOSFET_OUT1_GPIO) + "," +
@@ -213,6 +233,15 @@ static void handleAllOff() {
   sServer.send(200, "text/plain", "OK");
 }
 
+static void handleIdentify() {
+  if (mosfetNodeStateEmergency()) {
+    sServer.send(403, "text/plain", "EMERGENCY");
+    return;
+  }
+  mosfetIdentifierPixelsIdentify();
+  sServer.send(200, "text/plain", "OK");
+}
+
 void mosfetWebBegin() {
   if (sBegun) return;
   uint8_t mac[6];
@@ -227,6 +256,7 @@ void mosfetWebBegin() {
   sServer.on("/api/outname", HTTP_POST, handleOutName);
   sServer.on("/api/test", HTTP_POST, handleTest);
   sServer.on("/api/alloff", HTTP_POST, handleAllOff);
+  sServer.on("/api/identify", HTTP_POST, handleIdentify);
   sServer.begin();
   sBegun = true;
   Serial.printf("[MOSFET] SoftAP %s @ %s\n", nodeSoftApSsid(), nodeSoftApIp());

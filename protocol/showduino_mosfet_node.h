@@ -35,7 +35,7 @@ extern "C" {
 #define SHOWDUINO_MOSFET_DURATION_MAX_MS  600000u
 #define SHOWDUINO_MOSFET_LOCAL_TEST_MS    5000u
 #define SHOWDUINO_MOSFET_CAPS \
-  "4CH,PWM,PULSE,FADE,OWN,ESPNOW,SOFTAP,EMERGENCY,ALL_OFF"
+  "4CH,PWM,PULSE,FADE,OWN,ESPNOW,SOFTAP,EMERGENCY,ALL_OFF,IDENTIFY"
 
 /* Software pin map for ESP32_MOS_X4 / 303E32NMOS4 — hardware unverified. */
 #define SHOWDUINO_MOSFET_OUT1_GPIO_DEFAULT 16
@@ -44,6 +44,11 @@ extern "C" {
 #define SHOWDUINO_MOSFET_OUT4_GPIO_DEFAULT 27
 #define SHOWDUINO_MOSFET_STATUS_LED_GPIO_DEFAULT 23
 #define SHOWDUINO_MOSFET_GPIO_VERIFIED_DEFAULT 0
+#define SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO_DEFAULT 25
+#define SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_COUNT_DEFAULT 4
+#define SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED_DEFAULT 0
+#define SHOWDUINO_MOSFET_IDENTIFIER_MAX_BRIGHTNESS_DEFAULT 64
+#define SHOWDUINO_MOSFET_IDENTIFY_MS_DEFAULT 5000u
 
 typedef enum ShowduinoMosfetNodeState {
   SHOWDUINO_MOSFET_ST_UNKNOWN = 0,
@@ -71,7 +76,8 @@ typedef enum ShowduinoMosfetCmd {
   SHOWDUINO_MOSFET_CMD_OWN_GRANT,
   SHOWDUINO_MOSFET_CMD_EMERGENCY_STOP,
   SHOWDUINO_MOSFET_CMD_EMERGENCY_CLEAR,
-  SHOWDUINO_MOSFET_CMD_TEST
+  SHOWDUINO_MOSFET_CMD_TEST,
+  SHOWDUINO_MOSFET_CMD_IDENTIFY
 } ShowduinoMosfetCmd;
 
 typedef enum ShowduinoMosfetFail {
@@ -304,6 +310,7 @@ static inline ShowduinoMosfetCmd showduino_mosfet_classify_command(const char *r
   if (strcmp(cmd, "CAPS") == 0) return SHOWDUINO_MOSFET_CMD_CAPS;
   if (strcmp(cmd, "ALL:OFF") == 0) return SHOWDUINO_MOSFET_CMD_ALL_OFF;
   if (strcmp(cmd, "TEST") == 0) return SHOWDUINO_MOSFET_CMD_TEST;
+  if (strcmp(cmd, "IDENTIFY") == 0) return SHOWDUINO_MOSFET_CMD_IDENTIFY;
   if (strncmp(cmd, "ID:", 3) == 0) return SHOWDUINO_MOSFET_CMD_ID;
   if (strncmp(cmd, "NAME:", 5) == 0) return SHOWDUINO_MOSFET_CMD_NAME;
   if (strncmp(cmd, "OUT:", 4) == 0) {
@@ -348,7 +355,8 @@ static inline int showduino_mosfet_parse_out_command(const char *raw,
       out->cmd == SHOWDUINO_MOSFET_CMD_EMERGENCY_CLEAR ||
       out->cmd == SHOWDUINO_MOSFET_CMD_ID ||
       out->cmd == SHOWDUINO_MOSFET_CMD_NAME ||
-      out->cmd == SHOWDUINO_MOSFET_CMD_TEST) {
+      out->cmd == SHOWDUINO_MOSFET_CMD_TEST ||
+      out->cmd == SHOWDUINO_MOSFET_CMD_IDENTIFY) {
     return 1;
   }
   if (strncmp(cmd, "OUT:", 4) != 0) return 0;
@@ -440,6 +448,10 @@ static inline ShowduinoMosfetFail showduino_mosfet_can_accept(
     return SHOWDUINO_MOSFET_FAIL_NONE;
   }
   if (cmd == SHOWDUINO_MOSFET_CMD_ALL_OFF || cmd == SHOWDUINO_MOSFET_CMD_OUT_OFF) {
+    return SHOWDUINO_MOSFET_FAIL_NONE;
+  }
+  /* IDENTIFY is diagnostic-only and does not change MOSFET outputs. */
+  if (cmd == SHOWDUINO_MOSFET_CMD_IDENTIFY) {
     return SHOWDUINO_MOSFET_FAIL_NONE;
   }
   if (showduino_mosfet_cmd_theatrical(cmd)) {

@@ -1,7 +1,8 @@
 /*
-  Showduino MOSFET Node 0.1.0 — ESP32_MOS_X4 / 303E32NMOS4
+  Showduino MOSFET Node 0.1.1 — ESP32_MOS_X4 / 303E32NMOS4
 
   Four low-voltage powered outputs with PWM / pulse / fade.
+  Local 4× NeoPixel identifiers on GPIO25 (NOT a theatrical Pixel Line).
   Fail-safe: ALL OFF on boot, authority loss, emergency, show stop.
   GPIO map is SOFTWARE DEFINED — physical verification required.
 */
@@ -9,6 +10,7 @@
 #include <Arduino.h>
 #include "BoardConfig.h"
 #include "src/MosfetOutputEngine.h"
+#include "src/MosfetIdentifierPixels.h"
 #include "src/MosfetNodeState.h"
 #include "src/MosfetIdentity.h"
 #include "src/MosfetProtocol.h"
@@ -47,8 +49,9 @@ static void pollUsb() {
 }
 
 void setup() {
-  /* BOOT ORDER: drive MOSFET GPIOs LOW before Serial / Wi-Fi / ESP-NOW / NVS / WebUI. */
+  /* BOOT ORDER: MOSFET outputs LOW first, then identifier data line LOW. */
   mosfetOutputEngineSafeGpioFirst();
+  mosfetIdentifierPixelsSafeGpio();
   Serial.begin(115200);
   delay(50);
   Serial.println();
@@ -57,15 +60,17 @@ void setup() {
   Serial.println("[MOSFET] BOOT: GPIO outputs driven LOW before radio/services");
 #if !SHOWDUINO_MOSFET_GPIO_VERIFIED
   Serial.println("[MOSFET] GPIO MAP: SOFTWARE DEFINED / HARDWARE UNVERIFIED");
-  Serial.printf("[MOSFET] OUT1=GPIO%u OUT2=GPIO%u OUT3=GPIO%u OUT4=GPIO%u LED=GPIO%u\n",
+  Serial.printf("[MOSFET] OUT1=GPIO%u OUT2=GPIO%u OUT3=GPIO%u OUT4=GPIO%u LED=GPIO%u IDENT=GPIO%u\n",
                 (unsigned)SHOWDUINO_MOSFET_OUT1_GPIO,
                 (unsigned)SHOWDUINO_MOSFET_OUT2_GPIO,
                 (unsigned)SHOWDUINO_MOSFET_OUT3_GPIO,
                 (unsigned)SHOWDUINO_MOSFET_OUT4_GPIO,
-                (unsigned)SHOWDUINO_MOSFET_STATUS_LED_GPIO);
+                (unsigned)SHOWDUINO_MOSFET_STATUS_LED_GPIO,
+                (unsigned)SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO);
 #endif
 
   mosfetOutputEngineBegin();
+  mosfetIdentifierPixelsBegin();
   mosfetStatusLedBegin();
   nodeConfigBegin("sdmosfet");
   mosfetNodeStateBegin();
@@ -98,4 +103,5 @@ void loop() {
   mosfetEspNowService();
   mosfetWebLoop();
   mosfetStatusLedLoop();
+  mosfetIdentifierPixelsService();
 }
