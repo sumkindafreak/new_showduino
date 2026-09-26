@@ -32,7 +32,10 @@ typedef bool (*TouchLvglHook)(int32_t x, int32_t y, bool pressed);
 void touchLvglSetHook(TouchLvglHook hook);
 void touchLvglConsumeUntilRelease();
 
+/** Last GT911 sample from the LVGL/wake poll. Does not start a second I2C read. */
 bool touchLvglReadRaw(TouchRawPoint &point);
+/** millis() of the last real GT911 contact packet (for same-packet de-dupe). */
+uint32_t touchLvglRawStampMs();
 ShowduinoTouchCalMode touchLvglCalibrationMode();
 bool touchLvglCalibrationIsNvs();
 uint16_t touchLvglCalibrationVersion();

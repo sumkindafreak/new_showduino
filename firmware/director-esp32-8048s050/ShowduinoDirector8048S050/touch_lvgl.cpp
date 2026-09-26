@@ -36,6 +36,47 @@ static ShowduinoTouchCalMode s_calMode = SHOWDUINO_TOUCH_CAL_MODE_FACTORY;
 static ShowduinoTouchCalibrationRecord s_nvsCal;
 static bool s_calLogged = false;
 
+/* TAMC_GT911::read() always writes 0 to POINT_INFO. A second I2C poll in the
+ * same frame looks like a lift even while the finger is down. One poll is
+ * stashed and reused until the next real I2C cycle. Empty packets keep the
+ * last contact briefly so inter-report gaps are not treated as a release. */
+static bool s_haveRaw = false;
+static TouchRawPoint s_raw = {0, 0};
+static uint32_t s_rawStampMs = 0;
+static uint32_t s_lastI2cMs = 0;
+static bool s_didI2c = false;
+#ifndef SHOWDUINO_TOUCH_I2C_MIN_GAP_MS
+#define SHOWDUINO_TOUCH_I2C_MIN_GAP_MS 4
+#endif
+#ifndef SHOWDUINO_TOUCH_HOLD_MS
+#define SHOWDUINO_TOUCH_HOLD_MS 40
+#endif
+
+static void pollGt911() {
+  if (!s_touch || !s_ready) {
+    s_haveRaw = false;
+    return;
+  }
+  const uint32_t now = millis();
+  if (s_didI2c && (uint32_t)(now - s_lastI2cMs) < SHOWDUINO_TOUCH_I2C_MIN_GAP_MS) {
+    return;
+  }
+  s_didI2c = true;
+  s_lastI2cMs = now;
+  s_touch->read();
+  if (s_touch->isTouched) {
+    const TP_Point p = s_touch->points[0];
+    s_raw.x = (int32_t)p.x;
+    s_raw.y = (int32_t)p.y;
+    s_haveRaw = true;
+    s_rawStampMs = now;
+    return;
+  }
+  if (!s_haveRaw || (uint32_t)(now - s_rawStampMs) >= SHOWDUINO_TOUCH_HOLD_MS) {
+    s_haveRaw = false;
+  }
+}
+
 void touchLvglSetHook(TouchLvglHook hook) {
   s_touchHook = hook;
 }
@@ -115,19 +156,19 @@ void touchLvglMapRaw(int32_t rawX, int32_t rawY, int32_t *screenX, int32_t *scre
 bool touchLvglReadRaw(TouchRawPoint &point) {
   point.x = 0;
   point.y = 0;
-  if (!s_touch || !s_ready) return false;
-  s_touch->read();
-  if (!s_touch->isTouched) return false;
-  const TP_Point p = s_touch->points[0];
-  point.x = (int32_t)p.x;
-  point.y = (int32_t)p.y;
+  if (!s_haveRaw) return false;
+  point = s_raw;
   return true;
 }
 
+uint32_t touchLvglRawStampMs() {
+  return s_rawStampMs;
+}
+
 static bool sampleTouch(int32_t &x, int32_t &y) {
-  TouchRawPoint raw;
-  if (!touchLvglReadRaw(raw)) return false;
-  touchLvglMapRaw(raw.x, raw.y, &x, &y);
+  pollGt911();
+  if (!s_haveRaw) return false;
+  touchLvglMapRaw(s_raw.x, s_raw.y, &x, &y);
   return true;
 }
 
@@ -152,34 +193,35 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
   if (pressed) {
     const bool wasOff = !backlightIsOn();
     backlightNotifyActivity();
-    /* First tap after screen-off only wakes - don't fire UI buttons. */
+    /* First tap after screen-off only wakes - don't fire LVGL buttons. */
     if (wasOff) {
       s_eatUntilRelease = true;
       s_hadPress = false;
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
       Serial.printf("[Touch] WAKE_EAT x=%ld y=%ld\n", (long)x, (long)y);
 #endif
-      return;
     }
   }
 
-  if (s_eatUntilRelease) {
+  bool consumed = false;
+  if (s_touchHook) {
+    consumed = s_touchHook(x, y, pressed);
+    if (consumed && pressed) s_eatUntilRelease = true;
+  }
+
+  /* Swallow LVGL delivery for wake/overlay consume, but the hook above still
+   * sees hold and release so calibration and Locate can finish the gesture. */
+  if (s_eatUntilRelease || consumed) {
     if (!pressed) s_eatUntilRelease = false;
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
-    if (!pressed) Serial.println("[Touch] EAT release");
+    if (pressed && !s_diagWasPressed) {
+      Serial.printf("[Touch] HOOK_EAT x=%ld y=%ld pressed=1\n", (long)x, (long)y);
+    } else if (!pressed && s_diagWasPressed) {
+      Serial.println("[Touch] EAT release");
+    }
+    s_diagWasPressed = pressed;
 #endif
     return;
-  }
-
-  if (s_touchHook) {
-    if (s_touchHook(x, y, pressed)) {
-      s_eatUntilRelease = pressed;
-#if SHOWDUINO_TOUCH_SCROLL_DIAG
-      Serial.printf("[Touch] HOOK_EAT x=%ld y=%ld pressed=%u\n",
-                    (long)x, (long)y, (unsigned)pressed);
-#endif
-      return;
-    }
   }
 
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
@@ -231,6 +273,10 @@ void touchLvglInit(TAMC_GT911 &touch, uint16_t width, uint16_t height, uint8_t d
   s_ready = false;
   s_eatUntilRelease = false;
   s_calLogged = false;
+  s_haveRaw = false;
+  s_didI2c = false;
+  s_rawStampMs = 0;
+  s_lastI2cMs = 0;
   loadCalibrationLocked();
   logCalibrationOnce();
 
@@ -258,6 +304,8 @@ void touchLvglRestoreAfterSd() {
   touchWireBegin();
   s_touch->begin();
   s_touch->setRotation(TOUCH_GT911_LIB_ROTATION);
+  s_haveRaw = false;
+  s_didI2c = false;
   s_ready = true;
   Serial.println("Touch: GT911 re-init after SD");
 }
