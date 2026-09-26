@@ -462,8 +462,10 @@ static void fill_sheet(void) {
       set_action(0, "REFRESH", PAGE04_CMD_STATUS, true, false);
       break;
     case PAGE04_ROLE_MOSFET:
-      hint = "PWM / dimming specialist. Role reserved.";
-      avail = "No compatible MOSFET Node detected.";
+      hint = "Four powered outputs. P4 owns theatrical levels; ALL OFF is always available.";
+      avail = c->present ? "" : "No compatible MOSFET Node detected.";
+      set_action(0, "REFRESH", PAGE04_CMD_MOSFET_STATUS, true, false);
+      set_action(1, "ALL OFF", PAGE04_CMD_MOSFET_ALL_OFF, c->present != 0, true);
       break;
     case PAGE04_ROLE_DMX:
       hint = "Dedicated DMX universe. Role reserved.";

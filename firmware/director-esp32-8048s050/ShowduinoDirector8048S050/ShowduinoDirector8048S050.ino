@@ -514,6 +514,21 @@ void handleStageLine(String line) {
     }
   }
 
+  ShowduinoMosfetNodeWire mosW = showduino_parse_state_node_mosfet(line.c_str());
+  if (mosW != SHOWDUINO_MOSFET_NODE_WIRE_INVALID) {
+    ui.setMosfetNodeAvail(mosW);
+    gNodesOnline = ui.getNodeCount();
+#if SHOWDUINO_OS2_SHELL
+    publishOs2Services();
+#endif
+  }
+  {
+    ShowduinoMosfetDetailWire mdet{};
+    if (showduino_parse_state_node_mosfet_detail(line.c_str(), &mdet)) {
+      ui.setMosfetNodeDetail(mdet);
+    }
+  }
+
   ShowduinoAudioNodeWire audioW = showduino_parse_state_node_audio(line.c_str());
   if (audioW != SHOWDUINO_AUDIO_NODE_WIRE_INVALID) {
     static char sLastAudioWire[48] = "";

@@ -439,6 +439,33 @@ public:
     refreshNodesPage();
   }
 
+  void setMosfetNodeAvail(ShowduinoMosfetNodeWire wire) {
+    if (mosfetNodeRaw_ == wire) return;
+    mosfetNodeRaw_ = wire;
+    const bool present = (wire == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE ||
+                          wire == SHOWDUINO_MOSFET_NODE_WIRE_FAULT ||
+                          wire == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY);
+    ShowduinoCapabilities caps = page_01_home_get_capabilities();
+    if (caps.mosfet != present) {
+      caps.mosfet = present;
+      page_01_home_set_capabilities(&caps);
+    }
+    const char *footer = "-";
+    if (wire == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY) footer = "EMERG";
+    else if (wire == SHOWDUINO_MOSFET_NODE_WIRE_FAULT) footer = "FAULT";
+    else if (wire == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE) footer = "ONLINE";
+    page_01_home_set_footer_mosfet(present ? footer : "-");
+    recountSpecialistNodes();
+    refreshNodesPage();
+    statusDirty = true;
+    if (page_06_diagnostics_is_active()) refreshDiagnosticsPage();
+  }
+
+  void setMosfetNodeDetail(const ShowduinoMosfetDetailWire &d) {
+    mosfetDetail_ = d;
+    refreshNodesPage();
+  }
+
   void setAudioNodeWire(ShowduinoAudioNodeWire wire) {
     if (audioNodeWire_ == wire) {
       /* A repeated coarse state can still be the acknowledgement for the
@@ -1569,6 +1596,11 @@ private:
         pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_EMERGENCY) {
       n = (uint8_t)(n + (pixelDetail_.online ? pixelDetail_.online : 1));
     }
+    if (mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE ||
+        mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_FAULT ||
+        mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY) {
+      n = (uint8_t)(n + (mosfetDetail_.online ? mosfetDetail_.online : 1));
+    }
     if (estopSheet_.online) n = (uint8_t)(n + estopSheet_.online);
     setNodeCount(n);
   }
@@ -1721,9 +1753,40 @@ private:
     page_04_nodes_set_card(PAGE04_ROLE_LAMP, lampOn, lampSt, lampDet, lampCol);
     refreshLampSheet();
 
-    page_04_nodes_set_card(PAGE04_ROLE_MOSFET, false, "NOT DETECTED",
-                           "No compatible node detected.\nPWM / dimming outputs.",
-                           ShowduinoPalette::Disabled);
+    {
+      const bool mosOn = (mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE ||
+                          mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_FAULT ||
+                          mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY);
+      uint32_t mosCol = ShowduinoPalette::Disabled;
+      const char *mosSt = "NOT DETECTED";
+      char mosDet[96];
+      snprintf(mosDet, sizeof(mosDet),
+               "No compatible node detected.\nFour powered outputs.");
+      if (mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE) {
+        mosCol = ShowduinoPalette::Accent;
+        mosSt = "ONLINE";
+        snprintf(mosDet, sizeof(mosDet), "%u of %u online\n%s %s",
+                 (unsigned)mosfetDetail_.online,
+                 (unsigned)(mosfetDetail_.seen ? mosfetDetail_.seen : mosfetDetail_.online),
+                 mosfetDetail_.firstId[0] ? mosfetDetail_.firstId : "MOSFET",
+                 mosfetDetail_.firstState[0] ? mosfetDetail_.firstState : "");
+      } else if (mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY) {
+        mosCol = ShowduinoPalette::Danger;
+        mosSt = "EMERGENCY";
+        snprintf(mosDet, sizeof(mosDet), "Showduino emergency.\n%s ALL OFF",
+                 mosfetDetail_.firstId[0] ? mosfetDetail_.firstId : "MOSFET");
+      } else if (mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_FAULT) {
+        mosCol = ShowduinoPalette::Danger;
+        mosSt = "FAULT";
+        snprintf(mosDet, sizeof(mosDet), "MOSFET Node fault reported.\n%s",
+                 mosfetDetail_.firstId[0] ? mosfetDetail_.firstId : "");
+      } else if (mosfetDetail_.seen) {
+        mosSt = "OFFLINE";
+        snprintf(mosDet, sizeof(mosDet), "%u seen, none online.",
+                 (unsigned)mosfetDetail_.seen);
+      }
+      page_04_nodes_set_card(PAGE04_ROLE_MOSFET, mosOn, mosSt, mosDet, mosCol);
+    }
     {
       const bool pixOn = (pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_ONLINE ||
                           pixelNodeRaw_ == SHOWDUINO_PIXEL_NODE_WIRE_FAULT ||
@@ -2314,6 +2377,8 @@ private:
   ShowduinoNodeAvailWire pixelNodeWire_ = SHOWDUINO_NODE_WIRE_UNKNOWN;
   ShowduinoPixelNodeWire pixelNodeRaw_ = SHOWDUINO_PIXEL_NODE_WIRE_INVALID;
   ShowduinoPixelDetailWire pixelDetail_{};
+  ShowduinoMosfetNodeWire mosfetNodeRaw_ = SHOWDUINO_MOSFET_NODE_WIRE_INVALID;
+  ShowduinoMosfetDetailWire mosfetDetail_{};
   ShowduinoAudioNodeWire audioNodeWire_ = SHOWDUINO_AUDIO_NODE_WIRE_OFFLINE;
   DirectorAudioNodeControl audioNodeCtrl_;
   DirectorDiagnosticsCaps diagCaps_{};
@@ -2731,6 +2796,20 @@ private:
     }
     if (command == PAGE04_CMD_LAMP_STATUS) {
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+      return;
+    }
+    if (command == PAGE04_CMD_MOSFET_STATUS) {
+      if (commandCallback) commandCallback("STATUS:REQUEST");
+      return;
+    }
+    if (command == PAGE04_CMD_MOSFET_ALL_OFF) {
+      if (emergencyLocked) {
+        /* ALL OFF remains allowed during emergency — P4 still accepts it. */
+      }
+      const char *id = mosfetDetail_.firstId[0] ? mosfetDetail_.firstId : "MOSFET-01";
+      char line[64];
+      snprintf(line, sizeof(line), "MOSFET:NODE:%s:ALL:OFF", id);
+      if (commandCallback) commandCallback(line);
       return;
     }
     if (command == PAGE_LAMP_CMD_BACK) {
