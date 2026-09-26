@@ -64,9 +64,11 @@ Distributed wireless Emergency Button stations (`ESTOP-01` …). Momentary pushb
 
 ### 5. MOSFET Node
 
-Digital on/off and PWM / dimming specialist. Not a revival of the Relay Node product.
+**Classification:** SOFTWARE IMPLEMENTED / HARDWARE PIN MAP DEFINED / PHYSICAL OUTPUT VALIDATION REQUIRED.
 
-The existing `firmware/relay-node-esp32/` tree is retained only as legacy/reference source. Do not advance it as the current node design.
+ESP32_MOS_X4 / 303E32NMOS4 four-channel digital/PWM powered-output specialist (`MOSFET-01` … `MOSFET-08`). Firmware `0.1.0` in `firmware/mosfet-node-esp32/`. Fail-safe ALL OFF; no stale restore. SoftAP commissioning. Studio Powered Output compiles to `MOSFET:NODE:…` timeline cues. GPIO map software-defined (OUT1–4 → 16/17/26/27, LED 23) with `SHOWDUINO_MOSFET_GPIO_VERIFIED=0` until Toby benches his board.
+
+Not a revival of the Relay Node product. `firmware/relay-node-esp32/` remains legacy/reference only.
 
 ## DMX
 

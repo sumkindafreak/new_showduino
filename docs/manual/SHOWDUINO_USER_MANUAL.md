@@ -993,7 +993,18 @@ The wireless Emergency Node's momentary pushbutton behaviour is separate from th
 
 ## 19.5 MOSFET Node
 
-Planned, not currently a finished product feature.
+Software-implemented RC specialist Node on the ESP32_MOS_X4 board (four low-voltage powered outputs).
+
+Operator-facing behaviour:
+
+- digital switching and PWM level control (0–100%);
+- timed pulse and fade;
+- strict fail-safe ALL OFF on Emergency, show stop, and loss of P4 authority;
+- recovery never resumes a previous powered state — only a fresh authorised command may energise an output again.
+
+Showduino does not claim a continuous current rating or mains switching capability for this board. PCB silk may mark a DC input range; commission only with venue-approved low-voltage loads after physical pin verification.
+
+Physical pin map is software-defined until the specific board is electrically commissioned.
 
 ## 19.6 Relay Node
 
@@ -1282,7 +1293,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
 | Comms self-OTA | Implemented in software; physical proof required |
 | System-wide OTA | Not implemented |
-| MOSFET Node | Planned |
+| MOSFET Node | Software implemented — physical validation required |
 | Relay Node | Legacy/retired |
 | DMX production control | Parked / not current product scope |
 | Approved 8-second Emergency-button Locate | Implemented in firmware; hardware acceptance required |

@@ -87,9 +87,16 @@ Mark N/A only if the production genuinely does not use that device.
 - [ ] Audio Node online / N/A.
 - [ ] Lamp Node online / N/A.
 - [ ] Pixel Node(s) online / N/A.
+- [ ] MOSFET Node(s) online / N/A (when used by this production).
 - [ ] Wireless Emergency Node(s) healthy/linked / N/A.
 - [ ] Required Plug-in Bus devices online/configured / N/A.
 - [ ] No required Node is showing FAULT, NO STORAGE or unexpected STANDALONE state.
+
+When MOSFET Nodes are used:
+
+- [ ] Expected powered outputs are OFF before opening.
+- [ ] Controlled low-voltage test of intended effect where venue procedure permits.
+- [ ] Confirm Emergency forces MOSFET outputs OFF.
 
 For wireless Emergency Nodes:
 
@@ -114,7 +121,7 @@ Wireless Emergency Nodes are **assert-only** and must never be used as a way to 
 - [ ] PAUSE works if used by the attraction.
 - [ ] STOP works and leaves the attraction in the intended idle/safe state.
 
-**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence and full theatrical coverage remain limited). Use only the production/deploy path validated for this installation.
+**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence and full theatrical coverage remain limited). Use only the production/deploy path validated for this installation.
 
 ---
 

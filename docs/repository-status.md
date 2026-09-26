@@ -66,7 +66,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/c3-pixel-node/` | **ACTIVE / HARDWARE TEST REQUIRED** | ESP32-C3 | Remote pixel specialist | Same FX/emergency-white model as P4 GPIO23 |
 | `firmware/c3-emergency-node/` | **ACTIVE / GPIO UNCONFIRMED** | ESP32-C3 Super Mini class | Wireless emergency station (ASSERT ONLY) + Pixel capability on GPIO2 | Do not mark GPIO verified until pushbutton commissioned. Sequential ESTOP-01 → reboot → healthy+linked → ESTOP-02 |
 | `firmware/c3-lamp-node/` | **SUPERSEDED** | ESP32-C3 Super Mini OLED | Historical lamp FX firmware | Retained as reference; not the physical lamp |
-| `firmware/mosfet-node-esp32/` | **PLANNED** | TBD ESP32 + MOSFET outputs | Future switched-output / PWM specialist | Comes after C3 Pixel Node; no implementation yet |
+| `firmware/mosfet-node-esp32/` | **SOFTWARE IMPLEMENTED** | ESP32_MOS_X4 / 303E32NMOS4 | Digital/PWM powered outputs OUT1–4 | Pin map defined; physical validation required |
 | `firmware/relay-node-esp32/` | **LEGACY / RETIRED** | ESP32 + relay module | Historical relay-node prototype | Retain as reference only; not a production Node |
 | `firmware/p4-c6-espnow-bridge/` | **UNUSED / RESERVED** | Onboard ESP32-C6 | Historical C6 bridge qualification | C6 hardware remains unused/reserved |
 | `firmware/c3-supermini-espnow-bridge/` | **LEGACY / SUPERSEDED** | ESP32-C3 SuperMini | Previous SUE Communications Engine | Retain as reference; not current path |
@@ -144,7 +144,9 @@ Remote equivalent of P4 GPIO23. Same firmware binary on every C3; commission `LE
 
 ### MOSFET Node
 
-Planned after C3 Pixel. Digital on/off and PWM specialist — not a Relay revival. The old relay firmware tree is legacy/reference only.
+**Classification:** SOFTWARE IMPLEMENTED / HARDWARE PIN MAP DEFINED / PHYSICAL OUTPUT VALIDATION REQUIRED.
+
+ESP32_MOS_X4 four powered outputs with LEVEL / PULSE / FADE, Comms multi-peer `ROUTE:MOSFET:`, P4 `MosfetNodeLink`, Director Page 04 live tile, Studio Powered Output deploy. GPIO unverified until physical bench. Not a Relay revival.
 
 ---
 
@@ -165,10 +167,10 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 
 | Maturity | Current repository scope |
 |----------|--------------------------|
-| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; C3 Pixel Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO:NODE ingest |
-| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; C3 Pixel Node physical board; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
+| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; C3 Pixel Node firmware; C3 Emergency Node firmware; MOSFET Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO/MOSFET:NODE ingest |
+| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; C3 Pixel Node physical board; C3 Emergency Node physical board; MOSFET Node ESP32_MOS_X4 pin/LED validation; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
 | **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; SHDO v2 authoring vs P4 format-v1 store; public showduino.com deploy of the Studio V4 picker (source/overlay updated in this tree) |
-| **PLANNED** | MOSFET Node; production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |
+| **PLANNED** | production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |
 | **PARKED** | DMX work until explicitly reopened |
 | **LEGACY** | Relay Node product concept, C3/SUE Comms, onboard-C6 Comms attempt, CYD/Mega generation, GoreFX dashboard tree |
 

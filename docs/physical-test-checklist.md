@@ -103,6 +103,20 @@ Do not tick these unless they were physically run.
 - [ ] P4 / Director / Studio see the node. Disconnect: timeline continues. Reconnect: rediscovery.
 - [ ] Two nodes (`LED-01`, `LED-02`) independent. Pixel join does not drop Director/Audio/Lamp (10× power-cycle).
 
+## MOSFET Node (ESP32_MOS_X4 / 303E32NMOS4)
+
+Software pin map is defined; physical validation is required before production use.
+
+1. [ ] Disconnect real attraction loads. Flash over UART (IO0 download). Benign low-voltage supply only.
+2. [ ] Boot reports MOSFET-01; all outputs OFF at idle. Serial shows GPIO MAP SOFTWARE DEFINED / HARDWARE UNVERIFIED.
+3. [ ] Measure cold boot / reset / IO0 download for output glitches on all four channels.
+4. [ ] Connect one benign resistive/LED test load (not motor/solenoid until topology checked).
+5. [ ] OUT1→GPIO16, OUT2→GPIO17, OUT3→GPIO26, OUT4→GPIO27; LED GPIO23 polarity.
+6. [ ] Test 25/50/75/100%, pulse, fade in/out.
+7. [ ] Active output + reset → OFF. Active + authority loss → OFF. Restore link → stays OFF.
+8. [ ] Emergency STOP → immediate OFF. Clear → remains OFF. Fresh command works.
+9. [ ] Only after pass may `SHOWDUINO_MOSFET_GPIO_VERIFIED` become 1.
+
 ## Studio / persist
 
 - [ ] `/studio/` RAM timeline PIXEL + AUDIO:NODE still works; START waits for P4.
