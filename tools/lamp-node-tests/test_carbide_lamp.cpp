@@ -139,6 +139,107 @@ int main() {
   }
   expect(saw == SHOWDUINO_BLOW_SUSTAINED, "sustained blow");
   expect(showduino_blow_detected(&d), "detected yes");
+  expect(showduino_blow_waiting_release(&d), "sustained waits for release");
+  expect(showduino_blow_feed(&d, 80, 20) == SHOWDUINO_BLOW_RELEASE,
+         "sustained release");
+  expect(d.classified == SHOWDUINO_BLOW_NONE, "class none after sustained release");
+  expect(d.aboveMs == 0, "aboveMs cleared after sustained release");
+  expect(!showduino_blow_waiting_release(&d), "not waiting after release");
+  expect(showduino_blow_ready(&d), "detector armed after sustained release");
+  expect(!showduino_blow_blocks_ignite(&d), "ignite allowed after release");
+
+  /* Filtered lag after sustained must not immediately re-latch. */
+  showduino_blow_reset(&d, &bcfg);
+  showduino_blow_feed(&d, 80, 20);
+  saw = SHOWDUINO_BLOW_NONE;
+  for (int i = 0; i < 24; i++) {
+    const ShowduinoBlowClass ev = showduino_blow_feed(&d, 500, 20);
+    if (ev != SHOWDUINO_BLOW_NONE) saw = ev;
+  }
+  expect(saw == SHOWDUINO_BLOW_SUSTAINED, "sustained for lag test");
+  expect(d.filtered > d.baseline + d.threshold, "filtered still elevated");
+  expect(showduino_blow_feed(&d, 80, 20) == SHOWDUINO_BLOW_RELEASE,
+         "release snaps filtered");
+  expect(d.filtered == d.raw, "rearm snaps filtered to raw");
+  expect(showduino_blow_feed(&d, 80, 20) == SHOWDUINO_BLOW_NONE,
+         "quiet stays none after rearm");
+  expect(d.aboveMs == 0, "no aboveMs after quiet rearm");
+  saw = SHOWDUINO_BLOW_NONE;
+  for (int i = 0; i < 24; i++) {
+    const ShowduinoBlowClass ev = showduino_blow_feed(&d, 400, 20);
+    if (ev != SHOWDUINO_BLOW_NONE) saw = ev;
+  }
+  expect(saw == SHOWDUINO_BLOW_SUSTAINED, "subsequent sustained works again");
+
+  {
+    /* Full ignite → blow-out → release → re-ignite cycle (hardware failure path). */
+    ShowduinoCarbideMachine cycle;
+    ShowduinoBlowDetector bd;
+    showduino_blow_reset(&bd, &bcfg);
+    showduino_blow_feed(&bd, 90, 20);
+    showduino_carbide_reset(&cycle, 0);
+    showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+    tick(&cycle, &cfg, cfg.strikeMs);
+    tick(&cycle, &cfg, cfg.igniteMs);
+    expect(cycle.state == SHOWDUINO_CARBIDE_BURNING, "cycle1 burning");
+    saw = SHOWDUINO_BLOW_NONE;
+    for (int i = 0; i < 24; i++) {
+      const ShowduinoBlowClass ev = showduino_blow_feed(&bd, 420, 20);
+      if (ev != SHOWDUINO_BLOW_NONE) saw = ev;
+    }
+    expect(saw == SHOWDUINO_BLOW_SUSTAINED, "cycle1 sustained");
+    expect(showduino_blow_blocks_ignite(&bd), "blocks ignite while blowing");
+    showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_BLOW, &cfg);
+    tick(&cycle, &cfg, cfg.extinguishMs);
+    expect(cycle.state == SHOWDUINO_CARBIDE_OFF, "cycle1 off after blow");
+    expect(showduino_blow_feed(&bd, 90, 20) == SHOWDUINO_BLOW_RELEASE,
+           "cycle1 release");
+    expect(showduino_blow_ready(&bd), "cycle1 armed");
+    expect(!showduino_blow_blocks_ignite(&bd), "cycle1 ignite allowed");
+    showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+    expect(cycle.state == SHOWDUINO_CARBIDE_STRIKING, "cycle2 striking");
+    tick(&cycle, &cfg, cfg.strikeMs);
+    expect(cycle.state == SHOWDUINO_CARBIDE_IGNITING, "cycle2 igniting");
+    tick(&cycle, &cfg, cfg.igniteMs);
+    expect(cycle.state == SHOWDUINO_CARBIDE_BURNING, "cycle2 burning");
+
+    for (int round = 0; round < 3; round++) {
+      saw = SHOWDUINO_BLOW_NONE;
+      for (int i = 0; i < 24; i++) {
+        const ShowduinoBlowClass ev = showduino_blow_feed(&bd, 420, 20);
+        if (ev != SHOWDUINO_BLOW_NONE) saw = ev;
+      }
+      expect(saw == SHOWDUINO_BLOW_SUSTAINED, "repeat sustained");
+      showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_BLOW, &cfg);
+      tick(&cycle, &cfg, cfg.extinguishMs);
+      expect(cycle.state == SHOWDUINO_CARBIDE_OFF, "repeat off");
+      expect(showduino_blow_feed(&bd, 90, 20) == SHOWDUINO_BLOW_RELEASE,
+             "repeat release");
+      expect(bd.aboveMs == 0, "repeat aboveMs zero");
+      expect(showduino_blow_ready(&bd), "repeat armed");
+      showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_IGNITE, &cfg);
+      tick(&cycle, &cfg, cfg.strikeMs);
+      tick(&cycle, &cfg, cfg.igniteMs);
+      expect(cycle.state == SHOWDUINO_CARBIDE_BURNING, "repeat burning");
+    }
+
+    /* Puff must not extinguish; RELEASE restores prior flame. */
+    showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_PUFF, &cfg);
+    expect(cycle.state == SHOWDUINO_CARBIDE_UNSTABLE, "puff → unstable");
+    showduino_blow_reset(&bd, &bcfg);
+    showduino_blow_feed(&bd, 90, 20);
+    saw = SHOWDUINO_BLOW_NONE;
+    for (int i = 0; i < 8; i++) {
+      const ShowduinoBlowClass ev = showduino_blow_feed(&bd, 400, 20);
+      if (ev != SHOWDUINO_BLOW_NONE) saw = ev;
+    }
+    expect(saw == SHOWDUINO_BLOW_PUFF, "puff class");
+    expect(showduino_blow_feed(&bd, 90, 20) == SHOWDUINO_BLOW_RELEASE,
+           "puff release still works");
+    showduino_carbide_apply(&cycle, SHOWDUINO_CARBIDE_EV_BLOW_END, &cfg);
+    expect(cycle.state == SHOWDUINO_CARBIDE_BURNING, "puff end restores burn");
+    expect(cycle.state != SHOWDUINO_CARBIDE_OFF, "puff did not extinguish");
+  }
 
   expect(strcmp(showduino_lamp_sound_info(SHOWDUINO_LAMP_SND_STRIKE)->role, "STRIKE") == 0,
          "strike role");

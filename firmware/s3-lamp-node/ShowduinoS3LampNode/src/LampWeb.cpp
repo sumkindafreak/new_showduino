@@ -221,7 +221,8 @@ async function load(){
     ['Raw',S.micRaw],['Filtered',S.micFilt],['Baseline',S.micBase],
     ['Threshold',S.blowThresh],['Minimum duration',S.blowMinMs+' ms'],
     ['Above ms',S.blowMs+' ms'],['Strength',S.blowStress],['Class',S.blowClass],
-    ['Live blow',S.blowYes?'YES':'NO',S.blowYes?'warn':'ok']
+    ['Live blow',S.blowYes?'YES':'NO',S.blowYes?'warn':'ok'],
+    ['Blow detector',S.blowDetector||'ARMED',S.blowDetector==='ARMED'?'ok':'warn']
   ]);
   $('blowdot').className='live'+(S.blowYes?' on':'');
   $('blowlive').textContent=S.blowYes?(S.blowClass==='SUSTAINED'?'SUSTAINED BLOW':'PUFF / BLOW'):'BLOW IDLE';
@@ -469,7 +470,10 @@ static void handleStatus() {
           (blow && blow->classified == SHOWDUINO_BLOW_PUFF) ? "PUFF" : "NONE";
   json += "\",\"blowYes\":";
   json += (blow && blow->classified != SHOWDUINO_BLOW_NONE) ? "true" : "false";
-  json += ",\"lightRaw\":";
+  json += ",\"blowDetector\":\"";
+  json += (blow && showduino_blow_waiting_release(blow)) ? "WAITING FOR RELEASE" :
+          (blow && showduino_blow_ready(blow)) ? "ARMED" : "ACTIVE";
+  json += "\",\"lightRaw\":";
   json += String((long)lampSensorsLightRaw());
   json += ",\"lightNorm\":";
   json += String((long)lampSensorsLightNormalized());

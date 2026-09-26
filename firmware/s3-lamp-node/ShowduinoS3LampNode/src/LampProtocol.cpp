@@ -352,6 +352,15 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       report(line, sequence);
       return;
     }
+    if (showduino_blow_blocks_ignite(lampSensorsBlow())) {
+      Serial.println("[LAMP] Ignition blocked — waiting for blow release");
+      char line[64];
+      snprintf(line, sizeof(line), "LAMP:FAILED:%lu:BLOW_ACTIVE",
+               (unsigned long)sequence);
+      report(line, sequence);
+      lampProtocolPublishSensors(true);
+      return;
+    }
     if (parsed.brightness <= SHOWDUINO_LAMP_BRI_MAX) {
       lampEngineSetBrightness(parsed.brightness);
     }
@@ -387,6 +396,10 @@ void lampProtocolLocalIgnite() {
     Serial.println("[LAMP] Local striker: already lit");
     return;
   }
+  if (showduino_blow_blocks_ignite(lampSensorsBlow())) {
+    Serial.println("[LAMP] Local striker blocked — waiting for blow release");
+    return;
+  }
   Serial.println("[LAMP] Local striker → IGNITE");
   lampProtocolApply("LAMP:IGNITE", 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
 }
@@ -416,6 +429,11 @@ void lampProtocolService() {
       stress = (uint8_t)n;
     }
   }
+  if (lampEngineEmergency() ||
+      (blowDet && showduino_blow_ready(blowDet) &&
+       !lampEngineFlameLit())) {
+    stress = 0;
+  }
   lampEngineSetBlowStress(lampEngineEmergency() ? 0 : stress);
 
   const ShowduinoBlowClass blow = lampSensorsTakeBlowEvent();
@@ -427,7 +445,10 @@ void lampProtocolService() {
     } else if (blow == SHOWDUINO_BLOW_PUFF && lampEngineFlameLit()) {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_PUFF);
     } else if (blow == SHOWDUINO_BLOW_RELEASE) {
+      lampEngineSetBlowStress(0);
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW_END);
+      Serial.println("[LAMP] Blow released — detector re-armed");
+      lampProtocolPublishSensors(true);
     }
   }
 

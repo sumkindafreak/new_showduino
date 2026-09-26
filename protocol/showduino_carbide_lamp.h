@@ -114,6 +114,7 @@ typedef struct ShowduinoBlowDetector {
   uint32_t blowMs;
   uint8_t baselineShift;
   uint8_t armed;
+  uint8_t waitingRelease; /* set after PUFF/SUSTAINED until quiet re-arm */
   ShowduinoBlowClass classified;
 } ShowduinoBlowDetector;
 
@@ -529,6 +530,50 @@ static inline void showduino_blow_reset(ShowduinoBlowDetector *d,
   d->baselineShift = cfg->baselineShift ? cfg->baselineShift : 1;
 }
 
+/* Clear sustained/puff latch after the mic returns quiet. Snaps filtered to the
+ * live sample so IIR attack lag cannot immediately re-accumulate aboveMs. Does
+ * not rewrite baseline to a hard-coded value. */
+static inline void showduino_blow_rearm(ShowduinoBlowDetector *d) {
+  if (!d) return;
+  d->aboveMs = 0;
+  d->classified = SHOWDUINO_BLOW_NONE;
+  d->waitingRelease = 0;
+  if (d->armed) d->filtered = d->raw;
+}
+
+static inline int showduino_blow_waiting_release(const ShowduinoBlowDetector *d) {
+  return d && d->waitingRelease != 0;
+}
+
+static inline int showduino_blow_ready(const ShowduinoBlowDetector *d) {
+  return d && d->armed && !d->waitingRelease &&
+         d->classified == SHOWDUINO_BLOW_NONE && d->aboveMs == 0;
+}
+
+/* True while the mic is still in an active blow / waiting for quiet return. */
+static inline int showduino_blow_blocks_ignite(const ShowduinoBlowDetector *d) {
+  if (!d || !d->armed) return 0;
+  if (d->waitingRelease) return 1;
+  if (d->classified == SHOWDUINO_BLOW_PUFF ||
+      d->classified == SHOWDUINO_BLOW_SUSTAINED) {
+    return 1;
+  }
+  if (d->raw > d->baseline + (d->threshold / 2)) return 1;
+  return 0;
+}
+
+static inline ShowduinoBlowClass showduino_blow_release_edge(
+    ShowduinoBlowDetector *d, ShowduinoBlowClass was) {
+  if (was == SHOWDUINO_BLOW_PUFF || was == SHOWDUINO_BLOW_SUSTAINED ||
+      d->waitingRelease) {
+    showduino_blow_rearm(d);
+    return SHOWDUINO_BLOW_RELEASE;
+  }
+  d->aboveMs = 0;
+  d->classified = SHOWDUINO_BLOW_NONE;
+  return SHOWDUINO_BLOW_NONE;
+}
+
 static inline ShowduinoBlowClass showduino_blow_feed(ShowduinoBlowDetector *d,
                                                     int32_t raw,
                                                     uint32_t dtMs) {
@@ -541,6 +586,7 @@ static inline ShowduinoBlowClass showduino_blow_feed(ShowduinoBlowDetector *d,
     d->baseline = raw;
     d->armed = 1;
     d->aboveMs = 0;
+    d->waitingRelease = 0;
     d->classified = SHOWDUINO_BLOW_NONE;
     return SHOWDUINO_BLOW_NONE;
   }
@@ -551,24 +597,17 @@ static inline ShowduinoBlowClass showduino_blow_feed(ShowduinoBlowDetector *d,
   delta = d->filtered - d->baseline;
   /* Release on raw falling edge so IIR attack lag does not hide a stopped puff. */
   if (raw <= d->baseline + (d->threshold / 2)) {
-    const ShowduinoBlowClass was = d->classified;
-    d->aboveMs = 0;
-    d->classified = SHOWDUINO_BLOW_NONE;
-    if (was == SHOWDUINO_BLOW_PUFF) return SHOWDUINO_BLOW_RELEASE;
-    return SHOWDUINO_BLOW_NONE;
+    return showduino_blow_release_edge(d, d->classified);
   }
   if (delta >= d->threshold) {
     d->aboveMs += dtMs;
   } else {
-    const ShowduinoBlowClass was = d->classified;
-    d->aboveMs = 0;
-    d->classified = SHOWDUINO_BLOW_NONE;
-    if (was == SHOWDUINO_BLOW_PUFF) return SHOWDUINO_BLOW_RELEASE;
-    return SHOWDUINO_BLOW_NONE;
+    return showduino_blow_release_edge(d, d->classified);
   }
   if (d->aboveMs >= d->blowMs) {
     if (d->classified != SHOWDUINO_BLOW_SUSTAINED) {
       d->classified = SHOWDUINO_BLOW_SUSTAINED;
+      d->waitingRelease = 1;
       return SHOWDUINO_BLOW_SUSTAINED;
     }
     return SHOWDUINO_BLOW_NONE;
@@ -577,6 +616,7 @@ static inline ShowduinoBlowClass showduino_blow_feed(ShowduinoBlowDetector *d,
     if (d->classified != SHOWDUINO_BLOW_PUFF &&
         d->classified != SHOWDUINO_BLOW_SUSTAINED) {
       d->classified = SHOWDUINO_BLOW_PUFF;
+      d->waitingRelease = 1;
       return SHOWDUINO_BLOW_PUFF;
     }
     return SHOWDUINO_BLOW_NONE;
