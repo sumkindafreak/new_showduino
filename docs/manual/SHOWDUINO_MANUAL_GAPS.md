@@ -170,15 +170,24 @@ Complete and freeze the customer-facing authoring/deployment workflow, then capt
 
 ## GAP-007 — Persistent production format cannot yet represent the full theatrical feature set
 
-**Status:** OPEN  
+**Status:** PARTIALLY RESOLVED  
 **Category:** IMPLEMENTATION GAP  
-**Primary evidence:** `docs/production-storage.md`, `docs/audio-pixel-engine.md`
+**Primary evidence:** `ProductionFormat.cpp`, `docs/production-storage.md`, `docs/audio-pixel-engine.md`
 
-P4 persistent production format v1 accepts only bounded `TEST`/`LOG` cues. Local P4 pixel control, Audio Node playback and RAM timeline commissioning exist, but persistent production-file `PIXEL` and `AUDIO` cue parsing/routing are not complete production-format-v1 behaviour.
+P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
+
+Still incomplete relative to the full commercial theatrical set:
+
+- no dedicated ESTOP cue type on load; `PIXEL` cues must use the `PIXEL:` command prefix (so `ESTOP:NODE:PIXEL:` is not a format-v1 PIXEL command as stored);
+- tight command-length and validation bounds;
+- Studio inventory/authoring for every pixel-capable peer is not equally complete (see GAP-021);
+- physical acceptance of mixed-device persisted shows remains open.
+
+Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.2-RC follow-up.
 
 ### Required resolution
 
-Complete the persistent production cue model/compiler/runtime path for the intended customer device types, with validation and migration rules, before the commercial manual describes full mixed-device shows as a finished persistent workflow.
+Complete ESTOP/other missing persist routes, widen the theatrical cue model where product-approved, and sign off mixed-device load/run on hardware before describing full persistent theatrical shows as finished.
 
 ---
 

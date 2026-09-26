@@ -708,9 +708,20 @@ The live browser system can send a RAM timeline through `/api/studio-timeline` f
 
 ## 14.2 Persistent production timeline
 
-The current persistent P4 production format v1 is intentionally strict and presently accepts only internal `TEST`/`LOG` cue types.
+The current persistent P4 production format v1 is intentionally strict. At this baseline it accepts cue types:
 
-This means a visually complete Studio timeline containing mixed attraction Audio/Pixel/device cues must **not** be described as fully persistable/executable through production format v1 yet.
+- `PIXEL` (commands must begin with `PIXEL:`)
+- `AUDIO` (commands must begin with `AUDIO:NODE:`)
+- `LAMP` (commands must begin with `LAMP:`)
+- internal `TEST` / `LOG`
+
+SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
+
+- Emergency Node pixel routes (`ESTOP:NODE:PIXEL:` / `estop-node-pixels`) are supported in firmware/SHDO compilation, but format-v1 does **not** currently load a dedicated ESTOP cue type, and `PIXEL` cues must use the `PIXEL:` command prefix;
+- cue/command length and validation bounds remain tight;
+- hardware acceptance of mixed-device persisted shows remains required.
+
+Do not describe every visually editable Studio timeline as fully proven for public operation until the installation's deploy/load path has been validated.
 
 ## 14.3 Timeline safety behaviour
 
@@ -1026,7 +1037,7 @@ Current persistent productions are stored under:
 
 Current production format v1 is bounded and validates file size, cue count, duplicate IDs, time order, path traversal and supported cue types.
 
-At this baseline, persistent timeline cues are limited to internal `TEST`/`LOG` use. This is a release-candidate architecture foundation rather than the final mixed-output customer format.
+At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
 
 ## 21.3 SHDO v2
 
@@ -1266,7 +1277,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | P4 segmented Show Pixels | Implemented; hardware acceptance required |
 | C3 Pixel Node | Software/routing active; hardware acceptance required |
 | Wireless Emergency + Pixel Node | Software implemented (momentary + OLED + GPIO2 Pixel); GPIO/physical acceptance incomplete |
-| Persistent production store | Implemented foundation; format v1 TEST/LOG cue limitation |
+| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/TEST/LOG; ESTOP cue type and full theatrical set still incomplete |
 | SHDO v2 | Active authoring/interchange contract |
 | System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
 | Comms self-OTA | Implemented in software; physical proof required |

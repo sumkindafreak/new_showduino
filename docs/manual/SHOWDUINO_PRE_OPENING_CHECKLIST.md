@@ -114,7 +114,7 @@ Wireless Emergency Nodes are **assert-only** and must never be used as a way to 
 - [ ] PAUSE works if used by the attraction.
 - [ ] STOP works and leaves the attraction in the intended idle/safe state.
 
-**RC note:** persistent production format v1 is not yet the complete mixed-output commercial cue format. Use only the production/deploy path validated for this installation.
+**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence and full theatrical coverage remain limited). Use only the production/deploy path validated for this installation.
 
 ---
 

@@ -66,9 +66,17 @@ Required cue fields are `id`, `timeMs`, and `type`. `target`, `action`, `value`,
 and an object-valued `parameters` field are optional. Logical target strings are
 preserved by the parser but are not routed to hardware in this milestone.
 
-Only internal `TEST` and `LOG` cue types are accepted. `action`, when supplied,
-must be `LOG`. Cue times must be nondecreasing, IDs must be unique, and the
-timeline must contain at least one cue. Physical output types are rejected.
+Accepted cue types are `PIXEL`, `AUDIO`, `LAMP`, `TEST` and `LOG`.
+
+- `PIXEL` cues require a `command` beginning with `PIXEL:`
+- `AUDIO` cues require a `command` beginning with `AUDIO:NODE:`
+- `LAMP` cues require a `command` beginning with `LAMP:`
+- for `TEST` / `LOG`, `action` when supplied must be `LOG`
+
+Cue times must be nondecreasing, IDs must be unique, and the timeline must
+contain at least one cue. Unsupported types (including a dedicated ESTOP cue
+type) are rejected. `PIXEL` commands must use the `PIXEL:` prefix, so
+`ESTOP:NODE:PIXEL:` is not accepted as a format-v1 PIXEL command string.
 
 ## Validation limits
 
