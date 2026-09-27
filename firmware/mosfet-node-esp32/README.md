@@ -124,3 +124,6 @@ UART programming via exposed header (IO0 / GND / RX / TX / 5V). Hold IO0 low dur
 See `docs/physical-test-checklist.md`. Do not set verification flags to 1 until the board is electrically proven.
 
 Sketch: `ShowduinoMosfetNode/ShowduinoMosfetNode.ino`
+
+
+Status/identifier colours follow [`docs/status-colour-standard.md`](../../docs/status-colour-standard.md). Emergency keeps MOSFET power outputs OFF while the four GPIO25 identifier pixels show solid full-bright white.
