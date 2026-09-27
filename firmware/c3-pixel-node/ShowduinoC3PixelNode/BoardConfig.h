@@ -26,7 +26,7 @@
  * Logical Showduino model is identical; only the hardware maximum differs.
  */
 
-#define SHOWDUINO_PIXEL_NODE_FW             "0.1.0"
+#define SHOWDUINO_PIXEL_NODE_FW             "0.1.1"
 #define SHOWDUINO_PIXEL_NODE_BOARD          "ESP32-C3 Super Mini OLED (HUNT)"
 #define SHOWDUINO_PIXEL_OLED_CONTROLLER     "SSD1306"
 
