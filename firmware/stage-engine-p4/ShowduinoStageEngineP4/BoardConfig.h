@@ -6,7 +6,7 @@
 #include "../../../protocol/showduino_version.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.6"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.7"
 #endif
 
 /*
@@ -233,19 +233,17 @@
 #endif
 
 /*
- * LEGACY PCM5102A (retired live path).
- * Historical external I2S DAC on GPIO20/21/22. That driver wrote "playing"
- * while the onboard speaker stayed silent. Do not compile it in.
- * Attraction / programme audio is the Audio Node, not this P4.
+ * Dedicated PCM5102A ambience output.
+ * Independent from onboard ES8311 system/safety audio and the specialist
+ * Audio Node show/programme output. PCM5102A SCK/MCLK is not connected.
  */
-#ifndef SHOWDUINO_LEGACY_PCM5102A_AUDIO
-#define SHOWDUINO_LEGACY_PCM5102A_AUDIO  0
+#ifndef SHOWDUINO_AMBIENCE_AUDIO
+#define SHOWDUINO_AMBIENCE_AUDIO        1
 #endif
-#if SHOWDUINO_LEGACY_PCM5102A_AUDIO
-#define P4_AUDIO_I2S_BCLK   21
-#define P4_AUDIO_I2S_WS     20
-#define P4_AUDIO_I2S_DOUT   22
-#endif
+#define P4_AMBIENCE_I2S_WS              20
+#define P4_AMBIENCE_I2S_BCLK            21
+#define P4_AMBIENCE_I2S_DOUT            22
+#define PATH_AUDIO_AMBIENCE             "/showduino/audio/ambience"
 
 // -----------------------------------------------------------------------------
 // Onboard ES8311 + NS4150B — SHOWDUINO SYSTEM / SAFETY AUDIO (LIVE)
@@ -306,8 +304,8 @@
 #endif
 
 /*
- * ESP32-P4 exposes one I2S peripheral. It is owned by onboard system audio.
- * The retired PCM5102A path must not run at the same time.
+ * ESP32-P4 standard I2S provides controllers 0..2. System audio and ambience
+ * allocate independent TX channels; do not share their GPIOs or streams.
  */
 
 /*
