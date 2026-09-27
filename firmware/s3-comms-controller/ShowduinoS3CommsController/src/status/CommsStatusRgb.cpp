@@ -62,17 +62,17 @@ static const char *stateName(CommsRgbState state) {
 
 static const char *colourName(CommsRgbState state) {
   switch (state) {
-    case CommsRgbState::Boot: return "PURPLE";
-    case CommsRgbState::WebuiStarting: return "BLUE";
-    case CommsRgbState::WebuiReady: return "BLUE";
-    case CommsRgbState::Synchronising: return "CYAN";
-    case CommsRgbState::Healthy: return "GREEN";
+    case CommsRgbState::Boot: return "VIOLET PULSE";
+    case CommsRgbState::WebuiStarting: return "AMBER PULSE";
+    case CommsRgbState::WebuiReady: return "VIOLET";
+    case CommsRgbState::Synchronising: return "CYAN PULSE";
+    case CommsRgbState::Healthy: return "CYAN";
     case CommsRgbState::DirectorOffline: return "AMBER";
     case CommsRgbState::P4Offline: return "AMBER";
-    case CommsRgbState::WebuiFault: return "BLUE";
-    case CommsRgbState::EspNowFault: return "MAGENTA";
-    case CommsRgbState::Emergency: return "RED";
-    case CommsRgbState::Fault: return "RED/MAGENTA";
+    case CommsRgbState::WebuiFault: return "MAGENTA/AMBER";
+    case CommsRgbState::EspNowFault: return "MAGENTA/AMBER";
+    case CommsRgbState::Emergency: return "WHITE";
+    case CommsRgbState::Fault: return "MAGENTA/AMBER";
   }
   return "RED/MAGENTA";
 }
@@ -108,28 +108,26 @@ static void mix(RgbColour base, uint8_t level) {
 
 static void render(CommsRgbState state, uint32_t now) {
   const RgbColour purple = {160, 0, 220};
-  const RgbColour blue = {0, 40, 255};
   const RgbColour cyan = {0, 200, 220};
-  const RgbColour green = {0, 255, 40};
   const RgbColour amber = {255, 140, 0};
   const RgbColour magenta = {220, 0, 180};
-  const RgbColour red = {255, 0, 0};
+  const RgbColour white = {255, 255, 255};
 
   switch (state) {
     case CommsRgbState::Boot:
       mix(purple, breathe(now, 1600));
       break;
     case CommsRgbState::WebuiStarting:
-      mix(blue, breathe(now, 1400));
+      mix(amber, breathe(now, 1400));
       break;
     case CommsRgbState::WebuiReady:
-      writeRgb(blue.r, blue.g, blue.b);
+      writeRgb(purple.r / 3, purple.g / 3, purple.b / 3);
       break;
     case CommsRgbState::Synchronising:
       mix(cyan, breathe(now, 1400));
       break;
     case CommsRgbState::Healthy:
-      writeRgb(green.r, green.g, green.b);
+      writeRgb(cyan.r / 3, cyan.g / 3, cyan.b / 3);
       break;
     case CommsRgbState::DirectorOffline:
       mix(amber, breathe(now, 1400));
@@ -141,27 +139,17 @@ static void render(CommsRgbState state, uint32_t now) {
       else writeRgb(0, 0, 0);
       break;
     }
-    case CommsRgbState::WebuiFault: {
-      const bool on = ((now / 120UL) % 2UL) == 0UL;
-      if (on) writeRgb(blue.r, blue.g, blue.b);
-      else writeRgb(0, 0, 0);
-      break;
-    }
-    case CommsRgbState::EspNowFault: {
-      const bool on = ((now / 120UL) % 2UL) == 0UL;
-      if (on) writeRgb(magenta.r, magenta.g, magenta.b);
-      else writeRgb(0, 0, 0);
+    case CommsRgbState::WebuiFault:
+    case CommsRgbState::EspNowFault:
+    case CommsRgbState::Fault: {
+      const bool magentaPhase = ((now / 350UL) % 2UL) == 0UL;
+      const RgbColour c = magentaPhase ? magenta : amber;
+      writeRgb(c.r, c.g, c.b);
       break;
     }
     case CommsRgbState::Emergency:
-      mix(red, breathe(now, 280));
+      writeRgb(white.r, white.g, white.b);
       break;
-    case CommsRgbState::Fault: {
-      const bool redPhase = ((now / 250UL) % 2UL) == 0UL;
-      if (redPhase) writeRgb(red.r, red.g, red.b);
-      else writeRgb(magenta.r, magenta.g, magenta.b);
-      break;
-    }
   }
 }
 
