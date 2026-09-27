@@ -112,7 +112,7 @@ void setup() {
 
   sLastLatch = gEmergencyMachine.latched;
   sLastPressed = (uint8_t)emergencyInputPressed();
-  sLastRadio = emergencyEspNowHaveComms() ? 1 : 0;
+  sLastRadio = emergencyEspNowLinkFresh() ? 1 : 0;
 
   nodeDiagPrintBootBanner();
   emergencyProtocolAnnounce();
@@ -123,11 +123,11 @@ void loop() {
   const uint32_t t0 = micros();
   pollUsb();
   emergencyProtocolService();
-  emergencyIndicateService(&gEmergencyMachine, emergencyEspNowHaveComms());
+  emergencyIndicateService(&gEmergencyMachine, emergencyEspNowLinkFresh());
 
   const uint8_t latch = gEmergencyMachine.latched;
   const uint8_t pressed = (uint8_t)emergencyInputPressed();
-  const uint8_t radio = emergencyEspNowHaveComms() ? 1 : 0;
+  const uint8_t radio = emergencyEspNowLinkFresh() ? 1 : 0;
   if (latch != sLastLatch || pressed != sLastPressed || radio != sLastRadio) {
     sLastLatch = latch;
     sLastPressed = pressed;

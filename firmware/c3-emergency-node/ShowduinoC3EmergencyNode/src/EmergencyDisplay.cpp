@@ -33,10 +33,16 @@ static void paint() {
   const ShowduinoEmergencyNodeState st = gEmergencyMachine.state;
   const int latched = gEmergencyMachine.latched ? 1 : 0;
   const int pressed = emergencyInputPressed();
-  const int linked = emergencyEspNowHaveComms() ? 1 : 0;
+  const int linked = emergencyEspNowLinkFresh() ? 1 : 0;
   char l1[20], l2[20], l3[20], l4[20];
 
-  if (st == SHOWDUINO_ESTOP_ST_FAULT) {
+  if (emergencyProtocolSystemEmergencyActive()) {
+    lineAt(0, 0, "SHOWDUINO");
+    lineAt(0, 9, "!!! EMERGENCY !!!");
+    snprintf(l3, sizeof(l3), "%.12s", emergencyIdentityId());
+    lineAt(0, 18, l3);
+    lineAt(0, 27, "SYSTEM ACTIVE");
+  } else if (st == SHOWDUINO_ESTOP_ST_FAULT) {
     lineAt(0, 0, "ESTOP NODE");
     lineAt(0, 9, "FAULT");
     snprintf(l3, sizeof(l3), "%.12s", emergencyIdentityId());
@@ -82,11 +88,12 @@ static void paint() {
 }
 
 static void makeSig(char *out, size_t n) {
-  snprintf(out, n, "%u|%u|%d|%d|%d|%s|%u|%u|%u",
+  snprintf(out, n, "%u|%u|%d|%d|%d|%d|%s|%u|%u|%u",
            (unsigned)gEmergencyMachine.state,
            (unsigned)gEmergencyMachine.latched,
            emergencyInputPressed(),
-           emergencyEspNowHaveComms() ? 1 : 0,
+           emergencyEspNowLinkFresh() ? 1 : 0,
+           emergencyProtocolSystemEmergencyActive() ? 1 : 0,
            (int)gEmergencyMachine.pending_assert,
            emergencyIdentityId(),
            (unsigned)pixelEngineConfiguredCount(),

@@ -11,7 +11,7 @@
 
 /*
  * Priority (highest first):
- *   EMERGENCY / FAIL-SAFE → ALL OFF
+ *   EMERGENCY             → solid full-bright white (MOSFET outputs remain OFF)
  *   FAULT                 → magenta ↔ amber
  *   IDENTIFY              → white chase ~5 s
  *   ACTIVE MOSFET OUT     → green @ actual duty
@@ -206,7 +206,7 @@ static void paintWebUi(ShowduinoMosfetRgb out[4], const uint8_t levels[4]) {
 static void composeSteady(ShowduinoMosfetRgb out[4], const uint8_t levels[4]) {
   ShowduinoMosfetIdentStatus st;
   st.softApUp = nodeSoftApStarted() ? 1 : 0;
-  st.espNowLinked = mosfetEspNowHaveComms() ? 1 : 0;
+  st.espNowLinked = mosfetEspNowLinkFresh() ? 1 : 0;
   st.searching = (!mosfetNodeStateOwned() &&
                   mosfetNodeStateGet() == SHOWDUINO_MOSFET_ST_SEARCHING)
                      ? 1
@@ -247,8 +247,12 @@ static void composeSteady(ShowduinoMosfetRgb out[4], const uint8_t levels[4]) {
 
 void mosfetIdentifierPixelsService() {
   if (mosfetNodeStateEmergency()) {
-    if (!sForcedOff || sIdentifyUntil || sAnim != ANIM_NONE)
-      mosfetIdentifierPixelsAllOff();
+    sIdentifyUntil = 0;
+    sAnim = ANIM_NONE;
+    sForcedOff = false;
+    ShowduinoMosfetRgb emergency[4];
+    for (uint8_t i = 0; i < 4; ++i) emergency[i] = showduino_mosfet_rgb_white(255);
+    pushRgb(emergency, false);
     return;
   }
 

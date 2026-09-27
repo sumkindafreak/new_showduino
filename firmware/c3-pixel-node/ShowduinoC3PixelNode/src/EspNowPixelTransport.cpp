@@ -191,5 +191,9 @@ uint32_t pixelEspNowTxCount() { return sTx; }
 uint32_t pixelEspNowRejected() { return sRej; }
 uint32_t pixelEspNowLastRxMs() { return sLastRx; }
 bool pixelEspNowHaveComms() { return sHaveComms; }
+bool pixelEspNowLinkFresh() {
+  const uint32_t last = sLastRx;
+  return sHaveComms && last != 0 && (uint32_t)(millis() - last) < SHOWDUINO_RADIO_LINK_FRESH_MS;
+}
 uint8_t pixelEspNowChannel() { return sFollow.channel(); }
 int8_t pixelEspNowRssi() { return sRssi; }

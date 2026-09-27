@@ -37,7 +37,7 @@ static void paint() {
     snprintf(l2, sizeof(l2), "OLED %d/%d", SHOWDUINO_PIXEL_OLED_SDA, SHOWDUINO_PIXEL_OLED_SCL);
     snprintf(l3, sizeof(l3), "DATA GPIO%d", SHOWDUINO_PIXEL_DATA_PIN);
     snprintf(l4, sizeof(l4), "CH %u %s", (unsigned)pixelEspNowChannel(),
-             pixelEspNowHaveComms() ? "LINK" : "SCAN");
+             pixelEspNowLinkFresh() ? "LINK" : "SCAN");
     lineAt(0, 9, l2);
     lineAt(0, 18, l3);
     lineAt(0, 27, l4);
@@ -69,7 +69,7 @@ static void paint() {
     lineAt(0, 18, "NOT INITIALISED");
     snprintf(l4, sizeof(l4), "PIX %u %s",
              (unsigned)pixelEngineConfiguredCount(),
-             pixelEspNowHaveComms() ? "LINK" : "SCAN");
+             pixelEspNowLinkFresh() ? "LINK" : "SCAN");
     lineAt(0, 27, l4);
   } else if (st == SHOWDUINO_PIXEL_ST_SEARCHING || st == SHOWDUINO_PIXEL_ST_BOOTING) {
     lineAt(0, 0, "PIXEL NODE");
@@ -83,7 +83,7 @@ static void paint() {
              (unsigned)pixelEngineCount(),
              (unsigned)pixelEngineActiveSegments());
     snprintf(l4, sizeof(l4), "%s CH%u",
-             pixelEspNowHaveComms() ? "LINK OK" : "LOST",
+             pixelEspNowLinkFresh() ? "LINK OK" : "LOST",
              (unsigned)pixelEspNowChannel());
     lineAt(0, 0, l1);
     lineAt(0, 9, l2);
@@ -102,7 +102,7 @@ static void makeSig(char *out, size_t n) {
            pixelEngineLocateActive() ? 1 : 0,
            (unsigned)pixelEngineConfiguredCount(),
            pixelIdentityId(),
-           pixelEspNowHaveComms() ? "1" : "0");
+           pixelEspNowLinkFresh() ? "1" : "0");
 }
 
 bool pixelDisplayBegin() {

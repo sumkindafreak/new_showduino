@@ -191,5 +191,9 @@ uint32_t mosfetEspNowTxCount() { return sTx; }
 uint32_t mosfetEspNowRejected() { return sRej; }
 uint32_t mosfetEspNowLastRxMs() { return sLastRx; }
 bool mosfetEspNowHaveComms() { return sHaveComms; }
+bool mosfetEspNowLinkFresh() {
+  const uint32_t last = sLastRx;
+  return sHaveComms && last != 0 && (uint32_t)(millis() - last) < SHOWDUINO_RADIO_LINK_FRESH_MS;
+}
 uint8_t mosfetEspNowChannel() { return sFollow.channel(); }
 int8_t mosfetEspNowRssi() { return sRssi; }

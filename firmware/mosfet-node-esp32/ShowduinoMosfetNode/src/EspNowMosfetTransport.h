@@ -19,6 +19,7 @@ uint32_t mosfetEspNowTxCount();
 uint32_t mosfetEspNowRejected();
 uint32_t mosfetEspNowLastRxMs();
 bool mosfetEspNowHaveComms();
+bool mosfetEspNowLinkFresh();
 uint8_t mosfetEspNowChannel();
 int8_t mosfetEspNowRssi();
 

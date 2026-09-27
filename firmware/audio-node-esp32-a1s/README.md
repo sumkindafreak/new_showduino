@@ -3,7 +3,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.2
+Firmware: 0.4.3
 ```
 
 ```text
@@ -87,3 +87,6 @@ Create `/showduino/audio/system-test.wav` as **16-bit PCM WAV**, mono or stereo,
 See [`docs/audio-node.md`](../../docs/audio-node.md) and [`docs/standalone-node-architecture.md`](../../docs/standalone-node-architecture.md). The firmware source and this README are authoritative for the GPIO22 external status-pixel and the 0.4.0 standalone SoftAP.
 
 Do not flash from this document unless you intend a hardware bring-up session.
+
+
+Pixel indication follows [`docs/status-colour-standard.md`](../../docs/status-colour-standard.md). In the checked-in hardware definition the programmable Audio pixel line is GPIO22; Emergency forces that configured line to full 255 white and Locate uses moving white.

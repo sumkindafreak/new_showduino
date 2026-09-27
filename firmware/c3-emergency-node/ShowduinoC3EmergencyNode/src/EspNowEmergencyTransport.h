@@ -19,6 +19,8 @@ uint32_t emergencyEspNowTxCount();
 uint32_t emergencyEspNowRejected();
 uint32_t emergencyEspNowLastRxMs();
 bool emergencyEspNowHaveComms();
+/* True only while recently validated Showduino traffic is being received. */
+bool emergencyEspNowLinkFresh();
 uint8_t emergencyEspNowChannel();
 int8_t emergencyEspNowRssi();
 

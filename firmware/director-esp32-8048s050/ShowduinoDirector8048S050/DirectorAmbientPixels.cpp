@@ -11,7 +11,11 @@ static const uint32_t kColAccentLo = ShowduinoPalette::AccentDark;
 static const uint32_t kColWarn     = ShowduinoPalette::Warn;
 static const uint32_t kColOk       = ShowduinoPalette::Success;
 static const uint32_t kColFault    = ShowduinoPalette::Danger;
-static const uint32_t kColDimCyan  = ShowduinoPalette::AccentDim;
+static const uint32_t kColDimCyan  = 0x00383C;
+static const uint32_t kColViolet   = 0x7800A8;
+static const uint32_t kColGreen    = 0x00FF28;
+static const uint32_t kColWhite    = 0xFFFFFF;
+static const uint32_t kColMagenta  = 0xDC00B4;
 
 static Adafruit_NeoPixel *sStrip = nullptr;
 static bool sReady = false;
@@ -100,19 +104,19 @@ static void targetsForMode(DirectorAmbientMode m, uint8_t *r, uint8_t *g, uint8_
     case DIRECTOR_AMBIENT_OFF:
       rgb = 0; lvl = 0; break;
     case DIRECTOR_AMBIENT_BOOT:
-      rgb = kColAccent; lvl = 110; break;
+      rgb = kColViolet; lvl = 110; break;
     case DIRECTOR_AMBIENT_IDLE:
       rgb = kColDimCyan; lvl = 40; break;
     case DIRECTOR_AMBIENT_READY:
-      rgb = kColAccent; lvl = 140; break;
+      rgb = kColViolet; lvl = 90; break;
     case DIRECTOR_AMBIENT_DISCOVERY:
-      rgb = kColAccent; lvl = 90; break;
+      rgb = kColWarn; lvl = 90; break;
     case DIRECTOR_AMBIENT_DEGRADED:
       rgb = kColWarn; lvl = 160; break;
     case DIRECTOR_AMBIENT_OFFLINE:
       rgb = kColFault; lvl = 70; break;
     case DIRECTOR_AMBIENT_RUNNING:
-      rgb = kColAccent; lvl = 200; break;
+      rgb = kColGreen; lvl = 200; break;
     case DIRECTOR_AMBIENT_PAUSED:
       rgb = kColWarn; lvl = 90; break;
     case DIRECTOR_AMBIENT_STOPPED:
@@ -122,8 +126,9 @@ static void targetsForMode(DirectorAmbientMode m, uint8_t *r, uint8_t *g, uint8_
     case DIRECTOR_AMBIENT_WARNING:
       rgb = kColWarn; lvl = 150; break;
     case DIRECTOR_AMBIENT_EMERGENCY:
+      rgb = kColWhite; lvl = 255; break;
     case DIRECTOR_AMBIENT_FAULT:
-      rgb = kColFault; lvl = 220; break;
+      rgb = kColMagenta; lvl = 220; break;
     case DIRECTOR_AMBIENT_SUCCESS:
       rgb = kColOk; lvl = 180; break;
     default:
@@ -149,14 +154,9 @@ static void setMode(DirectorAmbientMode m, bool persistent, uint32_t fadeMs) {
   uint8_t lvl = 0;
   targetsForMode(m, &sTgtR, &sTgtG, &sTgtB, &lvl);
   (void)lvl;
-  if (isEmergencyMode(m) || m == DIRECTOR_AMBIENT_FAULT) {
-    unpackRgb(kColFault, &sCurR, &sCurG, &sCurB);
-    sCurR = scale8(sCurR, 220);
-    sCurG = 0;
-    sCurB = 0;
-    sTgtR = sCurR;
-    sTgtG = sCurG;
-    sTgtB = sCurB;
+  if (isEmergencyMode(m)) {
+    sCurR = sCurG = sCurB = 255;
+    sTgtR = sTgtG = sTgtB = 255;
   }
   if (sPrevLogged != m) {
     Serial.printf("[Ambient] mode -> %s\n", modeName(m));
@@ -246,14 +246,13 @@ static void renderFrame(uint32_t nowMs) {
     sTgtR = scale8(r, pulse);
     sTgtG = scale8(g, pulse);
     sTgtB = scale8(b, pulse);
-  } else if (sMode == DIRECTOR_AMBIENT_EMERGENCY || sMode == DIRECTOR_AMBIENT_FAULT) {
-    const uint8_t pulse = (uint8_t)(((sPhase % 20) < 10) ? 220 : 70);
-    sCurR = pulse;
-    sCurG = 0;
-    sCurB = 0;
-    sTgtR = sCurR;
-    sTgtG = 0;
-    sTgtB = 0;
+  } else if (sMode == DIRECTOR_AMBIENT_EMERGENCY) {
+    sCurR = sCurG = sCurB = 255;
+    sTgtR = sTgtG = sTgtB = 255;
+  } else if (sMode == DIRECTOR_AMBIENT_FAULT) {
+    const uint32_t c = (((sPhase / 8U) & 1U) == 0U) ? kColMagenta : kColWarn;
+    unpackRgb(c, &sCurR, &sCurG, &sCurB);
+    sTgtR = sCurR; sTgtG = sCurG; sTgtB = sCurB;
   } else if (sMode == DIRECTOR_AMBIENT_OFFLINE) {
     const uint8_t pulse = (uint8_t)(40 + ((sPhase % 30) < 15 ? 50 : 0));
     sTgtR = pulse;
@@ -261,7 +260,12 @@ static void renderFrame(uint32_t nowMs) {
     sTgtB = 8;
   }
 
-  showSolid(currentPacked());
+  if (sMode == DIRECTOR_AMBIENT_EMERGENCY) {
+    for (uint16_t i = 0; i < sStrip->numPixels(); ++i) sStrip->setPixelColor(i, packRgb(255, 255, 255));
+    sStrip->show();
+  } else {
+    showSolid(currentPacked());
+  }
   sPhase++;
 }
 
@@ -285,13 +289,11 @@ static void renderLocator(uint32_t nowMs) {
   }
 
   sStrip->clear();
-  const bool redOn = (phase == 0 || phase == 2);
-  const bool blueOn = (phase == 4 || phase == 6);
-  if (sStrip->numPixels() > 0 && redOn) {
-    sStrip->setPixelColor(0, packRgb(255, 0, 0));
-  }
-  if (sStrip->numPixels() > 1 && blueOn) {
-    sStrip->setPixelColor(1, packRgb(0, 0, 255));
+  const bool whiteOn = (phase == 0 || phase == 2 || phase == 4 || phase == 6);
+  if (whiteOn) {
+    for (uint16_t i = 0; i < sStrip->numPixels(); ++i) {
+      sStrip->setPixelColor(i, packRgb(255, 255, 255));
+    }
   }
   sStrip->show();
 }

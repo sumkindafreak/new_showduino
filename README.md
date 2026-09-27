@@ -152,3 +152,8 @@ Showduino remains **1.0.0-rc.1** until integrated hardware sign-off. The release
 - [Commercial manual draft](docs/manual/SHOWDUINO_USER_MANUAL.md)
 
 **Development note:** Some subproject READMEs, status tables and planned-feature documents are older than active firmware. When they disagree, check the current component's BoardConfig, implementation, protocol and test evidence before describing a feature as available or physically verified.
+
+
+## Status indicator colours
+
+Current status and identifier indicators use the shared semantic vocabulary in [`docs/status-colour-standard.md`](docs/status-colour-standard.md). This vocabulary does not restrict theatrical show colours.

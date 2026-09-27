@@ -29,7 +29,7 @@ static void report(const char *line, uint32_t seq) {
 
 void estopPixelProtocolBegin() {
   sShowOwned = false;
-  sHadRadio = emergencyEspNowHaveComms();
+  sHadRadio = emergencyEspNowLinkFresh();
   sLastLatchPixel = 0xFF;
 }
 
@@ -145,7 +145,7 @@ bool estopPixelProtocolApply(const char *command, uint32_t sequence) {
 }
 
 void estopPixelProtocolService() {
-  const bool radio = emergencyEspNowHaveComms();
+  const bool radio = emergencyEspNowLinkFresh();
   if (sHadRadio && !radio) {
     estopPixelProtocolOnRadioLost();
   } else if (!sHadRadio && radio) {
