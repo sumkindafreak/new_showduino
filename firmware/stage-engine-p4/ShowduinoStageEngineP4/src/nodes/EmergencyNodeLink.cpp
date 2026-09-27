@@ -563,15 +563,19 @@ void emergencyNodeLinkOnEmergency(bool active) {
     for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
       if (!sNodes[i].used || !sNodes[i].id[0]) continue;
       routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_GLOBAL_OBSERVED);
+      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:CLEAR");
       routeTo(sNodes[i].id, sSeq++, "EMERGENCY:CLEAR");
       sNodes[i].acked = false;
     }
     sLastSource[0] = 0;
   } else {
     for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
-      if (!sNodes[i].used || !sNodes[i].online || !sNodes[i].latched) continue;
-      routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
-      sNodes[i].acked = true;
+      if (!sNodes[i].used || !sNodes[i].online || !sNodes[i].id[0]) continue;
+      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:ACTIVE");
+      if (sNodes[i].latched) {
+        routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
+        sNodes[i].acked = true;
+      }
     }
   }
   publishState(true);
