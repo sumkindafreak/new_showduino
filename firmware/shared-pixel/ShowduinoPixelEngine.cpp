@@ -345,8 +345,7 @@ static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
 
 static void renderEmergencyWhite() {
   if (!sFrame) return;
-  const uint8_t v = sGlobalBrightness;
-  for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, v, v, v);
+  for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 255, 255, 255);
 }
 
 static void renderCommissioningTest(uint32_t now) {
@@ -513,9 +512,9 @@ static void renderLocate(uint32_t now) {
   }
   clearFrame();
   const uint16_t pos = (uint16_t)((elapsed / 40UL) % (sCount ? sCount : 1));
-  const uint8_t on = ((elapsed / 120UL) % 2U) ? 255 : 40;
-  if (sCount) setPixelRaw(pos, on, 0, on);
-  if (sCount > 1) setPixelRaw((uint16_t)((pos + sCount / 2U) % sCount), on, 0, on);
+  const uint8_t on = ((elapsed / 120UL) % 2U) ? 255 : 70;
+  if (sCount) setPixelRaw(pos, on, on, on);
+  if (sCount > 1) setPixelRaw((uint16_t)((pos + sCount / 2U) % sCount), on, on, on);
 }
 
 void pixelEngineService() {
