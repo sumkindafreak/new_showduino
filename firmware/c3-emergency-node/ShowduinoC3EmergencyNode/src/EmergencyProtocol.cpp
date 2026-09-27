@@ -10,6 +10,7 @@
 #include "../../../protocol/showduino_pixel_node.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_node_packet.h"
+#include "../../../protocol/showduino_state_wire.h"
 
 ShowduinoEmergencyMachine gEmergencyMachine;
 
@@ -18,6 +19,7 @@ static uint32_t sApDueMs = 0;
 static uint32_t sSeq = 1;
 static uint8_t sLastRadio = 0;
 static uint8_t sPrevLatched = 0;
+static bool sSystemEmergencyActive = false;
 
 static void requestSoftAp() {
   if (!sApDueMs) sApDueMs = millis() + 400UL;
@@ -101,7 +103,24 @@ void emergencyProtocolTryLocalRearm() {
 
 void emergencyProtocolApply(const char *command, uint32_t sequence) {
   if (!command || !command[0]) return;
-  if (emergencyEspNowHaveComms()) {
+
+  const ShowduinoEmergencyWire systemEmergency = showduino_parse_state_emergency(command);
+  if (systemEmergency == SHOWDUINO_EMERGENCY_WIRE_ACTIVE) {
+    sSystemEmergencyActive = true;
+    estopPixelProtocolOnEmergencyLatch(true);
+    SD_LOGI("ESTOP", "SYSTEM EMERGENCY ACTIVE — remote indication asserted");
+    return;
+  }
+  if (systemEmergency == SHOWDUINO_EMERGENCY_WIRE_CLEAR) {
+    sSystemEmergencyActive = false;
+    if (!gEmergencyMachine.latched && !emergencyInputPressed()) {
+      estopPixelProtocolOnGlobalClearNormal();
+    }
+    SD_LOGI("ESTOP", "SYSTEM EMERGENCY CLEAR — remote indication released");
+    return;
+  }
+
+  if (emergencyEspNowLinkFresh()) {
     showduino_emergency_machine_set_radio(&gEmergencyMachine, 1);
   }
 
@@ -207,7 +226,7 @@ void emergencyProtocolService() {
   emergencyInputService();
   showduino_emergency_machine_input(&gEmergencyMachine, emergencyInputPressed());
 
-  const int radio = emergencyEspNowHaveComms() && emergencyEspNowReady() ? 1 : 0;
+  const int radio = emergencyEspNowLinkFresh() && emergencyEspNowReady() ? 1 : 0;
   if ((uint8_t)radio != sLastRadio) {
     showduino_emergency_machine_set_radio(&gEmergencyMachine, radio);
     sLastRadio = (uint8_t)radio;
@@ -254,4 +273,8 @@ void emergencyProtocolService() {
 
 ShowduinoEmergencyNodeState emergencyProtocolState() {
   return gEmergencyMachine.state;
+}
+
+bool emergencyProtocolSystemEmergencyActive() {
+  return sSystemEmergencyActive;
 }
