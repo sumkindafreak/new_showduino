@@ -93,6 +93,15 @@ static void writeRgb(uint8_t r, uint8_t g, uint8_t b) {
 #endif
 }
 
+static void writeRgbFull(uint8_t r, uint8_t g, uint8_t b) {
+  sLastR = r; sLastG = g; sLastB = b;
+#if defined(rgbLedWrite)
+  rgbLedWrite(SHOWDUINO_COMMS_RGB_PIN, r, g, b);
+#else
+  neopixelWrite(SHOWDUINO_COMMS_RGB_PIN, r, g, b);
+#endif
+}
+
 static uint8_t breathe(uint32_t now, uint32_t periodMs) {
   const uint32_t t = now % periodMs;
   const uint32_t half = periodMs / 2UL;
@@ -148,7 +157,7 @@ static void render(CommsRgbState state, uint32_t now) {
       break;
     }
     case CommsRgbState::Emergency:
-      writeRgb(white.r, white.g, white.b);
+      writeRgbFull(white.r, white.g, white.b);
       break;
   }
 }
