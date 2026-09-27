@@ -260,7 +260,12 @@ static void renderFrame(uint32_t nowMs) {
     sTgtB = 8;
   }
 
-  showSolid(currentPacked());
+  if (sMode == DIRECTOR_AMBIENT_EMERGENCY) {
+    for (uint16_t i = 0; i < sStrip->numPixels(); ++i) sStrip->setPixelColor(i, packRgb(255, 255, 255));
+    sStrip->show();
+  } else {
+    showSolid(currentPacked());
+  }
   sPhase++;
 }
 
