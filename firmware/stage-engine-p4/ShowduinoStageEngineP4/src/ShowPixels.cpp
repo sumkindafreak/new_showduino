@@ -383,8 +383,7 @@ static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
 
 static void renderEmergencyWhite() {
   if (!sFrame) return;
-  const uint8_t v = sGlobalBrightness;
-  for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, v, v, v);
+  for (uint16_t i = 0; i < sCount; ++i) setPixelRaw(i, 255, 255, 255);
 }
 
 static void renderCommissioningTest(uint32_t now) {
