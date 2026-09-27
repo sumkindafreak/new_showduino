@@ -19,6 +19,8 @@ uint32_t pixelEspNowTxCount();
 uint32_t pixelEspNowRejected();
 uint32_t pixelEspNowLastRxMs();
 bool pixelEspNowHaveComms();
+/* True only while recently validated Showduino traffic is being received. */
+bool pixelEspNowLinkFresh();
 uint8_t pixelEspNowChannel();
 int8_t pixelEspNowRssi();
 
