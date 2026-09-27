@@ -136,7 +136,7 @@ Not a theatrical Pixel Line. Four WS2812 on one data pin. Green = energised MOSF
 13. [ ] ESP-NOW searching (no ownership) → slow amber bounce; reconnect grant → turquoise sweep once.
 14. [ ] WebUI client join → brief magenta double-pulse on free pixels.
 15. [ ] IDENTIFY → 4-pixel white chase; MOSFET outputs unchanged.
-16. [ ] Fault → magenta ↔ amber; Emergency → outputs OFF and **all** identifiers OFF.
+16. [ ] Fault → magenta ↔ amber; Emergency → MOSFET outputs OFF and **all identifier pixels solid full-bright white**.
 17. [ ] Authority loss → outputs OFF and identifiers OFF; reconnect does not restore stale state.
 18. [ ] Only then mark `SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_VERIFIED` = 1.
 
@@ -156,3 +156,6 @@ Not a theatrical Pixel Line. Four WS2812 on one data pin. Green = energised MOSF
 ## Honesty
 
 Any unchecked radio/Audio item is **NEEDS HARDWARE TEST**. Audio power-on vs Director remains a **BLOCKER** for tagging 1.0.0 until the 10× test passes.
+
+
+Status/identifier acceptance vocabulary: [`status-colour-standard.md`](status-colour-standard.md).
