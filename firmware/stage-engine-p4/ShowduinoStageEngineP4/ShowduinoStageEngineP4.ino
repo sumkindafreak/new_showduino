@@ -26,6 +26,7 @@
 #include "src/StageStorage.h"
 #include "src/ProductionStore.h"
 #include "src/StageAudio.h"
+#include "src/StageAmbience.h"
 #include "src/EmergencyPixels.h"
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
@@ -152,7 +153,7 @@ static bool isCoprocessorBootBanner(const String &c) {
 static bool isKnownCommsCommand(const String &c) {
   if (c == "HELLO" || c == "HEARTBEAT" || c == "STOP:ALL") return true;
   if (c == "PANIC" || c == "ESTOP" || c == "E-STOP") return true;
-  if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("EMERGENCY:")) return true;
+  if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("AMBIENCE:") || c.startsWith("EMERGENCY:")) return true;
   if (c.startsWith("STATUS:") || c.startsWith("TIME:") || c.startsWith("DMX:") ||
       c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
       c.startsWith("STORAGE:")) return true;
@@ -410,6 +411,7 @@ void triggerEmergency(EmergencySource source) {
                 stageAudioStatus().wavPresent ? "present" : "missing");
 
   stageAudioStopShow();
+  stageAmbienceOnEmergency(true);
   audioNodeLinkOnEmergency(true);
   lampNodeLinkOnEmergency(true);
   pixelNodeLinkOnEmergency(true);
@@ -478,6 +480,7 @@ static void applyEmergencyClear() {
     sendToDirector(SHOWDUINO_LEGACY_STATUS_ECLEARED);
   }
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_CLEAR);
+  stageAmbienceOnEmergency(false);
   audioNodeLinkOnEmergency(false);
   lampNodeLinkOnEmergency(false);
   pixelNodeLinkOnEmergency(false);
@@ -1254,6 +1257,14 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("AMBIENCE:")) {
+    char reply[180];
+    if (stageAmbienceHandleCommand(command.c_str(), reply, sizeof(reply))) {
+      if (reply[0]) sendCommandReply(reply);
+    }
+    return;
+  }
+
   if (command.startsWith("PIXEL:")) {
     char reply[180];
     if (showPixelsHandleCommand(command.c_str(), reply, sizeof(reply))) {
@@ -1345,6 +1356,7 @@ void handleCommand(String command, CommandSource source) {
                             command.startsWith("LOG:LEVEL") ||
                             command.startsWith("TIME:") ||
                             command.startsWith("PIXEL:") ||
+                            command.startsWith("AMBIENCE:") ||
                             command.startsWith("PLUGIN:") ||
                             command.startsWith("NET:") ||
                             command.startsWith("E131:") ||
@@ -1662,6 +1674,7 @@ void setup() {
     Serial.println("[ESTOP] WARNING: emergency.wav missing — latch still works");
   }
   Serial.println("[AUDIO] BOOT waits for Director HELLO (screen power-on)");
+  stageAmbienceBegin();
   audioNodeLinkBegin();
   lampNodeLinkBegin();
   pixelNodeLinkBegin();
@@ -1696,6 +1709,7 @@ void loop() {
     sProductionStoreReady = gProductionStore.begin(stageStorageFs());
   }
   stageAudioLoop();
+  stageAmbienceLoop();
   audioNodeLinkLoop();
   lampNodeLinkLoop();
   pixelNodeLinkLoop();
