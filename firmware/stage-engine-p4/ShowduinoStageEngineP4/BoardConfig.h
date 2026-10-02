@@ -6,7 +6,7 @@
 #include "../../../protocol/showduino_version.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.7"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.8"
 #endif
 
 /*
@@ -233,6 +233,35 @@
 #endif
 
 /*
+ * Generic P4 I/O — function-agnostic local digital lines.
+ *
+ * GPIO46 = Generic I/O line 1
+ * GPIO47 = Generic I/O line 2
+ * GPIO48 = deliberately reserved for later expansion
+ *
+ * Both lines boot DISABLED/high-impedance. Persistent configuration may assign
+ * either line as INPUT or OUTPUT. OUTPUT always enters INACTIVE at boot and is
+ * forced INACTIVE by Emergency and STOP:ALL; interrupted outputs never resume.
+ * These are 3.3 V logic pins only. External voltages / loads require an
+ * appropriate interface, isolation or driver stage.
+ */
+#ifndef SHOWDUINO_GENERIC_IO_ENABLED
+#define SHOWDUINO_GENERIC_IO_ENABLED             1
+#endif
+#ifndef SHOWDUINO_GENERIC_IO_1_PIN
+#define SHOWDUINO_GENERIC_IO_1_PIN              46
+#endif
+#ifndef SHOWDUINO_GENERIC_IO_2_PIN
+#define SHOWDUINO_GENERIC_IO_2_PIN              47
+#endif
+#ifndef SHOWDUINO_GENERIC_IO_RESERVED_PIN
+#define SHOWDUINO_GENERIC_IO_RESERVED_PIN       48
+#endif
+#ifndef SHOWDUINO_GENERIC_IO_DEFAULT_DEBOUNCE_MS
+#define SHOWDUINO_GENERIC_IO_DEFAULT_DEBOUNCE_MS 30U
+#endif
+
+/*
  * Dedicated PCM5102A ambience output.
  * Independent from onboard ES8311 system/safety audio and the specialist
  * Audio Node show/programme output. PCM5102A SCK/MCLK is not connected.
@@ -348,6 +377,7 @@
 #define PATH_PLUGIN_BUS_CONFIG         "/showduino/config/plugin-bus.json"
 #define PATH_NETWORK_CONFIG            "/showduino/config/network.json"
 #define PATH_SYSTEM_CONFIG             "/showduino/config/system.json"
+#define PATH_GENERIC_IO_CONFIG         "/showduino/config/io.json"
 #define PATH_E131_CONFIG               "/showduino/config/e131.json"
 #define PATH_PIXELS_CONFIG             "/showduino/config/pixels.json"
 #define PATH_NODES_CONFIG              "/showduino/config/nodes.json"
