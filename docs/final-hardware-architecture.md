@@ -88,12 +88,15 @@ DMX remains parked/out of scope until explicitly revisited.
 | 12 | ES8311 BCLK/SCLK |
 | 13 | ES8311 MCLK |
 | 14-19 | **RESERVED** onboard C6 SDIO |
-| 20-22 | unused; legacy PCM5102A path retired |
+| 20-22 | **CURRENT** external PCM5102A ambient-audio I²S |
 | 23 | **CURRENT** P4 Main Show Pixel Line |
 | 24 | **CURRENT** emergency/signage Pixel Line |
 | 25 | physical emergency button, active LOW, software latch |
 | 28-31, 34-35, 49-52 | onboard Ethernet RMII/SMI |
 | 39-45 | onboard SDMMC microSD + power |
+| 46 | **CURRENT** Generic I/O line 1 |
+| 47 | **CURRENT** Generic I/O line 2 |
+| 48 | reserved for future expansion |
 | 53 | NS4150B onboard speaker amplifier enable |
 | 54 | **RESERVED** onboard C6 reset/CHIP_PU |
 
@@ -200,7 +203,7 @@ MCLK          GPIO13
 PA enable     GPIO53
 ```
 
-Attraction/programme audio belongs exclusively to the specialist Audio Node. The old external PCM5102A GPIO20/21/22 path is retired.
+The onboard ES8311 remains dedicated to Showduino system/device sounds. GPIO20/21/22 drive the external PCM5102A ambient-audio path. The specialist Audio Node remains the production/show audio engine for tracks, dialogue and effects.
 
 ---
 
