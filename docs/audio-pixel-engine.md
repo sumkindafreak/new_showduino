@@ -56,7 +56,7 @@ I2S MCLK    GPIO13
 PA enable   GPIO53
 ```
 
-The old external PCM5102A path (GPIO20/21/22) is retired and compiled out.
+The external PCM5102A on GPIO20/21/22 is a separate live **ambient-audio** output. It does not replace or share the onboard ES8311 system/device-audio path.
 
 Priority (local P4 only):
 
@@ -85,7 +85,7 @@ timeline audio (future cue dispatch)
 
 The Node stores WAV files on its own microSD and reports a confirmed lifecycle. P4 decides; Comms transports; the Node plays.
 
-The retired P4 PCM5102A path is not a substitute for the Audio Node.
+The P4 PCM5102A ambient-audio path is deliberately narrower than the Audio Node and is not a substitute for the specialist show/programme audio engine.
 
 See [`docs/audio-node.md`](audio-node.md).
 
