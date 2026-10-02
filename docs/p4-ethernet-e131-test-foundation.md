@@ -51,9 +51,9 @@ Arduino-ESP32 3.3.11: `ETH_PHY_TLK110` / `ETH_PHY_IP101`
 | RESET | 51 |
 | PHY address | 1 |
 
-No conflict with the current Comms UART 4/5, shared I2C 7/8, onboard ES8311 I2S 9-13, GPIO23 Show Pixels, GPIO24 emergency/signage pixels, GPIO25 E-stop, SDMMC 39-45, reserved C6 6/14-19/54, or RTC 0/1.
+No conflict with the current Comms UART 4/5, shared I2C 7/8, onboard ES8311 I2S 9-13, external PCM5102A ambient I2S 20-22, GPIO23 Show Pixels, GPIO24 emergency/signage pixels, GPIO25 E-stop, SDMMC 39-45, Generic I/O 46/47, reserved GPIO48, reserved C6 6/14-19/54, or RTC 0/1.
 
-The old external PCM5102A GPIO20-22 path is retired. GPIO10 is ES8311 LRCK and is **not** a status LED.
+The external PCM5102A GPIO20-22 path is live for ambient audio. GPIO10 is ES8311 LRCK and is **not** a status LED.
 
 ## Current pixel baseline — independent of E1.31
 
