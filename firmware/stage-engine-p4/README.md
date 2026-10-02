@@ -4,7 +4,7 @@
 Status: ACTIVE
 Role: Showduino Show Engine
 Product: Stage Controller (ESP32-P4)
-Firmware: 0.5.0
+Firmware: 0.6.8
 ```
 
 Canonical active Show Engine firmware:
@@ -27,6 +27,7 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 - C3 Lamp Node routing (`LampNodeLink`) and emergency white override.
 - GPIO24 emergency/designated-signage NeoPixel engine.
 - GPIO23 local segmented theatrical Show Pixel Engine with shared 25-FX vocabulary.
+- Two persistent function-agnostic Generic I/O lines: GPIO46 (line 1) and GPIO47 (line 2); GPIO48 reserved.
 - Plug-in Bus, storage, diagnostics and optional network foundations.
 - Optional Studio RAM timeline ingest (`/api/studio-timeline`) for PIXEL and AUDIO:NODE cues. This is commissioning-only; a loaded show does not depend on the WebUI.
 
@@ -200,6 +201,47 @@ PIXEL:SEGMENT:1:RANGE:8:20
 PIXEL:SEGMENT:1:FX:FIRE
 PIXEL:SEGMENT:1:START
 ```
+
+## Generic local I/O
+
+The P4 exposes two function-agnostic 3.3 V digital lines:
+
+```text
+Generic I/O 1 = GPIO46
+Generic I/O 2 = GPIO47
+GPIO48        = reserved
+```
+
+Both lines boot `DISABLED` / high-impedance. Persistent configuration is stored at `/showduino/config/io.json`.
+
+Input mode supports active HIGH/LOW, pull-up/pull-down/none and 0–5000 ms debounce. Output mode supports logical ON/OFF, toggle and non-blocking pulses. Output boot state and failsafe state are always INACTIVE. Emergency, `SHOW:STOP` and `STOP:ALL` force outputs INACTIVE, and Emergency clear never restores the previous output state.
+
+Commands:
+
+```text
+IO:STATUS
+IO:SAVE
+IO:ALL:OFF
+IO:1:STATUS
+IO:1:MODE:DISABLED|INPUT|OUTPUT
+IO:1:ACTIVE:HIGH|LOW
+IO:1:PULL:NONE|UP|DOWN
+IO:1:DEBOUNCE:<0-5000>
+IO:1:ON
+IO:1:OFF
+IO:1:TOGGLE
+IO:1:PULSE:<1-3600000>
+
+# Same command set for IO:2:...
+```
+
+Input changes publish generic state lines such as:
+
+```text
+STATE:IO:1:MODE:INPUT:GPIO:46:LEVEL:LOW:ACTIVE:1
+```
+
+No device role or friendly function name is assigned by the P4 Generic I/O layer.
 
 ## Showduino Plug-in Bus
 
