@@ -115,17 +115,17 @@ Also:
 - Add roughly 1000 µF bulk capacitance across 5 V/GND near the start of a substantial line.
 - Provide power injection appropriate to total pixel current and cable length.
 
-## 7. External PCM5102A — LEGACY / RETIRED
+## 7. External PCM5102A — CURRENT AMBIENT AUDIO
 
-The old external I2S DAC on GPIO20/21/22 is not a live Showduino path.
+The external PCM5102A is the P4's dedicated **ambient-audio** output. It is separate from the onboard ES8311 system/device-audio path and from the specialist Audio Node show/programme path.
 
 ```text
-GPIO20  legacy WS/LRCK
-GPIO21  legacy BCLK
-GPIO22  legacy P4 DOUT
+GPIO20  WS/LRCK
+GPIO21  BCLK
+GPIO22  P4 DOUT
 ```
 
-Attraction/programme audio belongs to the specialist Audio Node. Do not reassign GPIO20-22 without a fresh pin audit.
+GPIO20-22 are live allocations and must not be reused for Generic I/O or other peripherals.
 
 ## 8. Onboard ES8311 system audio — CURRENT
 
@@ -156,13 +156,37 @@ SCL = GPIO8
 
 The bus shares the board I²C lines with the onboard ES8311. Do not add 5 V I²C pull-ups.
 
-## 10. Internal ESP32-P4 RTC — CURRENT
+## 10. Generic local I/O — CURRENT
+
+Two function-agnostic local digital I/O lines are reserved on the P4:
+
+```text
+Generic I/O 1   GPIO46
+Generic I/O 2   GPIO47
+Future reserve  GPIO48
+```
+
+Each of GPIO46 and GPIO47 can independently be configured as `DISABLED`, `INPUT` or `OUTPUT`. Both pins enter high-impedance `DISABLED` state during early boot. A configured output always starts **INACTIVE**, is forced **INACTIVE** by Emergency and `STOP:ALL`, and is never automatically restored after Emergency clear.
+
+Inputs support active-HIGH/LOW interpretation, pull-up/pull-down/none and debounce. Outputs support ON/OFF, toggle and non-blocking timed pulse.
+
+These are **3.3 V logic only**. External voltages, long field wiring and powered loads require an appropriate interface/driver/isolation stage.
+
+Persistent configuration:
+
+```text
+/showduino/config/io.json
+```
+
+GPIO48 remains deliberately unallocated for later expansion.
+
+## 11. Internal ESP32-P4 RTC — CURRENT
 
 No DS3231 is used in this generation.
 
 GPIO0/GPIO1 are the board 32.768 kHz RTC crystal path and remain reserved.
 
-## 11. Onboard ESP32-C6 — UNUSED / RESERVED
+## 12. Onboard ESP32-C6 — UNUSED / RESERVED
 
 Do not allocate:
 
@@ -179,7 +203,7 @@ GPIO54     C6 CHIP_PU/reset
 
 The dedicated external ESP32-S3 is the live Communications Engine. Do not revive P4 GPIO17/18 as an external UART.
 
-## 12. Ethernet — BOARD / CURRENT FOUNDATION
+## 13. Ethernet — BOARD / CURRENT FOUNDATION
 
 Waveshare onboard PHY: IP101GRI over RMII.
 
@@ -201,7 +225,7 @@ Ethernet remains optional to show operation. No cable, DHCP or internet is requi
 
 DMX/E1.31-related development remains parked until explicitly reopened.
 
-## 13. P4 pin plan at a glance
+## 14. P4 pin plan at a glance
 
 ```text
 GPIO0-1    RTC crystal path
@@ -216,19 +240,22 @@ GPIO11     ES8311 ASDOUT
 GPIO12     ES8311 BCLK
 GPIO13     ES8311 MCLK
 GPIO14-19  onboard C6 SDIO — reserved unused
-GPIO20-22  unused; legacy PCM5102A retired
+GPIO20-22  external PCM5102A ambient audio
 GPIO23     CURRENT local segmented Show Pixel line
 GPIO24     CURRENT emergency/designated-signage pixel line
 GPIO25     emergency pushbutton
 GPIO28-31  Ethernet
 GPIO34-35  Ethernet
 GPIO39-45  SDMMC + power
+GPIO46     Generic I/O line 1
+GPIO47     Generic I/O line 2
+GPIO48     reserved for future expansion
 GPIO49-52  Ethernet
 GPIO53     onboard audio PA enable
 GPIO54     onboard C6 CHIP_PU/reset
 ```
 
-## 14. Specialist Audio Node pin summary
+## 15. Specialist Audio Node pin summary
 
 This is not P4 wiring. Canonical detail: [`audio-node.md`](audio-node.md).
 
@@ -244,7 +271,7 @@ HP detect       GPIO39
 Status LED      GPIO22
 ```
 
-## 15. C3 Pixel Node — CURRENT / HARDWARE TEST REQUIRED
+## 16. C3 Pixel Node — CURRENT / HARDWARE TEST REQUIRED
 
 ESP32-C3 Super Mini OLED. Not the production Lamp Node (that is an ESP32-S3).
 
@@ -258,7 +285,7 @@ Buttons       GPIO9 (A / BOOT), GPIO0 (B)
 
 Do not move OLED pins. Do not power the strip from the C3. See [`c3-pixel-node.md`](c3-pixel-node.md) and [`firmware/c3-pixel-node/README.md`](../firmware/c3-pixel-node/README.md).
 
-## 16. S3 Lamp Node — CURRENT / PHYSICAL PINS CONFIRMED
+## 17. S3 Lamp Node — CURRENT / PHYSICAL PINS CONFIRMED
 
 ESP32-S3 development-board family (same as the Communications Controller). Interactive carbide lamp. Production wiring 2026-09-12:
 
@@ -275,7 +302,7 @@ GPIO18  S3 RX <- Adafruit Audio FX TX
 
 Jewel and Audio FX use the lamp 5V rail with common ground. Audio FX UG must be tied to GND for UART mode. Voltage full scale is operator-confirmed 5.00 V; GPIO6 stays ≤ 3.3 V. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
-## 17. Related documents
+## 18. Related documents
 
 - [`final-hardware-architecture.md`](final-hardware-architecture.md)
 - [`audio-pixel-engine.md`](audio-pixel-engine.md)
