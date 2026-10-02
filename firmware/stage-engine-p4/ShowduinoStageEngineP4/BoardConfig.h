@@ -321,7 +321,7 @@
 #define P4_ES8311_I2C_ADDR            0x18U
 #endif
 
-/* Live P4 audio aliases — onboard ES8311, not the retired PCM5102A. */
+/* Live P4 system-audio aliases — onboard ES8311, separate from ambient PCM5102A. */
 #ifndef P4_AUDIO_I2S_BCLK
 #define P4_AUDIO_I2S_BCLK   P4_SYSTEM_AUDIO_I2S_BCLK
 #endif
