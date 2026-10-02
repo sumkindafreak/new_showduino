@@ -30,6 +30,7 @@
 #include "src/EmergencyPixels.h"
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
+#include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
 #include "src/StageDiagnostics.h"
@@ -153,7 +154,7 @@ static bool isCoprocessorBootBanner(const String &c) {
 static bool isKnownCommsCommand(const String &c) {
   if (c == "HELLO" || c == "HEARTBEAT" || c == "STOP:ALL") return true;
   if (c == "PANIC" || c == "ESTOP" || c == "E-STOP") return true;
-  if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("AMBIENCE:") || c.startsWith("EMERGENCY:")) return true;
+  if (c.startsWith("SHOW:") || c.startsWith("AUDIO:") || c.startsWith("AMBIENCE:") || c.startsWith("EMERGENCY:") || c.startsWith("IO:")) return true;
   if (c.startsWith("STATUS:") || c.startsWith("TIME:") || c.startsWith("DMX:") ||
       c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
       c.startsWith("STORAGE:")) return true;
@@ -186,7 +187,7 @@ static bool isInboundTelemetryOrEcho(const String &c) {
   }
   if (c == "READY" || c == SHOWDUINO_LEGACY_SHOWDUINO_STAGE) return true;
   if (c.startsWith("PIXELS:") || c.startsWith("ETHERNET:") || c.startsWith("INPUTS:") ||
-      c.startsWith("SD:") || c.startsWith("ANNOUNCE:")) {
+      c.startsWith("IO:READY") || c.startsWith("SD:") || c.startsWith("ANNOUNCE:")) {
     return true;
   }
   if (c == "AUDIO:READY" || c == "AUDIO:FAULT") return true;
@@ -424,6 +425,7 @@ void triggerEmergency(EmergencySource source) {
   showPixelsOnEmergency(true);
   statusLedWrite(HIGH);
   pluginBusOnEmergency();
+  showduinoIOOnEmergency(true);
 
   sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
@@ -486,6 +488,7 @@ static void applyEmergencyClear() {
   pixelNodeLinkOnEmergency(false);
   mosfetNodeLinkOnEmergency(false);
   emergencyNodeLinkOnEmergency(false);
+  showduinoIOOnEmergency(false);
   gRuntime.onEmergencyCleared(millis(), &gEngine);
   Serial.println("[ESTOP] Emergency cleared");
   showduino_log_emergency(false);
@@ -600,7 +603,7 @@ void sendCapabilities() {
   sendCommandReply(showNetworkLive().hasIp ? "ETHERNET:ONLINE" : "ETHERNET:OFFLINE");
   sendCommandReply(String("E131:") + e131RxStateName(e131ReceiverStatus().state));
   sendCommandReply(stageAudioStatus().codecReady ? "AUDIO:READY" : "AUDIO:FAULT");
-  sendCommandReply("INPUTS:PLANNED");
+  sendCommandReply("IO:READY:2");
   sendCommandReply(String("SD:") + stageStoreStateName());
   sendCommandReply(stageTimeSynced() ? "TIME:READY" : "TIME:UNSYNCED");
   sendCommandReply("READY");
@@ -655,6 +658,7 @@ void sendStatus() {
   lampNodeLinkPublishToDirector();
   pixelNodeLinkPublishToDirector();
   mosfetNodeLinkPublishToDirector();
+  showduinoIOPublishState();
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -870,6 +874,7 @@ void handleShowCommand(const String &command) {
       stageAudioStopShow();
       showPixelsBlackout();
       mosfetNodeLinkAllOff("SHOW_STOP");
+      showduinoIOAllOff("SHOW_STOP");
     }
     if (stopped) {
       SD_LOGI("P4", "Show STOP");
@@ -979,6 +984,13 @@ static void printUsbHelp() {
   Serial.println("  PLUGIN:LIST");
   Serial.println("  PLUGIN:STATUS");
   Serial.println("  PLUGIN:INFO:<instance|address>");
+  Serial.println("  IO:STATUS | IO:SAVE | IO:ALL:OFF");
+  Serial.println("  IO:<1|2>:STATUS");
+  Serial.println("  IO:<1|2>:MODE:DISABLED|INPUT|OUTPUT");
+  Serial.println("  IO:<1|2>:ACTIVE:HIGH|LOW");
+  Serial.println("  IO:<1|2>:PULL:NONE|UP|DOWN");
+  Serial.println("  IO:<1|2>:DEBOUNCE:<0-5000>");
+  Serial.println("  IO:<1|2>:ON | OFF | TOGGLE | PULSE:<ms>");
   Serial.println("  NET:STATUS");
   Serial.println("  NET:ENABLE:0|1");
   Serial.println("  NET:MODE:DHCP");
@@ -1257,6 +1269,14 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("IO:")) {
+    char reply[192];
+    if (showduinoIOHandleCommand(command.c_str(), reply, sizeof(reply))) {
+      if (reply[0]) sendCommandReply(reply);
+    }
+    return;
+  }
+
   if (command.startsWith("AMBIENCE:")) {
     char reply[180];
     if (stageAmbienceHandleCommand(command.c_str(), reply, sizeof(reply))) {
@@ -1356,6 +1376,7 @@ void handleCommand(String command, CommandSource source) {
                             command.startsWith("LOG:LEVEL") ||
                             command.startsWith("TIME:") ||
                             command.startsWith("PIXEL:") ||
+                            command.startsWith("IO:") ||
                             command.startsWith("AMBIENCE:") ||
                             command.startsWith("PLUGIN:") ||
                             command.startsWith("NET:") ||
@@ -1629,6 +1650,9 @@ void setup() {
   Serial.println("[ESTOP] Emergency input initialized (command path only; GPIO not assigned)");
 #endif
 
+  /* Generic I/O enters explicit high-impedance safe state before SD mount. */
+  showduinoIOBegin(sendToDirectorC);
+
   emergencyPixelsBegin();
 
   stageStorageSetLinkPump(pumpLocalServices);
@@ -1682,6 +1706,8 @@ void setup() {
   mosfetNodeLinkBegin();
 
   stageStoreBegin();
+  /* StageStore is now writable; load/create persistent Generic I/O config. */
+  showduinoIOReloadConfig();
   webApiBegin(bootMs);
   showNetworkBegin();
 
@@ -1700,6 +1726,7 @@ void loop() {
   serviceCommsLink();
   serviceDirectorPresence();
   servicePhysicalEstop();
+  showduinoIOService();
   pluginBusService();
   stageStorageLoop();
   stageStoreLoop();
