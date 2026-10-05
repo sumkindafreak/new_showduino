@@ -221,10 +221,14 @@ static void collectDir(const char *relDir, char names[][SHOWDUINO_AUDIO_REL_MAX 
         : snprintf(entry, sizeof(entry), "%s", base);
     if (length > 0 && (size_t)length < sizeof(entry) && strcmp(base, ".") && strcmp(base, "..")) {
       if (e.isDirectory()) collectDir(entry, names, maxNames, n);
-      else if (showduino_audio_has_wav_ext(base) && !strchr(entry, ',') && !strchr(entry, ':')) {
-        strncpy(names[*n], entry, SHOWDUINO_AUDIO_REL_MAX);
-        names[*n][SHOWDUINO_AUDIO_REL_MAX] = '\0';
-        (*n)++;
+      else if (showduino_audio_has_wav_ext(base)) {
+        char playable[SHOWDUINO_AUDIO_PATH_MAX + 1];
+        // Only list paths accepted by playback, including its absolute limit.
+        if (audioStorageResolve(entry, playable, sizeof(playable))) {
+          strncpy(names[*n], entry, SHOWDUINO_AUDIO_REL_MAX);
+          names[*n][SHOWDUINO_AUDIO_REL_MAX] = '\0';
+          (*n)++;
+        }
       }
     }
     e.close();
