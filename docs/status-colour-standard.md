@@ -32,7 +32,7 @@ Green is not a generic “healthy” colour. It means a real active output or ru
 | C3 Pixel Node | GPIO2 shared show line + OLED | Theatrical colours unrestricted; Locate is moving white; Emergency is 255 white; OLED link state uses fresh traffic. |
 | C3 Emergency Node | GPIO2 shared line + OLED | System or local Emergency receives the same white override; remote/system Emergency has a dedicated OLED screen; link state uses fresh traffic. |
 | Lamp Node | 7-pixel Jewel, GPIO8 | Functional lamp element, not a general status indicator. Existing boot RGBW test, warm-white Identify walk and 255-white Emergency are retained. |
-| Audio Node | checked-in GPIO22 programmable pixel line | Theatrical colours unrestricted; Locate is moving white; Emergency bypasses saved brightness and forces 255 white. |
+| Audio Node | GPIO22 programmable pixel line | Theatrical colours unrestricted; Locate is moving white; Emergency bypasses saved brightness and forces 255 white. |
 
 ## Link freshness
 
@@ -48,7 +48,7 @@ MOSFET power outputs remain fail-safe OFF in Emergency even though their **ident
 
 ## Audio hardware note
 
-Current repository firmware defines the Audio Node programmable pixel line on **GPIO22**, amplifier enable on **GPIO21**, and KEY6 on **GPIO5**. Earlier unpublished audit notes described a separate GPIO5 status pixel; that is not represented by the checked-in hardware definition and has therefore not been silently introduced by this pass.
+Audio Node has a separate **one-pixel status indicator on GPIO5**, a programmable show strip on **GPIO22**, and amplifier enable on **GPIO21**. KEY6 / Next is disabled because it shares GPIO5. Status follows the priority and colour standard above; `STATUS:LED:TEST` runs a non-blocking RGB test, while `PIXEL:TEST` tests the show strip. Status works independently of the saved show-strip count. Emergency overrides status testing with full-white. Hardware acceptance must verify GPIO5 is isolated from the KEY6 switch circuit before pressing that switch.
 
 ## Bench acceptance
 

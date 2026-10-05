@@ -9,6 +9,7 @@
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
 #include "AudioPixelEngine.h"
+#include "AudioStatusPixel.h"
 #include "AudioPixelProtocol.h"
 #include "AudioPixelNodeState.h"
 #include "EspNowNodeTransport.h"
@@ -85,7 +86,8 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <div class="row">
 <button class="act" data-c="PIXEL:COUNT">SAVE COUNT</button>
 <button class="act" data-c="PIXEL:INIT">INITIALISE</button>
-<button class="act" data-c="PIXEL:TEST">TEST</button>
+<button class="act" data-c="PIXEL:TEST">SHOW STRIP TEST</button>
+<button class="act" data-c="STATUS:LED:TEST">STATUS LED TEST</button>
 <button class="act" data-c="PIXEL:BLACKOUT">BLACKOUT</button>
 </div>
 </div>
@@ -154,7 +156,8 @@ async function load(){
   ]);
   kv($('pixelkv'),[
     ['State',S.pixel.state],
-    ['GPIO',S.pixel.gpio],
+    ['Show GPIO',S.pixel.gpio],
+    ['Status LED','GPIO '+S.pixel.statusGpio+' / '+S.pixel.statusCount+' pixel'],
     ['Configured',S.pixel.configured],
     ['Active',S.pixel.count],
     ['Ready',S.pixel.ready?'YES':'no'],
@@ -286,6 +289,10 @@ static void handleStatus() {
   json += audioPixelNodeStateName();
   json += "\",\"gpio\":";
   json += String(audioPixelEnginePin());
+  json += ",\"statusGpio\":";
+  json += String(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  json += ",\"statusCount\":";
+  json += String(SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT);
   json += ",\"configured\":";
   json += String((unsigned)audioPixelEngineConfiguredCount());
   json += ",\"count\":";
@@ -359,7 +366,9 @@ static void handleCommand() {
   }
   bool pixelRejected = false;
   char pixelRejectReason[SHOWDUINO_NODE_COMMAND_MAX] = "";
-  if (!strncmp(cmd, "PIXEL:", 6)) {
+  if (!strcmp(cmd, "STATUS:LED:TEST")) {
+    audioStatusPixelTest();
+  } else if (!strncmp(cmd, "PIXEL:", 6)) {
     audioPixelProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
     /* audioPixelProtocolApply() has no return value — it reports success or
        failure asynchronously via audioPixelNodeStateLastResult(). Surface a

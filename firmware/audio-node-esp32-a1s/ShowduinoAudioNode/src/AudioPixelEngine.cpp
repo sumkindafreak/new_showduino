@@ -406,8 +406,8 @@ static void audioPixelEngineShutdown() {
 }
 
 bool audioPixelEngineSafeGpio() {
-  pinMode(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, OUTPUT);
-  digitalWrite(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, LOW);
+  pinMode(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, LOW);
   return true;
 }
 
@@ -432,28 +432,28 @@ bool audioPixelEngineBegin() {
 
   sCount = sConfiguredCount;
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
-  sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
-                                 SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
+  sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
+                                 SHOWDUINO_AUDIO_SHOW_PIXEL_ORDER);
   if (!sFrame || !sStrip) {
     Serial.println("[PIXEL][ERROR] Show line allocation failed (out of memory)");
     audioPixelEngineShutdown();
     return false;
   }
 
-  pinMode(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, OUTPUT);
-  digitalWrite(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, LOW);
+  pinMode(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, LOW);
   sStrip->begin();
   sStrip->clear();
   sReady = true;
   clearFrame();
   writeFrame();
   Serial.printf("[PIXEL] Line initialised GPIO=%d count=%u segments=%u resistor=%uR\n",
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                 (unsigned)sCount,
                 (unsigned)SHOWDUINO_PIXEL_MAX_SEGMENTS,
-                (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS);
+                (unsigned)SHOWDUINO_AUDIO_SHOW_PIXEL_RESISTOR_OHMS);
   Serial.println("[PIXEL] Engine: READY");
-  Serial.printf("[PIXEL] GPIO: %d\n", SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  Serial.printf("[PIXEL] GPIO: %d\n", SHOWDUINO_AUDIO_SHOW_PIXEL_PIN);
   Serial.printf("[PIXEL] Count: %u\n", (unsigned)sCount);
   Serial.printf("[PIXEL] Brightness: %u\n", (unsigned)sGlobalBrightness);
   Serial.printf("[PIXEL] Emergency: %s\n", sEmergency ? "ACTIVE" : "INACTIVE");
@@ -466,7 +466,7 @@ void audioPixelEngineApplyPersisted() {
   if (n > 0 && n <= SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS) sConfiguredCount = n;
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
-                  SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                  SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                   (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
     Serial.println("[PIXEL][ERROR] Count not configured (0) — line will stay dark until set");
     return;
@@ -592,7 +592,7 @@ uint16_t audioPixelEngineCount() { return sCount; }
 uint16_t audioPixelEngineConfiguredCount() { return sConfiguredCount; }
 uint16_t audioPixelEngineMax() { return SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS; }
 uint8_t audioPixelEngineGlobalBrightness() { return sGlobalBrightness; }
-int audioPixelEnginePin() { return SHOWDUINO_AUDIO_STATUS_PIXEL_PIN; }
+int audioPixelEnginePin() { return SHOWDUINO_AUDIO_SHOW_PIXEL_PIN; }
 
 uint8_t audioPixelEngineActiveSegments() {
   uint8_t n = 0;
@@ -604,7 +604,7 @@ uint8_t audioPixelEngineActiveSegments() {
 
 void audioPixelEnginePrintStatus() {
   Serial.printf("[PIXEL] GPIO=%d configured=%u active=%u ready=%s brightness=%u emergency=%s locate=%s\n",
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                 (unsigned)sConfiguredCount,
                 (unsigned)sCount,
                 sReady ? "YES" : "NO",
@@ -678,7 +678,7 @@ bool audioPixelEngineHandleCommand(const char *command, char *reply, size_t repl
     char line[160];
     snprintf(line, sizeof(line),
              "PIXEL:STATUS:%s:GPIO=%d:CONFIGURED=%u:COUNT=%u:MAX=%u:BRIGHTNESS=%u:EMERGENCY=%u",
-             sReady ? "READY" : "UNINIT", SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+             sReady ? "READY" : "UNINIT", SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
              (unsigned)sConfiguredCount, (unsigned)sCount,
              (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS,
              (unsigned)sGlobalBrightness, sEmergency ? 1U : 0U);
