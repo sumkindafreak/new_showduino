@@ -608,7 +608,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     return;
   }
   if (cmd == SHOWDUINO_AUDIO_CMD_INVENTORY) {
-    char names[SHOWDUINO_AUDIO_INV_MAX][40];
+    char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
     const uint16_t total = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
     const uint16_t page = (uint16_t)atoi(arg);
     uint16_t start = 0, count = 0;
@@ -667,7 +667,7 @@ void audioCommandLocalTestToggle() {
     audioCommandApply("AUDIO:NODE:STOP", 0, false);
     return;
   }
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   const char *rel = SHOWDUINO_AUDIO_TEST_FILE;
   if (n > 0) {
@@ -685,7 +685,7 @@ void audioCommandLocalStop() {
 }
 
 static void stepLocal(int dir) {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   if (n == 0) {
     Serial.println("[AUDIO] No local assets");

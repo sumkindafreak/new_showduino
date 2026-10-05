@@ -1,17 +1,25 @@
 #include <Adafruit_NeoPixel.h>
 #include "../BoardConfig.h"
 #include "AudioStatusPixel.h"
+#include "AudioPixelOutput.h"
 #include "AudioNodeState.h"
 #include "AudioPixelEngine.h"
 #include "input/AudioInput.h"
 
 static Adafruit_NeoPixel sPixel(SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT,
     SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
+static AudioPixelOutput sStatusOutput;
+static bool sOutputReady = false;
+static uint32_t sLastWriteMs = 0;
 static bool sTesting = false;
 static uint32_t sTestStart = 0;
 static uint32_t sColour = 0xFFFFFFFF;
 
-void audioStatusPixelTest() { sTesting = true; sTestStart = millis(); }
+void audioStatusPixelTest() {
+  sTesting = true; sTestStart = millis();
+  Serial.printf("[STATUS PIXEL] GPIO%d RGB test requested, output=%s\n",
+                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, sOutputReady ? "READY" : "FAILED");
+}
 
 void audioStatusPixelService() {
   const uint32_t now = millis();
@@ -48,14 +56,17 @@ void audioStatusPixelService() {
       colour = sPixel.Color(0, 16, 24);
     else colour = sPixel.Color(12, 0, 24);
   }
-  if (colour != sColour) {
+  if (sOutputReady && (colour != sColour || now - sLastWriteMs >= 250U)) {
     sPixel.setPixelColor(0, colour);
-    sPixel.show();
-    sColour = colour;
+    if (sStatusOutput.write(sPixel.getPixels(), SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT * 3U)) {
+      sColour = colour;
+      sLastWriteMs = now;
+    }
   }
 }
 
 void audioStatusPixelBegin() {
   sPixel.begin();
+  sOutputReady = sStatusOutput.begin(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT * 3U);
   audioStatusPixelService();
 }

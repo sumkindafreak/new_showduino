@@ -181,7 +181,7 @@ void nodeDiagPrintSd() {
 }
 
 void nodeDiagPrintAssets() {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   Serial.printf("ASSETS %u (page size %u)\n",
                 (unsigned)n, (unsigned)SHOWDUINO_AUDIO_INV_PER_PAGE);

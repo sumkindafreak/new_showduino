@@ -82,7 +82,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <section class="tab" id="pixel" hidden>
 <div class="card">
 <div class="kv" id="pixelkv"></div>
-<p>Set the strip count and initialise before use. Once Showduino controls an initialised strip, local changes are locked.</p>
+<p>The strip starts with 10 pixels. Set its actual count while idle; running effects and emergency lock local setup.</p>
 <label>Pixel count</label><input id="pixcount" type="number" min="1" max="512">
 <div class="row">
 <button class="act" data-c="PIXEL:COUNT">SAVE COUNT</button>
@@ -131,7 +131,7 @@ async function load(){
   $('owner').textContent=S.owner+' · '+S.playback+(S.asset&&S.asset!=='-'?' · '+S.asset:'');
   $('banner').hidden=!owned;
   const emergency=!!(S.emergency||S.pixel.emergency);
-  const setupAllowed=!S.pixel.ready&&!emergency;
+  const setupAllowed=!S.pixel.busy&&!emergency;
   document.querySelectorAll('button.act').forEach(b=>{
     if(b.id==='save') return;
     const c=b.dataset.c||'';
@@ -312,6 +312,8 @@ static void handleStatus() {
   json += String((unsigned)audioPixelEngineCount());
   json += ",\"ready\":";
   json += audioPixelEngineReady() ? "true" : "false";
+  json += ",\"busy\":";
+  json += (audioPixelEngineActiveSegments() > 0 || audioPixelEngineLocateActive()) ? "true" : "false";
   json += ",\"emergency\":";
   json += audioPixelEngineEmergency() ? "true" : "false";
   json += "},\"sound\":{\"ready\":";
@@ -329,7 +331,7 @@ static void handleStatus() {
 }
 
 static void handleLibrary() {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   String json = "{\"files\":[";
   for (uint16_t i = 0; i < n; i++) {

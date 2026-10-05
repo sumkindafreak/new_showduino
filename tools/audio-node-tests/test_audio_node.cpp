@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "showduino_audio_node.h"
+#include "showduino_pixel_defaults.h"
 
 static int gFail = 0;
 
@@ -13,6 +14,10 @@ static void expect(int cond, const char *name) {
 }
 
 int main() {
+  expect(showduino_pixel_boot_count(0, 512) == 10, "missing pixel count defaults to ten");
+  expect(showduino_pixel_boot_count(37, 512) == 37, "valid saved count preserved");
+  expect(showduino_pixel_boot_count(513, 512) == 10, "invalid saved count defaults to ten");
+  expect(showduino_pixel_boot_count(0, 5) == 5, "default respects device maximum");
   char path[96];
   char arg[80];
   int vol = -1;
@@ -182,10 +187,10 @@ int main() {
 
   uint16_t start = 99, count = 99;
   expect(showduino_audio_inventory_slice(13, 0, &start, &count) == 1, "inv page 0");
-  expect(start == 0 && count == 6, "inv page 0 slice");
-  expect(showduino_audio_inventory_slice(13, 2, &start, &count) == 1, "inv page 2");
+  expect(start == 0 && count == 1, "inv page 0 slice");
+  expect(showduino_audio_inventory_slice(13, 12, &start, &count) == 1, "inv page 2");
   expect(start == 12 && count == 1, "inv last slice");
-  expect(showduino_audio_inventory_slice(13, 3, &start, &count) == 0, "inv empty page");
+  expect(showduino_audio_inventory_slice(13, 13, &start, &count) == 0, "inv empty page");
 
   expect(strcmp(showduino_audio_wire_token(SHOWDUINO_AUDIO_ST_LOOPING), "LOOPING") == 0,
          "wire looping");

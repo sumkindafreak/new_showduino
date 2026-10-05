@@ -247,7 +247,9 @@ void audioNodeLinkLoop() {
   }
   if (sSt.online && (millis() - sInvMs) >= 15000UL) {
     sInvMs = millis();
-    route(sSeq++, "AUDIO:NODE:LIBRARY");
+    char request[48];
+    snprintf(request, sizeof(request), "AUDIO:NODE:INVENTORY:%u", (unsigned)sSt.inventoryPage);
+    route(sSeq++, request);
   }
   if ((millis() - sPublishMs) >= 3000UL) {
     publishState(true);
@@ -285,7 +287,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     route(sSeq++, "AUDIO:NODE:OWN:GRANT");
     if (sInvMs == 0) {
       sInvMs = millis();
-      route(sSeq++, "AUDIO:NODE:LIBRARY");
+      route(sSeq++, "AUDIO:NODE:INVENTORY:0");
     }
     publishState();
     return true;
@@ -404,7 +406,8 @@ bool audioNodeLinkHandleReport(const char *line) {
         item = comma ? comma + 1 : nullptr;
       }
     }
-    publishExtra(false);
+    sSt.pending = false;
+    publishExtra(true);
     return true;
   }
 

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_version.h"
+#include "../../../protocol/showduino_pixel_defaults.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
 #define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.8"
@@ -214,10 +215,10 @@
 #define SHOWDUINO_SHOW_PIXEL_MAX             1024
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_DEFAULT
-#define SHOWDUINO_SHOW_PIXEL_DEFAULT         100
+#define SHOWDUINO_SHOW_PIXEL_DEFAULT         SHOWDUINO_PIXEL_DEFAULT_COUNT
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_COUNT
-#define SHOWDUINO_SHOW_PIXEL_COUNT           SHOWDUINO_SHOW_PIXEL_MAX
+#define SHOWDUINO_SHOW_PIXEL_COUNT           SHOWDUINO_SHOW_PIXEL_DEFAULT
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_BRIGHTNESS
 #define SHOWDUINO_SHOW_PIXEL_BRIGHTNESS      255
