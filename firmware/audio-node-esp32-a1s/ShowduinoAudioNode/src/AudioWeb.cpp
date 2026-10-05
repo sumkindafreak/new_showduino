@@ -82,6 +82,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <section class="tab" id="pixel" hidden>
 <div class="card">
 <div class="kv" id="pixelkv"></div>
+<p>Set the strip count and initialise before use. Once Showduino controls an initialised strip, local changes are locked.</p>
 <label>Pixel count</label><input id="pixcount" type="number" min="1" max="512">
 <div class="row">
 <button class="act" data-c="PIXEL:COUNT">SAVE COUNT</button>
@@ -121,6 +122,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <script>
 const $=id=>document.getElementById(id);
 let S=null;
+let pixelCountDirty=false;
 function kv(el,rows){el.innerHTML=rows.map(r=>`<div>${r[0]}</div><div class="${r[2]||''}">${r[1]}</div>`).join('')}
 async function load(){
   S=await (await fetch('/api/status')).json();
@@ -128,7 +130,16 @@ async function load(){
   $('title').textContent=S.name||'Showduino Audio';
   $('owner').textContent=S.owner+' · '+S.playback+(S.asset&&S.asset!=='-'?' · '+S.asset:'');
   $('banner').hidden=!owned;
-  document.querySelectorAll('button.act').forEach(b=>{if(b.id!=='save')b.disabled=owned});
+  const emergency=!!(S.emergency||S.pixel.emergency);
+  const setupAllowed=!S.pixel.ready&&!emergency;
+  document.querySelectorAll('button.act').forEach(b=>{
+    if(b.id==='save') return;
+    const c=b.dataset.c||'';
+    if(c==='PIXEL:COUNT'||c==='PIXEL:INIT') b.disabled=emergency||(owned&&!setupAllowed);
+    else if(c==='STATUS:LED:TEST') b.disabled=emergency;
+    else b.disabled=owned;
+  });
+  $('pixcount').disabled=emergency||(owned&&!setupAllowed);
   $('vol').disabled=owned; $('asset').disabled=owned;
   kv($('statuskv'),[
     ['Owner',S.owner,owned?'warn':''],
@@ -163,7 +174,7 @@ async function load(){
     ['Ready',S.pixel.ready?'YES':'no'],
     ['Emergency',S.pixel.emergency?'YES':'no',S.pixel.emergency?'bad':'']
   ]);
-  if(document.activeElement!==$('pixcount')) $('pixcount').value=S.pixel.configured||0;
+  if(!pixelCountDirty&&document.activeElement!==$('pixcount')) $('pixcount').value=S.pixel.configured||0;
   kv($('diagkv'),[
     ['MAC',S.mac],
     ['Output',S.output],
@@ -185,8 +196,10 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 async function send(cmd){
   const r=await (await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})})).json();
   if(!r.ok) alert(r.message||r.error||'rejected');
+  else if(cmd.startsWith('PIXEL:COUNT:')) pixelCountDirty=false;
   load();
 }
+$('pixcount').oninput=()=>{pixelCountDirty=true};
 function pixelCommand(op){
   if(op==='COUNT') return 'PIXEL:COUNT:'+Math.max(1,Math.min(512,Number($('pixcount').value)||1));
   return 'PIXEL:'+op;
