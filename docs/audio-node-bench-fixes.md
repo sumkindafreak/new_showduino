@@ -8,6 +8,10 @@ Page 05 anchors the playback and utility rows above `OS_DOCK_Y`: playback 294-34
 
 GT911 release is filtered for 60 ms. Page changes and wake-up consume the current touch and require 180 ms continuously released before another tap reaches the UI. LVGL also waits for release when the page changes. Bench check: tap Nodes once, hold briefly, then release; it must stay on Nodes, and a deliberate second tap must open Pixel Node. Scrolling and press/hold controls must still work.
 
+## Director theme registry
+
+The accent registry grows dynamically in PSRAM (with a normal-memory fallback) instead of stopping at 192 objects. Existing entries survive growth, duplicate registrations update their role, and unregister/clear reuse allocated capacity. Boot may log `[Theme] registry capacity=128` then `256`; later screens must no longer report `registry full`. After upload, change the accent and check the Logs, Audio and overlay controls all update.
+
 ## SD inventory
 
 Opening SELECT ASSET requests inventory page zero. P4 requests the same inventory mechanism periodically instead of requesting a LIBRARY reply it does not consume. Inventory recursively includes WAV files under `/showduino/audio`, including `show_machine`. One complete relative path (up to 63 characters) travels per page so neither the 96-byte radio message nor the Director mirror truncates it. NEXT PAGE uses the same page size. `/The_Chamber` show-library commands remain separate; this change does not redirect playback paths to that root.
