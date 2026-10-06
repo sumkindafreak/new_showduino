@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('assert'),util=require('util');
 const source=fs.readFileSync(path.resolve(__dirname,'../../firmware/director-esp32-8048s050/ShowduinoDirector8048S050/page_p4_io.cpp'),'utf8');
 function body(name){let start=source.indexOf(name+'('),open=source.indexOf('{',start),d=1,end=open+1;for(;d;end++){if(source[end]==='{')d++;if(source[end]==='}')d--;}return source.slice(open+1,end-1);}
-function convert(s){return s.replace(/s\[end\]==0/g,'end===s.length').replace('i=n/3','i=Math.floor(n/3)')
+function convert(s){return s.replace(/s\[end\]==0/g,'end===s.length').replace('i=n/3','i=Math.floor(n/3)').replace(/const char \*/g,'const ').replace(/\bs\+(\d+)/g,'s.slice($1)')
  .replace(/sscanf\(s,"([^"]+)",([^)]*)\)/g,(_,fmt,vars)=>`(scan(s,${JSON.stringify(fmt)}), [${vars.replace(/&/g,'')}] = scanValues, scanCount)`)
  .replace(/char mode\[9\]=\{\},level\[5\]=\{\};/g,'let mode="",level="";')
  .replace(/char c\[16\]=\{\},r\[24\]=\{\},buf\[160\];/g,'let c="",r="",buf="";')
@@ -32,4 +32,5 @@ receive('STATE:BUS:0:2:3E:00:1:SX1509:DIGITAL_INPUTS:1');assert.equal(ctx.busKno
 ctx.busDirty=true;ctx.role=2;receive('STATE:BUS:0:2:3E:00:1:SX1509:DIGITAL_INPUTS:1');assert.equal(ctx.role,2,'Polling preserves preset edits');receive('STATE:BUS:RESULT:SD save failed; assignment unchanged.');assert.equal(ctx.busDirty,true);assert(ctx.busFeedback.text.includes('SD save failed'));
 receive('STATE:BUS:0:2:18:00:1:ES8311:P4_INTERNAL_AUDIO:1');assert.equal(ctx.busSave.enabled,false,'Internal audio protected');receive('STATE:BUS:0:2:3E:70:1:SX1509:DIGITAL_INPUTS:1');assert.equal(ctx.busSave.enabled,false,'Mux device assignment not treated as root');
 ctx.linked=false;vm.runInContext('render()',ctx);assert.equal(ctx.on[0].enabled,false);assert.equal(ctx.off[0].enabled,false);assert(ctx.states[0].text.includes('Awaiting'));assert.equal(ctx.busSave.enabled,false);
+receive('STATE:IO:RESULT:IO:1:CONFIG:SAVED');assert.equal(ctx.feedback.text,'Settings saved. Line left inactive.');receive('STATE:IO:RESULT:IO:1:CONFIG:RAM_ONLY_SD_ERROR');assert.equal(ctx.feedback.text,'SD save failed. Settings are temporary.');receive('STATE:IO:RESULT:IO:1:ON:REJECTED:EMERGENCY');assert(ctx.feedback.text.includes('rejected'));
 console.log('Passed: P4 readback validation, explicit activation, input/read-only behavior, safety locks, bus protection and preserved preset edits/errors');

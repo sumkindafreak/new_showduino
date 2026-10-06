@@ -79,6 +79,14 @@ void page_p4_io_receive(const char *s){if(!s)return;unsigned n,m,h,p,d,a,l,index
   snprintf(buf,sizeof(buf),"Address 0x%02X | %s | %s\n%s",addr,c,r,mx?"Behind multiplexer: assignment editing unavailable":addr==0x18?"Internal audio: protected":configured?"Configured preset":"Unconfigured device");lv_label_set_text(busDevice,buf);
   if(!busDirty){for(unsigned i=0;i<4;i++)if(!strcmp(c,chips[i]))chip=i;for(unsigned i=0;i<7;i++)if(!strcmp(r,roles[i]))role=i;busLabels();}render();return;
  }
- if(!strncmp(s,"STATE:IO:RESULT:",16)){page_p4_io_feedback(s+16);request("OUTPUTS:IO:STATUS");}
+ if(!strncmp(s,"STATE:IO:RESULT:",16)){
+  const char *result=s+16;
+  if(strstr(result,"CONFIG:SAVED"))page_p4_io_feedback("Settings saved. Line left inactive.");
+  else if(strstr(result,"RAM_ONLY_SD_ERROR"))page_p4_io_feedback("SD save failed. Settings are temporary.");
+  else if(strstr(result,"ERROR")||strstr(result,"REJECTED"))page_p4_io_feedback("P4 rejected request. Check configuration.");
+  else if(strstr(result,":OK"))page_p4_io_feedback("Request accepted. Check reported state.");
+  else page_p4_io_feedback(result);
+  request("OUTPUTS:IO:STATUS");
+ }
  if(!strncmp(s,"STATE:BUS:RESULT:",17)){lv_label_set_text(busFeedback,s+17);if(strstr(s+17,"Assignment saved."))busDirty=false;fetchBus();}
 }
