@@ -8,7 +8,7 @@ bool audioCodecReady();
 bool audioCodecSetVolume(uint8_t percent);
 void audioCodecMute(bool mute);
 void audioCodecSetPa(bool on);
-void audioCodecApplyOutput(const char *mode);
+bool audioCodecApplyOutput(const char *mode);
 const char *audioCodecOutputName();
 bool audioCodecHpInserted();
 uint8_t audioCodecI2cAddress();

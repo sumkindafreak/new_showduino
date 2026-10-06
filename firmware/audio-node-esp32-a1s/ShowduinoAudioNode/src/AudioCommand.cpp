@@ -232,6 +232,8 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   } else {
     audioCodecSetVolume(audibleVolume());
   }
+  SD_LOGI("AUDIO", "Playback output=%s volume=%u", audioCodecOutputName(),
+          (unsigned)audibleVolume());
   char st[96];
   audioProtocolFormatStarted(st, sizeof(st), seq, sActiveRel);
   report(st, seq);

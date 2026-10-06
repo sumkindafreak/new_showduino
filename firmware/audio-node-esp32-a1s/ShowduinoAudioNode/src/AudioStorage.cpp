@@ -67,9 +67,9 @@ static bool writeConfig() {
            (unsigned)sCfg.duckVolume, sound);
   File f = SD.open(PATH_AUDIO_CONFIG, FILE_WRITE);
   if (!f) return false;
-  f.print(body);
+  const bool complete = f.print(body) == strlen(body);
   f.close();
-  return true;
+  return complete;
 }
 
 bool audioStorageWriteConfig() { return writeConfig(); }
@@ -146,6 +146,16 @@ bool audioStorageWritable() { return sWritable; }
 bool audioStorageConfigFault() { return sConfigFault; }
 fs::FS &audioStorageFs() { return SD; }
 const ShowduinoAudioConfig &audioStorageConfig() { return sCfg; }
+
+bool audioStorageSetOutput(const char *mode) {
+  if (!showduino_audio_output_ok(mode) || !sReady || !sWritable) return false;
+  char previous[sizeof(sCfg.output)];
+  memcpy(previous, sCfg.output, sizeof(previous));
+  snprintf(sCfg.output, sizeof(sCfg.output), "%s", mode);
+  if (writeConfig()) return true;
+  memcpy(sCfg.output, previous, sizeof(previous));
+  return false;
+}
 
 void audioStorageSetVolume(uint8_t percent) {
   sCfg.volume = (uint8_t)showduino_audio_clamp_volume(percent);

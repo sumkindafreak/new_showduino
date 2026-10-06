@@ -115,6 +115,15 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <div class="card">
 <label>Node name</label><input id="name" maxlength="24">
 <div class="row"><button class="act" id="save">SAVE NAME</button></div>
+<label>Audio output</label><select id="output">
+<option value="SPEAKER">Speaker connectors</option>
+<option value="HEADPHONE">Headphone jack</option>
+<option value="LINE">Both outputs (external amplifier)</option>
+<option value="AUTO">Detect headphones at startup</option>
+</select>
+<div class="row"><button class="act" id="saveoutput">SAVE OUTPUT</button></div>
+<p id="outputresult"></p>
+<p>Stop playback and clear emergency before changing the audio output.</p>
 <p>Live playback is never saved as a boot state.</p>
 </div>
 </section>
@@ -123,6 +132,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 const $=id=>document.getElementById(id);
 let S=null;
 let pixelCountDirty=false;
+let outputDirty=false;
 function kv(el,rows){el.innerHTML=rows.map(r=>`<div>${r[0]}</div><div class="${r[2]||''}">${r[1]}</div>`).join('')}
 async function load(){
   S=await (await fetch('/api/status')).json();
@@ -133,13 +143,17 @@ async function load(){
   const emergency=!!(S.emergency||S.pixel.emergency);
   const setupAllowed=!S.pixel.busy&&!emergency;
   document.querySelectorAll('button.act').forEach(b=>{
-    if(b.id==='save') return;
+    if(b.id==='save'||b.id==='saveoutput') return;
     const c=b.dataset.c||'';
     if(c==='PIXEL:COUNT'||c==='PIXEL:INIT') b.disabled=emergency||(owned&&!setupAllowed);
     else if(c==='STATUS:LED:TEST') b.disabled=emergency;
     else b.disabled=owned;
   });
   $('pixcount').disabled=emergency||(owned&&!setupAllowed);
+  const outputAllowed=!emergency&&!['LOADING','PLAYING','LOOPING','PAUSED','RECORDING'].includes(S.playback);
+  $('output').disabled=!outputAllowed;
+  $('saveoutput').disabled=!outputAllowed;
+  if(!outputDirty) $('output').value=S.outputConfigured||S.output||'SPEAKER';
   $('vol').disabled=owned; $('asset').disabled=owned;
   kv($('statuskv'),[
     ['Owner',S.owner,owned?'warn':''],
@@ -211,6 +225,13 @@ document.querySelectorAll('button.act[data-c]').forEach(b=>b.onclick=()=>{
   send(c);
 });
 $('vol').onchange=()=>send('AUDIO:NODE:VOLUME:'+$('vol').value);
+$('output').onchange=()=>{outputDirty=true;};
+$('saveoutput').onclick=async()=>{
+  const result=await (await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output:$('output').value})})).json();
+  if(result.ok){outputDirty=false; $('outputresult').textContent='Audio output saved.';}
+  else $('outputresult').textContent=result.error||'Could not save audio output.';
+  await load();
+};
 $('save').onclick=async()=>{
   await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value})});
   load();
@@ -279,6 +300,8 @@ static void handleStatus() {
   json += SHOWDUINO_AUDIO_NODE_CODEC;
   json += "\",\"output\":\"";
   json += audioCodecOutputName();
+  json += "\",\"outputConfigured\":\"";
+  json += audioStorageConfig().output;
   json += "\",\"fault\":\"";
   json += showduino_audio_fail_name(audioNodeStateFault());
   json += "\",\"emergency\":";
@@ -353,11 +376,37 @@ static void handleConfigGet() {
   jsonEsc(name, json);
   json += "\",\"volumeDefault\":";
   json += String((unsigned)audioStorageConfig().volume);
-  json += "}";
+  json += ",\"output\":\"";
+  json += audioStorageConfig().output;
+  json += "\"}";
   sServer.send(200, "application/json", json);
 }
 
 static void handleConfigPost() {
+  const String body = sServer.hasArg("plain") ? sServer.arg("plain") : sServer.arg(0);
+  char output[16];
+  if (extractJsonString(body, "output", output, sizeof(output))) {
+    if (!showduino_audio_output_ok(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"INVALID_OUTPUT\"}");
+      return;
+    }
+    if (audioOwnerMode() == SHOWDUINO_OWNER_EMERGENCY ||
+        audioNodeState() == SHOWDUINO_AUDIO_ST_EMERGENCY ||
+        audioPixelEngineEmergency() || audioPlaybackActive() || audioPlaybackPaused() ||
+        audioInputRecording()) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Stop playback and clear emergency first.\"}");
+      return;
+    }
+    if (!audioStorageSetOutput(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Could not save output to SD.\"}");
+      return;
+    }
+    if (!audioCodecApplyOutput(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Codec output write failed.\"}");
+      return;
+    }
+    SD_LOGI("AUDIO", "Output -> %s (saved)", audioCodecOutputName());
+  }
   char name[32];
   if (extractJsonString(sServer.arg("plain"), "name", name, sizeof(name)) ||
       extractJsonString(sServer.arg(0), "name", name, sizeof(name))) {

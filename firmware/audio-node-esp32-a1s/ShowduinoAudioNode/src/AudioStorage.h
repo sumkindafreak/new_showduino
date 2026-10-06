@@ -12,6 +12,7 @@ bool audioStorageConfigFault();
 fs::FS &audioStorageFs();
 const ShowduinoAudioConfig &audioStorageConfig();
 void audioStorageSetVolume(uint8_t percent);
+bool audioStorageSetOutput(const char *mode);
 void audioStorageLoop();
 bool audioStorageResolve(const char *rel, char *out, size_t outLen);
 bool audioStorageExists(const char *absPath);
