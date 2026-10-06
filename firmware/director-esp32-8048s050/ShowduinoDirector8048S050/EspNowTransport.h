@@ -98,7 +98,12 @@ public:
 
   bool sendCommand(const String &command) {
     if (!online) return false;
+    // Serialize sends through the Wi-Fi callback. A busy radio is not a
+    // reason to discard the next timeline cue or pretend UART delivered it.
+    uint32_t waitFrom = millis();
+    while (sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
     if (sendBusy) return false;
+    if (!command.length() || command.length() >= SHOWDUINO_ESPNOW_COMMAND_MAX) return false;
 
     ShowduinoEspNowPacket packet = {};
     packet.magic = SHOWDUINO_ESPNOW_MAGIC;
@@ -121,8 +126,10 @@ public:
       return false;
     }
 
-    lastSendOk = true;
-    return true;
+    waitFrom = millis();
+    while (sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
+    lastSendOk = !sendBusy && callbackSeen && lastCallbackOk;
+    return lastSendOk;
   }
 
   bool popReply(String &outLine) {
