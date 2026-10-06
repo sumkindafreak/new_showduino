@@ -22,4 +22,6 @@ bool pluginBusPing(const PluginLocation &loc);
 PluginConfigLoadResult pluginBusRoleFileResult();
 const PluginRoleFile *pluginBusRoleFile();
 
+bool pluginBusAssignPreset(uint8_t address,const char *chip,const char *role,char *reply,size_t replyLen);
+
 #endif

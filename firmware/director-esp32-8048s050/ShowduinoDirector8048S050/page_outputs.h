@@ -14,3 +14,5 @@ void page_outputs_set_model(const OutputsModel &model);
 void page_outputs_feedback(const char *text);
 void page_outputs_apply_theme();
 void page_outputs_report_received();
+
+void page_outputs_select(unsigned tab);

@@ -32,6 +32,7 @@
 #include "page_04_nodes.h"
 #include "page_05_audio_node.h"
 #include "page_outputs.h"
+#include "page_p4_io.h"
 #include "../../../protocol/showduino_mosfet_node.h"
 #include "page_lamp_node.h"
 #include "page_06_diagnostics.h"
@@ -2807,6 +2808,19 @@ private:
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
       return;
     }
+    if (command.startsWith("OUTPUTS:TAB:")) {
+      unsigned tab=command.substring(12).toInt();page_outputs_select(tab);
+      if(commandCallback)commandCallback(tab==1?"IO:STATUS":tab==2?"PLUGIN:PAGE:0":"STATUS:REQUEST");return;
+    }
+    if(command.startsWith("OUTPUTS:IO:") || command.startsWith("OUTPUTS:PLUGIN:")) {
+      const bool up=linkState==LINK_READY&&liveStageConnected;
+      const bool blocked=emergencyLocked||mirroredState==SHOW_STATE_EMERGENCY_STOP||mirroredState==SHOW_STATE_RUNNING||mirroredState==SHOW_STATE_PAUSED;
+      String request=command.substring(8);
+      const bool read=request=="IO:STATUS"||request.startsWith("PLUGIN:PAGE:");
+      const bool safe=request=="IO:ALL:OFF"||request=="IO:1:OFF"||request=="IO:2:OFF";
+      if(!up||(!read&&!safe&&blocked)){page_p4_io_feedback("Controls locked / P4 disconnected.");return;}
+      if(commandCallback){commandCallback(request.startsWith("IO:")?String("DESK:")+request:request);if(!read)page_p4_io_feedback("Request sent. Awaiting P4 confirmation.");}return;
+    }
     if (command == "OUTPUTS:BACK") { showDesktop(); maybeRestoreEmergencyOverlay(); return; }
     if (command == "OUTPUTS:REFRESH") {
       if (commandCallback) commandCallback("STATUS:REQUEST");
@@ -4303,6 +4317,7 @@ private:
                       mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
     model.showRunning = mirroredState == SHOW_STATE_RUNNING || mirroredState == SHOW_STATE_PAUSED;
     page_outputs_set_model(model);
+    page_p4_io_locks(model.linked,model.emergency||model.showRunning);
   }
   void showOutputs() {
     if (!displayManager_.showPage(PAGE_OUTPUTS)) { showDesktop(); return; }

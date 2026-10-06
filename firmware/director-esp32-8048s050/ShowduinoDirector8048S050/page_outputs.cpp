@@ -1,10 +1,12 @@
 #include "page_outputs.h"
+#include "page_p4_io.h"
 #include "ShowduinoOsUi.h"
 #include "../../../protocol/showduino_mosfet_node.h"
 #include <stdio.h>
 #include <string.h>
 
 static OutputsModel sModel;
+static lv_obj_t *mosfetPanel, *ioPanel, *busPanel;
 static outputs_command_fn sCallback;
 static lv_obj_t *sSummary, *sFeedback, *sIdentify, *sAllOff;
 static lv_obj_t *sSlider[4], *sLive[4], *sRequested[4], *sApply[4], *sOff[4];
@@ -50,10 +52,26 @@ static void channelAction(lv_event_t *event) {
                 index + 1, (unsigned)lv_slider_get_value(sSlider[index]));
   if (sCallback) sCallback(command);
 }
+static lv_obj_t *panel(lv_obj_t *parent) {
+ auto *o=lv_obj_create(parent);lv_obj_remove_style_all(o);lv_obj_set_pos(o,0,0);lv_obj_set_size(o,800,OS_DOCK_Y);lv_obj_remove_flag(o,LV_OBJ_FLAG_SCROLLABLE);lv_obj_remove_flag(o,LV_OBJ_FLAG_CLICKABLE);return o;
+}
+void page_outputs_select(unsigned tab) {
+ if(!mosfetPanel)return;
+ if(tab==2)page_p4_bus_reset();
+ lv_obj_add_flag(mosfetPanel,LV_OBJ_FLAG_HIDDEN);lv_obj_add_flag(ioPanel,LV_OBJ_FLAG_HIDDEN);lv_obj_add_flag(busPanel,LV_OBJ_FLAG_HIDDEN);
+ lv_obj_remove_flag(tab==1?ioPanel:tab==2?busPanel:mosfetPanel,LV_OBJ_FLAG_HIDDEN);
+}
 void page_outputs_create(lv_obj_t *parent, outputs_command_fn callback) {
   sCallback = callback;
   button(parent, OS_MARGIN, OS_TITLE_Y, 84, OS_TITLE_H, "BACK", "OUTPUTS:BACK");
-  label(parent, 108, OS_TITLE_Y + 10, "OUTPUTS / MOSFET");
+  label(parent, 108, OS_TITLE_Y + 10, "OUTPUTS");
+  button(parent,430,OS_TITLE_Y,106,OS_TITLE_H,"MOSFET","OUTPUTS:TAB:0");
+  button(parent,544,OS_TITLE_Y,106,OS_TITLE_H,"P4 I/O","OUTPUTS:TAB:1");
+  button(parent,658,OS_TITLE_Y,130,OS_TITLE_H,"I2C BUS","OUTPUTS:TAB:2");
+  mosfetPanel=panel(parent);ioPanel=panel(parent);busPanel=panel(parent);
+  page_p4_io_create(ioPanel,callback);page_p4_bus_create(busPanel,callback);
+  parent=mosfetPanel;
+  page_outputs_select(0);
   sSummary = label(parent, OS_MARGIN, OS_SUMMARY_Y, "Waiting for MOSFET status...");
   lv_obj_set_width(sSummary, OS_CONTENT_FULL_W);
   const int footerY = OS_DOCK_Y - OS_GAP - 44;

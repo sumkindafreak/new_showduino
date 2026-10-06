@@ -523,6 +523,7 @@ void handleStageLine(String line) {
 #endif
   }
   {
+    page_p4_io_receive(line.c_str());
     ShowduinoMosfetDetailWire mdet{};
     if (showduino_parse_state_node_mosfet_detail(line.c_str(), &mdet)) {
       ui.setMosfetNodeDetail(mdet);
