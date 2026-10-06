@@ -182,6 +182,7 @@ static void card_event(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   const Page04Role role = (Page04Role)(intptr_t)lv_event_get_user_data(e);
   if (role < 0 || role >= PAGE04_ROLE_COUNT) return;
+  if (role == PAGE04_ROLE_MOSFET) { emit(PAGE04_CMD_MOSFET_OPEN); return; }
   open_sheet(role);
 }
 

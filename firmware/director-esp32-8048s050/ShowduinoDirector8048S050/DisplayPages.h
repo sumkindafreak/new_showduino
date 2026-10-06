@@ -86,6 +86,7 @@ inline const DisplayPage *displayPageById(DisplayPageId id) {
     case PAGE_DIAGNOSTICS: return &kDiagnosticsPage;
     case PAGE_NODES: return &kNodesPage;
     case PAGE_AUDIO_NODE: return &kAudioNodePage;
+    case PAGE_OUTPUTS: return &kNodesPage;
     case PAGE_LAMP_NODE: return &kLampNodePage;
     case PAGE_SETTINGS: return &kSettingsPage;
     case PAGE_AUDIO: return &kAudioPage;
@@ -152,6 +153,7 @@ inline const char *displayPageTitle(DisplayPageId id) {
     case PAGE_DIAGNOSTICS: return "DIAGNOSTICS";
     case PAGE_NODES: return "NODES";
     case PAGE_AUDIO_NODE: return "AUDIO NODE";
+    case PAGE_OUTPUTS: return "OUTPUTS";
     case PAGE_LAMP_NODE: return "LAMP NODE";
     case PAGE_EMERGENCY: return "EMERGENCY";
     default: return "SHOWDUINO";
