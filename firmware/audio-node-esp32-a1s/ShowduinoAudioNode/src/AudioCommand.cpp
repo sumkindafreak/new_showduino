@@ -18,6 +18,8 @@
 #include "../../../protocol/showduino_log.h"
 
 static uint32_t sActiveSeq = 0;
+// All command handlers run on the main loop; keep the 3 KB inventory off task stacks.
+static char sInventoryNames[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
 static char sActiveRel[SHOWDUINO_AUDIO_PATH_MAX + 1] = "";
 static uint32_t sLastAnnounce = 0;
 static uint32_t sApDueMs = 0;
@@ -608,7 +610,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     return;
   }
   if (cmd == SHOWDUINO_AUDIO_CMD_INVENTORY) {
-    char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
+    auto &names = sInventoryNames;
     const uint16_t total = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
     const uint16_t page = (uint16_t)atoi(arg);
     uint16_t start = 0, count = 0;
@@ -667,7 +669,7 @@ void audioCommandLocalTestToggle() {
     audioCommandApply("AUDIO:NODE:STOP", 0, false);
     return;
   }
-  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
+  auto &names = sInventoryNames;
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   const char *rel = SHOWDUINO_AUDIO_TEST_FILE;
   if (n > 0) {
@@ -685,7 +687,7 @@ void audioCommandLocalStop() {
 }
 
 static void stepLocal(int dir) {
-  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
+  auto &names = sInventoryNames;
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   if (n == 0) {
     Serial.println("[AUDIO] No local assets");

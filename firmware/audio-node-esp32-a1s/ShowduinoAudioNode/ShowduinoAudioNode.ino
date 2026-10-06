@@ -141,6 +141,7 @@ void setup() {
 
 void loop() {
   const uint32_t t0 = micros();
+  audioEspNowProcessCommands();
   pollUsb();
   pollButtons();
   audioStorageLoop();
