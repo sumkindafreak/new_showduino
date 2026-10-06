@@ -67,9 +67,9 @@ static bool writeConfig() {
            (unsigned)sCfg.duckVolume, sound);
   File f = SD.open(PATH_AUDIO_CONFIG, FILE_WRITE);
   if (!f) return false;
-  f.print(body);
+  const bool complete = f.print(body) == strlen(body);
   f.close();
-  return true;
+  return complete;
 }
 
 bool audioStorageWriteConfig() { return writeConfig(); }
@@ -147,6 +147,16 @@ bool audioStorageConfigFault() { return sConfigFault; }
 fs::FS &audioStorageFs() { return SD; }
 const ShowduinoAudioConfig &audioStorageConfig() { return sCfg; }
 
+bool audioStorageSetOutput(const char *mode) {
+  if (!showduino_audio_output_ok(mode) || !sReady || !sWritable) return false;
+  char previous[sizeof(sCfg.output)];
+  memcpy(previous, sCfg.output, sizeof(previous));
+  snprintf(sCfg.output, sizeof(sCfg.output), "%s", mode);
+  if (writeConfig()) return true;
+  memcpy(sCfg.output, previous, sizeof(previous));
+  return false;
+}
+
 void audioStorageSetVolume(uint8_t percent) {
   sCfg.volume = (uint8_t)showduino_audio_clamp_volume(percent);
   sVolDirty = true;
@@ -202,30 +212,33 @@ bool audioStorageExists(const char *absPath) {
   return sReady && absPath && SD.exists(absPath);
 }
 
-static void collectDir(const char *relDir, char names[][40], uint16_t maxNames, uint16_t *n) {
-  char abs[80];
-  if (relDir && relDir[0]) {
-    snprintf(abs, sizeof(abs), "%s/%s", PATH_AUDIO_ROOT, relDir);
-  } else {
-    strncpy(abs, PATH_AUDIO_ROOT, sizeof(abs) - 1);
-  }
-
+static void collectDir(const char *relDir, char names[][SHOWDUINO_AUDIO_REL_MAX + 1], uint16_t maxNames, uint16_t *n) {
+  char abs[SHOWDUINO_AUDIO_PATH_MAX + 1];
+  const int written = relDir && relDir[0]
+      ? snprintf(abs, sizeof(abs), "%s/%s", PATH_AUDIO_ROOT, relDir)
+      : snprintf(abs, sizeof(abs), "%s", PATH_AUDIO_ROOT);
+  if (written < 0 || (size_t)written >= sizeof(abs)) return;
   File dir = SD.open(abs);
-  if (!dir) return;
+  if (!dir || !dir.isDirectory()) return;
   File e = dir.openNextFile();
   while (e && *n < maxNames) {
-    if (!e.isDirectory()) {
-      const char *nm = e.name();
-      const char *base = strrchr(nm, '/');
-      base = base ? base + 1 : nm;
-      if (showduino_audio_has_wav_ext(base)) {
-        char entry[40];
-        if (relDir && relDir[0]) snprintf(entry, sizeof(entry), "%s/%s", relDir, base);
-        else strncpy(entry, base, sizeof(entry) - 1);
-        entry[39] = '\0';
-        strncpy(names[*n], entry, 39);
-        names[*n][39] = '\0';
-        (*n)++;
+    const char *nm = e.name();
+    const char *base = strrchr(nm, '/');
+    base = base ? base + 1 : nm;
+    char entry[SHOWDUINO_AUDIO_REL_MAX + 1];
+    const int length = relDir && relDir[0]
+        ? snprintf(entry, sizeof(entry), "%s/%s", relDir, base)
+        : snprintf(entry, sizeof(entry), "%s", base);
+    if (length > 0 && (size_t)length < sizeof(entry) && strcmp(base, ".") && strcmp(base, "..")) {
+      if (e.isDirectory()) collectDir(entry, names, maxNames, n);
+      else if (showduino_audio_has_wav_ext(base)) {
+        char playable[SHOWDUINO_AUDIO_PATH_MAX + 1];
+        // Only list paths accepted by playback, including its absolute limit.
+        if (audioStorageResolve(entry, playable, sizeof(playable))) {
+          strncpy(names[*n], entry, SHOWDUINO_AUDIO_REL_MAX);
+          names[*n][SHOWDUINO_AUDIO_REL_MAX] = '\0';
+          (*n)++;
+        }
       }
     }
     e.close();
@@ -290,21 +303,15 @@ bool audioStorageShowLibraryPage(uint16_t page, char *path, size_t pathLen) {
   return true;
 }
 
-uint16_t audioStorageListWav(char names[][40], uint16_t maxNames) {
+uint16_t audioStorageListWav(char names[][SHOWDUINO_AUDIO_REL_MAX + 1], uint16_t maxNames) {
   return audioStorageInventory(names, maxNames);
 }
 
-uint16_t audioStorageInventory(char names[][40], uint16_t maxNames) {
+uint16_t audioStorageInventory(char names[][SHOWDUINO_AUDIO_REL_MAX + 1], uint16_t maxNames) {
   uint16_t n = 0;
   if (!sReady || !names || maxNames == 0) return 0;
   if (maxNames > SHOWDUINO_AUDIO_INV_MAX) maxNames = SHOWDUINO_AUDIO_INV_MAX;
   collectDir("", names, maxNames, &n);
-  collectDir("ambience", names, maxNames, &n);
-  collectDir("effects", names, maxNames, &n);
-  collectDir("dialogue", names, maxNames, &n);
-  collectDir("music", names, maxNames, &n);
-  collectDir("stingers", names, maxNames, &n);
-  collectDir("test", names, maxNames, &n);
   return n;
 }
 

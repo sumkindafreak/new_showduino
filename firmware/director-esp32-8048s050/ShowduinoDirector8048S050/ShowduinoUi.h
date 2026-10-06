@@ -2955,7 +2955,12 @@ private:
       sendAudioNodeCmd("AUDIO:NODE:TEST");
       return;
     }
+    if (command == PAGE05_CMD_MIC) {
+      page_05_audio_node_show_mic(true);
+      return;
+    }
     if (command == PAGE05_CMD_SELECT) {
+      sendAudioNodeCmd("AUDIO:NODE:INVENTORY:0");
       page_05_audio_node_show_select(true);
       return;
     }
@@ -2964,6 +2969,7 @@ private:
       return;
     }
     if (command == PAGE05_CMD_CLOSE) {
+      page_05_audio_node_show_mic(false);
       page_05_audio_node_show_details(false);
       page_05_audio_node_show_select(false);
       return;
