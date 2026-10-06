@@ -2856,6 +2856,12 @@ private:
       }
       return;
     }
+    if (command == PAGE04_CMD_MOSFET_OPEN) {
+      page_outputs_select(0);
+      showOutputs();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
     if (command == PAGE04_CMD_MOSFET_STATUS) {
       if (commandCallback) commandCallback("STATUS:REQUEST");
       return;
