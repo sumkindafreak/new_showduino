@@ -8,6 +8,14 @@ static uint8_t sAddr = SHOWDUINO_AUDIO_I2C_ADDR;
 static char sErr[40] = "";
 static char sOutput[12] = "SPEAKER";
 static uint8_t sLastPercent = 80;
+static bool sMuted = true;
+static bool sAutoOutput = false;
+static bool sOutputRetryPending = false;
+static bool sHpCandidate = false;
+static uint32_t sHpChangedAt = 0;
+static uint32_t sOutputAttemptAt = 0;
+static constexpr uint32_t kJackDebounceMs = 150;
+static constexpr uint32_t kOutputRetryMs = 1000;
 
 static void setErr(const char *m) {
   strncpy(sErr, m ? m : "", sizeof(sErr) - 1);
@@ -87,6 +95,8 @@ bool audioCodecBegin() {
     audioCodecSetPa(false);
     return false;
   }
+  sMuted = false;
+  audioCodecSetPa(!strcmp(sOutput, "SPEAKER") && sLastPercent > 0);
   sReady = true;
   Serial.printf("[AUDIO] Codec initialized addr=0x%02X\n", (unsigned)sAddr);
   return true;
@@ -106,12 +116,54 @@ const char *audioCodecOutputName() { return sOutput; }
 
 bool audioCodecApplyOutput(const char *mode) {
   const char *use = mode && mode[0] ? mode : "SPEAKER";
-  if (!strcmp(use, "AUTO")) {
-    use = audioCodecHpInserted() ? "HEADPHONE" : "SPEAKER";
-  }
+  sAutoOutput = !strcmp(use, "AUTO");
+  sOutputRetryPending = false;
+  sHpCandidate = audioCodecHpInserted();
+  sHpChangedAt = millis();
+  sOutputAttemptAt = millis() - kOutputRetryMs;
+  if (sAutoOutput) use = sHpCandidate ? "HEADPHONE" : "SPEAKER";
   if (!showduino_audio_output_ok(use) || !strcmp(use, "AUTO")) use = "SPEAKER";
+  char previous[sizeof(sOutput)];
+  memcpy(previous, sOutput, sizeof(previous));
+  audioCodecSetPa(false);
   strncpy(sOutput, use, sizeof(sOutput) - 1);
-  return audioCodecSetVolume(sLastPercent);
+  if (audioCodecSetVolume(sLastPercent)) return true;
+  memcpy(sOutput, previous, sizeof(previous));
+  sOutputRetryPending = sAutoOutput;
+  sOutputAttemptAt = millis();
+  audioCodecSetPa(false);
+  return false;
+}
+
+void audioCodecService() {
+  if (!sReady || !sAutoOutput) return;
+  const uint32_t now = millis();
+  const bool inserted = audioCodecHpInserted();
+  if (inserted != sHpCandidate) {
+    sHpCandidate = inserted;
+    sHpChangedAt = now;
+    return;
+  }
+  if ((uint32_t)(now - sHpChangedAt) < kJackDebounceMs) return;
+  const char *target = inserted ? "HEADPHONE" : "SPEAKER";
+  if (!sOutputRetryPending && !strcmp(target, sOutput)) return;
+  if (sOutputRetryPending &&
+      (uint32_t)(now - sOutputAttemptAt) < kOutputRetryMs) return;
+  sOutputAttemptAt = now;
+  char previous[sizeof(sOutput)];
+  memcpy(previous, sOutput, sizeof(previous));
+  audioCodecSetPa(false);
+  snprintf(sOutput, sizeof(sOutput), "%s", target);
+  // Reapply the current fade/duck volume without changing playback or mute.
+  if (!audioCodecSetVolume(sLastPercent)) {
+    sOutputRetryPending = true;
+    memcpy(sOutput, previous, sizeof(previous));
+    audioCodecSetPa(false);
+    return;
+  }
+  sOutputRetryPending = false;
+  Serial.printf("[AUDIO] Headphones %s -> %s (AUTO)\n",
+                inserted ? "inserted" : "removed", sOutput);
 }
 
 bool audioCodecSetVolume(uint8_t percent) {
@@ -128,13 +180,13 @@ bool audioCodecSetVolume(uint8_t percent) {
     audioCodecSetPa(false);
     return false;
   }
-  audioCodecSetPa(!strcmp(sOutput, "SPEAKER") && percent > 0);
+  audioCodecSetPa(!sMuted && !strcmp(sOutput, "SPEAKER") && percent > 0);
   return true;
 }
 
 void audioCodecMute(bool mute) {
-  wr(0x19, mute ? 0x24 : 0x00);
-  if (mute) audioCodecSetPa(false);
+  if (wr(0x19, mute ? 0x24 : 0x00)) sMuted = mute;
+  audioCodecSetPa(!sMuted && !strcmp(sOutput, "SPEAKER") && sLastPercent > 0);
 }
 
 void audioCodecSetPa(bool on) {

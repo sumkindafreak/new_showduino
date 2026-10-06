@@ -5,6 +5,7 @@
 
 bool audioCodecBegin();
 bool audioCodecReady();
+void audioCodecService();
 bool audioCodecSetVolume(uint8_t percent);
 void audioCodecMute(bool mute);
 void audioCodecSetPa(bool on);

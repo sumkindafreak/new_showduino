@@ -68,5 +68,7 @@ async function flush(){for(let i=0;i<10;i++)await Promise.resolve();}
   assert.equal(buttons[3].disabled,true,'Emergency indication takes priority over tests');
   status.emergency=false; status.owner='STANDALONE'; status.pixel.ready=true; status.pixel.busy=false; await run('load()');
   assert.equal(buttons[0].disabled,false,'Standalone permits reconfiguration');
+  status.outputConfigured='AUTO'; status.output='HEADPHONE'; await run('load()');
+  assert.equal(element('output').value,'AUTO','Polling preserves AUTO even when the active route is HEADPHONE');
   console.log('Passed: initial setup, ownership locks, emergency locks, edited-value persistence, headphone output setup and failed-save recovery');
 })().catch(e=>{console.error(e);process.exitCode=1});

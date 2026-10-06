@@ -119,7 +119,7 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <option value="SPEAKER">Speaker connectors</option>
 <option value="HEADPHONE">Headphone jack</option>
 <option value="LINE">Both outputs (external amplifier)</option>
-<option value="AUTO">Detect headphones at startup</option>
+<option value="AUTO">Automatic headphone detection</option>
 </select>
 <div class="row"><button class="act" id="saveoutput">SAVE OUTPUT</button></div>
 <p id="outputresult"></p>

@@ -147,6 +147,7 @@ void loop() {
   audioStorageLoop();
   audioInputService();
   audioCommandService();
+  audioCodecService();
   audioPixelEngineService();
   audioPixelProtocolService();
   nodeDiagServiceLed();
