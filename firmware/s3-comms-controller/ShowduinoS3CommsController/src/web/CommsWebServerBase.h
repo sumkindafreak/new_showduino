@@ -1,3 +1,5 @@
+#include "../../../../../protocol/showduino_io_command.h"
+#include "../../../../../protocol/showduino_ambience_command.h"
 #include "CommsWebServer.h"
 #include "CommsWebTunnel.h"
 #include "WebAssets.h"
@@ -154,6 +156,8 @@ static void normalizeWebCmd(String &cmd) {
 }
 
 static bool webCommandAllowed(const String &cmd) {
+  if(cmd.startsWith("IO:"))return showduinoIoCommandAllowed(cmd.c_str());
+  if(cmd.startsWith("AMBIENCE:"))return showduinoAmbienceCommandAllowed(cmd.c_str());
   if (cmd == "SHOW:START" || cmd == "SHOW:RUN" || cmd == "SHOW:PAUSE" ||
       cmd == "SHOW:RESUME" || cmd == "SHOW:STOP" || cmd == "STOP:ALL") {
     return true;

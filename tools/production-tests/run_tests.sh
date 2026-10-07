@@ -28,7 +28,7 @@ g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
 "$HERE/version_tests"
 
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
-  -o "$HERE/shdo_tests" "$HERE/test_shdo.cpp"
+  -o "$HERE/shdo_tests" "$HERE/test_shdo.cpp" "$SRC_DIR/ProductionFormat.cpp"
 "$HERE/shdo_tests"
 
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \

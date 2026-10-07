@@ -659,6 +659,7 @@ void sendStatus() {
   pixelNodeLinkPublishToDirector();
   mosfetNodeLinkPublishToDirector();
   showduinoIOPublishState();
+  {char reply[240];stageAmbienceHandleCommand("AMBIENCE:STATUS",reply,sizeof(reply));sendCommandReply(reply);}
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -872,6 +873,7 @@ void handleShowCommand(const String &command) {
     bool stopped = gRuntime.handleStop(now, &gEngine);
     if (!emergencyLocked) {
       stageAudioStopShow();
+      stageAmbienceStop(); // Normal show stop also ends background ambience.
       showPixelsBlackout();
       mosfetNodeLinkAllOff("SHOW_STOP");
       showduinoIOAllOff("SHOW_STOP");
@@ -1278,9 +1280,10 @@ static void dispatchCommand(const String &command) {
   }
 
   if (command.startsWith("AMBIENCE:")) {
-    char reply[180];
+    char reply[240];
     if (stageAmbienceHandleCommand(command.c_str(), reply, sizeof(reply))) {
       if (reply[0]) sendCommandReply(reply);
+      if(command!="AMBIENCE:STATUS"&&!command.startsWith("AMBIENCE:FILE:")){stageAmbienceHandleCommand("AMBIENCE:STATUS",reply,sizeof(reply));sendCommandReply(reply);}
     }
     return;
   }

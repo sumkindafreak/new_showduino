@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../../protocol/showduino_shdo.h"
+#include "../../firmware/stage-engine-p4/ShowduinoStageEngineP4/src/ProductionFormat.h"
 
 static bool loadFile(const char *path, std::string *out) {
   if (!path || !out) return false;
@@ -258,6 +259,12 @@ int main() {
   }
   expect(sawEstopPixelFire, "estop pixel FX uses ESTOP:NODE:PIXEL prefix");
   expect(!sawEstopFakeLed, "estop pixels must not invent LED-XX identity");
+  char estopTimelineJson[16384]={};
+  const size_t estopTimelineBytes=shdoWriteTimelineJson(estopTimelineJson,sizeof(estopTimelineJson),estopPxCues,estopPxCount);
+  ProductionCue persistedEstop[48]{};ProductionTimeline persistedTimeline{};ProductionParseResult persistResult{};
+  expect(estopTimelineBytes>0&&productionParseTimeline(estopTimelineJson,estopTimelineBytes,persistedEstop,48,&persistedTimeline,&persistResult),"compiled ESTOP pixel production reloads through P4 persistent parser");
+  expect(persistedTimeline.cueCount==estopPxCount,"persistent ESTOP roundtrip preserves every cue");
+  for(unsigned i=0;i<persistedTimeline.cueCount;++i)expect(!strcmp(persistedEstop[i].command,estopPxCues[i].command),"persistent ESTOP roundtrip preserves command order and content");
 
   static const char *kMissingPixel =
       "{\n"

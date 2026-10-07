@@ -340,6 +340,7 @@ void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
 
+  if(line.startsWith("AMBIENCE:")||line.startsWith("OK:AMBIENCE:")||line.startsWith("ERR:AMBIENCE:"))page_audio_system_apply_ambience(line.c_str());
   rxCount++;
   lastStageReplyMs = millis();
   linkLostLogged = false;

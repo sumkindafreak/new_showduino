@@ -264,7 +264,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
     setResult(result, ProductionParseResult::InvalidJson);
     return false;
   }
-  const bool hardwareCue = strcmp(cue->type, "PIXEL") == 0 ||
+  const bool hardwareCue = strcmp(cue->type, "ESTOP") == 0 ||
+                           strcmp(cue->type, "PIXEL") == 0 ||
                            strcmp(cue->type, "AUDIO") == 0 ||
                            strcmp(cue->type, "LAMP") == 0 ||
                            strcmp(cue->type, "MOSFET") == 0;
@@ -291,7 +292,8 @@ static bool parseCue(JsonReader &r, ProductionCue *cue, ProductionParseResult *r
     setResult(result, ProductionParseResult::MissingField);
     return false;
   }
-  if ((strcmp(cue->type, "PIXEL") == 0 && strncmp(cue->command, "PIXEL:", 6) != 0) ||
+  if ((strcmp(cue->type, "ESTOP") == 0 && strncmp(cue->command, "ESTOP:NODE:PIXEL:", 17) != 0) ||
+      (strcmp(cue->type, "PIXEL") == 0 && strncmp(cue->command, "PIXEL:", 6) != 0) ||
       (strcmp(cue->type, "AUDIO") == 0 && strncmp(cue->command, "AUDIO:NODE:", 11) != 0) ||
       (strcmp(cue->type, "LAMP") == 0 && strncmp(cue->command, "LAMP:", 5) != 0) ||
       (strcmp(cue->type, "MOSFET") == 0 && strncmp(cue->command, "MOSFET:NODE:", 12) != 0)) {

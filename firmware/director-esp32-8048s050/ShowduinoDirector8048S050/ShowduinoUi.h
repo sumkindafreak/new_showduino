@@ -4309,6 +4309,7 @@ private:
     updateStatusWidgets(true);
   }
   void showAudio() {
+    if(commandCallback)commandCallback("AMBIENCE:STATUS");
     if (displayManager_.showPage(PAGE_AUDIO)) {
       if (page_audio_system_is_active()) page_audio_system_apply_theme();
       refreshAudioPresentation();

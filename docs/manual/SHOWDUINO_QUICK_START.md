@@ -1,7 +1,7 @@
 # SHOWDUINO — Quick Start
 
-**For:** operators, attraction owners and first-time users  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e` · 26 September 2026  
+**For:** operators, attraction owners and first-time users\
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `6e73003e6aad573c08ac8f5742d202b80b1ee895` · 7 October 2026\
 **Status:** Release-candidate quick start. Read the full User Manual before putting a new installation into public operation.
 
 ---
@@ -235,3 +235,10 @@ At this manual baseline:
 - the product remains `1.0.0-rc.1`, not final `v1.0.0`.
 
 For complete operating and technical information, use `SHOWDUINO_USER_MANUAL.md`.
+
+## Additional checks for the current P4/MOSFET build
+
+- Verify required MOSFET channels start OFF; Emergency must keep powered outputs OFF even when identifier pixels show white.
+- If PCM5102A ambience is commissioned, confirm its separate P4 SD asset and test Emergency shutdown. Emergency must replace ambience with the emergency WAV; clear must leave it silent. Normal show STOP must stop ambience too.
+- If generic I/O is commissioned, verify GPIO46/47 inactive polarity at boot, pulse expiry, and Emergency/show-stop shutdown. Inputs currently report events; automatic scene binding is not implemented.
+- Confirm status indication against the [colour standard](../status-colour-standard.md); a violet/cyan ready/link indicator is not a theatrical output test.

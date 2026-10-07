@@ -1,0 +1,44 @@
+name: Active firmware and console host checks
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/stage-engine-p4/**'
+      - 'firmware/director-esp32-8048s050/**'
+      - 'firmware/s3-comms-controller/**'
+      - 'protocol/**'
+      - 'web/**'
+      - 'tools/**'
+      - '.github/workflows/software-host-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/stage-engine-p4/**'
+      - 'protocol/**'
+      - 'web/**'
+      - 'tools/**'
+      - '.github/workflows/software-host-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: P4 ambience and browser command policy
+        run: bash tools/ambience-tests/run_tests.sh
+      - name: Persistent format, store, runtime, SHDO roundtrip and web protocol
+        run: bash tools/production-tests/run_tests.sh
+      - name: Studio authoring and live Outputs controls
+        run: |
+          node tools/studio-v4-tests/test_pixel_authoring.js
+          node tools/studio-v4-tests/test_outputs_controls.js
+          node --input-type=module --check < web/showduino-studio/js/pages/Outputs.js
+      - name: Whitespace check
+        run: git diff --check
