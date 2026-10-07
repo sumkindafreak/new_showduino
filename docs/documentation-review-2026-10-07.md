@@ -1,5 +1,7 @@
 # Showduino documentation review — 7 October 2026
 
+Later software changes are recorded in [software-gap-closure-2026-10-07.md](software-gap-closure-2026-10-07.md). Statements below about missing ambience/browser controls or ESTOP persistence describe the original review baseline.
+
 Reviewed source: `main` at `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`. This change includes the requested P4 Emergency ambience policy update in addition to documentation corrections. Manual revision 0.3-RC describes that final change; the SHA identifies the source reviewed before this patch, not an accepted set of installed binaries.
 
 ## Component inventory

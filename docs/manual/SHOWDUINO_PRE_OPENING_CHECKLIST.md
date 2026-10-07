@@ -1,7 +1,7 @@
 # SHOWDUINO — Pre-Opening Checklist
 
 **Use:** before admitting guests / beginning public operation\
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`\
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `6e73003e6aad573c08ac8f5742d202b80b1ee895`\
 **Date:** ____________________  **Attraction/production:** ____________________  **Operator:** ____________________
 
 > **People first. Show second. Hardware third.** If any check reveals a safety concern, keep the attraction closed until the physical issue and Showduino state are understood.
@@ -121,7 +121,7 @@ Wireless Emergency Nodes are **assert-only** and must never be used as a way to 
 - [ ] PAUSE works if used by the attraction.
 - [ ] STOP works and leaves the attraction in the intended idle/safe state.
 
-**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence and full theatrical coverage remain limited). Use only the production/deploy path validated for this installation.
+**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` / `ESTOP`-pixel / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence is host-tested; full theatrical coverage and physical acceptance remain limited). Use only the production/deploy path validated for this installation.
 
 ---
 
@@ -243,3 +243,9 @@ Correct the actual fault, then re-run the affected checklist section before open
 - If PCM5102A ambience is commissioned, confirm its separate P4 SD asset and test Emergency shutdown. Emergency must replace ambience with the emergency WAV; clear must leave it silent. Normal show STOP must stop ambience too.
 - If generic I/O is commissioned, verify GPIO46/47 inactive polarity at boot, pulse expiry, and Emergency/show-stop shutdown. Inputs currently report events; automatic scene binding is not implemented.
 - Confirm status indication against the [colour standard](../status-colour-standard.md); a violet/cyan ready/link indicator is not a theatrical output test.
+
+## Follow-up ambience / I/O operator checks
+
+- Browse SD WAVs and Play/Loop/Stop from Director Settings → Audio System and System Console Outputs. Confirm filenames, volume and P4 status replies.
+- Test mono/stereo continuity and simultaneous P4 system/ambience playback. With ambience muted, Emergency must still play the emergency WAV. Clear must stop it without restoring normal audio. Confirm Lamp plays its local emergency WAV.
+- In browser I/O commissioning, verify both physical line identities, isolated output polarity, pulse expiry, saved SD settings and inactive outputs on STOP/Emergency/Clear. No automatic input-to-scene binding is implemented.

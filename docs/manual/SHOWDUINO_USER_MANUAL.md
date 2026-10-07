@@ -4,13 +4,13 @@
 
 # User Manual
 
-**Manual revision:** 0.3-RC — synchronised to current `main` architecture\
+**Manual revision:** 0.4-RC — software-gap closure follow-up\
 **Applicable product:** Showduino `1.0.0-rc.1`\
-**Reviewed source baseline (before this update):** `main` at `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`\
+**Reviewed source baseline (before this follow-up):** `6e73003e6aad573c08ac8f5742d202b80b1ee895`\
 **Baseline date:** 7 October 2026\
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
 
-This revision includes P4 0.6.9 and Lamp 0.4.3 Emergency-audio changes built on the source baseline above. See the [review record](../documentation-review-2026-10-07.md).
+This revision includes P4 0.6.10, Comms 0.5.5 and Director 0.9.12-director software changes built on the reviewed baseline. Lamp remains 0.4.3 and plays its local emergency WAV while latched. See the [gap-closure record](../software-gap-closure-2026-10-07.md).
 
 ---
 
@@ -720,11 +720,12 @@ The current persistent P4 production format v1 is intentionally strict. At this 
 - `AUDIO` (commands must begin with `AUDIO:NODE:`)
 - `LAMP` (commands must begin with `LAMP:`)
 - `MOSFET` (commands must begin with `MOSFET:NODE:`)
+- `ESTOP` (pixel commands only, beginning with `ESTOP:NODE:PIXEL:`)
 - internal `TEST` / `LOG`
 
 SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
 
-- Emergency Node pixel routes (`ESTOP:NODE:PIXEL:` / `estop-node-pixels`) are supported in firmware/SHDO compilation, but format-v1 does **not** currently load a dedicated ESTOP cue type, and `PIXEL` cues must use the `PIXEL:` command prefix;
+- Emergency Node pixel routes (`ESTOP:NODE:PIXEL:` / `estop-node-pixels`) now reload as dedicated `ESTOP` cues in format v1. Only the pixel command family is permitted; production cues cannot assert or clear Emergency;
 - cue/command length and validation bounds remain tight;
 - hardware acceptance of mixed-device persisted shows remains required.
 
@@ -956,18 +957,19 @@ When a Node is **SHOW_CONTROLLED**, its local WebUI becomes status/diagnostics-o
 
 ## 18.5 Independent P4 background ambience
 
-The optional PCM5102A DAC is a third audio path: background ambience from the **P4 SD card**, independently of ES8311 system sounds and Audio Node programme audio. WS is GPIO20, BCLK GPIO21 and data GPIO22; SCK/MCLK is unconnected. Its analogue output requires a suitable external amplifier or powered speaker. Use 16-bit PCM WAV; stereo is the commissioning baseline. The parser accepts mono too, but correct mono channel mapping has not been established.
+The optional PCM5102A DAC is a third audio path: background ambience from the **P4 SD card**, independently of ES8311 system sounds and Audio Node programme audio. WS is GPIO20, BCLK GPIO21 and data GPIO22; SCK/MCLK is unconnected. Its analogue output requires a suitable external amplifier or powered speaker. Use 16-bit PCM WAV, mono or stereo. Mono samples are duplicated to both output channels. Host tests cover mono mapping and retry of partial I²S writes; physical continuity still requires bench acceptance.
 
-Store assets under `/showduino/audio/ambience/` and use a full P4 SD path for the USB/service commands, for example:
+Store WAV assets directly under `/showduino/audio/ambience/`. On Director, open **Settings → Audio System**, then use **Next file**, **Play**, **Loop**, **Stop** and the volume presets. The System Console **Outputs** page provides filename/Next file selection, 0–100% volume and the same playback controls. USB/service commands remain available:
 
 ```text
 AMBIENCE:STATUS
+AMBIENCE:FILE:0
 AMBIENCE:VOLUME:50
 AMBIENCE:LOOP:/showduino/audio/ambience/room.wav
 AMBIENCE:STOP
 ```
 
-Replace `room.wav` with an actual WAV on that card. `AMBIENCE:PLAY:<full-path>` plays once. There is no implemented pause/resume or automatic boot-start command. Emergency stops normal ambience and loops `/showduino/audio/system/emergency.wav` (fallback `/showduino/audio/show_machine/emergency.wav`) on PCM5102A. The emergency loop uses 100% software volume regardless of saved ambience volume; ordinary play/loop/volume/stop commands are rejected while latched. If neither WAV can play, ambience stays stopped and Emergency remains latched. Authorised clear stops the announcement without restoring ambience. Normal `SHOW:STOP` / `STOP:ALL` also stops ambience when Emergency is clear; during Emergency it does not silence the announcement. These commands are P4 USB/service controls; a dedicated Director/Studio desk and persistent ambience cues are not implemented. Playback continuity, simultaneous system sound and analogue output require bench acceptance.
+Replace `room.wav` with an actual WAV on that card. `AMBIENCE:PLAY:<full-path>` plays once. There is no implemented pause/resume or automatic boot-start command. Emergency stops normal ambience and loops `/showduino/audio/system/emergency.wav` (fallback `/showduino/audio/show_machine/emergency.wav`) on PCM5102A. The emergency loop uses 100% software volume regardless of saved ambience volume; ordinary play/loop/volume/stop commands are rejected while latched. If neither WAV can play, ambience stays stopped and Emergency remains latched. Authorised clear stops the announcement without restoring ambience. Normal `SHOW:STOP` / `STOP:ALL` also stops ambience when Emergency is clear; during Emergency it does not silence the announcement. `AMBIENCE:FILE:<index>` returns one supported filename in SD directory order, starting at zero; `AMBIENCE:FILE:END` marks the end. Operator filenames must be direct `.wav` children of the ambience folder, at most 55 ASCII characters including `.wav` (the full command must fit the existing 95-character Director wire payload), with letters, digits, spaces, underscores, hyphens or dots and no `..`. Status reports playback, effective volume, Emergency lock and the last error. Controls are implemented on Director and System Console; ambience is not yet a persistent Studio timeline cue. Playback continuity, simultaneous system sound and analogue output require bench acceptance.
 
 ---
 
@@ -1061,9 +1063,9 @@ The Plug-in Bus is an owner/technical-user feature; routine operators should not
 
 Line 1 is **GPIO46** and line 2 is **GPIO47**; GPIO48 is reserved. Each line supports DISABLED, INPUT or OUTPUT, active HIGH/LOW, input pull NONE/UP/DOWN and 0–5000 ms debounce. Both start disabled/high-impedance before SD configuration is loaded. A configured output always enters its inactive state at boot. These lines do not directly drive lights, motors or relay coils.
 
-Commission through P4 USB/service commands: `IO:STATUS`, `IO:1:STATUS`, `IO:1:MODE:INPUT`, `IO:1:ACTIVE:LOW`, `IO:1:PULL:UP` and `IO:1:DEBOUNCE:30`. Use the same vocabulary with `IO:2:` for line 2. For an appropriately interfaced output, `MODE:OUTPUT` enables `ON`, `OFF`, `TOGGLE` and `PULSE:<1-3600000>` in milliseconds. `IO:ALL:OFF` makes both outputs inactive.
+Commission from **System Console → Outputs → P4 digital I/O**, or through P4 USB/service commands: `IO:STATUS`, `IO:1:STATUS`, `IO:1:MODE:INPUT`, `IO:1:ACTIVE:LOW`, `IO:1:PULL:UP` and `IO:1:DEBOUNCE:30`. Use the same vocabulary with `IO:2:` for line 2. For an appropriately interfaced output, `MODE:OUTPUT` enables `ON`, `OFF`, `TOGGLE` and `PULSE:<1-3600000>` in milliseconds. `IO:ALL:OFF` makes both outputs inactive.
 
-Settings are saved under `/showduino/config/io.json` when writable; a `RAM_ONLY` reply means the change will not persist. `IO:SAVE` explicitly retries saving. Input changes publish `EVENT:IO:` and `STATE:IO:` records; automatic scene-trigger binding is not implemented. Emergency, `SHOW:STOP` and `STOP:ALL` force outputs inactive and cancel pulses. Clear never restores interrupted outputs. Dedicated browser/Director configuration and persistent IO timeline cues remain unimplemented. Verify boot polarity and stop behaviour with the external load isolated.
+Settings are saved under `/showduino/config/io.json` when writable; a `RAM_ONLY` reply means the change will not persist. `IO:SAVE` explicitly retries saving. Input changes publish `STATE:IO:` records; automatic scene-trigger binding is not implemented. Emergency, `SHOW:STOP` and `STOP:ALL` force outputs inactive and cancel pulses. Clear never restores interrupted outputs. Browser commissioning is implemented. A dedicated Director I/O page, automatic scene binding and persistent IO timeline cues remain unimplemented. Verify boot polarity and stop behaviour with the external load isolated.
 
 # 21. Storage and productions
 
@@ -1081,7 +1083,7 @@ Current persistent productions are stored under:
 
 Current production format v1 is bounded and validates file size, cue count, duplicate IDs, time order, path traversal and supported cue types.
 
-At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
+At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence is host-tested; Studio inventory completeness, full theatrical feature coverage and physical acceptance remain incomplete.
 
 ## 21.3 SHDO v2
 
@@ -1321,7 +1323,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | P4 segmented Show Pixels | Implemented; hardware acceptance required |
 | C3 Pixel Node | Software/routing active; hardware acceptance required |
 | Wireless Emergency + Pixel Node | Software implemented (momentary + OLED + GPIO2 Pixel); GPIO/physical acceptance incomplete |
-| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/TEST/LOG; ESTOP cue type and full theatrical set still incomplete |
+| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel/TEST/LOG; IO/ambience cues and physical mixed-show acceptance remain open |
 | SHDO v2 | Active authoring/interchange contract |
 | System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
 | Comms self-OTA | Implemented in software; physical proof required |
@@ -1380,7 +1382,7 @@ Showduino platform: 1.0.0-rc.1
 P4 source:           0.6.5 at baseline HEAD
 Comms source:        0.5.2 at baseline HEAD
 Director manifest:   0.9.7-director (release manifest; current source lacks an equivalent clear BoardConfig version constant)
-Repository SHA:      526af84cc04d96b3f4d9a51bc3a0ef1470da0b69
+Repository SHA:      6e73003e6aad573c08ac8f5742d202b80b1ee895
 Date:                7 October 2026
 ```
 

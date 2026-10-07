@@ -5,7 +5,9 @@ $node = Get-Command node -ErrorAction SilentlyContinue
 if ($node) {
   & node (Join-Path $here "test_pixel_authoring.js")
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  Write-Host "Studio V4 pixel-authoring tests passed."
+  & node (Join-Path $here "test_outputs_controls.js")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  Write-Host "Studio authoring and Outputs controls tests passed."
   exit 0
 }
 

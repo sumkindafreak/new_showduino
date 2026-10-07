@@ -90,7 +90,7 @@ The Director's configured automatic display-off behaviour turns off its **backli
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
 | **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
-| **P4 PCM5102A ambience** | Independent background atmosphere from P4 SD assets | USB/service `AMBIENCE:*` controls only; no dedicated Director desk. Emergency switches it to the emergency WAV; clear stops it without restoring ambience. Normal show STOP also stops ambience. |
+| **P4 PCM5102A ambience** | Independent background atmosphere from P4 SD assets | Settings → Audio System: Next file, Play/Loop/Stop, volume presets and P4 status. System Console Outputs also provides these controls. Emergency switches it to the emergency WAV; clear stops it without restoring ambience. Normal show STOP also stops ambience. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -276,4 +276,4 @@ For a public installation use the full [Pre-Opening Checklist](SHOWDUINO_PRE_OPE
 
 Status indicators use violet for ready, cyan for a fresh link, turquoise for owned, green for active/running, amber for paused/searching, magenta/amber for fault, and full-white for Emergency. Locate is flashing white; its first touch still acknowledges Locate only. Theatrical colours and normal green signage locators are separate. See [status-colour standard](../status-colour-standard.md).
 
-The two new P4 generic I/O lines are commissioned through USB/service commands; there is no dedicated Director I/O page or scene-trigger binding yet. See the [user manual](SHOWDUINO_USER_MANUAL.md#201-generic-p4-digital-io).
+The two new P4 generic I/O lines are commissioned through System Console Outputs or USB/service commands; there is no dedicated Director I/O page or scene-trigger binding yet. See the [user manual](SHOWDUINO_USER_MANUAL.md#201-generic-p4-digital-io).

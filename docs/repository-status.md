@@ -13,7 +13,7 @@ Related:
 - [Wireless Emergency + Pixel Node](emergency-node.md)
 - [System updates](system-updates.md)
 
-**Roadmap note:** the active P4 now owns authoritative runtime/safety, bounded persistent TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL`/`LAMP`/`MOSFET` cue parsing is implemented; broader logical target routing and mixed-device hardware acceptance remain open.
+**Roadmap note:** the active P4 now owns authoritative runtime/safety, bounded persistent TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL`/`LAMP`/`MOSFET` cue parsing is implemented; broader logical target routing and mixed-device hardware acceptance remain open.
 
 ---
 
@@ -106,7 +106,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 - GPIO23 local segmented Show Pixel Engine;
 - storage and local services as implemented.
 
-The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent format v1 accepts bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET cues; named-segment binding and physical mixed-show acceptance remain outstanding.
+The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent format v1 accepts bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel cues; named-segment binding and physical mixed-show acceptance remain outstanding.
 
 ### Emergency/signage pixels — GPIO24
 
@@ -167,7 +167,7 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 
 | Maturity | Current repository scope |
 |----------|--------------------------|
-| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading; P4 ES8311 system audio; Audio Node firmware; S3 Lamp Node firmware; C3 Pixel Node firmware; C3 Emergency Node firmware; MOSFET Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio browser RAM timeline PIXEL/AUDIO:NODE ingest (MOSFET persistent SHDO deploy is separate) |
+| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel production loading; P4 ES8311 system audio; Audio Node firmware; S3 Lamp Node firmware; C3 Pixel Node firmware; C3 Emergency Node firmware; MOSFET Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio browser RAM timeline PIXEL/AUDIO:NODE ingest (MOSFET persistent SHDO deploy is separate) |
 | **HARDWARE TEST REQUIRED** | Audio Node physical board; S3 Lamp Node physical board; C3 Pixel Node physical board; C3 Emergency Node physical board; MOSFET Node ESP32_MOS_X4 pin/LED validation; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
 | **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; SHDO v2 authoring vs P4 format-v1 store; public showduino.com deploy of the Studio V4 picker (source/overlay updated in this tree) |
 | **PLANNED** | production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |

@@ -13,3 +13,7 @@ extern fs::FS hostSd;
 extern bool hostSdReady;
 inline bool stageStorageIsReady(){return hostSdReady;}
 inline fs::FS& stageStorageFs(){return hostSd;}
+
+#ifndef PATH_AUDIO_AMBIENCE
+#define PATH_AUDIO_AMBIENCE "/showduino/audio/ambience"
+#endif

@@ -69,6 +69,11 @@ export async function OutputsPage(container) {
   let lastResult = '';
   let lastSnap = { p4Online: false, system: null };
   let assetPath = '';
+  let ambienceFile = 'ambience.wav';
+  let ambienceVolume = 80;
+  let ambienceIndex = 0;
+  let ioLine = 1;
+  let ioPulse = 1000;
   let lineCount = 100;
   let lineCountSeeded = false;
   const nodeLineCounts = {};
@@ -94,6 +99,11 @@ export async function OutputsPage(container) {
     try {
       const data = await postCommand(cmd);
       lastResult = isP4Offline(data) ? 'P4 OFFLINE' : (data.replies || JSON.stringify(data));
+      if (String(cmd).startsWith('AMBIENCE:FILE:')) {
+        const match = String(data.replies || '').match(/AMBIENCE:FILE:(\d+):([^\r\n]+)/);
+        if (match) { ambienceIndex = (Number(match[1]) + 1) % 1000; ambienceFile = match[2]; }
+        else if (String(data.replies || '').includes('AMBIENCE:FILE:END')) { ambienceIndex = 0; ambienceFile = ''; }
+      }
       if (String(cmd).startsWith('PIXEL:')) {
         try {
           const light = await fetchLighting();
@@ -159,7 +169,43 @@ export async function OutputsPage(container) {
     const s = lastSnap.system;
     const emergency = emergencyWord(s);
 
-    const pixels = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
+    const ambience = el('div', { className: 'card' });
+    ambience.append(el('h2', { text: 'P4 ambience — PCM5102A' }));
+    ambience.append(el('p', { className: 'sub', text: '16-bit PCM WAV on SD in /showduino/audio/ambience/. Emergency replaces ambience with the emergency WAV; Clear leaves it stopped.' }));
+    const file = el('input', { className: 'text-input', value: ambienceFile, placeholder: 'ambience.wav' });
+    file.addEventListener('input', () => { ambienceFile = file.value; });
+    ambience.append(file);
+    ambience.append(numberField('Volume %', ambienceVolume, 0, 100, (v) => { ambienceVolume = v; }));
+    for (const [label, command] of [['Play', 'PLAY'], ['Loop', 'LOOP'], ['Stop', 'STOP'], ['Set volume', 'VOLUME'], ['Status', 'STATUS'], ['Next file', 'FILE']]) {
+      const button = el('button', { className: 'btn-cancel', text: label });
+      button.disabled = !!pending || !lastSnap.p4Online || (emergency === 'EMERGENCY' && command !== 'STATUS' && command !== 'FILE');
+      button.addEventListener('click', () => {
+        if ((command === 'PLAY' || command === 'LOOP') && (!/^[a-zA-Z0-9_ .-]+\.wav$/.test(ambienceFile) || ambienceFile.includes('..') || ambienceFile.length > 55)) {
+          lastResult = 'Choose a WAV filename of at most 55 characters within the ambience directory.'; paint(); return;
+        }
+        const suffix = command === 'FILE' ? ':' + ambienceIndex : command === 'VOLUME' ? ':' + ambienceVolume : (command === 'PLAY' || command === 'LOOP') ? ':/showduino/audio/ambience/' + ambienceFile : '';
+        send('AMBIENCE:' + command + suffix);
+      });
+      ambience.append(button);
+    }
+    ambience.append(el('p', { className: 'sub', text: String(lastResult || 'Use Status to read the current P4 output state.') }));
+    host.append(ambience);
+    const io = el('div', { className: 'card' });
+    io.append(el('h2', { text: 'P4 digital I/O — GPIO46 / GPIO47' }));
+    io.append(el('p', { className: 'sub', text: '3.3 V logic lines. Choose a line, read Status, then configure the external interface. Outputs enter their inactive state on Emergency and Stop. Save stores configuration on P4 SD.' }));
+    io.append(numberField('Line (1 = GPIO46, 2 = GPIO47)', ioLine, 1, 2, (v) => { ioLine = v; }));
+    io.append(numberField('Pulse milliseconds', ioPulse, 1, 3600000, (v) => { ioPulse = v; }));
+    const ioCommands = [['Status', 'STATUS'], ['Disabled', 'MODE:DISABLED'], ['Input', 'MODE:INPUT'], ['Output', 'MODE:OUTPUT'], ['Active high', 'ACTIVE:HIGH'], ['Active low', 'ACTIVE:LOW'], ['Pull none', 'PULL:NONE'], ['Pull up', 'PULL:UP'], ['Pull down', 'PULL:DOWN'], ['Debounce 30 ms', 'DEBOUNCE:30'], ['On', 'ON'], ['Off', 'OFF'], ['Pulse', 'PULSE']];
+    for (const [label, action] of ioCommands) {
+      io.append(el('button', { className: 'btn-cancel', text: label, disabled: !!pending || !lastSnap.p4Online || (emergency === 'EMERGENCY' && action !== 'STATUS' && action !== 'OFF'), onClick: () => send('IO:' + ioLine + ':' + action + (action === 'PULSE' ? ':' + ioPulse : '')) }));
+    }
+    for (const [label, action] of [['All off', 'ALL:OFF'], ['Save configuration', 'SAVE']]) {
+      io.append(el('button', { className: 'btn-cancel', text: label, disabled: !!pending || !lastSnap.p4Online || (emergency === 'EMERGENCY' && action === 'SAVE'), onClick: () => send('IO:' + action) }));
+    }
+    if (String(lastResult).includes('IO:')) io.append(el('p', { className: 'sub', text: String(lastResult) }));
+    host.append(io);
+
+    const pixels = el('div' , { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
     pixels.append(el('h2', { text: 'Emergency signage — GPIO24' }));
     if (lastSnap.p4Online && lighting) {
       pixels.append(statRow('Line', lighting.emergencyPixelsReady ? 'READY' : 'FAULT'));

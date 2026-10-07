@@ -1,7 +1,7 @@
 # SHOWDUINO — Quick Start
 
 **For:** operators, attraction owners and first-time users\
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69` · 7 October 2026\
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `6e73003e6aad573c08ac8f5742d202b80b1ee895` · 7 October 2026\
 **Status:** Release-candidate quick start. Read the full User Manual before putting a new installation into public operation.
 
 ---

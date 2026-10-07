@@ -1,3 +1,5 @@
+#include "../../../../protocol/showduino_io_command.h"
+#include "../../../../protocol/showduino_ambience_command.h"
 #include "WebApiHandler.h"
 
 #include <string.h>
@@ -274,6 +276,8 @@ static void normalizeWebCmd(String &cmd) {
 }
 
 static bool webCommandAllowed(const String &cmd) {
+  if(cmd.startsWith("IO:"))return showduinoIoCommandAllowed(cmd.c_str());
+  if(cmd.startsWith("AMBIENCE:"))return showduinoAmbienceCommandAllowed(cmd.c_str());
   if (cmd == "SHOW:START" || cmd == "SHOW:RUN" || cmd == "SHOW:PAUSE" ||
       cmd == "SHOW:RESUME" || cmd == "SHOW:STOP" || cmd == "STOP:ALL") {
     return true;
@@ -1090,7 +1094,7 @@ static void handleApiCommandEx(const String &cmdIn, const char *body) {
   char requestId[SHOWDUINO_WEB_REQID_MAX];
   requestId[0] = '\0';
   if (body && body[0]) {
-    char fromBody[96];
+    char fromBody[240];
     if ((!cmd.length()) &&
         showduino_web_json_string_field(body, "cmd", fromBody, sizeof(fromBody))) {
       cmd = fromBody;
@@ -1134,6 +1138,7 @@ static void handleApiCommandEx(const String &cmdIn, const char *body) {
   replies.reserve(512);
   stageWebDispatchCommand(cmd.c_str(), &replies);
   const bool rejected = replies.indexOf("REJECTED:") >= 0 ||
+                        replies.indexOf(":ERROR:") >= 0 ||
                         replies.indexOf("ERR:") >= 0 ||
                         replies.indexOf("UNSUPPORTED:") >= 0;
   String json = "{\n  \"ok\": ";

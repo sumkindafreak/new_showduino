@@ -2,10 +2,10 @@
 
 **Manual baseline date:** 7 October 2026\
 **Repository:** `sumkindafreak/new_showduino`\
-**Baseline branch:** `main`\
+**Reviewed baseline branch:** `docs/testing-stage-review-2026-10-07`\
 **Starting SHA (original commercial pass):** `9f304cdc65786c0e8d306987010a97eb5a3ad587`\
-**Current documentation baseline SHA:** `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`\
-**Manual revision:** 0.3-RC\
+**Current documentation baseline SHA:** `6e73003e6aad573c08ac8f5742d202b80b1ee895`\
+**Manual revision:** 0.4-RC\
 **Product:** Showduino `1.0.0-rc.1`
 
 This matrix traces customer-facing manual claims back to the repository snapshot used for this documentation pass.
@@ -66,7 +66,7 @@ This matrix traces customer-facing manual claims back to the repository snapshot
 | Authoring | SHDO v2 is active portable authoring/interchange contract | `protocol/showduino_version.h` | `docs/studio/production-format.md` | protocol SHDO headers/compiler | YES — CONTRACT | HARDWARE REQUIRED | P4 runtime store is a compiled/subset representation, not direct arbitrary authoring JSON execution. |
 | Production deployment | Deploy commit does not auto-load or auto-start | `docs/production-storage.md` | deployment protocol | P4 ProductionDeploy/Store | YES — CODE | HARDWARE REQUIRED | Emergency aborts commit. |
 | Production storage | P4 SD path `/showduino/productions/<id>/manifest.json + timeline.json` | `docs/production-storage.md` | `docs/p4-sd-storage.md` | ProductionStore | YES — CODE | HARDWARE REQUIRED | Current runtime format v1. |
-| Production storage | Persistent v1 accepts PIXEL / AUDIO / LAMP / MOSFET / TEST / LOG (not ESTOP cue type); full theatrical set still incomplete | `ProductionFormat.cpp` | `docs/production-storage.md` | production parser + SHDO deploy | PARTIAL | HARDWARE REQUIRED | Gap 007 partially resolved. Older TEST/LOG-only prose was stale. |
+| Production storage | Persistent v1 accepts PIXEL / AUDIO / LAMP / MOSFET / ESTOP-pixel / TEST / LOG; full theatrical set still incomplete | `ProductionFormat.cpp` | `docs/production-storage.md` | production parser + SHDO deploy | PARTIAL | HARDWARE REQUIRED | Gap 007 partially resolved. Older TEST/LOG-only prose was stale. |
 | RAM Studio deploy | `/api/studio-timeline` supports commissioning timeline with PIXEL + AUDIO:NODE, no autoStart | `web/showduino-studio/README.md` | `docs/studio/README.md` | S3 API → P4 | YES — CODE | HARDWARE REQUIRED | Separate from persistent production storage. |
 | Pixels | P4 GPIO23 segmented engine supports up to 16 segment slots and shared FX vocabulary | `docs/audio-pixel-engine.md` | `docs/command-protocol.md` | `src/ShowPixels.*`, `protocol/showduino_pixel_fx.h` | YES — CODE | HARDWARE REQUIRED | Current default count 100; configured max capacity differs from installed line. |
 | Pixels | Production-file PIXEL cues are not complete in persistent v1 | `docs/audio-pixel-engine.md` | `docs/production-storage.md` | parser/runtime integration | NO — PLANNED | NO | Do not present commissioning controls as complete show authoring. |
@@ -127,14 +127,15 @@ At minimum, this manual pass inspected or searched the active versions of:
 
 ## Baseline acquisition note
 
-This synchronisation pass was performed against a local clone of `sumkindafreak/new_showduino` on branch `main` at SHA `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`, updating the commercial manuals from the original 16 September 2026 baseline (`9f304cdc…`). No firmware files were modified.
+This synchronisation pass was performed against a local clone of `sumkindafreak/new_showduino` on branch `main` at SHA `6e73003e6aad573c08ac8f5742d202b80b1ee895`, updating the commercial manuals from the original 16 September 2026 baseline (`9f304cdc…`). No firmware files were modified.
 
 ## 7 October 2026 review additions
 
 | Claim | Authoritative source | Verification | Remaining boundary |
 | --- | --- | --- | --- |
-| Independent PCM5102A ambience, GPIO20/21/22, WAV play/loop/volume/stop | P4 `BoardConfig.h`, `src/StageAmbience.cpp`, `.ino` | YES — CODE | Emergency WAV override, normal STOP and clear-to-idle implemented in this update; playback/hardware acceptance open (GAP-022). |
-| Two generic I/O lines, GPIO46/47, SD config, debounce/pulse, safe boot/stop | P4 `src/ShowduinoIO.cpp/.h`, `BoardConfig.h`, `.ino` | YES — CODE | USB/service only; frontend and scene binding absent (GAP-023). |
+| Independent PCM5102A ambience, GPIO20/21/22, WAV play/loop/volume/stop | P4 `BoardConfig.h`, `src/StageAmbience.cpp`, `.ino` | YES — CODE | Emergency/STOP, mono/partial-write handling and Director/browser controls implemented; host tests pass. Target build and physical acceptance open (GAP-022). |
+| Two generic I/O lines, GPIO46/47, SD config, debounce/pulse, safe boot/stop | P4 `src/ShowduinoIO.cpp/.h`, `BoardConfig.h`, `.ino` | YES — CODE | USB/service and browser commissioning implemented; Director editor and scene binding absent (GAP-023). |
 | MOSFET persistent cues and four GPIO25 identifier pixels | P4 `ProductionFormat.cpp`, `protocol/showduino_shdo.h`, MOSFET `BoardConfig.h` / identifier implementation | YES — CODE | Hardware/pin acceptance open; identifiers are not show-pixel outputs. |
 | White Locate/status vocabulary and full-bright Emergency | Director `DirectorAmbientPixels.cpp`, shared pixel and node indicator implementations | YES — CODE | Preserve Locate acknowledgement and independent Emergency-clear procedure; bench acceptance open. |
 | Component source versions | Current component `BoardConfig.h`; Director `src/StorageConfig.h` | YES — CODE | Does not verify flashed versions or update release binaries/manifests. |
+| ESTOP pixel persistent roundtrip | `protocol/showduino_shdo.h`, P4 `src/ProductionFormat.cpp`, `tools/production-tests/test_shdo.cpp` | YES — CODE / HOST TEST | Compiled SHDO reloads every pixel cue; global Emergency control cues remain rejected. GAP-007 physical acceptance / GAP-021 Studio inventory remain open. |

@@ -2,11 +2,13 @@
 
 **Manual baseline date:** 7 October 2026\
 **Repository:** `sumkindafreak/new_showduino`\
-**Baseline branch:** `main`\
-**Baseline commit:** `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`\
+**Reviewed baseline branch:** `docs/testing-stage-review-2026-10-07`\
+**Baseline commit:** `6e73003e6aad573c08ac8f5742d202b80b1ee895`\
 **Previous commercial-manual baseline:** `9f304cdc65786c0e8d306987010a97eb5a3ad587` (16 September 2026)\
 **Product baseline:** Showduino `1.0.0-rc.1`\
-**Manual revision:** 0.3-RC
+**Manual revision:** 0.4-RC
+
+The [software closure record](../software-gap-closure-2026-10-07.md) lists this follow-up’s changes and verification limits.
 
 This document records anything that could not honestly be presented as finished commercial product behaviour during the repository-verified manual pass. It is deliberately conservative: uncertainty belongs here, not disguised as customer-facing fact.
 
@@ -174,20 +176,21 @@ Complete and freeze the customer-facing authoring/deployment workflow, then capt
 **Category:** IMPLEMENTATION GAP\
 **Primary evidence:** `ProductionFormat.cpp`, `docs/production-storage.md`, `docs/audio-pixel-engine.md`
 
-P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
+P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
 
 Still incomplete relative to the full commercial theatrical set:
 
-- no dedicated ESTOP cue type on load; `PIXEL` cues must use the `PIXEL:` command prefix (so `ESTOP:NODE:PIXEL:` is not a format-v1 PIXEL command as stored);
+- `ESTOP` now loads only `ESTOP:NODE:PIXEL:` commands; host tests compile SHDO and reload every generated cue through the real P4 persistent parser;
+- persistent IO/AMBIENCE types and automatic input-to-scene binding remain absent;
 - tight command-length and validation bounds;
 - Studio inventory/authoring for every pixel-capable peer is not equally complete (see GAP-021);
 - physical acceptance of mixed-device persisted shows remains open.
 
-Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.3-RC follow-up.
+Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.4-RC follow-up.
 
 ### Required resolution
 
-Complete ESTOP/other missing persist routes, widen the theatrical cue model where product-approved, and sign off mixed-device load/run on hardware before describing full persistent theatrical shows as finished.
+Complete other approved missing persist routes, widen the theatrical cue model where product-approved, and sign off mixed-device load/run on hardware before describing full persistent theatrical shows as finished.
 
 ---
 
@@ -199,7 +202,7 @@ Complete ESTOP/other missing persist routes, widen the theatrical cue model wher
 
 “Studio” currently refers both to the S3-hosted system/commissioning console and to the richer SHDO v2 authoring experience/blueprint. This can confuse owners reading a commercial manual.
 
-Manual 0.3-RC uses **System Console** vs **Studio** wording where practical, but product naming is not frozen in firmware/UI chrome.
+Manual 0.4-RC uses **System Console** vs **Studio** wording where practical, but product naming is not frozen in firmware/UI chrome.
 
 ### Required resolution
 
@@ -270,9 +273,9 @@ Physically prove normal Comms OTA and failed-health rollback on the current hard
 
 The committed RC release manifest still lags live source. At this documentation SHA:
 
-- P4 `BoardConfig.h` reports `0.6.9` (updated here from source baseline 0.6.8);
-- Comms `BoardConfig.h` reports `0.5.4`;
-- Director `src/StorageConfig.h` reports `0.9.11-director`;
+- P4 `BoardConfig.h` reports `0.6.10` (updated here from source baseline 0.6.8);
+- Comms `BoardConfig.h` reports `0.5.5`;
+- Director `src/StorageConfig.h` reports `0.9.12-director`;
 - Audio/Lamp/Pixel/Emergency/MOSFET versions are 0.4.3 / 0.4.3 / 0.1.1 / 0.3.1 / 0.1.3 (Lamp emergency playback retained). These are source labels, not verified installed binaries.
 
 ### Required resolution
@@ -301,7 +304,7 @@ When the OS 2.0 shell becomes the shipping UI, revise the Director chapter and s
 **Category:** DOCUMENTATION GAP / HARDWARE VALIDATION REQUIRED\
 **Sources:** Director `DisplayPages.h`, `ShowduinoUi.h`, recent Git history
 
-Active titles now include dedicated **AUDIO NODE** and **LAMP NODE** pages in addition to HOME / PRODUCTIONS / SHOW DETAILS / LIVE / NODES / DIAGNOSTICS / SETTINGS / AUDIO / SYSTEM LOGS. Manual 0.3-RC was updated to match those titles. A commercial screenshot set would still become stale quickly and remains outstanding.
+Active titles now include dedicated **AUDIO NODE** and **LAMP NODE** pages in addition to HOME / PRODUCTIONS / SHOW DETAILS / LIVE / NODES / DIAGNOSTICS / SETTINGS / AUDIO / SYSTEM LOGS. Manual 0.4-RC was updated to match those titles. A commercial screenshot set would still become stale quickly and remains outstanding.
 
 ### Required resolution
 
@@ -423,14 +426,14 @@ A gap is not closed merely because code has been written. Safety, radio, power, 
 
 ## GAP-022 — P4 emergency ambience override and playback acceptance
 
-**Status:** RESOLVED (emergency/STOP software in this update) — HARDWARE VALIDATION REQUIRED
+**Status:** RESOLVED (emergency/STOP, playback and operator-control software) — TARGET BUILD / HARDWARE VALIDATION REQUIRED
 
 The reviewed baseline had no ambience call in normal STOP and only silenced PCM5102A during Emergency. This update stops normal ambience on `SHOW:STOP` / `STOP:ALL`, replaces it with the canonical emergency WAV on assertion, and stops the announcement on clear without restoring ambience. Saved ambience volume cannot mute the emergency loop; ordinary audio commands cannot replace/stop it while latched. Missing/invalid WAV or I2S failure leaves normal audio stopped and Emergency blocked. Lamp interrupts its normal prop audio and loops its local emergency WAV while latched; P4 ES8311 retains its dedicated emergency-sound role.
 
-The parser accepts mono but writes samples directly to a stereo I2S slot configuration without mono expansion. The nonblocking I2S write does not retry unwritten bytes. Physical continuity, mono correctness and simultaneous ES8311/PCM5102A playback remain unproven; use stereo PCM for the initial bench test. No persistent AMBIENCE cue type or dedicated Director/Studio workflow exists.
+The software follow-up duplicates mono to both stereo slots, retains unwritten DMA tails, rejects truncated WAV data/chunks, and stops on fatal I²S write errors. Director Audio System now has SD filename browsing, Play/Loop/Stop, volume presets and live status replies. System Console Outputs has filename browsing, volume and playback controls. P4 and Comms share strict command/path validation. Host tests cover playback/emergency/error transitions and browser command generation. Target firmware compilation, Director UI/radio operation, physical continuity and simultaneous ES8311/PCM5102A playback remain unproven. No persistent AMBIENCE cue type exists.
 
 ## GAP-023 — Generic I/O frontends and scene binding
 
-**Status:** PARTIALLY RESOLVED (local engine) — UI/INTEGRATION GAP / HARDWARE VALIDATION REQUIRED
+**Status:** PARTIALLY RESOLVED (local engine and browser commissioning) — UI/INTEGRATION GAP / HARDWARE VALIDATION REQUIRED
 
-`ShowduinoIO.cpp` provides GPIO46/47 mode/polarity/pull/debounce configuration, SD persistence, input events and output pulses. Emergency and normal stop force inactive outputs without restore. P4 USB/service commands exist; the browser allowlists have not added `IO:*`, and no dedicated Director/Studio editor, persistent IO cue type or automatic input-to-scene binding exists. Commission external interfacing, inactive polarity, SD reload, pulse expiry and Emergency/STOP before treating these lines as accepted installation features.
+`ShowduinoIO.cpp` provides GPIO46/47 mode/polarity/pull/debounce configuration, SD persistence, input events and output pulses. Emergency and normal stop force inactive outputs without restore. P4 USB/service commands and System Console Outputs commissioning now exist. P4/Comms share a bounded `IO:*` browser policy; malformed lines, pulse/debounce values and command suffixes are rejected. No dedicated Director editor, persistent IO cue type or automatic input-to-scene binding exists. Commission external interfacing, inactive polarity, SD reload, pulse expiry and Emergency/STOP before treating these lines as accepted installation features.

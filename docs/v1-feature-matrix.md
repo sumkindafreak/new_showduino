@@ -52,7 +52,7 @@ Power P4 (SD) → Comms → UART → Director. Optional Studio at `http://192.16
 | --- | --- | --- |
 | MOSFET four-channel level/pulse/fade, Director control and SHDO persistent cues | IMPLEMENTED — RC firmware 0.1.3 | Pins/output/identifier hardware acceptance required; not mains outputs. |
 | P4 PCM5102A ambience and Emergency WAV override | IMPLEMENTED — P4 0.6.9 in this update | SD stereo PCM, analogue output and simultaneous ES8311 playback require bench acceptance; USB/service controls only. |
-| GPIO46/47 generic digital I/O | IMPLEMENTED — P4 local engine | External drivers/polarity acceptance; no dedicated Director/Studio editor or automatic scene binding. |
+| GPIO46/47 generic digital I/O | IMPLEMENTED — P4 local engine | External drivers/polarity acceptance; browser commissioning is implemented; Director editor and automatic scene binding remain open. |
 | Comms self-OTA | IMPLEMENTED — Comms only | Previous Phase 1 apply-501 rows describe historical foundations; current self-OTA/rollback still requires physical acceptance. |
 | Current firmware-target compilation | NOT RUN in this review | Host regression tests do not replace firmware builds; no Arduino target toolchain available in this workspace. |
 
