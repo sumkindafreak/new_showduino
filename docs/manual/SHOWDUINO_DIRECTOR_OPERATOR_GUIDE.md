@@ -1,8 +1,8 @@
 # Showduino | The Operator's Guide
 
-**The Director touchscreen, sound, lighting and everyday attraction operation**  
-**Audience:** first-time owners, attraction operators and non-technical staff  
-**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.1 / 21 September 2026  
+**The Director touchscreen, sound, lighting and everyday attraction operation**\
+**Audience:** first-time owners, attraction operators and non-technical staff\
+**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.2 / 7 October 2026\
 **Source reviewed:** [Showduino repository](../../README.md), current active Director firmware, specialist-node documents and RC physical-test checklist.
 
 > **This is the easy-to-use companion to the complete [Showduino User Manual](SHOWDUINO_USER_MANUAL.md).** It explains what to touch and what to expect, not how to write ESP32 firmware. The product is still a release candidate; functions noted as awaiting physical acceptance are not promises of a fully commissioned public-venue installation.
@@ -90,6 +90,7 @@ The Director's configured automatic display-off behaviour turns off its **backli
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
 | **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
+| **P4 PCM5102A ambience** | Independent background atmosphere from P4 SD assets | USB/service `AMBIENCE:*` controls only; no dedicated Director desk. Emergency switches it to the emergency WAV; clear stops it without restoring ambience. Normal show STOP also stops ambience. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -172,7 +173,7 @@ The Director is **not intended to be a full timeline/lighting editor**. A show d
 
 **Sensors and switches:** an installer can connect supported inputs so the Show Engine receives trigger signals. What a specific door switch or motion detector *does* depends on the prepared show and the supported cue/runtime path; seeing a sensor in the system does not mean every possible reaction is already configured.
 
-**MOSFET Node:** the Director may show a MOSFET tile, but the repository still classifies its specialist firmware as **planned**, not a completed, commissioned output product. Do not promise customers that mains or motor equipment can be connected directly to this tile.
+**MOSFET Node:** active RC firmware provides a Page 04 live-control tile for four low-voltage powered outputs, with level, pulse and fade control. Output wiring/pins still require physical acceptance. Emergency/show stop/authority loss force powered outputs OFF; identifier pixels become white during Emergency. Do not connect mains equipment directly to this board.
 
 **DMX:** the Director may also contain a DMX tile. Professional DMX/E1.31 production-lighting control remains **parked**; a visible tile is not evidence that a DMX expansion has been supplied.
 
@@ -270,3 +271,9 @@ For a public installation use the full [Pre-Opening Checklist](SHOWDUINO_PRE_OPE
 - [Manual verification gaps](SHOWDUINO_MANUAL_GAPS.md)
 
 **Editorial status:** This guide was written from the active repository and its documented RC boundaries. It is not a record of physical tests performed in this documentation session. Before printing a final customer edition, replace the reference illustrations with approved product photographs, capture Director screenshots from the *actual accepted firmware build*, record the supplied firmware versions and confirm the installer-facing network, audio and lighting setup for the shipped hardware.
+
+## Status lights at this review
+
+Status indicators use violet for ready, cyan for a fresh link, turquoise for owned, green for active/running, amber for paused/searching, magenta/amber for fault, and full-white for Emergency. Locate is flashing white; its first touch still acknowledges Locate only. Theatrical colours and normal green signage locators are separate. See [status-colour standard](../status-colour-standard.md).
+
+The two new P4 generic I/O lines are commissioned through USB/service commands; there is no dedicated Director I/O page or scene-trigger binding yet. See the [user manual](SHOWDUINO_USER_MANUAL.md#201-generic-p4-digital-io).

@@ -13,7 +13,7 @@ Related:
 - [Wireless Emergency + Pixel Node](emergency-node.md)
 - [System updates](system-updates.md)
 
-**Roadmap note:** the active P4 now owns authoritative runtime/safety, persistent TEST/LOG production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL` cue types and broader logical target routing remain follow-up work.
+**Roadmap note:** the active P4 now owns authoritative runtime/safety, bounded persistent TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL`/`LAMP`/`MOSFET` cue parsing is implemented; broader logical target routing and mixed-device hardware acceptance remain open.
 
 ---
 
@@ -35,7 +35,7 @@ Current specialist-node rollout order:
 Audio Node → S3 Lamp Node → C3 Pixel Node → C3 Emergency Node → MOSFET Node
 ```
 
-The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET remains a later digital/PWM specialist. DMX remains parked until explicitly reopened.
+The Relay Node product role is **retired**. The S3 Lamp Node occupies that Director fabric slot. MOSFET is an active RC digital/PWM specialist with physical acceptance outstanding. DMX remains parked until explicitly reopened.
 
 The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxies API requests to the P4. It remains transport/UI hosting only; it does not own show decisions.
 
@@ -62,7 +62,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 | `firmware/s3-comms-controller/` | **ACTIVE** | ESP32-S3 Dev Module | Communications Engine, Audio Node routing, SoftAP/WebUI/API proxy | Keep transport-only; no show decisions |
 | `firmware/stage-engine-p4/` | **ACTIVE** | ESP32-P4 Stage Controller | Authoritative Show Engine | Current platform focus includes P4 pixel bench commissioning |
 | `firmware/audio-node-esp32-a1s/` | **ACTIVE / HARDWARE TEST REQUIRED** | Ai-Thinker ESP32-A1S / ES8388 | Attraction/programme audio node | Bench commission before claiming hardware-complete |
-| `firmware/s3-lamp-node/` | **ACTIVE / PHYSICAL PINS CONFIRMED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node firmware 0.4.0 |
+| `firmware/s3-lamp-node/` | **ACTIVE / PHYSICAL PINS CONFIRMED** | ESP32-S3 Dev Module family | Interactive carbide-lamp practical | Production Lamp Node firmware 0.4.3 |
 | `firmware/c3-pixel-node/` | **ACTIVE / HARDWARE TEST REQUIRED** | ESP32-C3 | Remote pixel specialist | Same FX/emergency-white model as P4 GPIO23 |
 | `firmware/c3-emergency-node/` | **ACTIVE / GPIO UNCONFIRMED** | ESP32-C3 Super Mini class | Wireless emergency station (ASSERT ONLY) + Pixel capability on GPIO2 | Do not mark GPIO verified until pushbutton commissioned. Sequential ESTOP-01 → reboot → healthy+linked → ESTOP-02 |
 | `firmware/c3-lamp-node/` | **SUPERSEDED** | ESP32-C3 Super Mini OLED | Historical lamp FX firmware | Retained as reference; not the physical lamp |
@@ -106,7 +106,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 - GPIO23 local segmented Show Pixel Engine;
 - storage and local services as implemented.
 
-The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent production format v1 still accepts only TEST/LOG cues, so production-file PIXEL cue parsing remains future work.
+The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent format v1 accepts bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET cues; named-segment binding and physical mixed-show acceptance remain outstanding.
 
 ### Emergency/signage pixels — GPIO24
 
@@ -134,7 +134,7 @@ Owns local ES8388 + microSD programme audio, playback lifecycle, fades/duck/inve
 
 ### S3 Lamp Node
 
-**Classification:** ACTIVE firmware / physical GPIOs confirmed. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/` firmware **0.4.0**; same image is a standalone SoftAP prop (`Showduino-Lamp-<id>`) and a GRANT-managed Showduino node. P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
+**Classification:** ACTIVE firmware / physical GPIOs confirmed. Replaces the retired Relay Node product role on the Director fabric. Interactive carbide-lamp practical via `firmware/s3-lamp-node/` firmware **0.4.3**; same image is a standalone SoftAP prop (`Showduino-Lamp-<id>`) and a GRANT-managed Showduino node. P4 `LampNodeLink` / Comms `ROUTE:LAMP:`. Historical C3 firmware remains in `firmware/c3-lamp-node/`. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 ### C3 Pixel Node
 
@@ -167,8 +167,8 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 
 | Maturity | Current repository scope |
 |----------|--------------------------|
-| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading; P4 ES8311 system audio; Audio Node firmware; C3 Lamp Node firmware; C3 Pixel Node firmware; C3 Emergency Node firmware; MOSFET Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio RAM timeline PIXEL/AUDIO/MOSFET:NODE ingest |
-| **HARDWARE TEST REQUIRED** | Audio Node physical board; C3 Lamp Node physical board; C3 Pixel Node physical board; C3 Emergency Node physical board; MOSFET Node ESP32_MOS_X4 pin/LED validation; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
+| **IMPLEMENTED** | Director → ESP-NOW → S3 Comms → UART → P4; P4 authoritative emergency/runtime; P4 SD TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET production loading; P4 ES8311 system audio; Audio Node firmware; S3 Lamp Node firmware; C3 Pixel Node firmware; C3 Emergency Node firmware; MOSFET Node firmware; P4 GPIO24 grouped emergency signage; P4 GPIO23 segmented 25-FX local pixel engine; Comms SoftAP/WebUI/API proxy; Studio browser RAM timeline PIXEL/AUDIO:NODE ingest (MOSFET persistent SHDO deploy is separate) |
+| **HARDWARE TEST REQUIRED** | Audio Node physical board; S3 Lamp Node physical board; C3 Pixel Node physical board; C3 Emergency Node physical board; MOSFET Node ESP32_MOS_X4 pin/LED validation; P4 GPIO23 Show Pixel line; final GPIO24 grouped signage wiring |
 | **PARTIAL** | Persistent production assets/cue types beyond TEST/LOG; completion-driven state across every node type; SHDO v2 authoring vs P4 format-v1 store; public showduino.com deploy of the Studio V4 picker (source/overlay updated in this tree) |
 | **PLANNED** | production AUDIO/PIXEL cue dispatch polish; native `.shdo` ingest on the P4 |
 | **PARKED** | DMX work until explicitly reopened |
@@ -184,3 +184,7 @@ Common ground is mandatory. A 74AHCT125/74HCT125-class 5 V logic buffer is recom
 - Onboard C6 references must remain clearly marked unused/reserved.
 
 No broad archive/move operation is required for the current pixel milestone.
+
+## 7 October 2026 documentation review
+
+P4 0.6.9 includes independent PCM5102A ambience on GPIO20/21/22 and generic digital I/O on GPIO46/47. Both are local USB/service features with hardware acceptance outstanding; dedicated browser/Director editors and persistent cue types are absent. Emergency replaces ambience with the emergency WAV; authorised clear and normal show STOP leave ambience stopped. See the [review record](documentation-review-2026-10-07.md).

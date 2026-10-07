@@ -872,6 +872,7 @@ void handleShowCommand(const String &command) {
     bool stopped = gRuntime.handleStop(now, &gEngine);
     if (!emergencyLocked) {
       stageAudioStopShow();
+      stageAmbienceStop(); // Normal show stop also ends background ambience.
       showPixelsBlackout();
       mosfetNodeLinkAllOff("SHOW_STOP");
       showduinoIOAllOff("SHOW_STOP");

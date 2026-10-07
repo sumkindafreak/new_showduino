@@ -4,11 +4,13 @@
 
 # User Manual
 
-**Manual revision:** 0.2-RC — synchronised to current `main` architecture  
-**Applicable product:** Showduino `1.0.0-rc.1`  
-**Repository baseline:** `main` at `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
-**Baseline date:** 26 September 2026  
+**Manual revision:** 0.3-RC — synchronised to current `main` architecture\
+**Applicable product:** Showduino `1.0.0-rc.1`\
+**Reviewed source baseline (before this update):** `main` at `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69`\
+**Baseline date:** 7 October 2026\
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
+
+This revision includes P4 0.6.9 and Lamp 0.4.3 Emergency-audio changes built on the source baseline above. See the [review record](../documentation-review-2026-10-07.md).
 
 ---
 
@@ -229,6 +231,10 @@ The P4 onboard ES8311 audio path is reserved for Showduino system/safety sounds 
 
 Attraction/programme audio is handled by a specialist **Audio Node**. Showduino does not silently fall back to the P4 system speaker for attraction audio.
 
+The P4 also has a separate **PCM5102A background-ambience output** on GPIO20/21/22. It uses P4 SD assets and does not replace either the onboard system speaker or the specialist Audio Node. See section 18.5.
+
+Two **generic digital I/O lines** on GPIO46/47 can be configured as inputs or outputs. They are 3.3 V logic connections, not powered load terminals. See section 20.1.
+
 ## 4.7 Storage
 
 The Show Engine uses an SD card for configuration, persistent productions and system assets. The SD card is the persistent storage backbone, but it is **not** the safety backbone: Emergency handling must not depend on an SD file being available.
@@ -337,10 +343,10 @@ The current baseline uses the active `ShowduinoUi` page set. A newer OS 2.0 shel
 
 ## 7.1 HOME
 
-**What it does**  
+**What it does**\
 Provides the main system overview and current availability/status information.
 
-**When to use it**  
+**When to use it**\
 At startup, before opening and whenever an operator needs a quick health check.
 
 **Look for**
@@ -352,80 +358,80 @@ At startup, before opening and whenever an operator needs a quick health check.
 
 ## 7.2 PRODUCTIONS
 
-**What it does**  
+**What it does**\
 Shows productions visible to the current Director/storage model and allows an operator to select/load a production.
 
-**When to use it**  
+**When to use it**\
 Before running an attraction or changing to a different installed production.
 
-**Important**  
+**Important**\
 Loading a production and starting it are separate actions. Deploying a production also does not auto-start it.
 
 ## 7.3 SHOW DETAILS
 
-**What it does**  
+**What it does**\
 Shows information about the selected/loaded production.
 
-**When to use it**  
+**When to use it**\
 To confirm the intended production before operation.
 
 ## 7.4 LIVE
 
-**What it does**  
+**What it does**\
 Displays the authoritative running-state mirror, including timing/cue progress where available, and presents show-control requests.
 
-**When to use it**  
+**When to use it**\
 During normal attraction operation.
 
-**Important**  
+**Important**\
 A control request is not considered successful merely because it was touched. Watch the confirmed P4 state.
 
 ## 7.5 NODES
 
-**What it does**  
+**What it does**\
 Displays specialist-node availability/status, including current Audio, Lamp, Pixel and Emergency-node foundations where supported.
 
-**When to use it**  
+**When to use it**\
 During pre-opening checks and fault diagnosis.
 
-**Important**  
+**Important**\
 A Node can be offline while the P4 itself remains healthy. Diagnose the failed part rather than power-cycling the whole system automatically.
 
 ## 7.6 AUDIO NODE
 
-**What it does**  
+**What it does**\
 Provides live Audio Node discovery, track browsing/selection, playback controls (play, loop, pause, resume, stop), volume, current file/status and related diagnostics when the Node is online.
 
-**When to use it**  
+**When to use it**\
 For programme-audio commissioning and status checks.
 
 The P4 system speaker is not a replacement for an offline attraction Audio Node. Where the Audio Node also exposes its optional GPIO22 Pixel Line, theatrical pixel looks for that line are authored through Studio/Outputs rather than as a separate Director lighting desk.
 
 ## 7.7 LAMP NODE
 
-**What it does**  
+**What it does**\
 Shows Lamp Node online/state and exposes operator controls such as **IGNITE**, **EXTINGUISH**, jewel/flame commissioning checks, refresh and local lamp-audio role tests where the current firmware permits them.
 
-**When to use it**  
+**When to use it**\
 For interactive Lamp commissioning and live prop checks when a Lamp Node is part of the attraction.
 
-**Important**  
+**Important**\
 Lamp local sound effects are produced by the Lamp's own Adafruit Audio FX board. They are not attraction programme tracks from the Audio Node.
 
 ## 7.8 DIAGNOSTICS
 
-**What it does**  
+**What it does**\
 Provides system/connection information intended to identify which component is actually unavailable.
 
-**When to use it**  
+**When to use it**\
 When the Director, P4, Communications link, storage or Nodes do not match the expected state.
 
 ## 7.9 SETTINGS
 
-**What it does**  
+**What it does**\
 Contains current Director/operator settings, including display behaviour and software/network status surfaces where implemented.
 
-**When to use it**  
+**When to use it**\
 For routine configuration rather than live show control.
 
 ## 7.10 AUDIO
@@ -434,10 +440,10 @@ This page relates to the Director/P4 system-audio presentation supported by the 
 
 ## 7.11 SYSTEM LOGS
 
-**What it does**  
+**What it does**\
 Shows operator/system log information useful for diagnosis.
 
-**When to use it**  
+**When to use it**\
 After a fault, rejected request or unexpected connection event.
 
 ## 7.12 System screens
@@ -679,7 +685,7 @@ Current product/device concepts include:
 - specialist **Pixel Node** foundation (standalone C3);
 - **Wireless Emergency + Pixel Node** (`ESTOP-xx`: assert-only Emergency plus optional GPIO2 Pixel Line on the same peer);
 - P4 Plug-in Bus devices;
-- future **MOSFET Node**.
+- active RC **MOSFET Node** (four low-voltage powered outputs; hardware acceptance required).
 
 The old Relay Node product direction is retired/legacy and must not be used as the basis of a new commercial workflow.
 
@@ -713,6 +719,7 @@ The current persistent P4 production format v1 is intentionally strict. At this 
 - `PIXEL` (commands must begin with `PIXEL:`)
 - `AUDIO` (commands must begin with `AUDIO:NODE:`)
 - `LAMP` (commands must begin with `LAMP:`)
+- `MOSFET` (commands must begin with `MOSFET:NODE:`)
 - internal `TEST` / `LOG`
 
 SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
@@ -946,6 +953,22 @@ A supported specialist Node can have a local standalone WebUI when the P4 has no
 
 When a Node is **SHOW_CONTROLLED**, its local WebUI becomes status/diagnostics-oriented and the firmware rejects local theatrical actions that would fight the P4.
 
+
+## 18.5 Independent P4 background ambience
+
+The optional PCM5102A DAC is a third audio path: background ambience from the **P4 SD card**, independently of ES8311 system sounds and Audio Node programme audio. WS is GPIO20, BCLK GPIO21 and data GPIO22; SCK/MCLK is unconnected. Its analogue output requires a suitable external amplifier or powered speaker. Use 16-bit PCM WAV; stereo is the commissioning baseline. The parser accepts mono too, but correct mono channel mapping has not been established.
+
+Store assets under `/showduino/audio/ambience/` and use a full P4 SD path for the USB/service commands, for example:
+
+```text
+AMBIENCE:STATUS
+AMBIENCE:VOLUME:50
+AMBIENCE:LOOP:/showduino/audio/ambience/room.wav
+AMBIENCE:STOP
+```
+
+Replace `room.wav` with an actual WAV on that card. `AMBIENCE:PLAY:<full-path>` plays once. There is no implemented pause/resume or automatic boot-start command. Emergency stops normal ambience and loops `/showduino/audio/system/emergency.wav` (fallback `/showduino/audio/show_machine/emergency.wav`) on PCM5102A. The emergency loop uses 100% software volume regardless of saved ambience volume; ordinary play/loop/volume/stop commands are rejected while latched. If neither WAV can play, ambience stays stopped and Emergency remains latched. Authorised clear stops the announcement without restoring ambience. Normal `SHOW:STOP` / `STOP:ALL` also stops ambience when Emergency is clear; during Emergency it does not silence the announcement. These commands are P4 USB/service controls; a dedicated Director/Studio desk and persistent ambience cues are not implemented. Playback continuity, simultaneous system sound and analogue output require bench acceptance.
+
 ---
 
 # 19. Specialist Nodes
@@ -960,7 +983,7 @@ Implemented in software and part of the active architecture; still requires fina
 
 Active specialist-node firmware with confirmed principal physical pins. It can operate as a Showduino-controlled or standalone interactive lamp device. Some optional sensor details remain subject to commissioning.
 
-Local Lamp sound effects use an **Adafruit Audio FX Sound Board** (UART 9600 8N1) with the current four WAV roles: strike (`flick.wav`), ignition (`fire_ign.wav`), burn loop (`flameloo.wav`) and emergency (`emergency.wav`). Those sounds are local Lamp behaviour and are separate from the attraction Audio Node and from P4 system audio. Emergency lamp audio is local Lamp behaviour, not P4 system audio.
+Local Lamp sound effects use an **Adafruit Audio FX Sound Board** (UART 9600 8N1) with the current four WAV roles: strike (`flick.wav`), ignition (`fire_ign.wav`), burn loop (`flameloo.wav`) and emergency (`emergency.wav`). During a global Emergency, the Lamp stops its normal prop sounds and loops its local `emergency.wav` alongside the P4 system/PCM5102A emergency outputs. Clear stops the emergency sound and does not restart the flame or burn-loop audio.
 
 The Director **LAMP NODE** page provides live state and operator actions such as ignite/extinguish and commissioning checks. Do not treat every local WebUI diagnostic control as a normal public-operator workflow.
 
@@ -1006,6 +1029,8 @@ Showduino does not claim a continuous current rating or mains switching capabili
 
 Physical pin map is software-defined until the specific board is electrically commissioned.
 
+The four **identifier pixels on GPIO25** are indicators, not a theatrical Pixel Line. Energised channels show green; linked/owned/ready states use cyan/turquoise/violet, faults magenta/amber, and Identify a moving white pattern. Emergency forces identifiers full-bright white while all four powered outputs stay OFF.
+
 ## 19.6 Relay Node
 
 Legacy/retired direction. Do not specify new installations around the old Relay Node merely because historical firmware remains in the repository.
@@ -1031,6 +1056,14 @@ Showduino separates **device identity** from **configured role**. Detecting an I
 The Plug-in Bus is an owner/technical-user feature; routine operators should not alter bus wiring during operation.
 
 ---
+
+## 20.1 Generic P4 digital I/O
+
+Line 1 is **GPIO46** and line 2 is **GPIO47**; GPIO48 is reserved. Each line supports DISABLED, INPUT or OUTPUT, active HIGH/LOW, input pull NONE/UP/DOWN and 0–5000 ms debounce. Both start disabled/high-impedance before SD configuration is loaded. A configured output always enters its inactive state at boot. These lines do not directly drive lights, motors or relay coils.
+
+Commission through P4 USB/service commands: `IO:STATUS`, `IO:1:STATUS`, `IO:1:MODE:INPUT`, `IO:1:ACTIVE:LOW`, `IO:1:PULL:UP` and `IO:1:DEBOUNCE:30`. Use the same vocabulary with `IO:2:` for line 2. For an appropriately interfaced output, `MODE:OUTPUT` enables `ON`, `OFF`, `TOGGLE` and `PULSE:<1-3600000>` in milliseconds. `IO:ALL:OFF` makes both outputs inactive.
+
+Settings are saved under `/showduino/config/io.json` when writable; a `RAM_ONLY` reply means the change will not persist. `IO:SAVE` explicitly retries saving. Input changes publish `EVENT:IO:` and `STATE:IO:` records; automatic scene-trigger binding is not implemented. Emergency, `SHOW:STOP` and `STOP:ALL` force outputs inactive and cancel pulses. Clear never restores interrupted outputs. Dedicated browser/Director configuration and persistent IO timeline cues remain unimplemented. Verify boot polarity and stop behaviour with the external load isolated.
 
 # 21. Storage and productions
 
@@ -1347,8 +1380,8 @@ Showduino platform: 1.0.0-rc.1
 P4 source:           0.6.5 at baseline HEAD
 Comms source:        0.5.2 at baseline HEAD
 Director manifest:   0.9.7-director (release manifest; current source lacks an equivalent clear BoardConfig version constant)
-Repository SHA:      8c49ebd21dff2123527e3aa5a7360a9e4527025e
-Date:                26 September 2026
+Repository SHA:      526af84cc04d96b3f4d9a51bc3a0ef1470da0b69
+Date:                7 October 2026
 ```
 
 The committed release manifest still lists older P4/Comms component numbers than live `BoardConfig.h` values on this SHA, so the exact repository SHA is intentionally retained as the documentation baseline until release inventory is refreshed.

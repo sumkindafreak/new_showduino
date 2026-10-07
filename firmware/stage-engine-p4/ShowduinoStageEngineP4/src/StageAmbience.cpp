@@ -3,6 +3,7 @@
 #include "StageStorage.h"
 #include <FS.h>
 #include <string.h>
+#include <stdlib.h>
 #include "driver/i2s_std.h"
 
 static StageAmbienceStatus s;
@@ -41,13 +42,31 @@ static bool hw(uint32_t rate){
   if(i2s_channel_init_std_mode(tx,&cfg)!=ESP_OK||i2s_channel_enable(tx)!=ESP_OK){i2s_del_channel(tx);tx=nullptr;strncpy(s.error,"I2S_INIT",sizeof(s.error)-1);return false;}
   s.i2sReady=true; return true;
 }
-bool stageAmbienceBegin(){memset(&s,0,sizeof(s));s.volume=80;strncpy(s.error,"READY",sizeof(s.error)-1);Serial.printf("[AMBIENCE] PCM5102A WS=%d BCLK=%d DOUT=%d SCK=NC\n",P4_AMBIENCE_I2S_WS,P4_AMBIENCE_I2S_BCLK,P4_AMBIENCE_I2S_DOUT);return true;}
-void stageAmbienceStop(){s.playing=false;s.looping=false;if(f)f.close();dataPos=0;if(tx)i2s_channel_disable(tx);}
-void stageAmbienceOnEmergency(bool active){s.emergencyBlocked=active;if(active)stageAmbienceStop();}
-static bool play(const char *p,bool loop){
-  if(s.emergencyBlocked){strncpy(s.error,"EMERGENCY",sizeof(s.error)-1);return false;}
+bool stageAmbienceBegin(){s=StageAmbienceStatus{};strncpy(s.error,"READY",sizeof(s.error)-1);Serial.printf("[AMBIENCE] PCM5102A WS=%d BCLK=%d DOUT=%d SCK=NC\n",P4_AMBIENCE_I2S_WS,P4_AMBIENCE_I2S_BCLK,P4_AMBIENCE_I2S_DOUT);return true;}
+void stageAmbienceStop(){s.playing=false;s.looping=false;s.emergencyPlayback=false;if(f)f.close();dataPos=0;if(tx)i2s_channel_disable(tx);}
+// Only the internal emergency transition can bypass the playback lock.
+static bool play(const char *p,bool loop,bool emergencyPlayback=false){
+  if(s.emergencyBlocked&&!emergencyPlayback){strncpy(s.error,"EMERGENCY",sizeof(s.error)-1);return false;}
   stageAmbienceStop(); if(!wavOpen(p))return false; if(!hw(s.sampleRate)){f.close();return false;}
-  strncpy(s.path,p,sizeof(s.path)-1);s.path[sizeof(s.path)-1]=0;s.looping=loop;s.playing=true;strncpy(s.error,"OK",sizeof(s.error)-1);return true;
+  strncpy(s.path,p,sizeof(s.path)-1);s.path[sizeof(s.path)-1]=0;s.looping=loop;s.playing=true;s.emergencyPlayback=emergencyPlayback;strncpy(s.error,"OK",sizeof(s.error)-1);return true;
+}
+void stageAmbienceOnEmergency(bool active){
+  // Repeated assertions must not restart an already playing announcement.
+  if(active==s.emergencyBlocked)return;
+  s.emergencyBlocked=active;
+  stageAmbienceStop();
+  if(!active){
+    Serial.println("[AMBIENCE] Emergency cleared; output idle, no ambience restore");
+    return;
+  }
+  // Use the same canonical emergency asset/fallback as P4 system sounds.
+  // Failure leaves the normal soundtrack stopped and Emergency still locked.
+  if(play(PATH_SYSTEM_EMERGENCY_WAV,true,true)||
+     play(PATH_AUDIO_SYSTEM_LIBRARY "/emergency.wav",true,true)){
+    Serial.printf("[AMBIENCE] Emergency WAV looping: %s\n",s.path);
+  }else{
+    Serial.printf("[AMBIENCE] Emergency WAV unavailable: %s; output stopped\n",s.error);
+  }
 }
 void stageAmbienceLoop(){
   if(!s.playing||!tx||!f)return;
@@ -55,15 +74,18 @@ void stageAmbienceLoop(){
   size_t n=f.read((uint8_t*)buf,want);
   if(!n){if(s.looping){f.seek(dataStart);dataPos=0;return;}stageAmbienceStop();return;}
   dataPos+=n;
-  const int32_t vol=s.volume; for(size_t i=0;i<n/2;i++)buf[i]=(int16_t)(((int32_t)buf[i]*vol)/100);
+  // A saved cosmetic volume of zero must not silence the emergency WAV.
+  const int32_t vol=s.emergencyPlayback?100:s.volume; for(size_t i=0;i<n/2;i++)buf[i]=(int16_t)(((int32_t)buf[i]*vol)/100);
   size_t written=0;i2s_channel_write(tx,buf,n,&written,0);
   if(dataPos>=dataSize){if(s.looping){f.seek(dataStart);dataPos=0;}else stageAmbienceStop();}
 }
 const StageAmbienceStatus &stageAmbienceStatus(){return s;}
 bool stageAmbienceHandleCommand(const char *c,char *r,size_t z){
   if(!c||strncmp(c,"AMBIENCE:",9))return false;
+  if(!strcmp(c,"AMBIENCE:STATUS")){snprintf(r,z,"AMBIENCE:STATUS:%s:%s:VOL=%u",s.emergencyPlayback?"EMERGENCY":(s.playing?(s.looping?"LOOPING":"PLAYING"):"IDLE"),s.path,(unsigned)(s.emergencyPlayback?100:s.volume));return true;}
+  // Operator commands cannot replace, stop or mute the emergency announcement.
+  if(s.emergencyBlocked){snprintf(r,z,"ERR:AMBIENCE:EMERGENCY");return true;}
   if(!strcmp(c,"AMBIENCE:STOP")){stageAmbienceStop();snprintf(r,z,"OK:AMBIENCE:STOP");return true;}
-  if(!strcmp(c,"AMBIENCE:STATUS")){snprintf(r,z,"AMBIENCE:STATUS:%s:%s:VOL=%u",s.playing?(s.looping?"LOOPING":"PLAYING"):"IDLE",s.path,(unsigned)s.volume);return true;}
   if(!strncmp(c,"AMBIENCE:VOLUME:",16)){int v=atoi(c+16);if(v<0)v=0;if(v>100)v=100;s.volume=v;snprintf(r,z,"OK:AMBIENCE:VOLUME:%d",v);return true;}
   if(!strncmp(c,"AMBIENCE:PLAY:",14)){bool ok=play(c+14,false);snprintf(r,z,ok?"OK:AMBIENCE:PLAY":"ERR:AMBIENCE:%s",ok?"":s.error);return true;}
   if(!strncmp(c,"AMBIENCE:LOOP:",14)){bool ok=play(c+14,true);snprintf(r,z,ok?"OK:AMBIENCE:LOOP":"ERR:AMBIENCE:%s",ok?"":s.error);return true;}
