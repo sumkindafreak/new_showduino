@@ -1,5 +1,5 @@
-#include "../../../../protocol/showduino_io_command.h"
-#include "../../../../protocol/showduino_ambience_command.h"
+#include "../../../protocol/showduino_io_command.h"
+#include "../../../protocol/showduino_ambience_command.h"
 #include "WebApiHandler.h"
 
 #include <string.h>

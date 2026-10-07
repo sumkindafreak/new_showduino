@@ -1,5 +1,5 @@
 #include "StageAmbience.h"
-#include "../../../../protocol/showduino_ambience_command.h"
+#include "../../../protocol/showduino_ambience_command.h"
 #include "../BoardConfig.h"
 #include "StageStorage.h"
 #include <FS.h>

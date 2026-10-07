@@ -40,5 +40,16 @@ jobs:
           node tools/studio-v4-tests/test_pixel_authoring.js
           node tools/studio-v4-tests/test_outputs_controls.js
           node --input-type=module --check < web/showduino-studio/js/pages/Outputs.js
+      - name: Director delivery, node recovery and commissioning controls
+        run: |
+          node tools/director-tests/test_timeline_delivery.cjs
+          node tools/director-tests/test_outputs_page.cjs
+          node tools/director-tests/test_outputs_readback.cjs
+          node tools/director-tests/test_p4_outputs.cjs
+          node tools/director-tests/test_bus_assignments.cjs
+          node tools/director-tests/test_emergency_reconnect.cjs
+          node tools/director-tests/test_estop_production.cjs
+          node tools/audio-node-tests/test_live_headphones.cjs
+          node tools/audio-node-tests/test_web_pixel_setup.cjs
       - name: Whitespace check
         run: git diff --check
