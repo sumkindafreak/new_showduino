@@ -4,13 +4,14 @@
 #include <Arduino.h>
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_version.h"
+#include "../../../protocol/showduino_pixel_defaults.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.8"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.12"
 #endif
 
 /*
- * Showduino Stage Engine (ESP32-P4) — Waveshare ESP32-P4-Module-DEV-KIT
+ * Showduino Stage Engine (ESP32-P4) â€” Waveshare ESP32-P4-Module-DEV-KIT
  *
  * Authoritative command path (this hardware generation):
  *   Director --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this P4
@@ -31,14 +32,14 @@
  * Onboard ESP32-C6 is UNUSED BY SHOWDUINO / RESERVED HARDWARE.
  * Do not require C6 firmware, ESP-NOW, SDIO, ESP-Hosted, or WebUI on C6.
  * Do not allocate these P4 pins to peripherals:
- *   GPIO14-19  RESERVED — onboard C6 SDIO (CLK=18 CMD=19 D0=14 D1=15 D2=16 D3=17)
- *   GPIO54     RESERVED — onboard C6 reset / CHIP_PU
- *   GPIO6      RESERVED — onboard C6 control (C6 GPIO2)
+ *   GPIO14-19  RESERVED â€” onboard C6 SDIO (CLK=18 CMD=19 D0=14 D1=15 D2=16 D3=17)
+ *   GPIO54     RESERVED â€” onboard C6 reset / CHIP_PU
+ *   GPIO6      RESERVED â€” onboard C6 control (C6 GPIO2)
  *
  * Obsolete (do not use):
- *   P4 GPIO5 RX / GPIO6 TX  — old Stage Engine sketch to external SUE C3
- *   P4 GPIO18 RX / GPIO17 TX — stale SUE comment; those pins are C6 SDIO
- *   Onboard C6 GPIO4/5 UART jumpers — superseded by the dedicated S3
+ *   P4 GPIO5 RX / GPIO6 TX  â€” old Stage Engine sketch to external SUE C3
+ *   P4 GPIO18 RX / GPIO17 TX â€” stale SUE comment; those pins are C6 SDIO
+ *   Onboard C6 GPIO4/5 UART jumpers â€” superseded by the dedicated S3
  */
 
 #ifndef SHOWDUINO_COMMS_UART_BAUD
@@ -63,7 +64,7 @@
 #define SHOWDUINO_COMMS_CMD_MAX        240
 #endif
 
-/* Expected S3 Comms Controller UART GPIOs — documentation / RUN:TEST hint only. */
+/* Expected S3 Comms Controller UART GPIOs â€” documentation / RUN:TEST hint only. */
 #ifndef SHOWDUINO_COMMS_PEER_TX_PIN
 #define SHOWDUINO_COMMS_PEER_TX_PIN    17
 #endif
@@ -131,7 +132,7 @@
 #define PATH_SYSTEM_COMPLETE_WAV       PATH_AUDIO_SYSTEM "/complete.wav"
 #define PATH_SYSTEM_SHUTDOWN_WAV       PATH_AUDIO_SYSTEM "/shutdown.wav"
 
-/* Compatibility alias — emergency.wav now lives in the system set. */
+/* Compatibility alias â€” emergency.wav now lives in the system set. */
 #define PATH_EMERGENCY_WAV             PATH_SYSTEM_EMERGENCY_WAV
 #define PATH_EMERGENCY_WAV_ROOT        "/emergency.wav"
 #define PATH_EMERGENCY_MP3             "/showduino/audio/emergency.mp3"
@@ -214,10 +215,10 @@
 #define SHOWDUINO_SHOW_PIXEL_MAX             1024
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_DEFAULT
-#define SHOWDUINO_SHOW_PIXEL_DEFAULT         100
+#define SHOWDUINO_SHOW_PIXEL_DEFAULT         SHOWDUINO_PIXEL_DEFAULT_COUNT
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_COUNT
-#define SHOWDUINO_SHOW_PIXEL_COUNT           SHOWDUINO_SHOW_PIXEL_MAX
+#define SHOWDUINO_SHOW_PIXEL_COUNT           SHOWDUINO_SHOW_PIXEL_DEFAULT
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_BRIGHTNESS
 #define SHOWDUINO_SHOW_PIXEL_BRIGHTNESS      255
@@ -233,7 +234,7 @@
 #endif
 
 /*
- * Generic P4 I/O — function-agnostic local digital lines.
+ * Generic P4 I/O â€” function-agnostic local digital lines.
  *
  * GPIO46 = Generic I/O line 1
  * GPIO47 = Generic I/O line 2
@@ -275,7 +276,7 @@
 #define PATH_AUDIO_AMBIENCE             "/showduino/audio/ambience"
 
 // -----------------------------------------------------------------------------
-// Onboard ES8311 + NS4150B — SHOWDUINO SYSTEM / SAFETY AUDIO (LIVE)
+// Onboard ES8311 + NS4150B â€” SHOWDUINO SYSTEM / SAFETY AUDIO (LIVE)
 //
 // Verified against:
 //   Waveshare ESP32-P4-Module-DEV-KIT wiki I2S table
@@ -321,7 +322,7 @@
 #define P4_ES8311_I2C_ADDR            0x18U
 #endif
 
-/* Live P4 system-audio aliases — onboard ES8311, separate from ambient PCM5102A. */
+/* Live P4 system-audio aliases â€” onboard ES8311, separate from ambient PCM5102A. */
 #ifndef P4_AUDIO_I2S_BCLK
 #define P4_AUDIO_I2S_BCLK   P4_SYSTEM_AUDIO_I2S_BCLK
 #endif
@@ -338,14 +339,14 @@
  */
 
 /*
- * Showduino Plug-in Bus (I²C) — Waveshare ESP32-P4-Module-DEV-KIT
+ * Showduino Plug-in Bus (IÂ²C) â€” Waveshare ESP32-P4-Module-DEV-KIT
  *
- * Official board I²C (Waveshare wiki + schematic nets ESP_I2C_SDA/SCL):
+ * Official board IÂ²C (Waveshare wiki + schematic nets ESP_I2C_SDA/SCL):
  *   SDA = GPIO7
  *   SCL = GPIO8
- * Exposed on the dedicated SH1.0 I²C header and on the 40-pin header
+ * Exposed on the dedicated SH1.0 IÂ²C header and on the 40-pin header
  * (Raspberry Pi-style pin 3 / pin 5). Shared with onboard ES8311 (0x18)
- * and MIPI CSI/DSI touch/control. Board already has 3.3V I²C pull-ups;
+ * and MIPI CSI/DSI touch/control. Board already has 3.3V IÂ²C pull-ups;
  * do not add 5V pull-ups. The onboard ES8311 is Showduino system/safety
  * audio. Attraction/programme audio is the Audio Node.
  *
@@ -399,7 +400,7 @@
 
 /*
  * Internal ESP32-P4 RTC. No DS3231 on this generation.
- * GPIO0/1 are the board 32.768 kHz crystal path — do not reassign.
+ * GPIO0/1 are the board 32.768 kHz crystal path â€” do not reassign.
  */
 #ifndef SHOWDUINO_RTC_ENABLED
 #define SHOWDUINO_RTC_ENABLED          1
@@ -412,7 +413,7 @@
 #endif
 
 /*
- * Onboard Ethernet — Waveshare ESP32-P4-Module-DEV-KIT
+ * Onboard Ethernet â€” Waveshare ESP32-P4-Module-DEV-KIT
  * PHY: IP101GRI over RMII. Arduino-ESP32 3.3.11 alias ETH_PHY_TLK110 / ETH_PHY_IP101.
  * Confirmed from Waveshare wiki + Arduino variant pins_arduino.h
  * (esp32p4 and waveshare_p4_poe_eth). Generic FQBN esp32p4 already defines these.

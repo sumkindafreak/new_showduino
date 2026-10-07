@@ -2,9 +2,9 @@
 
 ## Architectural constitution
 
-> The Show Engine decides.  
-> The Communications Engine transports.  
-> The Director commands and displays.  
+> The Show Engine decides.\
+> The Communications Engine transports.\
+> The Director commands and displays.\
 > The Nodes act.
 
 This document describes the **current Showduino v1 architecture**. Historical C3/SUE, onboard-C6, CYD/Mega and relay-era code may remain in the repository, but it must not be mistaken for the current product path.
@@ -201,7 +201,7 @@ CUSTOM_SEQUENCE
 
 Typical segment parameters are range, primary/secondary colour, brightness, speed, intensity, randomness, reverse/direction and duration.
 
-Direct `PIXEL:*` commands are currently a commissioning/runtime-control surface. Persistent production format v1 still accepts TEST/LOG cues only; production `PIXEL` cue parsing, named segment persistence and logical target binding remain separate future integration work.
+Direct `PIXEL:*` commands are currently a commissioning/runtime-control surface. Persistent production format v1 accepts bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel cues. Named segment persistence, broader logical binding and mixed-device hardware acceptance remain separate integration work.
 
 ### GPIO24 — Emergency/signage line
 
@@ -331,7 +331,7 @@ Command acceptance and physical completion remain separate lifecycle concepts. T
 
 ## Storage
 
-The P4 SD card is the persistent Show Engine store under `/showduino/`. Versioned production discovery and transactional TEST/LOG timeline loading are implemented. Broader asset/project authoring and physical production cue types are still being extended.
+The P4 SD card is the persistent Show Engine store under `/showduino/`. Versioned production discovery and transactional bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel timeline loading are implemented. Broader asset/project authoring and physical production cue types are still being extended.
 
 The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 
@@ -345,7 +345,7 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 - S3 SoftAP + PROGMEM Showduino Studio frontend + P4 API proxy.
 - P4 authoritative runtime/emergency state.
 - RAM timeline with load/order/start/pause/resume/stop/emergency interruption.
-- P4 SD production discovery and transactional TEST/LOG loading.
+- P4 SD production discovery and transactional bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET/ESTOP-pixel loading.
 - P4 onboard ES8311 system/safety audio.
 - specialist Audio Node firmware and P4 routing/lifecycle tracking; hardware commissioning still required.
 - GPIO24 grouped emergency/signage pixel behavior.
@@ -360,7 +360,7 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 - named logical pixel-segment persistence and binding;
 - completion-driven state/fault handling for all future Nodes;
 - Audio Node, Lamp Node, Pixel Node and P4 pixel physical bench commissioning;
-- MOSFET Node milestone.
+- MOSFET Node physical output/pin acceptance (firmware, routing and powered-output deploy implemented).
 
 ### Explicitly parked
 

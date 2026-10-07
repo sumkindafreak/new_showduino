@@ -4,7 +4,7 @@
 Status: ACTIVE
 Role: Showduino Show Engine
 Product: Stage Controller (ESP32-P4)
-Firmware: 0.6.8
+Firmware: 0.6.9
 ```
 
 Canonical active Show Engine firmware:
@@ -19,12 +19,12 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 ## Current implemented foundation
 
 - Authoritative show/emergency runtime.
-- Persistent P4 SD production discovery and transactional TEST/LOG timeline loading.
+- Persistent P4 SD production discovery and transactional bounded TEST/LOG/PIXEL/AUDIO/LAMP/MOSFET timeline loading.
 - Start/pause/resume/stop timeline execution independent of Director/browser presence.
 - Dedicated S3 Comms UART on P4 GPIO4/5.
 - P4 onboard ES8311 system/safety audio.
 - Audio Node command routing and confirmed lifecycle tracking.
-- C3 Lamp Node routing (`LampNodeLink`) and emergency white override.
+- S3 Lamp Node routing (`LampNodeLink`) and emergency white override.
 - GPIO24 emergency/designated-signage NeoPixel engine.
 - GPIO23 local segmented theatrical Show Pixel Engine with shared 25-FX vocabulary.
 - Two persistent function-agnostic Generic I/O lines: GPIO46 (line 1) and GPIO47 (line 2); GPIO48 reserved.
@@ -269,3 +269,9 @@ See:
 - [`docs/hardware-pinout.md`](../../docs/hardware-pinout.md)
 - [`docs/node-roadmap.md`](../../docs/node-roadmap.md)
 - [`docs/production-storage.md`](../../docs/production-storage.md)
+
+## Emergency ambience — 0.6.9
+
+PCM5102A on GPIO20/21/22 stops background ambience and loops `/showduino/audio/system/emergency.wav` on Emergency (fallback `/showduino/audio/show_machine/emergency.wav`). The emergency announcement uses 100% software volume and cannot be replaced/stopped/muted by normal `AMBIENCE:*` commands while latched. Clear stops it without restoring ambience. Normal `SHOW:STOP` / `STOP:ALL` also stops ambience when Emergency is clear.
+
+Use a stereo 16-bit PCM WAV for the first bench test. Missing/invalid WAV, absent SD or I2S failure leaves ambience stopped; the Emergency latch remains authoritative. Confirm simultaneous ES8311/PCM5102A playback physically. Run `bash tools/ambience-tests/run_tests.sh` from the repository root for host transition tests.

@@ -158,7 +158,7 @@ static bool isKnownCommsCommand(const String &c) {
   if (c.startsWith("STATUS:") || c.startsWith("TIME:") || c.startsWith("DMX:") ||
       c.startsWith("PIXEL:") || c.startsWith("NET:") || c.startsWith("E131:") ||
       c.startsWith("STORAGE:")) return true;
-  if (c.startsWith("PLUGIN:")) return true;
+  if (c.startsWith("PLUGIN:") || c.startsWith("DESK:IO:")) return true;
   if (c.startsWith("UPDATE:")) return true;
   if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:") || c.startsWith("ESTOP:")) return true;
   if (c.startsWith("WEB/")) return true;
@@ -659,6 +659,7 @@ void sendStatus() {
   pixelNodeLinkPublishToDirector();
   mosfetNodeLinkPublishToDirector();
   showduinoIOPublishState();
+  {char reply[240];stageAmbienceHandleCommand("AMBIENCE:STATUS",reply,sizeof(reply));sendCommandReply(reply);}
   {
     char timeWire[96];
     if (stageTimeFormatDirectorWire(timeWire, sizeof(timeWire))) {
@@ -872,6 +873,7 @@ void handleShowCommand(const String &command) {
     bool stopped = gRuntime.handleStop(now, &gEngine);
     if (!emergencyLocked) {
       stageAudioStopShow();
+      stageAmbienceStop(); // Normal show stop also ends background ambience.
       showPixelsBlackout();
       mosfetNodeLinkAllOff("SHOW_STOP");
       showduinoIOAllOff("SHOW_STOP");
@@ -1033,6 +1035,14 @@ static void emitConsoleLine(const char *line) {
 static void emitRuntimeToUsbAndDirector(const char *line) {
   emitConsoleLine(line);
   sendToDirectorC(line);
+}
+
+
+static void publishPluginPage(unsigned page) {
+  unsigned total=pluginBusInstanceCount();
+  if(page>=total)page=0;
+  const PluginInstance *v=total?pluginBusInstanceAt(page):nullptr;
+  char s[96];snprintf(s,sizeof(s),"STATE:BUS:%u:%u:%02X:%02X:%u:%s:%s:%u",page,total,v?v->loc.address:0,v?v->loc.muxAddr:0,v?(unsigned)v->status:0,v?pluginChipName(v->chip):"UNKNOWN",v?pluginRoleName(v->role):"NONE",v&&v->configured?1U:0U);sendCommandReply(s);
 }
 
 static void dispatchCommand(const String &command) {
@@ -1269,18 +1279,28 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if(command.startsWith("DESK:IO:")) {
+    String io=command.substring(5);
+    const bool safe=io=="IO:ALL:OFF"||io=="IO:1:OFF"||io=="IO:2:OFF"||io=="IO:STATUS";
+    if(!safe&&(gRuntime.rt.state==SHOW_STATE_RUNNING||gRuntime.rt.state==SHOW_STATE_PAUSED||gRuntime.rt.state==SHOW_STATE_EMERGENCY_STOP)) {sendCommandReply("STATE:IO:RESULT:Controls locked during show/emergency.");return;}
+    dispatchCommand(io);return;
+  }
   if (command.startsWith("IO:")) {
+    if(command.indexOf(":CONFIG:")>=0 && (gRuntime.rt.state==SHOW_STATE_RUNNING||gRuntime.rt.state==SHOW_STATE_PAUSED||gRuntime.rt.state==SHOW_STATE_EMERGENCY_STOP)) {
+      sendCommandReply("STATE:IO:RESULT:Configuration locked.");return;
+    }
     char reply[192];
     if (showduinoIOHandleCommand(command.c_str(), reply, sizeof(reply))) {
-      if (reply[0]) sendCommandReply(reply);
+      if (reply[0]) {sendCommandReply(reply);if(command!="IO:STATUS"){char state[96];snprintf(state,sizeof(state),"STATE:IO:RESULT:%s",reply);sendCommandReply(state);}}
     }
     return;
   }
 
   if (command.startsWith("AMBIENCE:")) {
-    char reply[180];
+    char reply[240];
     if (stageAmbienceHandleCommand(command.c_str(), reply, sizeof(reply))) {
       if (reply[0]) sendCommandReply(reply);
+      if(command!="AMBIENCE:STATUS"&&!command.startsWith("AMBIENCE:FILE:")){stageAmbienceHandleCommand("AMBIENCE:STATUS",reply,sizeof(reply));sendCommandReply(reply);}
     }
     return;
   }
@@ -1322,6 +1342,18 @@ static void dispatchCommand(const String &command) {
     return;
   }
 
+  if(command.startsWith("PLUGIN:PAGE:")) {
+    const String page=command.substring(12);char *end=nullptr;unsigned long n=strtoul(page.c_str(),&end,10);
+    if(page.length()&&end&&!*end&&n<PLUGIN_MAX_INSTANCES)publishPluginPage(n);return;
+  }
+  if(command=="PLUGIN:RESCAN"||command.startsWith("PLUGIN:ASSIGN:")) {
+    if(gRuntime.rt.state==SHOW_STATE_RUNNING||gRuntime.rt.state==SHOW_STATE_PAUSED||gRuntime.rt.state==SHOW_STATE_EMERGENCY_STOP){sendCommandReply("STATE:BUS:RESULT:Editing locked during show/emergency.");return;}
+    if(command=="PLUGIN:RESCAN"){pluginBusScan();publishPluginPage(0);return;}
+    unsigned address=0;char chip[16]={},role[24]={},reply[72]={};int end=0;
+    if(sscanf(command.c_str(),"PLUGIN:ASSIGN:%x:%15[^:]:%23s%n",&address,chip,role,&end)!=3||command.c_str()[end]||address>0x77)snprintf(reply,sizeof(reply),"Invalid assignment command.");
+    else pluginBusAssignPreset(address,chip,role,reply,sizeof(reply));
+    char s[96];snprintf(s,sizeof(s),"STATE:BUS:RESULT:%s",reply);sendCommandReply(s);return;
+  }
   if (command == "PLUGIN:SCAN") {
     pluginBusScan();
     sendCommandReply(String("PLUGIN:SCAN:OK:") + pluginBusInstanceCount());

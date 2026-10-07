@@ -21,6 +21,7 @@ void page_audio_system_destroy(void);
 bool page_audio_system_is_active(void);
 void page_audio_system_apply_theme(void);
 
+void page_audio_system_apply_ambience(const char *line);
 void page_audio_system_set_header(const char *status, uint32_t color);
 void page_audio_system_set_local_status(const char *text);
 void page_audio_system_set_local_detail(const char *text);
