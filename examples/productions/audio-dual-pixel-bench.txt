@@ -1,0 +1,37 @@
+Audio + Dual Pixel Bench — 60 seconds
+
+Required: P4 0.6.11 (fixes rejection of Emergency Node pixel timeline cues).
+The local P4 source has this fix. No other firmware change is required.
+
+1. Copy bench_sync.wav onto the AUDIO NODE SD card:
+   /showduino/audio/bench_sync.wav
+2. Keep the working Audio Node output setting (LINE for your headphone jack).
+3. Import audio_dual_pixel_bench.shdo through your normal Studio production
+   import/deploy workflow, select the production on Director, and press PLAY.
+   A .shdo is an authoring file; do not rename it timeline.json.
+4. Both programmable lines must already be configured for at least 10 pixels.
+   This show uses their first 10 pixels and does not change saved counts.
+   Audio GPIO5 status indicator remains managed by firmware.
+
+Expected sequence:
+2s: repeating four-note audio melody begins, volume 55%.
+3s: Audio strip red; Emergency strip blue.
+10s: Audio green; Emergency red.
+17s: Audio blue; Emergency green.
+24s: both rainbow.
+33s: Audio cyan chase; Emergency amber chase in reverse.
+42s: Audio purple breathe; Emergency green/cyan breathe.
+51s: both white at moderate show brightness.
+56s: audio stopped; both lines dark. Production completes at 60s.
+There are short black gaps between phases. The Emergency line starts 200ms
+after the Audio line to spread command traffic.
+
+Emergency check: on a second run, press the physical Emergency Node button
+during an effect. The timeline should stop and both configured pixel lines
+should turn emergency white. Audio follows your existing emergency asset
+configuration, not this bench melody. Release and clear using the normal
+manual procedure; the production must not resume automatically.
+
+Checked against the current SHDO v2 routes, effect names and 64-byte cue limit.
+Not yet played on hardware. This targets the current Audio peer and all online
+Emergency peers exposed by the estop-node-pixels route.

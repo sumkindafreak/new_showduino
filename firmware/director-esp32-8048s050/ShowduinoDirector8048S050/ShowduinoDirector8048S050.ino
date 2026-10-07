@@ -106,17 +106,19 @@ uint32_t rxCount = 0;
 uint8_t gNodesOnline = 0;
 bool tlEndAckSeen = false;
 int tlEndAckCount = -1;
+static char verifiedTimelineId[64] = {};
 
 void markLinkDisconnected(const char *reason);
 void requestLinkRetry();
 void readEspNowReplies();
 void readStageSerial();
-void sendToStage(const String &command);
+bool sendToStage(const String &command);
 void requestStateSync();
 void applyMirroredRuntime(const ShowRuntime &rt);
 void onEmergencyActivatedDirectorUx();
 void pushEmergencyTimelineSnapshot();
 bool uploadShowTimelineToStage(const char *idOrName);
+bool requestShowRun(const char *idOrName);
 
 static void directorWakeDisplay(const char *tag) {
   Serial.printf("[%s] Display wake\n", tag);
@@ -204,12 +206,15 @@ void drainOs2Commands() {
           ui.appendLog(String("CMD LoadProduction failed: ") + cmd.arg);
           Os2::commandService().markFailed(cmd.seq, "missing production");
         } else {
-          ui.setLoadedShowName(def.name);
           DirectorConfig &cfg = gStorage.getConfig();
           strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
           gStorage.markConfigDirty();
           gStorage.startShowLog(def.id);
-          uploadShowTimelineToStage(def.id);
+          if (!uploadShowTimelineToStage(def.id)) {
+            Os2::commandService().markFailed(cmd.seq, "timeline upload failed");
+            break;
+          }
+          ui.setLoadedShowName(def.name);
           Os2::sessionService().setLastProduction(def.id);
           ui.appendLog(String("CMD loaded: ") + def.name);
           Os2::commandService().markSucceeded(cmd.seq, def.name);
@@ -225,7 +230,10 @@ void drainOs2Commands() {
           key = gShowMirror.showName;
         }
         if (key && key[0]) {
-          sendToStage(String("SHOW:RUN:") + key);
+          if (!requestShowRun(key)) {
+            Os2::commandService().markFailed(cmd.seq, "timeline not verified");
+            break;
+          }
           Os2::commandService().markSucceeded(cmd.seq);
           ui.appendLog("CMD StartShow");
         } else {
@@ -524,6 +532,7 @@ void handleStageLine(String line) {
 #endif
   }
   {
+    page_p4_io_receive(line.c_str());
     ShowduinoMosfetDetailWire mdet{};
     if (showduino_parse_state_node_mosfet_detail(line.c_str(), &mdet)) {
       ui.setMosfetNodeDetail(mdet);
@@ -719,22 +728,25 @@ void handleStageLine(String line) {
   ui.updateStatusWidgets(false);
 }
 
-void sendToStage(const String &command) {
+bool sendToStage(const String &command) {
   bool sentByEspNow = false;
+  bool sent = false;
 
 #if SHOWDUINO_USE_ESPNOW
   if (espNowReady) {
     sentByEspNow = espNowTransport.sendCommand(command);
+    sent = sentByEspNow;
   }
 #endif
 
 #if SHOWDUINO_USE_UART_FALLBACK
   if (!sentByEspNow) {
     Serial1.println(command);
+    sent = true;
   }
 #endif
 
-  txCount++;
+  if (sent) txCount++;
   if (command == SHOWDUINO_LEGACY_HELLO) lastHelloMs = millis();
 
   /* Emergency lock: E-STOP may set local activating feedback in UI;
@@ -756,11 +768,13 @@ void sendToStage(const String &command) {
 
   if (!isQuietLinkTraffic(command)) {
     if (sentByEspNow) ui.appendLog("TX -> Stage: " + command);
-    else ui.appendLog("TX -> Stage UART: " + command);
+    else if (sent) ui.appendLog("TX -> Stage UART: " + command);
+    else ui.appendLog("TX FAILED -> Stage: " + command);
   }
 
   // Drain any replies that arrived during the blocking send wait.
   readEspNowReplies();
+  return sent;
 }
 
 void requestStateSync() {
@@ -829,6 +843,8 @@ void serviceTimeline() {
 }
 
 bool uploadShowTimelineToStage(const char *idOrName) {
+  verifiedTimelineId[0] = '\0';
+  if (emergencyLocked) return false;
   if (!idOrName || !idOrName[0]) return false;
 
   ShowManager &sm = gStorage.showManager();
@@ -874,8 +890,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   if (strlen(loadCmd) >= SHOWDUINO_DESK_COMMAND_MAX) {
     snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
   }
-  sendToStage(loadCmd);
-  sendToStage("SHOW:TL:BEGIN");
+  if (!sendToStage(loadCmd) || !sendToStage("SHOW:TL:BEGIN")) {
+    ui.appendLog("LOAD failed - timeline transfer could not start");
+    return false;
+  }
 
   uint16_t sent = 0;
   uint16_t skipped = 0;
@@ -889,7 +907,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
       skipped++;
       continue;
     }
-    sendToStage(cueLine);
+    if (!sendToStage(cueLine) || emergencyLocked) {
+      ui.appendLog("LOAD failed - timeline cue delivery interrupted");
+      return false;
+    }
     sent++;
     if ((i & 7) == 0) {
       readEspNowReplies();
@@ -899,7 +920,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 
   tlEndAckSeen = false;
   tlEndAckCount = -1;
-  sendToStage("SHOW:TL:END");
+  if (skipped || !sent || !sendToStage("SHOW:TL:END")) {
+    ui.appendLog("LOAD failed - timeline incomplete");
+    return false;
+  }
 
   const unsigned long TL_END_ACK_MS = 2000UL;
   unsigned long t0 = millis();
@@ -922,6 +946,7 @@ bool uploadShowTimelineToStage(const char *idOrName) {
     return false;
   }
 
+  strncpy(verifiedTimelineId, showId, sizeof(verifiedTimelineId) - 1);
   ui.setLoadedShowName(showName);
   snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues verified, %u skipped)",
            showName, (unsigned)sent, (unsigned)skipped);
@@ -931,6 +956,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 }
 
 bool requestShowRun(const char *idOrName) {
+  if (emergencyLocked || linkState != LINK_READY) {
+    ui.appendLog("RUN blocked - emergency or Stage link unavailable");
+    return false;
+  }
   if (idOrName && idOrName[0]) {
     /* Ensure package metadata is local; Stage must already have timeline. */
     ShowManager &sm = gStorage.showManager();
@@ -942,10 +971,10 @@ bool requestShowRun(const char *idOrName) {
       }
     }
   }
-  if (gShowMirror.state != SHOW_STATE_SHOW_LOADED &&
+  if (!verifiedTimelineId[0] || !idOrName || strcmp(verifiedTimelineId, idOrName) != 0 ||
+      (gShowMirror.state != SHOW_STATE_SHOW_LOADED &&
       gShowMirror.state != SHOW_STATE_PAUSED &&
-      gShowMirror.state != SHOW_STATE_FINISHED &&
-      gShowMirror.totalCues == 0) {
+      gShowMirror.state != SHOW_STATE_FINISHED && gShowMirror.totalCues == 0)) {
     /* Try upload then run if operator pressed RUN without LOAD. */
     const char *key = idOrName;
     if ((!key || !key[0]) && gStorage.showManager().hasCurrentShow()) {
@@ -953,9 +982,9 @@ bool requestShowRun(const char *idOrName) {
     }
     if (key && key[0]) {
       if (!uploadShowTimelineToStage(key)) return false;
-    }
+    } else return false;
   }
-  sendToStage("SHOW:RUN");
+  if (!sendToStage("SHOW:RUN")) return false;
   ui.appendLog("Requested SHOW:RUN (await Stage runtime)");
   return true;
 }
@@ -1093,12 +1122,12 @@ void handleUiCommand(const String &command) {
       ui.appendLog(String("LOAD failed - missing show.json for ") + ui.selectedShowId());
       return;
     }
+    if (!uploadShowTimelineToStage(def.id)) return;
     ui.setLoadedShowName(def.name);
     DirectorConfig &cfg = gStorage.getConfig();
     strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
     gStorage.markConfigDirty();
     gStorage.startShowLog(def.id);
-    uploadShowTimelineToStage(def.id);
     return;
   }
 
@@ -1252,7 +1281,7 @@ void handleUiCommand(const String &command) {
 
   backlightNotifyActivity();
   if (command.startsWith("RELAY:")) {
-    ui.appendLog("Relay retired — use Lamp Node");
+    ui.appendLog("Relay retired â€” use Lamp Node");
     return;
   }
   if (command.startsWith("AUDIO:") &&
@@ -1273,6 +1302,7 @@ void handleUiCommand(const String &command) {
 }
 
 void markLinkDisconnected(const char *reason) {
+  verifiedTimelineId[0] = '\0';
   static unsigned long lastLogMs = 0;
   const bool alreadyDown = (linkState == LINK_DISCONNECTED);
   applyLinkState(LINK_DISCONNECTED);
@@ -1630,6 +1660,12 @@ void setup() {
 }
 
 void loop() {
+  // Service incoming state and heartbeats before display rendering.
+  readEspNowReplies();
+  readStageSerial();
+  sendHeartbeatIfDue();
+  sendHelloIfNeeded();
+  ui.serviceNodeUpdates();
   unsigned long now = millis();
   unsigned long elapsed = now - lastLvglTickMs;
   lastLvglTickMs = now;

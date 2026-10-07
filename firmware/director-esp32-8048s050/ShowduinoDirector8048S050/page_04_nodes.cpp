@@ -33,6 +33,7 @@ struct Page04Card {
   const char *name;
   const char *idle_detail;
   bool present;
+  bool rendered;
   uint32_t status_color;
   char status_text[28];
   char detail_text[96];
@@ -182,6 +183,7 @@ static void card_event(lv_event_t *e) {
   if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
   const Page04Role role = (Page04Role)(intptr_t)lv_event_get_user_data(e);
   if (role < 0 || role >= PAGE04_ROLE_COUNT) return;
+  if (role == PAGE04_ROLE_MOSFET) { emit(PAGE04_CMD_MOSFET_OPEN); return; }
   open_sheet(role);
 }
 
@@ -256,6 +258,12 @@ static void apply_card(Page04Role role, bool present, const char *status,
                        const char *detail, uint32_t status_color) {
   Page04Card *c = &s_cards[role];
   if (!c->panel) return;
+  const char *nextStatus = status && status[0] ? status : "NOT DETECTED";
+  const char *nextDetail = detail && detail[0] ? detail : c->idle_detail;
+  if (c->rendered && c->present == present && c->status_color == status_color &&
+      strcmp(c->status_text, nextStatus) == 0 &&
+      strcmp(c->detail_text, nextDetail) == 0) return;
+  c->rendered = true;
   c->present = present;
   c->status_color = status_color;
   strncpy(c->status_text, status && status[0] ? status : "NOT DETECTED",
@@ -886,6 +894,7 @@ void page_04_nodes_close_sheet(void) {
 }
 
 void page_04_nodes_set_lock(bool emergency) {
+  if (s_emergency == emergency) return;
   s_emergency = emergency;
   if (s_open >= 0) fill_sheet();
 }
@@ -917,7 +926,7 @@ void page_04_nodes_apply_theme(void) {
 
 void page_04_nodes_set_summary(const char *text) {
   if (!s_summary || !text) return;
-  lv_label_set_text(s_summary, text);
+  if (strcmp(lv_label_get_text(s_summary), text) != 0) lv_label_set_text(s_summary, text);
 }
 
 void page_04_nodes_set_card(Page04Role role, bool present,
@@ -935,12 +944,14 @@ void page_04_nodes_set_lamp_sheet(const ShowduinoLampDirectorSheet *model) {
 void page_04_nodes_set_emergency_sheet(const ShowduinoEmergencyDirectorSheet *model) {
   if (model) s_estop_sheet = *model;
   if (s_estop_strip_status) {
-    lv_label_set_text(s_estop_strip_status,
-                      s_estop_sheet.strip[0] ? s_estop_sheet.strip : "E-STOP  0 ONLINE");
+    const char *text = s_estop_sheet.strip[0] ? s_estop_sheet.strip : "E-STOP  0 ONLINE";
+    if (strcmp(lv_label_get_text(s_estop_strip_status), text) != 0)
+      lv_label_set_text(s_estop_strip_status, text);
   }
   if (s_estop_warn) {
-    lv_label_set_text(s_estop_warn,
-                      s_estop_sheet.safety_fault ? "SAFETY STATION FAULT" : "");
+    const char *text = s_estop_sheet.safety_fault ? "SAFETY STATION FAULT" : "";
+    if (strcmp(lv_label_get_text(s_estop_warn), text) != 0)
+      lv_label_set_text(s_estop_warn, text);
   }
   if (s_estop_open) fill_emergency_sheet();
 }

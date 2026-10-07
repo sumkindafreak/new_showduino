@@ -89,7 +89,7 @@ bool sdPresent = false;
 // =========================================================
 
 #define PIXEL_LINE_COUNT 4
-#define PIXELS_PER_LINE 60
+#define PIXELS_PER_LINE 10  // Mirrors the shared default; this legacy AVR sketch is standalone.
 
 #define PIXEL_LINE_1_PIN 4
 #define PIXEL_LINE_2_PIN 5
@@ -264,7 +264,7 @@ void updatePixelPulse(uint8_t lineIndex, unsigned long now) {
   PixelLineState& s = pixelState[lineIndex];
 
   unsigned long elapsed = now - s.effectStartMs;
-  uint16_t wave = (elapsed / max<uint8_t>(1, s.speed)) % 512;
+  uint16_t wave = (elapsed / max((uint8_t)1, s.speed)) % 512;
   uint8_t level = wave < 256 ? wave : 511 - wave;
 
   uint8_t r = (uint16_t)s.red * level / 255;
@@ -299,7 +299,7 @@ void updatePixelStrobe(uint8_t lineIndex, unsigned long now) {
   Adafruit_NeoPixel* strip = pixelLines[lineIndex];
   PixelLineState& s = pixelState[lineIndex];
 
-  uint16_t interval = max<uint8_t>(20, 255 - s.speed);
+  uint16_t interval = max((uint8_t)20, (uint8_t)(255 - s.speed));
   bool shouldBeOn = ((now - s.effectStartMs) / interval) % 2 == 0;
 
   if (shouldBeOn != s.strobeOn) {

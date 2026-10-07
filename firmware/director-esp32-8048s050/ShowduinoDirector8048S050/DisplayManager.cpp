@@ -5,6 +5,7 @@
 #include "ShowduinoOsUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
+#include "touch_lvgl.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <string.h>
@@ -441,6 +442,7 @@ bool DisplayManager::showPage(DisplayPageId page) {
 
   const bool leavingBoot = (lv_screen_active() != screen_);
 
+  touchLvglConsumeUntilRelease();
   state_ = DISPLAY_TRANSITION;
   ensureShell();
   hidePagePanels();

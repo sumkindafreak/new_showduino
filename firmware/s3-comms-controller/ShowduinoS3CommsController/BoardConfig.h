@@ -42,7 +42,7 @@
  * build, never replace that same version string with a different binary.
  * 0.5.2 remains the prior embedded-Studio build; browser-control hardening
  * is 0.5.3. */
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.5"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.7"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
 #define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0
@@ -58,7 +58,7 @@
 #define SHOWDUINO_WEBUI_MDNS "showduino"
 
 /* Venue credentials live in LocalSecrets.h (gitignored). Bench default only
- * applies when that file is absent — change before any public venue. */
+ * applies when that file is absent â€” change before any public venue. */
 #if __has_include("LocalSecrets.h")
 #include "LocalSecrets.h"
 #endif
@@ -68,7 +68,7 @@
 #ifndef SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
 #define SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR 0
 #endif
-/* SHOWDUINO_WEBUI_CONTROL_TOKEN — optional; define in LocalSecrets.h */
+/* SHOWDUINO_WEBUI_CONTROL_TOKEN â€” optional; define in LocalSecrets.h */
 #define USB_DEBUG_BAUD 115200
 
 #define SHOWDUINO_COMMS_UART_BAUD      115200
@@ -79,7 +79,7 @@
 #define SHOWDUINO_COMMS_PING_TIMEOUT_MS 2000UL
 
 /*
- * Dedicated P4 UART on UART1 — not UART0, not native USB.
+ * Dedicated P4 UART on UART1 â€” not UART0, not native USB.
  *
  * Selected pins (ESP32-S3 DevKitC-1 / WROOM-1 header convention):
  *   RX = GPIO18   (this board receives P4 TX)
@@ -91,8 +91,8 @@
  *   - Not GPIO19/20 (USB D-/D+). Native USB CDC stays available.
  *   - Not GPIO43/44 (U0TXD/U0RXD). UART0 debug/programming is untouched.
  *   - Not strapping pins GPIO0, GPIO3, GPIO45, GPIO46.
- *   - Not typical WROOM-1 flash/PSRAM balls GPIO26–37.
- *   - Not JTAG MTDI/MTCK/MTMS/MTDO (GPIO39–42) as a required debug path.
+ *   - Not typical WROOM-1 flash/PSRAM balls GPIO26â€“37.
+ *   - Not JTAG MTDI/MTCK/MTMS/MTDO (GPIO39â€“42) as a required debug path.
  *
  * Do not assume these numbers match the P4. They do not.
  * P4 remains RX=GPIO4 TX=GPIO5.
@@ -112,7 +112,7 @@
 #define SHOWDUINO_ESPNOW_CHANNEL       1
 
 /*
- * Onboard addressable RGB — COMMS STATUS only.
+ * Onboard addressable RGB â€” COMMS STATUS only.
  *
  * Current Showduino Comms S3 is ESP32-S3-DevKitC-1 v1.0 style hardware:
  *   RGB on GPIO48 (WS2812).

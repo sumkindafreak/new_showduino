@@ -31,6 +31,9 @@
 #include "page_02_productions.h"
 #include "page_04_nodes.h"
 #include "page_05_audio_node.h"
+#include "page_outputs.h"
+#include "page_p4_io.h"
+#include "../../../protocol/showduino_mosfet_node.h"
 #include "page_lamp_node.h"
 #include "page_06_diagnostics.h"
 #include "page_08_settings.h"
@@ -463,6 +466,8 @@ public:
 
   void setMosfetNodeDetail(const ShowduinoMosfetDetailWire &d) {
     mosfetDetail_ = d;
+    refreshOutputsPage();
+    if (d.haveLevels) page_outputs_report_received();
     refreshNodesPage();
   }
 
@@ -1321,6 +1326,8 @@ public:
   }
 
   // Call often from loop. Only touches LVGL when something actually changed.
+  void serviceNodeUpdates() { serviceNodesPage(); }
+
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
     syncStatusBarHealth();
     statusBar_.update(millis());
@@ -1526,6 +1533,7 @@ private:
     snap.nodeCount = nodeCount;
     snap.progressPct = liveProgressPct;
     displayManager_.updateWidgets(snap);
+    refreshOutputsPage();
 
     if (page_04_nodes_is_active() && snap.page == PAGE_NODES) {
       refreshNodesPage();
@@ -1691,7 +1699,25 @@ private:
     if (commandCallback) commandCallback(cmd);
   }
 
+  // Coalesce incoming reports; do not redraw once for every status packet.
   void refreshNodesPage() {
+    if (page_04_nodes_is_active() && displayManager_.currentPage() == PAGE_NODES) {
+      nodesPageDirty_ = true;
+    }
+  }
+
+  void serviceNodesPage() {
+    if (!nodesPageDirty_ || displayManager_.currentPage() != PAGE_NODES ||
+        !page_04_nodes_is_active()) return;
+    const uint32_t now = millis();
+    if (nodesPageRendered_ && (now - nodesPageLastRefreshMs_) < 100UL) return;
+    nodesPageDirty_ = false;
+    nodesPageRendered_ = true;
+    nodesPageLastRefreshMs_ = now;
+    renderNodesPage();
+  }
+
+  void renderNodesPage() {
     if (!page_04_nodes_is_active()) return;
     char sum[64];
     snprintf(sum, sizeof(sum), "FABRIC  |  %u ONLINE  |  5 SPECIALISTS",
@@ -2474,6 +2500,9 @@ private:
   bool lastHealthStage_ = false;
   bool statusBarCovered_ = true;
   bool emergencyActivating = false;
+  bool nodesPageDirty_ = false;
+  bool nodesPageRendered_ = false;
+  uint32_t nodesPageLastRefreshMs_ = 0;
   bool statusDirty = true;
   bool trafficDirty = true;
   uint32_t txCount = 0;
@@ -2670,8 +2699,12 @@ private:
       if (commandCallback) commandCallback("UI:SHOW:RUN");
       return;
     }
-    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY" ||
-        command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
+    if (command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
+      showOutputs();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY") {
       return;
     }
     if (command == PAGE01_CMD_NODES || command == "HOME:NODES") {
@@ -2796,6 +2829,60 @@ private:
     }
     if (command == PAGE04_CMD_LAMP_STATUS) {
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+      return;
+    }
+    if (command.startsWith("OUTPUTS:TAB:")) {
+      unsigned tab=command.substring(12).toInt();page_outputs_select(tab);
+      if(commandCallback)commandCallback(tab==1?"IO:STATUS":tab==2?"PLUGIN:PAGE:0":"STATUS:REQUEST");return;
+    }
+    if(command.startsWith("OUTPUTS:IO:") || command.startsWith("OUTPUTS:PLUGIN:")) {
+      const bool up=linkState==LINK_READY&&liveStageConnected;
+      const bool blocked=emergencyLocked||mirroredState==SHOW_STATE_EMERGENCY_STOP||mirroredState==SHOW_STATE_RUNNING||mirroredState==SHOW_STATE_PAUSED;
+      String request=command.substring(8);
+      const bool read=request=="IO:STATUS"||request.startsWith("PLUGIN:PAGE:");
+      const bool safe=request=="IO:ALL:OFF"||request=="IO:1:OFF"||request=="IO:2:OFF";
+      if(!up||(!read&&!safe&&blocked)){page_p4_io_feedback("Controls locked / P4 disconnected.");return;}
+      if(commandCallback){commandCallback(request.startsWith("IO:")?String("DESK:")+request:request);if(!read)page_p4_io_feedback("Request sent. Awaiting P4 confirmation.");}return;
+    }
+    if (command == "OUTPUTS:BACK") { showDesktop(); maybeRestoreEmergencyOverlay(); return; }
+    if (command == "OUTPUTS:REFRESH") {
+      if (commandCallback) commandCallback("STATUS:REQUEST");
+      return;
+    }
+    if (command.startsWith("OUTPUTS:")) {
+      const bool connected = linkState == LINK_READY && liveStageConnected;
+      const char *id = mosfetDetail_.firstId;
+      if (!connected || !showduino_mosfet_id_ok(id)) {
+        page_outputs_feedback("No connected MOSFET node."); return;
+      }
+      String local;
+      if (command == "OUTPUTS:ALL:OFF") local = "MOSFET:ALL:OFF";
+      else if (command == "OUTPUTS:IDENTIFY") local = "MOSFET:IDENTIFY";
+      else if (command.startsWith("OUTPUTS:MOSFET:")) local = command.substring(8);
+      else return;
+      ShowduinoMosfetOutCmd parsed{};
+      if (!showduino_mosfet_parse_out_command(local.c_str(), &parsed)) {
+        page_outputs_feedback("Invalid output request."); return;
+      }
+      const bool safeOff = parsed.cmd == SHOWDUINO_MOSFET_CMD_ALL_OFF || parsed.cmd == SHOWDUINO_MOSFET_CMD_OUT_OFF;
+      const bool showActive = mirroredState == SHOW_STATE_RUNNING || mirroredState == SHOW_STATE_PAUSED;
+      const bool em = emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP || mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
+      if (!safeOff && (em || mosfetNodeRaw_ != SHOWDUINO_MOSFET_NODE_WIRE_ONLINE ||
+          (showActive && parsed.cmd != SHOWDUINO_MOSFET_CMD_IDENTIFY))) {
+        page_outputs_feedback("Output controls are locked."); return;
+      }
+      char request[96];
+      snprintf(request, sizeof(request), "MOSFET:NODE:%s:%s", id, local.c_str() + 7);
+      if (commandCallback) {
+        commandCallback(request);
+        page_outputs_feedback("Request sent. Waiting for node status.");
+      }
+      return;
+    }
+    if (command == PAGE04_CMD_MOSFET_OPEN) {
+      page_outputs_select(0);
+      showOutputs();
+      maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == PAGE04_CMD_MOSFET_STATUS) {
@@ -2955,7 +3042,12 @@ private:
       sendAudioNodeCmd("AUDIO:NODE:TEST");
       return;
     }
+    if (command == PAGE05_CMD_MIC) {
+      page_05_audio_node_show_mic(true);
+      return;
+    }
     if (command == PAGE05_CMD_SELECT) {
+      sendAudioNodeCmd("AUDIO:NODE:INVENTORY:0");
       page_05_audio_node_show_select(true);
       return;
     }
@@ -2964,6 +3056,7 @@ private:
       return;
     }
     if (command == PAGE05_CMD_CLOSE) {
+      page_05_audio_node_show_mic(false);
       page_05_audio_node_show_details(false);
       page_05_audio_node_show_select(false);
       return;
@@ -3421,6 +3514,10 @@ private:
       Serial.println("[UI] Page 04 panel missing");
     }
     uiBuildPump();
+
+    lv_obj_t *outputsPanel = makePagePanel(PAGE_OUTPUTS);
+    if (outputsPanel) page_outputs_create(outputsPanel, displayCommandThunk);
+    uiBuildPump("[UI] Outputs");
 
     Serial.println("[UI] Page 05 Audio Node...");
     lv_obj_t *audioNodePanel = makePagePanel(PAGE_AUDIO_NODE);
@@ -3889,6 +3986,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_OUTPUTS: showOutputs(); break;
       case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
@@ -3905,6 +4003,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_OUTPUTS: showOutputs(); break;
       case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
@@ -4225,7 +4324,7 @@ private:
     if (displayManager_.showPage(PAGE_NODES)) {
       Serial.println("[UI] Page 04 Nodes (LVGL)");
       if (page_04_nodes_is_active()) {
-        page_04_nodes_apply_theme();
+        // Theme is applied at creation and when the selected theme changes.
         refreshNodesPage();
       }
       pushDisplaySnapshot();
@@ -4236,6 +4335,25 @@ private:
     }
     statusDirty = true;
     trafficDirty = true;
+    updateStatusWidgets(true);
+  }
+  void refreshOutputsPage() {
+    OutputsModel model;
+    model.detail = mosfetDetail_;
+    model.linked = linkState == LINK_READY && liveStageConnected;
+    model.online = mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE;
+    model.emergency = emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP ||
+                      mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
+    model.showRunning = mirroredState == SHOW_STATE_RUNNING || mirroredState == SHOW_STATE_PAUSED;
+    page_outputs_set_model(model);
+    page_p4_io_locks(model.linked,model.emergency||model.showRunning);
+  }
+  void showOutputs() {
+    if (!displayManager_.showPage(PAGE_OUTPUTS)) { showDesktop(); return; }
+    refreshOutputsPage();
+    pushDisplaySnapshot();
+    if (commandCallback) commandCallback("STATUS:REQUEST");
+    statusDirty = true;
     updateStatusWidgets(true);
   }
   void showAudioNode() {
