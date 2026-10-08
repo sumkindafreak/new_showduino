@@ -108,7 +108,7 @@ Emergency changes **all GPIO24 pixels to bright white in one frame**.
 Implemented non-blocking segmented FX engine:
 
 ```text
-default count: 100
+default count: 10
 segment slots: 16
 frame service: 20 ms
 ```
