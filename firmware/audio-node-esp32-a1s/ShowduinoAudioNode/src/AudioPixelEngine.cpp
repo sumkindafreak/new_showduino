@@ -462,7 +462,7 @@ bool audioPixelEngineBegin() {
 
 void audioPixelEngineApplyPersisted() {
   sGlobalBrightness = nodeConfigGetU8("bri", 255);
-  const uint16_t n = nodeConfigGetU16("pix", 0);
+  const uint16_t n = nodeConfigGetU16("pix", SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT);
   if (n > 0 && n <= SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS) sConfiguredCount = n;
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
