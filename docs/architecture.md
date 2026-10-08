@@ -201,7 +201,7 @@ CUSTOM_SEQUENCE
 
 Typical segment parameters are range, primary/secondary colour, brightness, speed, intensity, randomness, reverse/direction and duration.
 
-Direct `PIXEL:*` commands are currently a commissioning/runtime-control surface. Persistent production format v1 still accepts TEST/LOG cues only; production `PIXEL` cue parsing, named segment persistence and logical target binding remain separate future integration work.
+Direct `PIXEL:*` commands are a commissioning/runtime-control surface and bounded `PIXEL:` commands are also accepted by persistent production format v1. SHDO compilation can project supported P4/specialist pixel routes, while named segment persistence, ESTOP pixel persistence and full logical-target binding remain separate integration work.
 
 ### GPIO24 — Emergency/signage line
 
@@ -331,7 +331,7 @@ Command acceptance and physical completion remain separate lifecycle concepts. T
 
 ## Storage
 
-The P4 SD card is the persistent Show Engine store under `/showduino/`. Versioned production discovery and transactional TEST/LOG timeline loading are implemented. Broader asset/project authoring and physical production cue types are still being extended.
+The P4 SD card is the persistent Show Engine store under `/showduino/`. Versioned production discovery and transactional bounded PIXEL/AUDIO/LAMP/MOSFET/TEST/LOG timeline loading are implemented. Broader authoring, ESTOP persistence and physical mixed-device acceptance remain incomplete.
 
 The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 
@@ -345,7 +345,7 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 - S3 SoftAP + PROGMEM Showduino Studio frontend + P4 API proxy.
 - P4 authoritative runtime/emergency state.
 - RAM timeline with load/order/start/pause/resume/stop/emergency interruption.
-- P4 SD production discovery and transactional TEST/LOG loading.
+- P4 SD production discovery and transactional bounded PIXEL/AUDIO/LAMP/MOSFET/TEST/LOG loading.
 - P4 onboard ES8311 system/safety audio.
 - specialist Audio Node firmware and P4 routing/lifecycle tracking; hardware commissioning still required.
 - GPIO24 grouped emergency/signage pixel behavior.
@@ -356,11 +356,11 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 ### Still to complete
 
 - browser WebUI bundle regeneration after source changes before the updated UI is present in an S3 firmware image;
-- persistent production PIXEL/AUDIO cue types and timeline dispatch polish;
-- named logical pixel-segment persistence and binding;
+- physical acceptance of persistent mixed-device production dispatch;
+- ESTOP pixel persistence and named logical pixel-segment binding;
 - completion-driven state/fault handling for all future Nodes;
 - Audio Node, Lamp Node, Pixel Node and P4 pixel physical bench commissioning;
-- MOSFET Node milestone.
+- MOSFET Node physical GPIO/load validation.
 
 ### Explicitly parked
 
