@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
