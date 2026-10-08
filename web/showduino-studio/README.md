@@ -49,7 +49,7 @@ It is hosted by the Communications S3. It is **not** a complete SHDO authoring S
 | Claim | Reality in this repo |
 |-------|----------------------|
 | Create / edit full `.shdo` on device | **Not implemented** in this WebUI. SHDO v2 is the authoring contract in `docs/studio/production-format.md` |
-| Upload `.shdo` to P4 SD as native format | **Not implemented.** P4 persistent store is format v1 TEST/LOG only |
+| Upload/deploy `.shdo` to P4 persistent store | **Implemented bounded path.** Comms deploys SHDO to P4, which compiles supported actions into runtime format v1; commit does not auto-load/start |
 | RAM timeline deploy | **Implemented** as `/api/studio-timeline` — PIXEL and AUDIO:NODE cues only; P4 remains authority; `autoStart` is false |
 | Commission GPIO23 segments + Audio Node | **Implemented** on the Outputs page |
 | C3 Lamp Node | **Status/diagnostics exposed**; full FX editor is not in this UI yet |
@@ -122,7 +122,7 @@ The page also displays GPIO24 emergency-signage state and the Audio Node control
 
 The Studio source contains the pixel controls, but browser control depends on the P4 Web API allowing and exposing the corresponding `PIXEL:*` command/state surface. Keep the source UI, P4 Web API whitelist/state JSON and generated S3 PROGMEM bundle in sync.
 
-Persistent named segments and production `PIXEL` timeline cues are **not** production-format-v1 features yet. The Outputs-page editor is a commissioning/runtime surface, not a claim that complete production authoring is finished.
+Persistent v1 now accepts bounded `PIXEL:` timeline commands, while SHDO compilation covers the supported P4/specialist routes that can project into the runtime cue set. Persistent named segment libraries, ESTOP pixel persistence and complete mixed-device physical acceptance are still unfinished.
 
 ## Page map
 
@@ -141,10 +141,10 @@ Aliases such as `#/audio` and `#/lighting` redirect to Outputs.
 
 ## Deliberately not claimed complete
 
-- persistent production AUDIO/PIXEL cue schemas;
-- named pixel-segment project persistence;
+- mixed-device persistent-production hardware acceptance;
+- ESTOP pixel persistence and named pixel-segment project persistence;
 - reusable FX preset persistence;
-- C3 Lamp FX editor / C3 Pixel / MOSFET Node commissioning;
+- remaining C3 Pixel / MOSFET Node physical commissioning;
 - logical device-ID routing end to end;
 - generic completion-driven node faults/state;
 - DMX/E1.31 production control.
