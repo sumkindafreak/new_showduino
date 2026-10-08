@@ -194,7 +194,7 @@ export async function OutputsPage(container) {
       showPx.append(statRow('FX library', lighting.showPixelFxCount != null ? String(lighting.showPixelFxCount) : '25'));
       showPx.append(el('p', {
         className: 'sub',
-        text: 'Set the physical line length, then Initialise. The driver does not start until that count is applied. Max ' + maxPx + ' pixels. Default suggestion is 100.'
+        text: 'Set the physical line length, then Initialise. The driver does not start until that count is applied. Max ' + maxPx + ' pixels. Current finish-line default is 10.'
       }));
       const clampedCount = () => Math.max(1, Math.min(maxPx, Number(lineCount) || 0));
       const countRow = el('div', { className: 'filter-row' });
