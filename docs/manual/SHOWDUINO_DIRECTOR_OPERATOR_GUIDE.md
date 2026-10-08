@@ -83,13 +83,14 @@ The Director's configured automatic display-off behaviour turns off its **backli
 
 ## 3. Sounds: what actually plays the audio?
 
-**There are three different sound paths. They are not interchangeable.**
+**There are four different sound paths. They are not interchangeable.**
 
 ![Illustrated Audio Node board and storage](illustrations/audio.svg)
 
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
 | **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
+| **P4 ambience output** | One local background/room ambience stream through the dedicated PCM5102A output | **16-bit PCM WAV** from the **P4 SD card**. The finish-line Director control uses `/showduino/audio/ambience.wav`. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -104,6 +105,18 @@ For an Audio Node that has been installed and commissioned:
 5. Listen through the **speaker, headphone or line output connected to the Audio Node**, not through the Director touchscreen.
 
 The Director can display an Audio Node's input-level/noise-floor/trigger diagnostics. This does **not** mean a microphone automatically starts a scare: mapping a sound event to a show action is a separate authoring/engine feature.
+
+### Controlling the P4 ambience output
+
+The dedicated **AUDIO NODE** page also exposes **AMBIENCE** for the P4-local PCM5102A output. This is separate from Audio Node programme playback.
+
+1. Put an approved 16-bit PCM WAV on the **P4 SD card** at `/showduino/audio/ambience.wav`.
+2. Open **NODES -> AUDIO NODE -> AMBIENCE** on the Director.
+3. Use **PLAY** for one-shot playback or **LOOP** for continuous ambience.
+4. Use **VOL - / VOL +** to adjust the P4 ambience level and **STATUS** to refresh the authoritative P4 state.
+5. **STOP** is always available. Emergency stops ambience immediately; clearing Emergency does **not** restart it.
+
+This fixed finish-line path is deliberate: it closes the operator-control gap without adding a new P4 asset browser before final acceptance.
 
 **Why are PLAY and LOOP greyed out?** The Director firmware can lock manual play/loop requests while the show is running or the Node is under show control. Do not attempt to bypass that lock from the Node's own webpage; the Show Engine owns live production playback.
 
