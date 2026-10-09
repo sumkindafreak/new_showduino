@@ -66,7 +66,7 @@ The Comms S3 serves the browser frontend and forwards commands; it **does not** 
 | **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Fermion audio, motion provision and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
 | **C3 Pixel Node** | One remote WS2812/NeoPixel line on GPIO2, segmented effects, OLED and node commissioning; configured limit 1–512 pixels | Active firmware; physical output and radio testing required |
 | **C3 Emergency Node** | Additional wireless station that can **assert**, but never clear, the P4 emergency latch | Active firmware; station-specific hardware/input commissioning and safety acceptance required |
-| **MOSFET Node** | Future digital switching and PWM/dimming specialist | **Planned; not a completed production node** |
+| **MOSFET Node** | Four-output digital/PWM specialist with LEVEL / PULSE / FADE and fail-safe OFF | **Software implemented; physical GPIO/load validation required** |
 | **DMX / E1.31 production control** | Possible future stage-lighting integration | **Parked expansion; not included as a supported production-control feature** |
 
 The retired Relay Node and historical C3 Lamp implementation remain in the repository for reference; do not confuse them with current specialist products. See the [repository status](docs/repository-status.md) and [node roadmap](docs/node-roadmap.md). Older per-component README files may lag the active source and should not override current BoardConfig or implementation.
@@ -93,7 +93,7 @@ The currently implemented workflow has important boundaries:
 3. The stored/runtime cue representation and supported compiler actions are **not the same as unrestricted Studio authoring**. Unsupported actions or devices are rejected. In particular, do not assume a complete mixed-device attraction show is proven merely because its SHDO package exports.
 4. After deployment, an operator loads the production and deliberately starts it through the Director or supported local control surface. The P4 then owns execution.
 
-See [Studio architecture and boundaries](docs/studio/README.md), [SHDO v2 format](docs/studio/production-format.md), [production storage/deployment](docs/production-storage.md), and the [first Audio Node test production](examples/productions/README.md). Some older subproject documentation still calls all persistent production cues TEST/LOG-only; the current SHDO compiler/deploy code additionally handles a bounded subset of audio, pixel and lamp actions. Treat feature-specific host and hardware tests as authoritative for readiness.
+See [Studio architecture and boundaries](docs/studio/README.md), [SHDO v2 format](docs/studio/production-format.md), [production storage/deployment](docs/production-storage.md), and the [first Audio Node test production](examples/productions/README.md). Older subproject documentation may still contain TEST/LOG-only wording; the current persistent runtime accepts bounded PIXEL/AUDIO/LAMP/MOSFET/TEST/LOG cues, with SHDO compilation projecting the supported device routes into that subset. Treat feature-specific host and hardware tests as authoritative for readiness.
 
 ## Getting started on the bench
 

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
@@ -40,6 +41,19 @@ struct Page05Ui {
   lv_obj_t *btn_select;
   lv_obj_t *btn_test;
   lv_obj_t *btn_details;
+  lv_obj_t *btn_ambience;
+  lv_obj_t *ambience;
+  lv_obj_t *amb_state;
+  lv_obj_t *amb_path;
+  lv_obj_t *amb_volume;
+  lv_obj_t *amb_feedback;
+  lv_obj_t *btn_amb_play;
+  lv_obj_t *btn_amb_loop;
+  lv_obj_t *btn_amb_stop;
+  lv_obj_t *btn_amb_vol_dn;
+  lv_obj_t *btn_amb_vol_up;
+  lv_obj_t *btn_amb_status;
+  lv_obj_t *btn_amb_close;
   lv_obj_t *mic;
   lv_obj_t *mic_title;
   lv_obj_t *mic_ready;
@@ -69,6 +83,10 @@ static page05_command_fn s_cb = nullptr;
 static bool s_active = false;
 static DirectorAudioNodeControl s_model;
 static char s_asset_cmds[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
+static char s_amb_state[12] = "IDLE";
+static char s_amb_path[96] = PAGE05_AMBIENCE_DEFAULT_PATH;
+static uint8_t s_amb_volume = 80;
+static char s_amb_feedback[48] = "";
 
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
@@ -346,6 +364,32 @@ static void paint() {
         s_model.inventoryTotal > (uint16_t)((s_model.inventoryPage + 1) * SHOWDUINO_AUDIO_INV_WIRE_MAX));
   }
 
+  if (s.amb_state) {
+    snprintf(line, sizeof(line), "State     %s", s_amb_state[0] ? s_amb_state : "UNKNOWN");
+    lv_label_set_text(s.amb_state, line);
+  }
+  if (s.amb_path) {
+    snprintf(line, sizeof(line), "Asset     %s", s_amb_path[0] ? s_amb_path : PAGE05_AMBIENCE_DEFAULT_PATH);
+    lv_label_set_text(s.amb_path, line);
+  }
+  if (s.amb_volume) {
+    snprintf(line, sizeof(line), "Volume    %u%%", (unsigned)s_amb_volume);
+    lv_label_set_text(s.amb_volume, line);
+  }
+  if (s.amb_feedback) {
+    lv_label_set_text(s.amb_feedback, s_amb_feedback);
+    lv_obj_set_style_text_color(s.amb_feedback,
+        lv_color_hex(!strncmp(s_amb_feedback, "ERROR", 5) ? ShowduinoPalette::Danger
+                                                          : ShowduinoPalette::Muted), 0);
+  }
+  const bool ambienceSafe = !s_model.emergency;
+  set_en(s.btn_amb_play, ambienceSafe);
+  set_en(s.btn_amb_loop, ambienceSafe);
+  set_en(s.btn_amb_stop, true);
+  set_en(s.btn_amb_vol_dn, ambienceSafe);
+  set_en(s.btn_amb_vol_up, ambienceSafe);
+  set_en(s.btn_amb_status, true);
+
   apply_enable();
 }
 
@@ -469,7 +513,8 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.btn_vol_up = make_btn(parent, "VOL +", 128, by2, 100, 44, PAGE05_CMD_VOL_UP, false);
   s.btn_select = make_btn(parent, "SELECT ASSET", 236, by2, 180, 44, PAGE05_CMD_SELECT, false);
   s.btn_test = make_btn(parent, "TEST", 424, by2, 120, 44, PAGE05_CMD_TEST, false);
-  s.btn_details = make_btn(parent, "DETAILS", 552, by2, 208, 44, PAGE05_CMD_DETAILS, false);
+  s.btn_details = make_btn(parent, "DETAILS", 552, by2, 96, 44, PAGE05_CMD_DETAILS, false);
+  s.btn_ambience = make_btn(parent, "AMBIENCE", 656, by2, 104, 44, PAGE05_CMD_AMBIENCE, false);
 
   const int16_t by3 = (int16_t)(by2 + 48);
   s.btn_cal = make_btn(parent, "CALIBRATE", 20, by3, 140, 40, PAGE05_CMD_CALIBRATE, false);
@@ -496,6 +541,35 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_obj_set_style_text_font(s.details_body, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(s.details_body, lv_color_hex(ShowduinoPalette::Text), 0);
   s.details_close = make_btn(s.details, "CLOSE", 240, 268, 160, 40, PAGE05_CMD_CLOSE, false);
+
+  s.ambience = lv_obj_create(parent);
+  lv_obj_remove_style_all(s.ambience);
+  lv_obj_set_pos(s.ambience, 70, 74);
+  lv_obj_set_size(s.ambience, 660, 312);
+  ShowduinoOsTheme::styleRaisedCard(s.ambience, true);
+  ShowduinoOsTheme::decorateCard(s.ambience, true);
+  lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t *at = lv_label_create(s.ambience);
+  lv_label_set_text(at, "P4 AMBIENCE  |  PCM5102A");
+  lv_obj_set_pos(at, 16, 16);
+  lv_obj_set_style_text_color(at, lv_color_hex(ShowduinoPalette::Accent), 0);
+  lv_obj_t *ah = lv_label_create(s.ambience);
+  lv_label_set_text(ah, "Finish-line asset: /showduino/audio/ambience.wav");
+  lv_obj_set_pos(ah, 16, 40);
+  lv_obj_set_style_text_color(ah, lv_color_hex(ShowduinoPalette::Muted), 0);
+  s.amb_state = make_stat(s.ambience, 16, 72);
+  s.amb_path = make_stat(s.ambience, 16, 96);
+  lv_obj_set_width(s.amb_path, 620);
+  s.amb_volume = make_stat(s.ambience, 16, 120);
+  s.amb_feedback = make_stat(s.ambience, 16, 144);
+  lv_obj_set_width(s.amb_feedback, 620);
+  s.btn_amb_play = make_btn(s.ambience, "PLAY", 16, 178, 116, 44, PAGE05_CMD_AMB_PLAY, false);
+  s.btn_amb_loop = make_btn(s.ambience, "LOOP", 140, 178, 116, 44, PAGE05_CMD_AMB_LOOP, false);
+  s.btn_amb_stop = make_btn(s.ambience, "STOP", 264, 178, 116, 44, PAGE05_CMD_AMB_STOP, true);
+  s.btn_amb_vol_dn = make_btn(s.ambience, "VOL -", 388, 178, 116, 44, PAGE05_CMD_AMB_VOL_DN, false);
+  s.btn_amb_vol_up = make_btn(s.ambience, "VOL +", 512, 178, 116, 44, PAGE05_CMD_AMB_VOL_UP, false);
+  s.btn_amb_status = make_btn(s.ambience, "STATUS", 16, 234, 150, 44, PAGE05_CMD_AMB_STATUS, false);
+  s.btn_amb_close = make_btn(s.ambience, "CLOSE", 478, 234, 150, 44, PAGE05_CMD_AMB_CLOSE, false);
 
   s.select = lv_obj_create(parent);
   lv_obj_remove_style_all(s.select);
@@ -544,6 +618,14 @@ void page_05_audio_node_destroy(void) {
   showduino_theme_unregister(s.btn_select);
   showduino_theme_unregister(s.btn_test);
   showduino_theme_unregister(s.btn_details);
+  showduino_theme_unregister(s.btn_ambience);
+  showduino_theme_unregister(s.btn_amb_play);
+  showduino_theme_unregister(s.btn_amb_loop);
+  showduino_theme_unregister(s.btn_amb_stop);
+  showduino_theme_unregister(s.btn_amb_vol_dn);
+  showduino_theme_unregister(s.btn_amb_vol_up);
+  showduino_theme_unregister(s.btn_amb_status);
+  showduino_theme_unregister(s.btn_amb_close);
   showduino_theme_unregister(s.btn_cal);
   showduino_theme_unregister(s.btn_snd);
   showduino_theme_unregister(s.btn_th_dn);
@@ -571,6 +653,7 @@ void page_05_audio_node_apply_theme(void) {
     lv_obj_set_style_border_color(s.btn_back, accent, LV_STATE_PRESSED);
   }
   if (s.status) lv_obj_set_style_border_color(s.status, accent, 0);
+  if (s.ambience) lv_obj_set_style_border_color(s.ambience, accent, 0);
 }
 
 void page_05_audio_node_set_model(const DirectorAudioNodeControl *model) {
@@ -587,6 +670,7 @@ void page_05_audio_node_show_details(bool show) {
   if (show) lv_obj_clear_flag(s.details, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
   if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
+  if (s.ambience) lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
   paint();
 }
 
@@ -595,8 +679,65 @@ void page_05_audio_node_show_select(bool show) {
   if (show) lv_obj_clear_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.ambience) lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
   paint();
 }
+
+void page_05_audio_node_show_ambience(bool show) {
+  if (!s.ambience) return;
+  if (show) lv_obj_clear_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
+  paint();
+}
+
+void page_05_audio_node_apply_ambience_line(const char *line) {
+  if (!line || !line[0]) return;
+  static const char *kStatus = "AMBIENCE:STATUS:";
+  static const char *kOk = "OK:AMBIENCE:";
+  static const char *kErr = "ERR:AMBIENCE:";
+  if (!strncmp(line, kStatus, strlen(kStatus))) {
+    const char *p = line + strlen(kStatus);
+    const char *sep = strchr(p, ':');
+    const char *vol = sep ? strstr(sep + 1, ":VOL=") : nullptr;
+    if (sep) {
+      size_t n = (size_t)(sep - p);
+      if (n >= sizeof(s_amb_state)) n = sizeof(s_amb_state) - 1;
+      memcpy(s_amb_state, p, n);
+      s_amb_state[n] = 0;
+      if (vol) {
+        size_t pn = (size_t)(vol - (sep + 1));
+        if (pn >= sizeof(s_amb_path)) pn = sizeof(s_amb_path) - 1;
+        if (pn) {
+          memcpy(s_amb_path, sep + 1, pn);
+          s_amb_path[pn] = 0;
+        } else {
+          strncpy(s_amb_path, PAGE05_AMBIENCE_DEFAULT_PATH, sizeof(s_amb_path) - 1);
+        }
+        int v = atoi(vol + 5);
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        s_amb_volume = (uint8_t)v;
+      }
+    }
+    strncpy(s_amb_feedback, "STATUS CONFIRMED", sizeof(s_amb_feedback) - 1);
+  } else if (!strncmp(line, kErr, strlen(kErr))) {
+    snprintf(s_amb_feedback, sizeof(s_amb_feedback), "ERROR: %.36s", line + strlen(kErr));
+  } else if (!strncmp(line, kOk, strlen(kOk))) {
+    const char *tail = line + strlen(kOk);
+    if (!strncmp(tail, "VOLUME:", 7)) {
+      int v = atoi(tail + 7);
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      s_amb_volume = (uint8_t)v;
+    }
+    snprintf(s_amb_feedback, sizeof(s_amb_feedback), "%.44s", tail);
+  }
+  paint();
+}
+
+uint8_t page_05_audio_node_ambience_volume(void) { return s_amb_volume; }
 
 const char *page_05_audio_node_selected_asset(void) {
   return s_model.selectedAsset[0] ? s_model.selectedAsset : "system-test.wav";

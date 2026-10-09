@@ -210,7 +210,7 @@ RAINBOW
 CUSTOM_SEQUENCE
 ```
 
-These commands are **commissioning/runtime control**, not proof that production-format-v1 supports PIXEL timeline cues. Persistent production v1 still accepts TEST/LOG cue types; production PIXEL cue parsing, named segment persistence and logical target resolution remain future integration work.
+These commands are also available to the bounded persistent production path where the runtime cue uses an accepted `PIXEL:` command. Persistent v1 currently accepts `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG`; specialist SHDO routes still depend on what can be projected into those runtime prefixes. Named segment persistence and full logical target resolution remain future integration work.
 
 While emergency is active, normal pixel commands must be rejected/overridden and all pixels remain white.
 
@@ -370,7 +370,7 @@ RELAY:<channel>:OFF
 RELAY:<channel>:TOGGLE    deprecated
 ```
 
-The Relay Node is **not** the current product roadmap. The future MOSFET Node supersedes it. Do not build new application behavior around Relay-specific assumptions.
+The Relay Node is **not** the current product roadmap. The software-implemented MOSFET Node supersedes it; physical GPIO/load validation remains required. Do not build new application behavior around Relay-specific assumptions.
 
 ---
 
@@ -409,14 +409,14 @@ P4 pixel commands are further validated by the P4 pixel engine, including segmen
 
 ## Planned later
 
-- persistent production `AUDIO` and `PIXEL` cue schemas;
-- named pixel-segment persistence and logical binding;
+- physical acceptance of persistent mixed-device `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` productions;
+- ESTOP-pixel persistence and named pixel-segment logical binding;
 - Studio reusable FX preset persistence;
 - end-to-end logical device-ID routing;
 - generic completion-driven state/fault handling for every specialist Node;
 - stronger node framing / future structured binary protocol;
-- C3 Pixel Node protocol (this tree; hardware test required);
-- MOSFET Node protocols as that milestone begins.
+- C3 Pixel Node physical acceptance;
+- MOSFET Node physical GPIO/load acceptance.
 
 DMX is deliberately excluded from this roadmap until explicitly unparked.
 

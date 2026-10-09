@@ -12,7 +12,10 @@ static uint32_t sLocateStartedMs = 0;
 static uint32_t sLastFrameMs = 0;
 static uint32_t sLastEmergencyRefreshMs = 0;
 static uint8_t sGlobalBrightness = 255;
-static uint16_t sConfiguredCount = 0;
+#ifndef SHOWDUINO_PIXEL_DEFAULT_COUNT
+#define SHOWDUINO_PIXEL_DEFAULT_COUNT 0
+#endif
+static uint16_t sConfiguredCount = SHOWDUINO_PIXEL_DEFAULT_COUNT;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr;
@@ -438,7 +441,7 @@ bool pixelEngineBegin() {
 
 void pixelEngineApplyPersisted() {
   sGlobalBrightness = nodeConfigGetU8("bri", 255);
-  const uint16_t n = nodeConfigGetU16("pix", 0);
+  const uint16_t n = nodeConfigGetU16("pix", SHOWDUINO_PIXEL_DEFAULT_COUNT);
   if (n > 0 && n <= SHOWDUINO_PIXEL_NODE_MAX_PIXELS) sConfiguredCount = n;
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
