@@ -370,7 +370,7 @@ RELAY:<channel>:OFF
 RELAY:<channel>:TOGGLE    deprecated
 ```
 
-The Relay Node is **not** the current product roadmap. The future MOSFET Node supersedes it. Do not build new application behavior around Relay-specific assumptions.
+The Relay Node is **not** the current product roadmap. The active RC MOSFET Node supersedes it. Do not build new application behavior around Relay-specific assumptions.
 
 ---
 
@@ -409,14 +409,14 @@ P4 pixel commands are further validated by the P4 pixel engine, including segmen
 
 ## Planned later
 
-- persistent production `AUDIO` and `PIXEL` cue schemas;
+- broader persistent cue coverage beyond the implemented bounded AUDIO/PIXEL/LAMP/MOSFET schemas;
 - named pixel-segment persistence and logical binding;
 - Studio reusable FX preset persistence;
 - end-to-end logical device-ID routing;
 - generic completion-driven state/fault handling for every specialist Node;
 - stronger node framing / future structured binary protocol;
 - C3 Pixel Node protocol (this tree; hardware test required);
-- MOSFET Node protocols as that milestone begins.
+- MOSFET Node hardware acceptance and broader integration validation (protocol/routing already implemented).
 
 DMX is deliberately excluded from this roadmap until explicitly unparked.
 
@@ -445,3 +445,29 @@ Paths vary with sketch depth; keep the repository `protocol/` copy canonical.
 - `docs/audio-node.md`
 - `docs/audio-pixel-engine.md`
 - `docs/studio-pixel-authoring.md`
+
+## P4 generic I/O and ambience — USB/service commands
+
+Current local P4 dispatch handles the following families. They have not been added to the normal browser command allowlists or persistent cue schema.
+
+```text
+IO:STATUS
+IO:SAVE
+IO:ALL:OFF
+IO:<1|2>:STATUS
+IO:<1|2>:MODE:DISABLED|INPUT|OUTPUT
+IO:<1|2>:ACTIVE:HIGH|LOW
+IO:<1|2>:PULL:NONE|UP|DOWN
+IO:<1|2>:DEBOUNCE:<0-5000>
+IO:<1|2>:ON|OFF|TOGGLE
+IO:<1|2>:PULSE:<1-3600000>
+AMBIENCE:STATUS
+AMBIENCE:PLAY:<full-P4-SD-path>
+AMBIENCE:LOOP:<full-P4-SD-path>
+AMBIENCE:VOLUME:<0-100>
+AMBIENCE:STOP
+```
+
+Generic I/O uses GPIO46/47 and `/showduino/config/io.json`; configuration replies ending `RAM_ONLY` are not persisted. Emergency/show stop forces outputs inactive without restore. Input events do not yet bind scenes automatically.
+
+Ambience uses PCM5102A GPIO20/21/22 with 16-bit PCM WAV on P4 SD. Emergency stops normal playback and loops the canonical emergency WAV (fallback `show_machine/emergency.wav`) at 100% software volume. Normal operator audio controls are blocked while latched; clear stops the emergency loop without restore. Normal `SHOW:STOP` / `STOP:ALL` stops ambience when not latched. See manual GAP-022/023 and the [review record](documentation-review-2026-10-07.md).

@@ -66,17 +66,17 @@ Required cue fields are `id`, `timeMs`, and `type`. `target`, `action`, `value`,
 and an object-valued `parameters` field are optional. Logical target strings are
 preserved by the parser but are not routed to hardware in this milestone.
 
-Accepted cue types are `PIXEL`, `AUDIO`, `LAMP`, `TEST` and `LOG`.
+Accepted cue types are `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` and `LOG`.
 
 - `PIXEL` cues require a `command` beginning with `PIXEL:`
 - `AUDIO` cues require a `command` beginning with `AUDIO:NODE:`
 - `LAMP` cues require a `command` beginning with `LAMP:`
+- `ESTOP` cues require a `command` beginning with `ESTOP:NODE:PIXEL:`; Emergency assertion/clear commands are not permitted as production cues
+- `MOSFET` cues require a `command` beginning with `MOSFET:NODE:`
 - for `TEST` / `LOG`, `action` when supplied must be `LOG`
 
 Cue times must be nondecreasing, IDs must be unique, and the timeline must
-contain at least one cue. Unsupported types (including a dedicated ESTOP cue
-type) are rejected. `PIXEL` commands must use the `PIXEL:` prefix, so
-`ESTOP:NODE:PIXEL:` is not accepted as a format-v1 PIXEL command string.
+contain at least one cue. Unsupported types are rejected. Emergency Node pixel commands load under the dedicated `ESTOP` type emitted by SHDO. A host-tested compile → JSON → P4 parser roundtrip preserves all generated commands; physical playback acceptance remains required.
 
 ## Validation limits
 
@@ -158,3 +158,5 @@ This is the P4 runtime deployment format. The broader authoring package describe
 under `docs/studio/` remains a planning contract and is not authoritative at
 runtime. No host-side Web UI is required to list, load, or execute an SD
 production.
+
+`IO` and `AMBIENCE` are not accepted persistent cue types at the 7 October 2026 baseline. Their P4 USB/service controls do not imply SHDO/Studio timeline support.

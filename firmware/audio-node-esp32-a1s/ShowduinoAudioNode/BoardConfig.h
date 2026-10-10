@@ -20,7 +20,7 @@
  *   esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
  */
 
-#define SHOWDUINO_AUDIO_NODE_FW            "0.4.3"
+#define SHOWDUINO_AUDIO_NODE_FW            "0.4.7"
 #define SHOWDUINO_AUDIO_NODE_BOARD         "ESP32-A1S Audio Kit V2.2 A161"
 #define SHOWDUINO_AUDIO_NODE_CODEC         "ES8388"
 
@@ -93,31 +93,30 @@
 #define SHOWDUINO_AUDIO_KEY5               18  /* previous test asset */
 #endif
 #ifndef SHOWDUINO_AUDIO_KEY6
-#define SHOWDUINO_AUDIO_KEY6               5   /* next test asset */
+#define SHOWDUINO_AUDIO_KEY6               -1  /* GPIO5 reserved for status NeoPixel */
 #endif
 
-/*
- * External one-pixel WS2812 / NeoPixel status indicator.
- *
- * The development Audio Node has no useful populated onboard status LED.
- * GPIO22 was already reserved by Showduino for the old LED4 assumption and
- * is not used by the codec, SD, keys, PA, headphone detect, or microphone.
- * It is therefore the dedicated external status-pixel data output.
- *
- * GPIO22 is the Audio Node's dedicated programmable pixel line.
- */
+/* Separate status indicator and programmable show output. */
 #ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
-#define SHOWDUINO_AUDIO_STATUS_PIXEL_PIN   22
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_PIN   5
 #endif
-#ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT
-#define SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT 10
-#endif
-#ifndef SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER
+#define SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT 1
 #define SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER (NEO_GRB + NEO_KHZ800)
+#ifndef SHOWDUINO_AUDIO_SHOW_PIXEL_PIN
+#define SHOWDUINO_AUDIO_SHOW_PIXEL_PIN     22
+#endif
+#ifndef SHOWDUINO_AUDIO_SHOW_PIXEL_ORDER
+#define SHOWDUINO_AUDIO_SHOW_PIXEL_ORDER   (NEO_GRB + NEO_KHZ800)
+#endif
+#define SHOWDUINO_AUDIO_SHOW_PIXEL_RESISTOR_OHMS 330
+#if SHOWDUINO_AUDIO_KEY6 == SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
+#error "KEY6 conflicts with status NeoPixel"
+#endif
+#if SHOWDUINO_AUDIO_SHOW_PIXEL_PIN == SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
+#error "Status and show pixels require separate pins"
 #endif
 
 #define SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS   512
-#define SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS 330
 #define SHOWDUINO_AUDIO_PIXEL_CAPS \
   "LINE,SEGMENTS,SHOWDUINO_FX,COUNT,INIT,LOCATE,ESPNOW,EMERGENCY,STANDALONE,OWN"
 

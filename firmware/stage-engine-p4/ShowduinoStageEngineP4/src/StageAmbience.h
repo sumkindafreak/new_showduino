@@ -3,6 +3,7 @@
 #include <Arduino.h>
 struct StageAmbienceStatus {
   bool i2sReady=false, playing=false, looping=false, emergencyBlocked=false;
+  bool emergencyPlayback=false; // Emergency WAV owns this output until clear.
   uint8_t volume=80;
   uint32_t sampleRate=0;
   char path[96]="";

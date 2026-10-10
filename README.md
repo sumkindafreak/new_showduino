@@ -2,8 +2,8 @@
 
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
-**Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
-**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release.
+**Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2\
+**Status:** testing stages / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release.
 
 Showduino coordinates attraction audio, addressable lighting, interactive props, trigger inputs and operator controls using a central ESP32-P4 Show Engine and specialist ESP32 nodes. A loaded show runs on the Show Engine: it does not need an open browser, a connected Director touchscreen, home/venue Wi-Fi or internet access.
 
@@ -30,6 +30,8 @@ Dedicated ESP32-S3 Communications Engine ←→ Wi-Fi browser / local Studio
 ESP32-P4 Show Engine / Stage Controller
           ├─ SD: productions, configuration, system audio and logs
           ├─ ES8311: local system / emergency audio
+          ├─ PCM5102A GPIO20/21/22: independent ambience audio
+          ├─ GPIO46/47: two generic digital I/O lines (3.3 V logic)
           ├─ GPIO23: segmented Show Pixel Line
           ├─ GPIO24: emergency / designated-signage pixel line
           ├─ GPIO25: physical momentary emergency button
@@ -53,7 +55,8 @@ The Comms S3 serves the browser frontend and forwards commands; it **does not** 
 - Run a direct/commissioning RAM timeline for supported audio and pixel cues.
 - Drive a local segmented Show Pixel Line on GPIO23; up to 1,024 configured pixels and 16 segment slots.
 - Drive a separate GPIO24 emergency/designated-signage line; up to 100 configured pixels in ten-pixel sign groups.
-- Play **system / emergency audio** through the onboard ES8311. Attraction/programme audio belongs to the Audio Node.
+- Play **system / emergency audio** through the onboard ES8311. Attraction/programme audio belongs to the Audio Node. An independent PCM5102A output provides background ambience from P4 SD storage.
+- Provide two generic digital I/O lines on GPIO46/47, with SD configuration, input debounce and output pulse control; outputs boot inactive and are forced inactive by Emergency or show stop.
 - Expose local diagnostics, SD storage, Plug-in Bus foundations and authoritative Web API state.
 
 ### Specialist-node status
@@ -63,10 +66,10 @@ The Comms S3 serves the browser frontend and forwards commands; it **does not** 
 | Node | Intended capability | Repository status |
 | --- | --- | --- |
 | **Audio Node** (ESP32-A1S / ES8388) | SD-based WAV attraction audio; play, loop, stop, pause, volume, fade/duck, local sound-level/trigger diagnostics and standalone/managed ownership | Active firmware; physical audio, radio and end-to-end cue tests required |
-| **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Fermion audio, motion provision and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
+| **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Adafruit Audio FX UART WAV audio, optional motion provision (disabled by the default unconfirmed-pin gate) and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
 | **C3 Pixel Node** | One remote WS2812/NeoPixel line on GPIO2, segmented effects, OLED and node commissioning; configured limit 1–512 pixels | Active firmware; physical output and radio testing required |
 | **C3 Emergency Node** | Additional wireless station that can **assert**, but never clear, the P4 emergency latch | Active firmware; station-specific hardware/input commissioning and safety acceptance required |
-| **MOSFET Node** | Future digital switching and PWM/dimming specialist | **Planned; not a completed production node** |
+| **MOSFET Node** | Four low-voltage powered outputs with switching, PWM level, pulse/fade and GPIO25 identifier pixels | Active RC firmware, Director live control and SHDO powered-output compilation; physical output/pin acceptance required |
 | **DMX / E1.31 production control** | Possible future stage-lighting integration | **Parked expansion; not included as a supported production-control feature** |
 
 The retired Relay Node and historical C3 Lamp implementation remain in the repository for reference; do not confuse them with current specialist products. See the [repository status](docs/repository-status.md) and [node roadmap](docs/node-roadmap.md). Older per-component README files may lag the active source and should not override current BoardConfig or implementation.
@@ -93,7 +96,7 @@ The currently implemented workflow has important boundaries:
 3. The stored/runtime cue representation and supported compiler actions are **not the same as unrestricted Studio authoring**. Unsupported actions or devices are rejected. In particular, do not assume a complete mixed-device attraction show is proven merely because its SHDO package exports.
 4. After deployment, an operator loads the production and deliberately starts it through the Director or supported local control surface. The P4 then owns execution.
 
-See [Studio architecture and boundaries](docs/studio/README.md), [SHDO v2 format](docs/studio/production-format.md), [production storage/deployment](docs/production-storage.md), and the [first Audio Node test production](examples/productions/README.md). Some older subproject documentation still calls all persistent production cues TEST/LOG-only; the current SHDO compiler/deploy code additionally handles a bounded subset of audio, pixel and lamp actions. Treat feature-specific host and hardware tests as authoritative for readiness.
+See [Studio architecture and boundaries](docs/studio/README.md), [SHDO v2 format](docs/studio/production-format.md), [production storage/deployment](docs/production-storage.md), and the [first Audio Node test production](examples/productions/README.md). Some older subproject documentation still calls all persistent production cues TEST/LOG-only; the current SHDO compiler/deploy code additionally handles a bounded subset of audio, pixel, lamp and MOSFET actions. Treat feature-specific host and hardware tests as authoritative for readiness.
 
 ## Getting started on the bench
 
@@ -113,7 +116,7 @@ Use the [quick start](docs/manual/SHOWDUINO_QUICK_START.md), [user manual draft]
 
 The P4's **main physical button** is a **momentary, active-LOW GPIO25 input**. A valid press latches Showduino emergency after input debounce; releasing the button does **not** clear it. Holding the **same continuous press for eight seconds** also requests Director Locate. Locate wakes/illuminates the Director and flashes its ambient LEDs until acknowledged; the first touchscreen press acknowledges **Locate only**, not the emergency latch.
 
-The Director emergency-clear workflow requires an explicit request and confirmation after the physical input is released. New assertions invalidate a pending clear. Clearing emergency does **not** automatically restart a show. Wireless Emergency Nodes may assert the global latch but may **never** clear it. Their documented NC input arrangement is **different from the P4's momentary button**; do not copy one pin/polarity assumption to the other.
+The Director emergency-clear workflow requires an explicit request and confirmation after the physical input is released. New assertions invalidate a pending clear. Clearing emergency does **not** automatically restart a show. Wireless Emergency Nodes may assert the global latch but may **never** clear it. The current C3 station also uses a momentary active-LOW pushbutton (GPIO4, physically unconfirmed), with OLED and an optional GPIO2 Pixel Line. Its button has no main-unit Locate gesture; older NC-loop instructions are obsolete.
 
 **Showduino is not a certified life-safety, fire-alarm, evacuation, machinery E-stop or safety-PLC system.** Wireless links and Showduino's theatrical emergency lighting are not replacements for independent, code-compliant emergency systems or a site-specific risk assessment. The effects and safety behavior in this repository must be physically accepted before venue use; emergency-latch persistence through complete power loss is **not** yet an established product guarantee.
 
@@ -157,3 +160,7 @@ Showduino remains **1.0.0-rc.1** until integrated hardware sign-off. The release
 ## Status indicator colours
 
 Current status and identifier indicators use the shared semantic vocabulary in [`docs/status-colour-standard.md`](docs/status-colour-standard.md). This vocabulary does not restrict theatrical show colours.
+
+## Documentation review baseline
+
+Documentation was checked against `main` at `526af84cc04d96b3f4d9a51bc3a0ef1470da0b69` on 7 October 2026. See the [review record](docs/documentation-review-2026-10-07.md) for component versions, corrected claims and outstanding implementation/bench gaps. The [user manual](docs/manual/SHOWDUINO_USER_MANUAL.md) now covers the independent P4 ambience path and generic I/O; neither has a completed Studio/Director authoring workflow. This update stops normal ambience on show STOP. Emergency replaces normal ambience with a looping emergency WAV; clear stops that WAV without restoring ambience.

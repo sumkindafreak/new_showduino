@@ -9,6 +9,7 @@
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
 #include "AudioPixelEngine.h"
+#include "AudioStatusPixel.h"
 #include "AudioPixelProtocol.h"
 #include "AudioPixelNodeState.h"
 #include "EspNowNodeTransport.h"
@@ -81,11 +82,13 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <section class="tab" id="pixel" hidden>
 <div class="card">
 <div class="kv" id="pixelkv"></div>
+<p>The strip starts with 10 pixels. Set its actual count while idle; running effects and emergency lock local setup.</p>
 <label>Pixel count</label><input id="pixcount" type="number" min="1" max="512">
 <div class="row">
 <button class="act" data-c="PIXEL:COUNT">SAVE COUNT</button>
 <button class="act" data-c="PIXEL:INIT">INITIALISE</button>
-<button class="act" data-c="PIXEL:TEST">TEST</button>
+<button class="act" data-c="PIXEL:TEST">SHOW STRIP TEST</button>
+<button class="act" data-c="STATUS:LED:TEST">STATUS LED TEST</button>
 <button class="act" data-c="PIXEL:BLACKOUT">BLACKOUT</button>
 </div>
 </div>
@@ -112,6 +115,15 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <div class="card">
 <label>Node name</label><input id="name" maxlength="24">
 <div class="row"><button class="act" id="save">SAVE NAME</button></div>
+<label>Audio output</label><select id="output">
+<option value="SPEAKER">Speaker connectors</option>
+<option value="HEADPHONE">Headphone jack</option>
+<option value="LINE">Both outputs (external amplifier)</option>
+<option value="AUTO">Automatic headphone detection</option>
+</select>
+<div class="row"><button class="act" id="saveoutput">SAVE OUTPUT</button></div>
+<p id="outputresult"></p>
+<p>Stop playback and clear emergency before changing the audio output.</p>
 <p>Live playback is never saved as a boot state.</p>
 </div>
 </section>
@@ -119,6 +131,8 @@ input,select{background:#111;color:#fff;border:1px solid #444;padding:8px;width:
 <script>
 const $=id=>document.getElementById(id);
 let S=null;
+let pixelCountDirty=false;
+let outputDirty=false;
 function kv(el,rows){el.innerHTML=rows.map(r=>`<div>${r[0]}</div><div class="${r[2]||''}">${r[1]}</div>`).join('')}
 async function load(){
   S=await (await fetch('/api/status')).json();
@@ -126,7 +140,20 @@ async function load(){
   $('title').textContent=S.name||'Showduino Audio';
   $('owner').textContent=S.owner+' · '+S.playback+(S.asset&&S.asset!=='-'?' · '+S.asset:'');
   $('banner').hidden=!owned;
-  document.querySelectorAll('button.act').forEach(b=>{if(b.id!=='save')b.disabled=owned});
+  const emergency=!!(S.emergency||S.pixel.emergency);
+  const setupAllowed=!S.pixel.busy&&!emergency;
+  document.querySelectorAll('button.act').forEach(b=>{
+    if(b.id==='save'||b.id==='saveoutput') return;
+    const c=b.dataset.c||'';
+    if(c==='PIXEL:COUNT'||c==='PIXEL:INIT') b.disabled=emergency||(owned&&!setupAllowed);
+    else if(c==='STATUS:LED:TEST') b.disabled=emergency;
+    else b.disabled=owned;
+  });
+  $('pixcount').disabled=emergency||(owned&&!setupAllowed);
+  const outputAllowed=!emergency&&!['LOADING','PLAYING','LOOPING','PAUSED','RECORDING'].includes(S.playback);
+  $('output').disabled=!outputAllowed;
+  $('saveoutput').disabled=!outputAllowed;
+  if(!outputDirty) $('output').value=S.outputConfigured||S.output||'SPEAKER';
   $('vol').disabled=owned; $('asset').disabled=owned;
   kv($('statuskv'),[
     ['Owner',S.owner,owned?'warn':''],
@@ -154,13 +181,14 @@ async function load(){
   ]);
   kv($('pixelkv'),[
     ['State',S.pixel.state],
-    ['GPIO',S.pixel.gpio],
+    ['Show GPIO',S.pixel.gpio],
+    ['Status LED','GPIO '+S.pixel.statusGpio+' / '+S.pixel.statusCount+' pixel'],
     ['Configured',S.pixel.configured],
     ['Active',S.pixel.count],
     ['Ready',S.pixel.ready?'YES':'no'],
     ['Emergency',S.pixel.emergency?'YES':'no',S.pixel.emergency?'bad':'']
   ]);
-  if(document.activeElement!==$('pixcount')) $('pixcount').value=S.pixel.configured||0;
+  if(!pixelCountDirty&&document.activeElement!==$('pixcount')) $('pixcount').value=S.pixel.configured||0;
   kv($('diagkv'),[
     ['MAC',S.mac],
     ['Output',S.output],
@@ -182,8 +210,10 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 async function send(cmd){
   const r=await (await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})})).json();
   if(!r.ok) alert(r.message||r.error||'rejected');
+  else if(cmd.startsWith('PIXEL:COUNT:')) pixelCountDirty=false;
   load();
 }
+$('pixcount').oninput=()=>{pixelCountDirty=true};
 function pixelCommand(op){
   if(op==='COUNT') return 'PIXEL:COUNT:'+Math.max(1,Math.min(512,Number($('pixcount').value)||1));
   return 'PIXEL:'+op;
@@ -195,6 +225,13 @@ document.querySelectorAll('button.act[data-c]').forEach(b=>b.onclick=()=>{
   send(c);
 });
 $('vol').onchange=()=>send('AUDIO:NODE:VOLUME:'+$('vol').value);
+$('output').onchange=()=>{outputDirty=true;};
+$('saveoutput').onclick=async()=>{
+  const result=await (await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output:$('output').value})})).json();
+  if(result.ok){outputDirty=false; $('outputresult').textContent='Audio output saved.';}
+  else $('outputresult').textContent=result.error||'Could not save audio output.';
+  await load();
+};
 $('save').onclick=async()=>{
   await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('name').value})});
   load();
@@ -263,6 +300,8 @@ static void handleStatus() {
   json += SHOWDUINO_AUDIO_NODE_CODEC;
   json += "\",\"output\":\"";
   json += audioCodecOutputName();
+  json += "\",\"outputConfigured\":\"";
+  json += audioStorageConfig().output;
   json += "\",\"fault\":\"";
   json += showduino_audio_fail_name(audioNodeStateFault());
   json += "\",\"emergency\":";
@@ -286,12 +325,18 @@ static void handleStatus() {
   json += audioPixelNodeStateName();
   json += "\",\"gpio\":";
   json += String(audioPixelEnginePin());
+  json += ",\"statusGpio\":";
+  json += String(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  json += ",\"statusCount\":";
+  json += String(SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT);
   json += ",\"configured\":";
   json += String((unsigned)audioPixelEngineConfiguredCount());
   json += ",\"count\":";
   json += String((unsigned)audioPixelEngineCount());
   json += ",\"ready\":";
   json += audioPixelEngineReady() ? "true" : "false";
+  json += ",\"busy\":";
+  json += (audioPixelEngineActiveSegments() > 0 || audioPixelEngineLocateActive()) ? "true" : "false";
   json += ",\"emergency\":";
   json += audioPixelEngineEmergency() ? "true" : "false";
   json += "},\"sound\":{\"ready\":";
@@ -309,7 +354,7 @@ static void handleStatus() {
 }
 
 static void handleLibrary() {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   String json = "{\"files\":[";
   for (uint16_t i = 0; i < n; i++) {
@@ -331,11 +376,37 @@ static void handleConfigGet() {
   jsonEsc(name, json);
   json += "\",\"volumeDefault\":";
   json += String((unsigned)audioStorageConfig().volume);
-  json += "}";
+  json += ",\"output\":\"";
+  json += audioStorageConfig().output;
+  json += "\"}";
   sServer.send(200, "application/json", json);
 }
 
 static void handleConfigPost() {
+  const String body = sServer.hasArg("plain") ? sServer.arg("plain") : sServer.arg(0);
+  char output[16];
+  if (extractJsonString(body, "output", output, sizeof(output))) {
+    if (!showduino_audio_output_ok(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"INVALID_OUTPUT\"}");
+      return;
+    }
+    if (audioOwnerMode() == SHOWDUINO_OWNER_EMERGENCY ||
+        audioNodeState() == SHOWDUINO_AUDIO_ST_EMERGENCY ||
+        audioPixelEngineEmergency() || audioPlaybackActive() || audioPlaybackPaused() ||
+        audioInputRecording()) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Stop playback and clear emergency first.\"}");
+      return;
+    }
+    if (!audioStorageSetOutput(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Could not save output to SD.\"}");
+      return;
+    }
+    if (!audioCodecApplyOutput(output)) {
+      sServer.send(200, "application/json", "{\"ok\":false,\"error\":\"Codec output write failed.\"}");
+      return;
+    }
+    SD_LOGI("AUDIO", "Output -> %s (saved)", audioCodecOutputName());
+  }
   char name[32];
   if (extractJsonString(sServer.arg("plain"), "name", name, sizeof(name)) ||
       extractJsonString(sServer.arg(0), "name", name, sizeof(name))) {
@@ -359,7 +430,9 @@ static void handleCommand() {
   }
   bool pixelRejected = false;
   char pixelRejectReason[SHOWDUINO_NODE_COMMAND_MAX] = "";
-  if (!strncmp(cmd, "PIXEL:", 6)) {
+  if (!strcmp(cmd, "STATUS:LED:TEST")) {
+    audioStatusPixelTest();
+  } else if (!strncmp(cmd, "PIXEL:", 6)) {
     audioPixelProtocolApply(cmd, 0, SHOWDUINO_CMD_ORIGIN_LOCAL);
     /* audioPixelProtocolApply() has no return value — it reports success or
        failure asynchronously via audioPixelNodeStateLastResult(). Surface a

@@ -488,9 +488,9 @@ static void build_controls(void) {
   for (uint8_t i = 0; i < PAGE01_CTRL_COUNT; i++) {
     build_control(i);
   }
-  /* Cue Library and Outputs have no live page yet - visible, not tappable. */
+  /* Cue Library remains a placeholder. Outputs opens the MOSFET desk. */
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
-  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], true);
   refresh_hero();
 
   for (uint8_t i = 0; i < PAGE01_CTRL_COUNT; i++) {
@@ -634,7 +634,7 @@ void page_01_home_set_capabilities(const ShowduinoCapabilities *caps) {
     s_caps = *caps;
   }
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
-  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], true);
   apply_footer_visibility();
   refresh_hero();
   Serial.printf("[Page01] caps lamp=%d mosfet=%d neo=%d audio=%d dmx=%d\n",

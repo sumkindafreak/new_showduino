@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
@@ -30,6 +32,41 @@ static lv_obj_t *s_routing = nullptr;
 static lv_obj_t *s_cmd = nullptr;
 static page_audio_system_command_fn s_cb = nullptr;
 static bool s_active = false;
+static lv_obj_t *s_ambience_status=nullptr,*s_ambience_file=nullptr;
+static lv_obj_t *s_ambience_controls[6]={};
+static char s_ambience_path[96]="";
+static char s_ambience_report[240]="Awaiting P4 ambience status";
+static bool s_ambience_locked=false;
+static unsigned s_ambience_index=0;
+static void update_ambience(){
+  ShowduinoOsTheme::setTextIfChanged(s_ambience_status,s_ambience_report);
+  ShowduinoOsTheme::setTextIfChanged(s_ambience_file,s_ambience_path[0]?s_ambience_path:"No file selected; tap Next file");
+  for(unsigned i=0;i<6;++i)if(s_ambience_controls[i]){
+    bool disabled=s_ambience_locked||((i==0||i==1)&&!s_ambience_path[0]);
+    if(disabled)lv_obj_add_state(s_ambience_controls[i],LV_STATE_DISABLED);else lv_obj_remove_state(s_ambience_controls[i],LV_STATE_DISABLED);
+  }
+}
+void page_audio_system_apply_ambience(const char *line){
+  if(!line)return;
+  if(!strncmp(line,"AMBIENCE:FILE:",14)){
+    const char *p=line+14;
+    if(!strcmp(p,"END")){s_ambience_index=0;s_ambience_path[0]=0;strncpy(s_ambience_report,"End of WAV list; Next file starts again",sizeof(s_ambience_report)-1);}
+    else {const char *sep=strchr(p,':');if(sep){snprintf(s_ambience_path,sizeof(s_ambience_path),"/showduino/audio/ambience/%s",sep+1);s_ambience_index=((unsigned)atoi(p)+1)%1000;}}
+  }else{
+    strncpy(s_ambience_report,line,sizeof(s_ambience_report)-1);s_ambience_report[sizeof(s_ambience_report)-1]=0;
+    if(!strncmp(line,"AMBIENCE:STATUS:",16))s_ambience_locked=strstr(line,":LOCK=1")!=nullptr;
+  }
+  update_ambience();
+}
+static void ambience_event(lv_event_t *e){
+  if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+  const char *action=(const char*)lv_obj_get_user_data(lv_event_get_target_obj(e));char cmd[128];
+  if(!strcmp(action,"NEXT"))snprintf(cmd,sizeof(cmd),"AMBIENCE:FILE:%u",s_ambience_index);
+  else if(!strcmp(action,"PLAY")||!strcmp(action,"LOOP")){if(!s_ambience_path[0])return;snprintf(cmd,sizeof(cmd),"AMBIENCE:%s:%s",action,s_ambience_path);}
+  else snprintf(cmd,sizeof(cmd),"AMBIENCE:%s",action);
+  if(s_cb)s_cb(cmd);
+}
+
 
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
@@ -158,7 +195,19 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   lv_obj_set_style_bg_opa(s_scroll, LV_OPA_TRANSP, 0);
   ShowduinoOsTheme::enableVerticalScroll(s_scroll);
 
-  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 0, 168);
+  lv_obj_t *ambience=make_section(s_scroll,"PCM5102A AMBIENCE - SD WAV",0,240);
+  s_ambience_status=make_body(ambience,38,kBodyW-40);
+  s_ambience_file=make_body(ambience,98,kBodyW-40);
+  const char *labels[]={"Play","Loop","Stop","25%","75%","100%","Next file","Status"};
+  const char *actions[]={"PLAY","LOOP","STOP","VOLUME:25","VOLUME:75","VOLUME:100","NEXT","STATUS"};
+  for(unsigned i=0;i<8;++i){
+    lv_obj_t *button=lv_button_create(ambience);lv_obj_set_pos(button,14+(i%4)*180,142+(i/4)*46);lv_obj_set_size(button,166,40);
+    lv_obj_set_user_data(button,(void*)actions[i]);lv_obj_add_event_cb(button,ambience_event,LV_EVENT_CLICKED,nullptr);
+    lv_obj_t *label=lv_label_create(button);lv_label_set_text(label,labels[i]);lv_obj_center(label);
+    if(i<6)s_ambience_controls[i]=button;
+  }
+  update_ambience();
+  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 248, 168);
   s_local_status = lv_label_create(local);
   lv_label_set_text(s_local_status, "Status: UNKNOWN");
   lv_obj_set_pos(s_local_status, 14, 36);
@@ -166,16 +215,16 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   lv_obj_set_style_text_color(s_local_status, lv_color_hex(ShowduinoPalette::Text), 0);
   s_local_detail = make_body(local, 64, kBodyW - 40);
 
-  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 176, 120);
+  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 424, 120);
   s_nodes = make_body(nodes, 40, kBodyW - 40);
 
-  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 304, 100);
+  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 552, 100);
   s_routing = make_body(routing, 40, kBodyW - 40);
 
-  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 412, 88);
+  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 660, 88);
   s_cmd = make_body(cmd, 40, kBodyW - 40);
 
-  lv_obj_set_style_min_height(s_scroll, 520, 0);
+  lv_obj_set_style_min_height(s_scroll, 768, 0);
 
   page_audio_system_apply_theme();
   s_active = true;
@@ -191,6 +240,8 @@ void page_audio_system_destroy(void) {
   s_root = s_header_accent = s_btn_back = s_title = s_header_status = nullptr;
   s_strip = s_scroll = s_local_status = s_local_detail = nullptr;
   s_nodes = s_routing = s_cmd = nullptr;
+  s_ambience_status=s_ambience_file=nullptr;
+  for(auto &control:s_ambience_controls)control=nullptr;
   s_cb = nullptr;
   s_active = false;
 }

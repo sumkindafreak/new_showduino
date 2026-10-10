@@ -156,7 +156,10 @@ bool emergencyEspNowSend(const char *command, uint32_t sequence) {
     sRej++;
     return false;
   }
-  const uint8_t *dest = sHaveComms ? sCommsMac : kBroadcast;
+  // An accepted esp_now_send() only queues a frame; it does not prove delivery.
+  // Rediscover by broadcast while stale, even if the old peer still exists.
+  // Keep the learned address so a fresh reply can restore unicast immediately.
+  const uint8_t *dest = emergencyEspNowLinkFresh() ? sCommsMac : kBroadcast;
   if (!addPeer(dest)) return false;
   if (esp_now_send(dest, (const uint8_t *)&pkt, sizeof(pkt)) != ESP_OK) {
     sSendFail++;

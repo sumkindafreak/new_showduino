@@ -72,7 +72,7 @@ There is no extinguish WAV. Extinguish sends `q` and goes silent. Missing Audio 
 
 ## Emergency (existing product policy — plus local audio)
 
-Emergency forces the jewel **bright white**, interrupts theatrical audio, and loops `emergency.wav`. Clear stops emergency audio, returns to idle/OFF, and does **not** resume the previous flame or burn loop. The node cannot locally clear a system emergency. WebUI cannot clear it either. WebUI TEST EMERGENCY is an audio commissioning check only.
+Emergency forces the jewel **bright white**, interrupts normal prop audio, and loops the Lamp’s local `emergency.wav`. P4 system audio and PCM5102A also carry emergency announcements. Clear stops the emergency sound, returns to idle/OFF and does **not** resume the previous flame or burn loop. The node cannot locally clear a system emergency. WebUI cannot clear it either. WebUI TEST EMERGENCY is an audio commissioning check only.
 
 ## Comms-loss (existing product policy — unchanged)
 
@@ -113,3 +113,5 @@ This physical board talks over a CH343 USB-UART on UART0. Flash and monitor with
 ```text
 arduino-cli compile --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled,PartitionScheme=default_8MB" firmware/s3-lamp-node/ShowduinoS3LampNode
 ```
+
+Emergency policy: global Emergency interrupts normal Lamp audio and loops its local `emergency.wav`; clear stops that announcement without restoring flame-loop audio. This existing Lamp behaviour is retained alongside the new P4 PCM5102A emergency override.

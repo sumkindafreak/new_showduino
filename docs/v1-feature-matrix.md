@@ -30,12 +30,12 @@ Legend:
 | Emergency/safety regression | Dual-action clear unchanged | Transport only | Latch, pixels white, no auto-resume; persist abort | PANIC still P4 | Safety cannot weaken in SHDO | Lamp emergency white | **NEEDS HARDWARE TEST** (code not weakened) |
 | Stale C3/SUE/C6/DMX | Footer COMMS not SUE | No C3 path | Transport reject obsolete SHDO | Copy updated | SHDO rejects C3/SUE/C6 | Lamp is a node, not comms | **PARTIAL** (legacy folders remain, not live path) |
 | Host compile/tests | n/a | n/a | Format/store/SHDO/WEB-BODY/version | n/a | Headers host-tested | n/a | **YES** after `run_tests.ps1` |
-| Firmware compile | Director 0.9.2 | Comms 0.4.0 | P4 0.6.0 | Embedded WebUI (regenerated this pass) | n/a | Audio 0.4.2, Lamp 0.4.0, Pixel 0.1.0 | **YES** after this compile pass |
+| Historical firmware compile (does not validate current versions) | Director 0.9.2 | Comms 0.4.0 | P4 0.6.0 | Embedded WebUI (regenerated this pass) | n/a | Audio 0.4.2, Lamp 0.4.0, Pixel 0.1.0 | **YES** after this compile pass |
 | C3 Pixel Node | Page 04 PIXEL NODE card | Multi-peer `ROUTE:PIXEL:` | `PixelNodeLink` 8 slots | Outputs per-node cards | `showduino_pixel_node.h` / SHDO `pixel-node` | C3 GPIO2 line, OLED 5/6 | **NEEDS HARDWARE TEST** |
-| C3 Emergency Node | Page 04 Emergency strip + sheet | Multi-peer `ROUTE:EMERGENCY:` priority UART | Same global latch as GPIO25; no wireless clear | Inventory only; no timeline cue | `showduino_emergency_node.h` Protocol 1.0 additive | C3 NC input GPIO unconfirmed | **NEEDS HARDWARE TEST** |
+| C3 Emergency Node | Page 04 Emergency strip + sheet | Multi-peer `ROUTE:EMERGENCY:` priority UART | Same global latch as GPIO25; no wireless clear | Inventory only; no timeline cue | `showduino_emergency_node.h` Protocol 1.0 additive | C3 momentary active-LOW GPIO4 (unconfirmed), OLED and GPIO2 Pixel capability | **NEEDS HARDWARE TEST** |
 | Physical-test checklist | `docs/physical-test-checklist.md` | same | same | same | same | same | **NEEDS HARDWARE TEST** |
 
-## Shipping tonight (operator path)
+## Current bench operator path
 
 Power P4 (SD) → Comms → UART → Director. Optional Studio at `http://192.168.4.1/studio/`. START only after P4 ack. Home Wi-Fi is not required.
 
@@ -45,3 +45,15 @@ Power P4 (SD) → Comms → UART → Director. Optional Studio at `http://192.16
 2. Emergency physical latch still works.
 3. STA join on a non-1 channel does not drop the Director.
 4. SHDO persist + Director load proven on SD.
+
+## Review additions — 7 October 2026
+
+| Capability | Source status | Physical/UX boundary |
+| --- | --- | --- |
+| MOSFET four-channel level/pulse/fade, Director control and SHDO persistent cues | IMPLEMENTED — RC firmware 0.1.3 | Pins/output/identifier hardware acceptance required; not mains outputs. |
+| P4 PCM5102A ambience and Emergency WAV override | IMPLEMENTED — P4 0.6.9 in this update | SD stereo PCM, analogue output and simultaneous ES8311 playback require bench acceptance; USB/service controls only. |
+| GPIO46/47 generic digital I/O | IMPLEMENTED — P4 local engine | External drivers/polarity acceptance; browser commissioning is implemented; Director editor and automatic scene binding remain open. |
+| Comms self-OTA | IMPLEMENTED — Comms only | Previous Phase 1 apply-501 rows describe historical foundations; current self-OTA/rollback still requires physical acceptance. |
+| Current firmware-target compilation | NOT RUN in this review | Host regression tests do not replace firmware builds; no Arduino target toolchain available in this workspace. |
+
+Current source/updated component versions are in the [review record](documentation-review-2026-10-07.md); historical compile evidence above is not proof for those versions.

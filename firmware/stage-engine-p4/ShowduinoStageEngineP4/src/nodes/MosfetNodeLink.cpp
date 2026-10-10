@@ -81,12 +81,14 @@ static void publishState(bool force = false) {
   }
   const char *firstId = "-";
   const char *firstSt = "OFFLINE";
+  const MosfetNodeStatus *firstNode = nullptr;
   uint8_t online = 0, seen = 0;
   for (uint8_t i = 0; i < SHOWDUINO_MOSFET_NODE_MAX_NODES; ++i) {
     if (!sNodes[i].used || !sNodes[i].seen) continue;
     seen++;
     if (sNodes[i].online) {
       if (!online) {
+        firstNode = &sNodes[i];
         firstId = sNodes[i].id[0] ? sNodes[i].id : "-";
         firstSt = sNodes[i].state[0] ? sNodes[i].state : "ONLINE";
       }
@@ -97,6 +99,12 @@ static void publishState(bool force = false) {
   snprintf(detail, sizeof(detail), "%s%u:%u:%s:%s",
            SHOWDUINO_WIRE_STATE_NODE_MOSFET_DETAIL_PREFIX,
            (unsigned)online, (unsigned)seen, firstId, firstSt);
+  if (firstNode && firstNode->haveLevels) {
+    const size_t used = strlen(detail);
+    snprintf(detail + used, sizeof(detail) - used, ":O=%u,%u,%u,%u",
+             firstNode->levels[0], firstNode->levels[1],
+             firstNode->levels[2], firstNode->levels[3]);
+  }
   if (force || strcmp(sLastDetail, detail) != 0) {
     if (sendToDirector(String(detail))) {
       strncpy(sLastDetail, detail, sizeof(sLastDetail) - 1);
@@ -132,6 +140,8 @@ static bool parseStatusLine(const char *p, MosfetNodeStatus *st) {
   if (sscanf(rest, "OWN=%d:EM=%d:O=%u,%u,%u,%u", &owned, &em, &a, &b, &c, &d) != 6) {
     return false;
   }
+  if (a > 100 || b > 100 || c > 100 || d > 100) return false;
+  st->haveLevels = true;
   st->owned = owned != 0;
   st->emergency = em != 0;
   st->levels[0] = (uint8_t)a;
@@ -192,6 +202,7 @@ void mosfetNodeLinkLoop() {
     if (!st.used || !st.online || !st.lastRxMs) continue;
     if ((millis() - st.lastRxMs) > 8000UL) {
       st.online = false;
+      st.haveLevels = false;
       st.owned = false;
       zeroCachedLevels(&st);
       strncpy(st.state, "OFFLINE", sizeof(st.state) - 1);

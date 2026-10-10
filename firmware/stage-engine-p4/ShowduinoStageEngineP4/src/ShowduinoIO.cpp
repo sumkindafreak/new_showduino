@@ -168,6 +168,8 @@ void emitLineState(const IOChannel &ch) {
              logicalActive(ch, level) ? 1U : 0U);
   }
   sSend(line);
+  snprintf(line,sizeof(line),"STATE:IO:%u:CFG:%u,%u,%u,%u",ch.line,(unsigned)ch.mode,ch.activeHigh?1U:0U,(unsigned)ch.pull,ch.debounceMs);
+  sSend(line);
 }
 
 void emitInputEdge(const IOChannel &ch) {
@@ -574,6 +576,7 @@ bool showduinoIOHandleCommand(const char *command, char *reply, size_t replyLen)
   if (!cmd.startsWith("IO:")) return false;
 
   if (cmd == "IO:STATUS") {
+    showduinoIOPublishState();
     snprintf(reply, replyLen,
              "IO:STATUS:1=%s@GPIO%d:2=%s@GPIO%d:EMERGENCY=%u",
              modeName(sLines[0].mode), sLines[0].pin,
@@ -613,6 +616,17 @@ bool showduinoIOHandleCommand(const char *command, char *reply, size_t replyLen)
     return true;
   }
 
+  if (action.startsWith("CONFIG:")) {
+    char mode[9]={},high[5]={},pull[5]={};unsigned debounce=0;int end=0;
+    ShowduinoIOMode parsedMode;ShowduinoIOPull parsedPull;
+    if(sEmergency || sscanf(action.c_str(),"CONFIG:%8[^:]:%4[^:]:%4[^:]:%u%n",mode,high,pull,&debounce,&end)!=4 || action.c_str()[end] || !parseMode(mode,&parsedMode) || !parsePull(pull,&parsedPull) || (strcmp(high,"HIGH")&&strcmp(high,"LOW")) || debounce>kMaxDebounceMs) {
+      snprintf(reply,replyLen,"IO:%u:CONFIG:ERROR:INVALID_OR_EMERGENCY",line);return true;
+    }
+    writeOutput(*ch,false);makeDisabled(*ch);
+    ch->mode=parsedMode;ch->activeHigh=!strcmp(high,"HIGH");ch->pull=parsedPull;ch->debounceMs=debounce;applyMode(*ch);
+    const bool saved=saveConfig();
+    snprintf(reply,replyLen,"IO:%u:CONFIG:%s",line,saved?"SAVED":"RAM_ONLY_SD_ERROR");emitLineState(*ch);return true;
+  }
   if (action.startsWith("MODE:")) {
     const String value = action.substring(5);
     ShowduinoIOMode mode;

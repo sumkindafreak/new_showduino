@@ -59,7 +59,7 @@ Write-Host "Running..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Compiling SHDO compiler tests..."
-& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp")
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp") $format
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $shdoOut
