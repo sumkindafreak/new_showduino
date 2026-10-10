@@ -893,7 +893,7 @@ The shared current FX vocabulary includes:
 
 That is **25** current Showduino FX entries shared across the Pixel-capable peers listed above.
 
-These are current engine/commissioning capabilities. Persistent production-file PIXEL cue support is not yet complete.
+These are current engine/commissioning capabilities. Persistent v1 now accepts bounded P4-local `PIXEL:` cues; SHDO compilation also covers the supported specialist pixel routes. Mixed-device hardware acceptance and Emergency Node pixel persistence remain open.
 
 ## 17.2 Outputs browser page
 
@@ -927,7 +927,11 @@ P4 system audio uses the onboard ES8311 path for Showduino sounds such as boot, 
 
 If a system WAV is missing or invalid, the Show Engine must continue operating rather than treating audio playback as the safety mechanism.
 
-## 18.2 Attraction/programme audio
+## 18.2 P4 ambience audio
+
+The P4 also has a dedicated **PCM5102A ambience output**, separate from both the onboard ES8311 system/safety speaker and the specialist Audio Node. The P4 accepts `AMBIENCE:PLAY`, `AMBIENCE:LOOP`, `AMBIENCE:STOP`, `AMBIENCE:VOLUME` and `AMBIENCE:STATUS`. The Director **AUDIO NODE** page exposes these controls through an **AMBIENCE** panel using the finish-line P4 SD asset `/showduino/audio/ambience.wav`. Emergency stops this stream and clear does not auto-resume it.
+
+## 18.3 Attraction/programme audio
 
 Attraction audio is produced by the specialist **Audio Node** from its local SD card.
 
@@ -937,7 +941,7 @@ Current Audio Node operations include play, loop, stop, pause, resume, volume, f
 
 The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
 
-## 18.3 Audio Node Emergency behaviour
+## 18.4 Audio Node Emergency behaviour
 
 Emergency:
 

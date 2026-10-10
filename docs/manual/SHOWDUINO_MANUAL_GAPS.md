@@ -160,7 +160,7 @@ At this baseline, two different surfaces share the Studio name:
 
 What remains unfinished for a single commercial “first owner” journey:
 
-- persistent P4 production format still cannot store the full theatrical cue set (see GAP-007);
+- persistent P4 production format now covers the finish-line PIXEL/AUDIO/LAMP/MOSFET subset, but still does not persist every compiler route (notably ESTOP pixel cues; see GAP-007);
 - public HTTPS Studio may still need export when browsers cannot reach local hardware;
 - Emergency Node pixel outputs are implemented in firmware/SHDO (`estop-node-pixels`) but Studio inventory surfacing may still lag (“showduino.com follow-up” note in `docs/emergency-node.md`).
 

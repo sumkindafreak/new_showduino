@@ -356,7 +356,7 @@ The S3 PROGMEM WebUI is static frontend code, not authoritative show storage.
 ### Still to complete
 
 - browser WebUI bundle regeneration after source changes before the updated UI is present in an S3 firmware image;
-- persistent production PIXEL/AUDIO cue types and timeline dispatch polish;
+- physical acceptance of persistent mixed-device production dispatch;
 - named logical pixel-segment persistence and binding;
 - completion-driven state/fault handling for all future Nodes;
 - Audio Node, Lamp Node, Pixel Node and P4 pixel physical bench commissioning;

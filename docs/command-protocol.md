@@ -210,7 +210,7 @@ RAINBOW
 CUSTOM_SEQUENCE
 ```
 
-These commands are **commissioning/runtime control**, not proof that production-format-v1 supports PIXEL timeline cues. Persistent production v1 still accepts TEST/LOG cue types; production PIXEL cue parsing, named segment persistence and logical target resolution remain future integration work.
+These commands are also available to the bounded persistent production path where the runtime cue uses an accepted `PIXEL:` command. Persistent v1 currently accepts `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG`; specialist SHDO routes still depend on what can be projected into those runtime prefixes. Named segment persistence and full logical target resolution remain future integration work.
 
 While emergency is active, normal pixel commands must be rejected/overridden and all pixels remain white.
 

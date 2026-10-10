@@ -467,5 +467,37 @@ int main() {
            "first-audio-test authoring binds only the Audio Node");
   }
 
+  // Compile and reload the actual consolidated non-DMX acceptance package.
+  std::string bench;
+  expect(loadFile("examples/productions/all-nodes-bench-test.shdo", &bench) ||
+         loadFile("../../examples/productions/all-nodes-bench-test.shdo", &bench),
+         "all-nodes acceptance package is loadable");
+  ShdoManifest benchManifest{};
+  ShdoCue benchCues[128]{};
+  uint16_t benchCount = 0;
+  expect(shdoCompile(bench.c_str(), bench.size(), &benchManifest, benchCues, 128,
+                    &benchCount, err, sizeof(err)) == SHDO_OK,
+         "all-nodes acceptance package compiles");
+  if (benchCount == 0) std::printf("Acceptance compiler error: %s\n", err);
+  char benchTimeline[32768]{};
+  const size_t benchLength = shdoWriteTimelineJson(benchTimeline, sizeof(benchTimeline),
+                                                 benchCues, benchCount);
+  ProductionCue reloaded[128]{};
+  ProductionTimeline reloadTimeline{};
+  ProductionParseResult reloadResult{};
+  expect(benchLength > 0 && productionParseTimeline(
+      benchTimeline, benchLength, reloaded, 128, &reloadTimeline, &reloadResult),
+      "all-nodes acceptance timeline reloads");
+  expect(reloadTimeline.cueCount == benchCount && benchCount > 0,
+         "all acceptance cues survive persistent roundtrip");
+  for (uint16_t i = 0; i < reloadTimeline.cueCount; ++i) {
+    expect(reloaded[i].timeMs == benchCues[i].timeMs &&
+           (std::strcmp(reloaded[i].command, benchCues[i].command) == 0 ||
+            (!std::strcmp(benchCues[i].type, "LOG") &&
+             !std::strncmp(reloaded[i].command, "INTERNAL:LOG:", 13))),
+           "acceptance cue preserves physical command or normalized log and time");
+  }
+  expect(benchCount > 0 && benchCues[benchCount - 1].timeMs == 22000,
+         "acceptance show completes at 22 seconds");
   return failures ? 1 : 0;
 }

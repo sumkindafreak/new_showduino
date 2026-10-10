@@ -42,6 +42,7 @@ jobs:
           node --input-type=module --check < web/showduino-studio/js/pages/Outputs.js
       - name: Director delivery, node recovery and commissioning controls
         run: |
+          node tools/director-tests/test_ambience_status.cjs
           node tools/director-tests/test_timeline_delivery.cjs
           node tools/director-tests/test_outputs_page.cjs
           node tools/director-tests/test_outputs_readback.cjs
