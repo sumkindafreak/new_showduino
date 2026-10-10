@@ -45,6 +45,8 @@ the bench checklist to reflect P4 emergency WAV playback and no automatic resume
 Physical flashing, DAC output, radio delivery and combined bench acceptance remain
 outstanding. This integration is a draft; it does not merge main or publish releases.
 
+For the commercial-manual version clarification and operator-facing finish-line status, see [10 October manual addendum](manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-10.md).
+
 ## Status update — 10 October 2026 (after PR #29 creation)
 
 **Source of truth:** `main` at `57c87ad861e1b715a6e81c8f6388a27926ac83ec`; draft integration PR #29 at `82cab2d9f635c033bd0fb0cdb180dc006fdf1dc0` before this documentation update. PR #29 was originally integrated against `24193d6`. The newer main changes regenerate the embedded S3 Studio WebUI; GitHub currently reports the draft PR as **conflicting**, so its generated assets must be reconciled against latest main before merge. Do not overwrite the integration's commissioning changes with an older generated bundle.
