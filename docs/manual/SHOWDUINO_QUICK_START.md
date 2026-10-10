@@ -151,6 +151,16 @@ If the physical input is still asserted, the P4 rejects the clear.
 
 After clear, local show pixels remain black and interrupted attraction audio does not resume. A previously running show may remain paused until the operator deliberately stops/restarts or resumes it according to the venue's recovery procedure.
 
+## Audio Node remains in Emergency after main-unit power loss
+
+1. Restore main Showduino power if needed. Wait until the P4, Comms and Audio Node are online.
+2. Confirm the area is safe and all physical Emergency buttons are released.
+3. Press **E-stop on the Director** to assert a fresh system Emergency.
+4. Choose **CLEAR EMERGENCY**, then **CONFIRM CLEAR**.
+5. Check that the Audio Node leaves Emergency and returns to idle with playback stopped. Restart audio or the show manually when ready.
+
+If clearance is rejected or the node remains offline, restore the connection or release the asserted input before repeating these steps.
+
 This firmware path is implemented and still requires physical hardware acceptance.
 
 ---

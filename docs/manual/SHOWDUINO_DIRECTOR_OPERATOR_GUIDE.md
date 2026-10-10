@@ -215,6 +215,10 @@ Only after the real-world incident has been resolved and the area is safe:
 4. Check that the Show Engine accepts the clear. A held button or a new assertion can prevent clearance.
 5. Treat the show as interrupted. **Clearing Emergency does not restart it.** Follow the attraction's approved recovery/restart procedure.
 
+### Audio Node still in Emergency after main-unit power loss
+
+Restore main Showduino power and wait for P4, Comms and the Audio Node to reconnect. Once the area is safe and physical Emergency buttons are released, press **E-stop on the Director**, then choose **CLEAR EMERGENCY → CONFIRM CLEAR**. Check that the Audio Node returns to idle with playback stopped. Restart audio or the show manually when ready. If clear is rejected, check for an asserted input or an offline link and repeat the normal clear procedure.
+
 **To find a sleeping or misplaced Director:** hold the same main button for eight seconds. Emergency asserts on the initial press; Locate then forces the Director screen on and flashes its ambient lights. The **first touch acknowledges Locate only**. It does **not** clear Emergency.
 
 **Wireless Emergency Nodes** are separate accessories with their own momentary pushbutton, OLED status and assert-only latch design. The same physical station may also provide a Showduino Pixel Line. They can **assert** but cannot **clear** the central Emergency. Do not assume their buttons use the main-unit's eight-second Locate gesture. The full emergency and clear procedure still needs physical sign-off on the actual installed hardware.

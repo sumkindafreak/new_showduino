@@ -1252,6 +1252,8 @@ Likely current reasons include:
 
 Resolve the physical condition and repeat the authorised procedure. Do not bypass the input.
 
+**Audio Node remains in Emergency after the main Showduino loses power:** restore main power and wait for the P4, Comms and Audio Node to reconnect. Confirm the area is safe and physical Emergency buttons are released. Press **E-stop on the Director** to assert a fresh system Emergency, then choose **CLEAR EMERGENCY → CONFIRM CLEAR**. Verify the Audio Node returns to idle with playback stopped. Audio and the show require a deliberate manual restart.
+
 ## 25.9 Node local controls say CONTROLLED BY SHOWDUINO
 
 This is expected when the P4 has granted ownership. Use Showduino's operator/commissioning interface rather than fighting the Node locally.
