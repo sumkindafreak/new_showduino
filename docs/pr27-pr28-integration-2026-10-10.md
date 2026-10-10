@@ -40,7 +40,12 @@ the bench checklist to reflect P4 emergency WAV playback and no automatic resume
 - Actual P4 ambience player and browser command-policy host tests passed.
 - Actual all-nodes acceptance package compile/persistent roundtrip passed.
 - All 42 embedded assets decompress to their declared lengths; JavaScript parses.
-- Full board firmware build results are recorded below after completion.
+- ESP32 core 3.3.11 full P4 build passed: 1,171,456 bytes (89% flash);
+  79,780 bytes (24% static RAM).
+- Full Comms build passed: 1,399,171 bytes (41% flash); 58,708 bytes (17% static RAM).
+  Director result follows after completion.
+- Embedded DMX editor is byte-for-byte identical to current main.
+- GitHub host-checks and embed-webui passed on the draft integration PR.
 
 Physical flashing, DAC output, radio delivery and combined bench acceptance remain
 outstanding. This integration is a draft; it does not merge main or publish releases.
