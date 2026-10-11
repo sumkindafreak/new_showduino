@@ -9,3 +9,7 @@ Ten pixels are the default for P4, C3 Pixel Node, Audio Node show pixels and Eme
 Still to verify physically: complete scenario playback, Audio Node continuity, Director ambience, Emergency Node white pixels, Lamp emergency sound, MOSFET output and Director Nodes-page stability. Re-run the scenario with Emergency asserted and confirm no automatic resume.
 
 For the latest integration/CI/merge status, see `docs/pr27-pr28-integration-2026-10-10.md`. Do not treat the current `main` branch alone as the completed integrated firmware.
+
+## Update: 11 October 2026
+
+Main is now at `639555a` following two timestamp-only Studio bundle regenerations. Draft PR #29 remains unmerged and needs reconciliation with main. Its host checks pass, but the fixed 22-second scenario has not yet been physically signed off. PR #30 is separate optional Emergency Node hardware work and is outside this finish-line acceptance.
