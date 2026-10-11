@@ -18,7 +18,7 @@
  * OLED: same SSD1306 geometry as the C3 Pixel Node (SDA5/SCL6).
  */
 
-#define SHOWDUINO_EMERGENCY_NODE_FW             "0.3.1"
+#define SHOWDUINO_EMERGENCY_NODE_FW             "0.3.2"
 #define SHOWDUINO_EMERGENCY_NODE_BOARD          "ESP32-C3 Super Mini OLED"
 #define SHOWDUINO_EMERGENCY_NODE_GPIO_VERIFIED  0
 
@@ -51,6 +51,35 @@
 #define SHOWDUINO_PIXEL_DATA_PIN                SHOWDUINO_ESTOP_PIXEL_DATA_PIN
 #define SHOWDUINO_PIXEL_ORDER                   (NEO_GRB + NEO_KHZ800)
 #define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS      330
+
+/*
+ * Independent local atmospheric/status strip: EXACTLY TWO WS2812 LEDs.
+ * GPIO3 is separate from the GPIO2 theatrical Show Pixel line.
+ * This pin assignment is a software proposal until physically verified.
+ * The local indicator is NOT a show output and cannot clear emergency.
+ */
+#define SHOWDUINO_ESTOP_STATUS_PIXEL_PIN                    3
+#define SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT                  2
+#define SHOWDUINO_ESTOP_STATUS_PIXEL_BRIGHTNESS             32
+#define SHOWDUINO_ESTOP_STATUS_PIXEL_EMERGENCY_BRIGHTNESS   180
+#define SHOWDUINO_ESTOP_STATUS_PIXEL_FRAME_MS               40UL
+
+#if SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT != 2
+#error "Emergency status line must contain exactly two pixels"
+#endif
+#if SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == SHOWDUINO_ESTOP_PIXEL_DATA_PIN || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == SHOWDUINO_ESTOP_NODE_GPIO || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == SHOWDUINO_ESTOP_NODE_REARM_GPIO || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == OLED_SDA_PIN || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == OLED_SCL_PIN || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == SHOWDUINO_ESTOP_NODE_LED_GPIO || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_PIN == SHOWDUINO_ESTOP_NODE_BUZZER_GPIO
+#error "Emergency status pixel GPIO conflicts with another Emergency Node peripheral"
+#endif
+#if SHOWDUINO_ESTOP_STATUS_PIXEL_BRIGHTNESS < 4 || \
+    SHOWDUINO_ESTOP_STATUS_PIXEL_BRIGHTNESS > 255
+#error "Emergency status pixel brightness must be in 4..255"
+#endif
 
 /* Optional local buzzer. -1 = not fitted. Non-blocking. */
 #define SHOWDUINO_ESTOP_NODE_BUZZER_GPIO        (-1)
