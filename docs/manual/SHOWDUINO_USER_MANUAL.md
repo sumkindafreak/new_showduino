@@ -16,6 +16,9 @@ This revision includes P4 0.6.10, Comms 0.5.5 and Director 0.9.12-director softw
 
 ## Read this first
 
+**Current integration notice (11 October 2026):** This manual preserves its 7 October reviewed baseline and is not a claim that the latest integrated firmware is on `main`. Read [the finish-line status addendum](SHOWDUINO_FINISH_LINE_STATUS_2026-10-10.md) for PR #29's Director ambience controls, updated source versions, current merge/CI status and the remaining physical acceptance gate. Do not treat software-tested features as hardware signed off.
+
+
 Showduino is still at a release-candidate stage. This manual describes the behaviour that could be verified from the repository baseline above. It deliberately does **not** present planned features as finished product functions.
 
 Where current firmware is implemented but has not yet passed the repository's physical acceptance gate, this manual says so. Where a newly approved product requirement differs from the firmware at this baseline, the discrepancy is recorded in `SHOWDUINO_MANUAL_GAPS.md` rather than being disguised as current behaviour.
