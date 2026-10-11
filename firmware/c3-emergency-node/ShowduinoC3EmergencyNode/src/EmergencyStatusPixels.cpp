@@ -100,8 +100,13 @@ void emergencyStatusPixelsService(bool latched, bool systemEmergency,
     case MODE_FAULT:
       sModeName = "FAULT";
       /* Alternating magenta and amber. */
-      rgb(0, flip ? 255 : 255, flip ? 0 : 100, flip ? 130 : 0, low);
-      rgb(1, flip ? 255 : 255, flip ? 100 : 0, flip ? 0 : 130, low);
+      if (flip) {
+        rgb(0, 255, 0, 130, low);
+        rgb(1, 255, 100, 0, low);
+      } else {
+        rgb(0, 255, 100, 0, low);
+        rgb(1, 255, 0, 130, low);
+      }
       break;
     case MODE_LOCATE:
       sModeName = "LOCATE";
