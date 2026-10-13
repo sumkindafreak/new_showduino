@@ -24,3 +24,9 @@ Add `#define SHOWDUINO_PIXEL_USE_FASTLED 1` in that sketch's `BoardConfig.h` bef
 6. Confirm memory, refresh time, radio stability and power limits on larger strips.
 
 P4 FastLED, additional physical GPIO outputs per node, clock-scheduled cross-node start and native Director pixel editing are **not implemented by this foundation patch**. Do not mistake command fan-out for frame-perfect synchronisation.
+
+## Studio group editor (branch prototype)
+
+The Outputs screen discovers the already-supported P4 show line and C3 Pixel Node identities, lets you select members, save named group memberships in that browser, and send coordinated segment configuration / start and blackout commands. It deliberately keeps the existing \`PIXEL:\` and \`PIXEL:NODE:<id>:\` command syntax unchanged for compatibility with existing shows.
+
+**Limitations:** Group launches use sequential gateway commands (not sub-frame sync), each selected segment range must fit every chosen physical line, groups are browser-local, and additional GPIO lines on a single node are not exposed. The emergency signage line is excluded and the controls are locked during emergency.
