@@ -8,6 +8,10 @@
 #include "esp32-hal-rmt.h"
 #endif
 #include "storage/StageConfig.h"
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+#include <FastLED.h>
+#include <new>
+#endif
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -20,7 +24,10 @@ static uint16_t sConfiguredCount = 0;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr; /* RGB triplets */
-#if SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+static CRGB *sFastLeds = nullptr;
+static CLEDController *sFastController = nullptr;
+#elif SOC_RMT_SUPPORTED
 static rmt_data_t *sItems = nullptr;
 #endif
 static size_t sSymbolCount = 0;
@@ -63,7 +70,7 @@ static void fillSegment(const ShowduinoPixelSegmentState &seg,
 
 
 
-#if SOC_RMT_SUPPORTED
+#if SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
 static void buildSymbolsFromFrame() {
   if (!sFrame || !sItems) return;
   size_t item = 0;
@@ -93,7 +100,16 @@ static void buildSymbolsFromFrame() {
 #endif
 
 static bool writeFrame() {
-#if !SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  if (!sReady || !sFrame || !sFastLeds || !sFastController) return false;
+  for (uint16_t i = 0; i < sCount; ++i) {
+    const size_t base = (size_t)i * 3U;
+    sFastLeds[i] = CRGB(sFrame[base], sFrame[base + 1], sFrame[base + 2]);
+  }
+  // FX kernel already includes global and segment brightness.
+  sFastController->showLeds(255);
+  return true;
+#elif !SOC_RMT_SUPPORTED
   return false;
 #else
   if (!sReady || !sItems || !sFrame) return false;
@@ -153,7 +169,7 @@ static void showPixelsShutdown() {
     clearFrame();
     writeFrame();
   }
-#if SOC_RMT_SUPPORTED
+#if SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
   if (sReady) {
     rmtDeinit(SHOWDUINO_SHOW_PIXEL_PIN);
   }
@@ -164,7 +180,11 @@ static void showPixelsShutdown() {
   sSymbolCount = 0;
   free(sFrame);
   sFrame = nullptr;
-#if SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  if (sFastController) sFastController->setLeds(nullptr, 0);
+  delete[] sFastLeds;
+  sFastLeds = nullptr;
+#elif SOC_RMT_SUPPORTED
   free(sItems);
   sItems = nullptr;
 #endif
@@ -177,7 +197,7 @@ bool showPixelsBegin() {
                   (unsigned)SHOWDUINO_SHOW_PIXEL_MAX);
     return false;
   }
-#if !SOC_RMT_SUPPORTED
+#if !SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
   Serial.println("[PIXEL] RMT not supported — P4 show pixel line disabled");
   return false;
 #else
@@ -187,9 +207,14 @@ bool showPixelsBegin() {
 
   sCount = sConfiguredCount;
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  sFastLeds = new (std::nothrow) CRGB[sCount];
+  if (!sFrame || !sFastLeds) {
+#else
   const size_t bits = (size_t)sCount * 24U;
   sItems = (rmt_data_t *)malloc(bits * sizeof(rmt_data_t));
   if (!sFrame || !sItems) {
+#endif
     Serial.println("[PIXEL] Show line allocation failed");
     showPixelsShutdown();
     return false;
@@ -197,6 +222,19 @@ bool showPixelsBegin() {
 
   pinMode(SHOWDUINO_SHOW_PIXEL_PIN, OUTPUT);
   digitalWrite(SHOWDUINO_SHOW_PIXEL_PIN, LOW);
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  // GPIO24 signage still uses Arduino's native RMT API. Do not let a
+  // different FastLED RMT implementation claim any RMT peripheral.
+  // FastLED will select its supported non-RMT driver for this board.
+  FastLED.setDriverEnabled("RMT", false);
+  if (!sFastController) {
+    sFastController = &FastLED.addLeds<WS2812, SHOWDUINO_SHOW_PIXEL_PIN, GRB>(sFastLeds, sCount);
+    sFastController->setCorrection(UncorrectedColor);
+    sFastController->setDither(0);
+  } else {
+    sFastController->setLeds(sFastLeds, sCount);
+  }
+#else
   bool inited = rmtInit(SHOWDUINO_SHOW_PIXEL_PIN, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_2, 10000000);
   if (!inited) inited = rmtInit(SHOWDUINO_SHOW_PIXEL_PIN, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, 10000000);
   if (!inited) {
@@ -206,6 +244,7 @@ bool showPixelsBegin() {
     return false;
   }
   rmtSetEOT(SHOWDUINO_SHOW_PIXEL_PIN, 0);
+#endif
   sReady = true;
   clearFrame();
   writeFrame();
@@ -299,6 +338,8 @@ uint16_t showPixelsMax() { return SHOWDUINO_SHOW_PIXEL_MAX; }
 uint8_t showPixelsGlobalBrightness() { return sGlobalBrightness; }
 
 void showPixelsPrintStatus() {
+  Serial.printf("[PIXEL] P4 show driver=%s\n",
+                SHOWDUINO_SHOW_PIXEL_USE_FASTLED ? "FastLED(non-RMT)" : "native RMT");
   Serial.printf("[PIXEL] SHOW GPIO=%d configured=%u active=%u ready=%s brightness=%u emergency=%s\n",
                 SHOWDUINO_SHOW_PIXEL_PIN,
                 (unsigned)sConfiguredCount,

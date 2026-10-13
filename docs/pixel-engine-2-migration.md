@@ -36,3 +36,11 @@ The Outputs screen discovers the already-supported P4 show line and C3 Pixel Nod
 The existing Nodes → Pixel card exposes P4 show line BLACKOUT/LINE TEST when the Stage is linked, and LOCATE for the P4-reported first Pixel Node. All new actions are blocked while the Director has emergency locked. Node locate does not guess an ID and never touches GPIO24 emergency signage.
 
 The native Director still needs a full dynamic line picker and group/effect assignment editor before claiming complete parity with Studio; this increment intentionally does not introduce unproven multicast/scheduling logic.
+
+## All-node backend coverage (2026-10-13)
+
+On this **experimental branch**, FastLED has been selected for C3 Pixel, C3 Emergency Node show pixels, C3 Lamp, S3 Lamp, Audio Node, MOSFET identifier pixels and Director ambient pixels. A shared FastLED strip API adapter preserves each node's original animation/priority code.
+
+P4 Stage Engine **GPIO23 show pixels** now also have a compile-time FastLED backend (`SHOWDUINO_SHOW_PIXEL_USE_FASTLED=1`), **deliberately disabled by default** until real P4 hardware verification. It disables FastLED's RMT driver to avoid competing with the P4's separate GPIO24 emergency native RMT channel. Validate PARLIO/SPI output and native RMT signage together before turning on. **GPIO24 signage remains native RMT** by design: it is the protected safety fallback, not an ordinary stage-effects output.
+
+The library dependency now includes FastLED on feature-branch builds of these nodes. Standard production `main` stays untouched. None of the new all-node FastLED configurations is claimed to have compiled or passed hardware commissioning.
