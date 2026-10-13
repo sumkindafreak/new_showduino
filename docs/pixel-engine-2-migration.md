@@ -1,0 +1,26 @@
+# Pixel Engine 2.0 — opt-in FastLED foundation
+
+This is a development branch. Neither the P4 emergency RMT line nor any deployed node was modified or flashed.
+
+## What changed
+
+- P4 GPIO23 and the C3 Pixel/Emergency Nodes now share **one byte-for-byte identical legacy FX rendering function** in `ShowduinoPixelEffects.inc`.
+- Common RGB/HSV and animation timing maths live in `ShowduinoPixelMath.inc`.
+- C3 shared pixel engine has a **compile-time choice** between the existing Adafruit NeoPixel driver (default) and FastLED (experimental). Existing `.shdo`, pixel commands, FX IDs and brightness maths remain unchanged.
+- `PIXEL:COUNT` followed by `PIXEL:INIT` is still supported. FastLED's controller is registered only once then rebound on length changes.
+- Emergency white override continues to use the pre-existing Showduino rendering and authority checks.
+
+## Enable FastLED on a C3 bench board
+
+Add `#define SHOWDUINO_PIXEL_USE_FASTLED 1` in that sketch's `BoardConfig.h` before the shared engine is included. Install FastLED in Arduino IDE. The default colour order is `GRB` and chipset `WS2812` on the unchanged data GPIO2. Optionally define `SHOWDUINO_PIXEL_FASTLED_ORDER` for another supported order. Set the switch back to `0` for immediate legacy build behaviour.
+
+## Validation checklist (NOT yet confirmed on hardware)
+
+1. Compile each default C3 firmware without adding FastLED; verify pixel commands and emergency whites.
+2. Enable FastLED for the C3 Pixel Node and compile against the installed ESP32 core. Check startup, web ownership, OLED and ESP-NOW.
+3. Run `PIXEL:COUNT:10`, `PIXEL:INIT`, `PIXEL:SOLID:255:0:0`, then repeat with 30 LEDs and ensure no controller leaks.
+4. Compare all original FX at identical brightness, speed, segment settings and count.
+5. Run the white emergency override on both C3 Pixel and C3 Emergency boards; verify show commands are rejected during the latch and behaviour after clear.
+6. Confirm memory, refresh time, radio stability and power limits on larger strips.
+
+P4 FastLED, additional physical GPIO outputs per node, clock-scheduled cross-node start and native Director pixel editing are **not implemented by this foundation patch**. Do not mistake command fan-out for frame-perfect synchronisation.
