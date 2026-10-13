@@ -135,12 +135,22 @@ export async function OutputsPage(container) {
     const replies = [];
     try {
       for (const cmd of commands) {
+        // Emergency wins over any multi-command lighting request.
+        if (emergencyWord(lastSnap.system) === 'EMERGENCY') {
+          replies.push('ABORTED: EMERGENCY ACTIVE');
+          break;
+        }
         const data = await postCommand(cmd);
         if (isP4Offline(data)) {
           replies.push('P4 OFFLINE');
           break;
         }
-        replies.push(data.replies || cmd + ': OK');
+        const response = String(data.replies || cmd + ': OK');
+        replies.push(response);
+        if (data.ok === false || /PIXEL:(?:ERROR|REJECTED|FAILED)/.test(response)) {
+          replies.push('SEQUENCE ABORTED AFTER REJECTION');
+          break;
+        }
       }
       lastResult = replies.join(' | ');
       try {
@@ -503,9 +513,9 @@ export async function OutputsPage(container) {
     groupCard.append(el('p', { className: 'sub',
       text: 'Group starts are sent through the existing P4 command gateway one target at a time; they are not frame-synchronised. Membership is stored locally in this browser, not on hardware.'
     }));
-    if (lastResult && (String(pending || '').startsWith('PIXEL:GROUP:') || lastResult.startsWith('Saved group') ||
-      lastResult.startsWith('Deleted group') || lastResult.startsWith('Line unavailable') ||
-      lastResult.startsWith('Group contains') || lastResult.startsWith('Choose at least'))) {
+    if (lastResult && (String(pending || '').startsWith('PIXEL:GROUP:') || String(lastResult).startsWith('Saved group') ||
+      String(lastResult).startsWith('Deleted group') || String(lastResult).startsWith('Line unavailable') ||
+      String(lastResult).startsWith('Group contains') || String(lastResult).startsWith('Choose at least'))) {
       groupCard.append(el('p', { className: 'sub', text: lastResult }));
     }
     host.append(groupCard);
