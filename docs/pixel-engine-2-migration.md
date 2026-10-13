@@ -30,3 +30,9 @@ P4 FastLED, additional physical GPIO outputs per node, clock-scheduled cross-nod
 The Outputs screen discovers the already-supported P4 show line and C3 Pixel Node identities, lets you select members, save named group memberships in that browser, and send coordinated segment configuration / start and blackout commands. It deliberately keeps the existing \`PIXEL:\` and \`PIXEL:NODE:<id>:\` command syntax unchanged for compatibility with existing shows.
 
 **Limitations:** Group launches use sequential gateway commands (not sub-frame sync), each selected segment range must fit every chosen physical line, groups are browser-local, and additional GPIO lines on a single node are not exposed. The emergency signage line is excluded and the controls are locked during emergency.
+
+## Director starter controls (branch prototype)
+
+The existing Nodes → Pixel card exposes P4 show line BLACKOUT/LINE TEST when the Stage is linked, and LOCATE for the P4-reported first Pixel Node. All new actions are blocked while the Director has emergency locked. Node locate does not guess an ID and never touches GPIO24 emergency signage.
+
+The native Director still needs a full dynamic line picker and group/effect assignment editor before claiming complete parity with Studio; this increment intentionally does not introduce unproven multicast/scheduling logic.
