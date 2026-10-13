@@ -3,7 +3,8 @@
 #include "../../shared-node/NodeConfig.h"
 
 #include <math.h>
-#include <Adafruit_NeoPixel.h>
+#define SHOWDUINO_LED_GPIO SHOWDUINO_AUDIO_STATUS_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -19,7 +20,7 @@ static uint16_t sConfiguredCount = 0;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr;
-static Adafruit_NeoPixel *sStrip = nullptr;
+static ShowduinoLedStrip *sStrip = nullptr;
 
 static uint8_t scale8(uint8_t value, uint8_t a, uint8_t b) {
   return (uint8_t)(((uint32_t)value * (uint32_t)a * (uint32_t)b) / (255UL * 255UL));
@@ -432,7 +433,7 @@ bool audioPixelEngineBegin() {
 
   sCount = sConfiguredCount;
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
-  sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+  sStrip = new ShowduinoLedStrip(sCount, SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
                                  SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
   if (!sFrame || !sStrip) {
     Serial.println("[PIXEL][ERROR] Show line allocation failed (out of memory)");

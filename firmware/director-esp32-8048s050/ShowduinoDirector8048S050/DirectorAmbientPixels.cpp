@@ -4,7 +4,8 @@
 
 #if SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
 
-#include <Adafruit_NeoPixel.h>
+#define SHOWDUINO_LED_GPIO SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN
+#include "../../shared-pixel/ShowduinoLedStrip.h"
 
 static const uint32_t kColAccent   = ShowduinoPalette::Accent;
 static const uint32_t kColAccentLo = ShowduinoPalette::AccentDark;
@@ -17,7 +18,7 @@ static const uint32_t kColGreen    = 0x00FF28;
 static const uint32_t kColWhite    = 0xFFFFFF;
 static const uint32_t kColMagenta  = 0xDC00B4;
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static ShowduinoLedStrip *sStrip = nullptr;
 static bool sReady = false;
 static bool sUserEnabled = true;
 static bool sHoldPresentation = true;
@@ -306,7 +307,7 @@ void directorAmbientBegin() {
                 (unsigned)SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                 (unsigned)sBrightness);
 
-  sStrip = new Adafruit_NeoPixel(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
+  sStrip = new ShowduinoLedStrip(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                                  SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   if (!sStrip) {
