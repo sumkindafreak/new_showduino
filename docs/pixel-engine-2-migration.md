@@ -44,3 +44,7 @@ On this **experimental branch**, FastLED has been selected for C3 Pixel, C3 Emer
 P4 Stage Engine **GPIO23 show pixels** now also have a compile-time FastLED backend (`SHOWDUINO_SHOW_PIXEL_USE_FASTLED=1`), **deliberately disabled by default** until real P4 hardware verification. It disables FastLED's RMT driver to avoid competing with the P4's separate GPIO24 emergency native RMT channel. Validate PARLIO/SPI output and native RMT signage together before turning on. **GPIO24 signage remains native RMT** by design: it is the protected safety fallback, not an ordinary stage-effects output.
 
 The library dependency now includes FastLED on feature-branch builds of these nodes. Standard production `main` stays untouched. None of the new all-node FastLED configurations is claimed to have compiled or passed hardware commissioning.
+
+## FastLED allocation checks
+
+All newly converted node engines check their FastLED controller readiness after `begin()` rather than falsely claiming READY after an allocation failure. This includes the C3/S3 Lamp, Audio, MOSFET and Director ambient pixel engines. The Director's internal `scale8` helper was renamed `ambientScale8` to avoid collisions with FastLED's global colour maths. The existing default P4 native RMT safety path remains unaffected.

@@ -89,6 +89,14 @@ static void ensureStrip() {
                                  SHOWDUINO_LAMP_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[LAMP] FastLED jewel failed to initialise");
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#endif
   sStrip->clear();
   sStrip->show();
 }

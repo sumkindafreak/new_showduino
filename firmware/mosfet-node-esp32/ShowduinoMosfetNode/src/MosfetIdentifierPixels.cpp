@@ -131,6 +131,14 @@ void mosfetIdentifierPixelsBegin() {
     return;
   }
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[MOSFET] FastLED identifier failed to initialise");
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#endif
   sStrip->setBrightness(255);
   sStrip->clear();
   sStrip->show();

@@ -444,6 +444,13 @@ bool audioPixelEngineBegin() {
   pinMode(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, OUTPUT);
   digitalWrite(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, LOW);
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[PIXEL][ERROR] FastLED failed to initialise");
+    audioPixelEngineShutdown();
+    return false;
+  }
+#endif
   sStrip->clear();
   sReady = true;
   clearFrame();
