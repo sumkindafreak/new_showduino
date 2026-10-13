@@ -13,3 +13,8 @@ For the latest integration/CI/merge status, see `docs/pr27-pr28-integration-2026
 ## Update: 11 October 2026
 
 Main is now at `639555a` following two timestamp-only Studio bundle regenerations. Draft PR #29 remains unmerged and needs reconciliation with main. Its host checks pass, but the fixed 22-second scenario has not yet been physically signed off. PR #30 is separate optional Emergency Node hardware work and is outside this finish-line acceptance.
+
+
+## 13 October 2026 review
+
+Main is now `65a0872a` (13 October). Its latest change only refreshes the embedded Studio build timestamp; asset hash `b80ad3255289` is unchanged. PR #29 remains draft, unmerged and three commits behind main; its 12 October host and Studio checks passed. There is still no recorded physical 22-second LOAD-to-COMPLETE acceptance run. The separate draft Pixel Engine 2.0 work is outside this finish-line gate. Next: reconcile PR #29, flash matched firmware, run the fixed all-node scenario, repeat with Emergency mid-show, and record results before release.
