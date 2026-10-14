@@ -18,3 +18,7 @@ Main is now at `639555a` following two timestamp-only Studio bundle regeneration
 ## 13 October 2026 review
 
 Main is now `65a0872a` (13 October). Its latest change only refreshes the embedded Studio build timestamp; asset hash `b80ad3255289` is unchanged. PR #29 remains draft, unmerged and three commits behind main; its 12 October host and Studio checks passed. There is still no recorded physical 22-second LOAD-to-COMPLETE acceptance run. The separate draft Pixel Engine 2.0 work is outside this finish-line gate. Next: reconcile PR #29, flash matched firmware, run the fixed all-node scenario, repeat with Emergency mid-show, and record results before release.
+
+## 14 October 2026 review
+
+The 13 October merge status above is historical. Main c879c26 has been reconciled locally, preserving the tested integration firmware and Studio bundle. Physical acceptance remains outstanding. Follow [the bench result record](SHOWDUINO_BENCH_RESULT_RECORD.md) and record observed results before release.

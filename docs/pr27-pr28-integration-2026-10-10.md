@@ -80,3 +80,11 @@ All three builds use installed ESP32 Arduino core 3.3.11 and installed libraries
 | Director | `esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=16M,FlashMode=qio,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB` |
 | P4 | `esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3` |
 | Comms | `esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB` |
+
+## 14 October 2026 reconciliation
+
+Reviewed main `c879c26` and integration head `f509787`. The seven main commits since the previous merge change only generated timestamps. Reconciled main history while retaining the integration header and matching manifest together; firmware, Studio payloads, source overlays and acceptance fixture are unchanged.
+
+No newer combined physical acceptance result was found in repository documentation or PR #29 comments. The owner-reported wireless Emergency audio test remains an individual observation. Audio continuity, Nodes-page responsiveness, DAC output, Emergency white pixels, Lamp sound and MOSFET OUT1 remain physical gates. PR #30 status-pixel wiring and PR #31 Pixel Engine 2.0 remain separate draft work.
+
+Use [the bench result record](manual/SHOWDUINO_BENCH_RESULT_RECORD.md) for the fixed 22-second run and a repeat with Emergency during the 10–14 second audio cue. Keep PR #29 draft until actual results are recorded.
