@@ -94,3 +94,15 @@ Use [the bench result record](manual/SHOWDUINO_BENCH_RESULT_RECORD.md) for the f
 All 16 existing PowerShell host suite groups passed on 14 October, as did all discovered Director/node/Studio JavaScript regressions, the actual Director ambience parser, and the separately compiled P4 ambience/browser-policy tests. Production tests compile and persistently reload the actual acceptance fixture, preserving cue commands/times and its 22-second endpoint. All 42 embedded assets decompress to declared lengths; manifest totals/hash agree and embedded JavaScript parses.
 
 GitHub checks on 9959e60 passed: [host checks](https://github.com/sumkindafreak/new_showduino/actions/runs/38610600889) and [embedded Studio](https://github.com/sumkindafreak/new_showduino/actions/runs/38610601071). GitHub reported PR #29 mergeable and still draft. The firmware, protocol, web, tools and example trees are byte-for-byte unchanged from f509787. Full firmware build results are recorded separately below when available; these host checks are not physical acceptance.
+
+### Fresh target-build check (14 October)
+
+All three fresh target builds passed with ESP32 Arduino core 3.3.11:
+
+| Target | Flash | Static RAM |
+| --- | --- | --- |
+| Director | 1,652,862 bytes (52%) | 138,780 bytes (42%) |
+| P4 | 1,171,464 bytes (89%) | 79,780 bytes (24%) |
+| Comms | 1,399,171 bytes (41%) | 58,708 bytes (17%) |
+
+The first Director attempt failed reading installed standard SDK headers (`Invalid argument`) under memory pressure. A cached one-job retry passed without source changes; this did not reproduce a firmware regression. The Director linker still emits its known `_floatdidf.o` GNU-stack metadata warning. These builds do not establish physical acceptance.
