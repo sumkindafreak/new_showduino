@@ -122,7 +122,7 @@ The page also displays GPIO24 emergency-signage state and the Audio Node control
 
 The Studio source contains the pixel controls, but browser control depends on the P4 Web API allowing and exposing the corresponding `PIXEL:*` command/state surface. Keep the source UI, P4 Web API whitelist/state JSON and generated S3 PROGMEM bundle in sync.
 
-Persistent v1 now accepts bounded `PIXEL:` timeline commands, while SHDO compilation covers the supported P4/specialist routes that can project into the runtime cue set. Persistent named segment libraries, ESTOP pixel persistence and complete mixed-device physical acceptance are still unfinished.
+Persistent v1 now accepts bounded `PIXEL:` timeline commands, while SHDO compilation covers the supported P4/specialist routes that can project into the runtime cue set. Bounded ESTOP pixel persistence is implemented and host-tested in PR #29. Persistent named segment libraries and complete mixed-device physical acceptance are still unfinished.
 
 ## Page map
 
@@ -142,7 +142,7 @@ Aliases such as `#/audio` and `#/lighting` redirect to Outputs.
 ## Deliberately not claimed complete
 
 - mixed-device persistent-production hardware acceptance;
-- ESTOP pixel persistence and named pixel-segment project persistence;
+- named pixel-segment project persistence;
 - reusable FX preset persistence;
 - remaining C3 Pixel / MOSFET Node physical commissioning;
 - logical device-ID routing end to end;
