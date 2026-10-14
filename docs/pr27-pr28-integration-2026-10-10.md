@@ -88,3 +88,9 @@ Reviewed main `c879c26` and integration head `f509787`. The seven main commits s
 No newer combined physical acceptance result was found in repository documentation or PR #29 comments. The owner-reported wireless Emergency audio test remains an individual observation. Audio continuity, Nodes-page responsiveness, DAC output, Emergency white pixels, Lamp sound and MOSFET OUT1 remain physical gates. PR #30 status-pixel wiring and PR #31 Pixel Engine 2.0 remain separate draft work.
 
 Use [the bench result record](manual/SHOWDUINO_BENCH_RESULT_RECORD.md) for the fixed 22-second run and a repeat with Emergency during the 10–14 second audio cue. Keep PR #29 draft until actual results are recorded.
+
+### Validation of reconciliation commit 9959e60
+
+All 16 existing PowerShell host suite groups passed on 14 October, as did all discovered Director/node/Studio JavaScript regressions, the actual Director ambience parser, and the separately compiled P4 ambience/browser-policy tests. Production tests compile and persistently reload the actual acceptance fixture, preserving cue commands/times and its 22-second endpoint. All 42 embedded assets decompress to declared lengths; manifest totals/hash agree and embedded JavaScript parses.
+
+GitHub checks on 9959e60 passed: [host checks](https://github.com/sumkindafreak/new_showduino/actions/runs/38610600889) and [embedded Studio](https://github.com/sumkindafreak/new_showduino/actions/runs/38610601071). GitHub reported PR #29 mergeable and still draft. The firmware, protocol, web, tools and example trees are byte-for-byte unchanged from f509787. Full firmware build results are recorded separately below when available; these host checks are not physical acceptance.
