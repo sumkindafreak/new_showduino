@@ -74,3 +74,5 @@ LAMP:NODE:LAMP-01:FX:FLARE
 ```
 
 Existing `LAMP:FX:<token>` cues remain valid. SHDO package version stays **v2**.
+
+Emergency policy: global Emergency interrupts normal Lamp audio and loops its local `emergency.wav`; clear stops that announcement without restoring flame-loop audio. This existing Lamp behaviour is retained alongside the new P4 PCM5102A emergency override.

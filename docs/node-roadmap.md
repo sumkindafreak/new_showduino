@@ -1,6 +1,6 @@
 # Showduino Specialist Node Roadmap
 
-Status: current planning baseline, 2026-09-07.
+Status: source-reviewed rollout baseline, 2026-10-07.
 
 This document records rollout order only. It does not authorise work on later node firmware before the relevant hardware is ready.
 
@@ -32,13 +32,13 @@ See [`audio-pixel-engine.md`](audio-pixel-engine.md).
 
 ### 1. Audio Node
 
-Current first production specialist node. Firmware exists (0.4.1) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
+Current first production specialist node. Firmware exists (0.4.3) with P4 GRANT ownership and standalone SoftAP WebUI. Hardware commissioning still required.
 
 ### 2. S3 Lamp Node
 
 Second specialist node. Replaces the retired Relay Node product role on the Director (Page 04 / Home footer). Production firmware lives in `firmware/s3-lamp-node/`. Historical C3 Super Mini OLED firmware is retained in `firmware/c3-lamp-node/`.
 
-This is an interactive carbide-lamp practical (jewel flame, striker, blow-to-extinguish, local Fermion FX). Firmware **0.4.0** is both a standalone SoftAP carbide lamp and a managed Showduino node. It is not a Pixel Node and not a second Audio Node. Production GPIOs are confirmed. See [`s3-lamp-node.md`](s3-lamp-node.md).
+This is an interactive carbide-lamp practical (jewel flame, striker, blow-to-extinguish, local Adafruit Audio FX UART WAV effects). Firmware **0.4.3** is both a standalone SoftAP carbide lamp and a managed Showduino node. It is not a Pixel Node and not a second Audio Node. Production GPIOs are confirmed. See [`s3-lamp-node.md`](s3-lamp-node.md).
 
 P4 links via `ROUTE:LAMP:` / `LampNodeLink` (Audio Node parity).
 
@@ -66,7 +66,7 @@ Distributed wireless Emergency Button stations (`ESTOP-01` …). Momentary pushb
 
 **Classification:** SOFTWARE IMPLEMENTED / HARDWARE PIN MAP DEFINED / PHYSICAL OUTPUT VALIDATION REQUIRED.
 
-ESP32_MOS_X4 / 303E32NMOS4 four-channel digital/PWM powered-output specialist (`MOSFET-01` … `MOSFET-08`). Firmware `0.1.0` in `firmware/mosfet-node-esp32/`. Fail-safe ALL OFF; no stale restore. SoftAP commissioning. Studio Powered Output compiles to `MOSFET:NODE:…` timeline cues. GPIO map software-defined (OUT1–4 → 16/17/26/27, LED 23) with `SHOWDUINO_MOSFET_GPIO_VERIFIED=0` until Toby benches his board.
+ESP32_MOS_X4 / 303E32NMOS4 four-channel digital/PWM powered-output specialist (`MOSFET-01` … `MOSFET-08`). Firmware `0.1.3` in `firmware/mosfet-node-esp32/`. Fail-safe ALL OFF; no stale restore. SoftAP commissioning. Studio Powered Output compiles to `MOSFET:NODE:…` timeline cues. GPIO map software-defined (OUT1–4 → 16/17/26/27, LED 23) and four identifier NeoPixels on GPIO25, with `SHOWDUINO_MOSFET_GPIO_VERIFIED=0` until Toby benches his board.
 
 Not a revival of the Relay Node product. `firmware/relay-node-esp32/` remains legacy/reference only.
 

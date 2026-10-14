@@ -9,6 +9,7 @@ struct MosfetNodeStatus {
   bool seen = false;
   bool online = false;
   bool owned = false;
+  bool haveLevels = false;
   bool emergency = false;
   uint8_t levels[SHOWDUINO_MOSFET_OUT_COUNT] = {0, 0, 0, 0};
   uint32_t lastSeq = 0;

@@ -14,6 +14,7 @@ void audioEspNowMacBytes(uint8_t out[6]);
 void audioEspNowReassert();
 void audioEspNowRecover();
 void audioEspNowService();
+void audioEspNowProcessCommands();
 uint32_t audioEspNowRxCount();
 uint32_t audioEspNowTxCount();
 uint32_t audioEspNowRejected();
