@@ -4,6 +4,7 @@
 #include "EmergencyInput.h"
 #include "EmergencyDisplay.h"
 #include "EstopPixelEngine.h"
+#include "EmergencyStatusPixels.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
@@ -52,6 +53,11 @@ void nodeDiagPrintBootBanner() {
                 pixelEngineReady() ? "YES" : "NO",
                 (unsigned)pixelEngineMax(),
                 pixelEngineEmergency() ? "YES" : "NO");
+  Serial.printf("STATUS PIXELS: GPIO%d, COUNT=%u, %s, MODE=%s (independent)\n",
+                SHOWDUINO_ESTOP_STATUS_PIXEL_PIN,
+                (unsigned)SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT,
+                emergencyStatusPixelsReady() ? "READY" : "UNAVAILABLE",
+                emergencyStatusPixelsMode());
   Serial.printf("OLED SDA: GPIO%d  SCL: GPIO%d\n",
                 SHOWDUINO_ESTOP_OLED_SDA, SHOWDUINO_ESTOP_OLED_SCL);
   Serial.printf("OLED: 0x%02X %s  %s\n",
@@ -72,6 +78,7 @@ void nodeDiagPrintHelp() {
   Serial.println("  ESTOP:ID:ESTOP-01 | ESTOP:NAME:ENTRANCE");
   Serial.println("  PIXEL:COUNT:<n> | PIXEL:INIT | PIXEL:TEST | PIXEL:OFF | PIXEL:LOCATE");
   Serial.println("  ESTOP:NODE:PIXEL:<cmd>  (same peer — no fake LED identity)");
+  Serial.println("  Two dedicated local status LEDs: GPIO3 (fixed count 2; no PIXEL commands).");
   Serial.println("  ESTOP:CLEAR is rejected. This node cannot clear P4 emergency.");
 }
 
@@ -91,6 +98,11 @@ void nodeDiagPrintStatus() {
                 (unsigned)ESP.getFreeHeap(),
                 (unsigned long)sLoopUs,
                 (unsigned long)sLoopMaxUs);
+  Serial.printf("[ESTOP-STATUS-PIX] gpio=%d count=%u driver=%u mode=%s\n",
+                SHOWDUINO_ESTOP_STATUS_PIXEL_PIN,
+                (unsigned)SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT,
+                emergencyStatusPixelsReady() ? 1U : 0U,
+                emergencyStatusPixelsMode());
   Serial.printf("[ESTOP-PIX] gpio=%d cfg=%u init=%u segs=%u bri=%u emerg=%u max=%u\n",
                 SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
                 (unsigned)pixelEngineConfiguredCount(),
@@ -119,8 +131,10 @@ bool nodeDiagHandleLine(const char *line) {
     return true;
   }
   if (!strcmp(line, "PINS")) {
-    Serial.printf("BTN=GPIO%d PIX=GPIO%d OLED_SDA=GPIO%d OLED_SCL=GPIO%d REARM=GPIO%d\n",
+    Serial.printf("BTN=GPIO%d SHOW_PIX=GPIO%d STATUS_PIX=GPIO%d COUNT=%u OLED_SDA=GPIO%d OLED_SCL=GPIO%d REARM=GPIO%d\n",
                   SHOWDUINO_ESTOP_NODE_GPIO, SHOWDUINO_ESTOP_PIXEL_DATA_PIN,
+                  SHOWDUINO_ESTOP_STATUS_PIXEL_PIN,
+                  (unsigned)SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT,
                   SHOWDUINO_ESTOP_OLED_SDA, SHOWDUINO_ESTOP_OLED_SCL,
                   SHOWDUINO_ESTOP_NODE_REARM_GPIO);
     return true;
