@@ -3,7 +3,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.3
+Firmware: 0.4.7
 ```
 
 ```text
@@ -20,12 +20,13 @@ Audio Node (this firmware)
         │
         ├── local microSD → ES8388 DAC → speaker / headphone / line
         ├── onboard MIC1/MIC2 → ES8388 ADC → SOUND events to P4
-        └── GPIO22 → one external WS2812 / NeoPixel status indicator
+        ├── GPIO5 → one local WS2812 / NeoPixel status indicator
+        └── GPIO22 → programmable Show Pixel Line (10 pixels by default)
 ```
 
 This Node plays theatrical / programme audio only. P4 local ES8311 remains system / safety audio. Do not send `AUDIO:LOCAL:` here.
 
-The single GPIO22 status pixel is **local diagnostics/connectivity only**. It is not a programme pixel line and is never authored as part of a show.
+The single GPIO5 status pixel is **local diagnostics/connectivity only** and is not authored as a show output. GPIO22 is a separate programmable Show Pixel Line, defaulting to 10 pixels unless a valid commissioned/saved count overrides it. Emergency white overrides the entire configured GPIO22 line.
 
 ## Hardware
 
@@ -38,10 +39,12 @@ Not the older AC101 A1S (often silkscreen 2379). Pins are in `ShowduinoAudioNode
 Connect one standard 800 kHz WS2812 / NeoPixel:
 
 ```text
-Audio Node GPIO22 ── 330 Ω ── DIN  WS2812
+Audio Node GPIO5  ── 330 Ω ── DIN  WS2812 (single local status LED)
 Audio Node GND   ───────────── GND
 5 V supply       ───────────── 5V
 ```
+
+For the **separate GPIO22 show line**, connect GPIO22 through its own 330 Ω series resistor to the first programmable WS2812 DIN, with common ground and an adequately rated external 5 V supply. Do not connect the GPIO5 status LED and GPIO22 show pixels to the same data pin.
 
 Use a common ground between the Audio Node and the pixel supply. For a single nearby pixel, the ESP32's 3.3 V data level is normally suitable; if the lead becomes long or noisy, add a 3.3 V → 5 V logic-level buffer. A small bulk capacitor across the pixel 5 V/GND is recommended when wiring it remotely.
 
@@ -61,7 +64,7 @@ Status language:
 | Red fast blink | Fault |
 | Bright white | Emergency override |
 
-`PIXEL:TEST` runs a 1.5 s RGBW commissioning pattern. `LED:TEST` remains as a legacy alias.
+`PIXEL:TEST` commissions the GPIO22 show pixel line. The GPIO5 status indicator is independent and remains dedicated to local status.
 
 ## Sketch
 
@@ -84,7 +87,7 @@ Create `/showduino/audio/system-test.wav` as **16-bit PCM WAV**, mono or stereo,
 
 ## Bench
 
-See [`docs/audio-node.md`](../../docs/audio-node.md) and [`docs/standalone-node-architecture.md`](../../docs/standalone-node-architecture.md). The firmware source and this README are authoritative for the GPIO22 external status-pixel and the 0.4.0 standalone SoftAP.
+See [`docs/audio-node.md`](../../docs/audio-node.md) and [`docs/standalone-node-architecture.md`](../../docs/standalone-node-architecture.md). The firmware `BoardConfig.h` is authoritative for the GPIO5 single status pixel, GPIO22 programmable show line and current SoftAP implementation.
 
 Do not flash from this document unless you intend a hardware bring-up session.
 
