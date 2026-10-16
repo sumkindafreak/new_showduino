@@ -457,9 +457,15 @@ static void fill_sheet(void) {
       set_action(3, "REFRESH", PAGE04_CMD_LAMP_STATUS, true, false);
       break;
     case PAGE04_ROLE_NEOPIXEL:
-      hint = "Remote Show Pixel Line. P4 owns FX; this page is status only.";
-      avail = c->present ? "" : "No compatible Pixel Node detected.";
+      hint = "P4 GPIO23 and remote pixel outputs. P4 owns commands. Studio manages installation groups.";
+      avail = c->present ? "" : "No compatible Pixel Node detected. P4 local line may still work.";
       set_action(0, "REFRESH", PAGE04_CMD_STATUS, true, false);
+      set_action(1, "P4 BLACKOUT", PAGE04_CMD_PIXEL_P4_OFF,
+                 s_cards[PAGE04_ROLE_STAGE].present && !s_emergency, false);
+      set_action(2, "P4 LINE TEST", PAGE04_CMD_PIXEL_P4_TEST,
+                 s_cards[PAGE04_ROLE_STAGE].present && !s_emergency, false);
+      set_action(3, "NODE LOCATE", PAGE04_CMD_PIXEL_LOCATE,
+                 c->present && !s_emergency, false);
       break;
     case PAGE04_ROLE_MOSFET:
       hint = "Four powered outputs. P4 owns theatrical levels; ALL OFF is always available. IDENTIFY blinks local status pixels only.";

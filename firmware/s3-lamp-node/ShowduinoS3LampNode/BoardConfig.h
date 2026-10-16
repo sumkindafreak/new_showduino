@@ -140,4 +140,11 @@ static inline const char *showduino_lamp_gpio_label(int pin) {
   return pin < 0 ? "UNCONFIRMED" : "ASSIGNED";
 }
 
+/* Pixel Engine 2.0: FastLED output on this development branch. */
+#if SHOWDUINO_LAMP_PIXEL_PIN >= 0
+#define SHOWDUINO_LED_USE_FASTLED 1
+#else
+#define SHOWDUINO_LED_USE_FASTLED 0
+#endif
+
 #endif
