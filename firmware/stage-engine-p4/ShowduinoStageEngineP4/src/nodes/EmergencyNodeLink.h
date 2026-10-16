@@ -11,6 +11,7 @@ struct EmergencyNodeStatus {
   bool inputOpen = false;
   bool latched = false;
   bool acked = false;
+  uint32_t syncMs = 0;
   bool pixelCapable = false;
   bool pixelReady = false;
   bool pixelEmergency = false;

@@ -2,6 +2,7 @@
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_emergency_latch.h"
 #include "../../../protocol/showduino_node_packet.h"
 
 extern bool emergencyLocked;
@@ -300,6 +301,25 @@ void emergencyNodeLinkBegin() {
 }
 
 void emergencyNodeLinkLoop() {
+  /* Keep each station's own latch consistent with the P4. Throttled to once per
+   * second per station, and each case stops when that station's announce agrees. */
+  const uint32_t nowMs = millis();
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    EmergencyNodeStatus &st = sNodes[i];
+    if (!st.used || !st.online || !st.id[0]) continue;
+    if (st.syncMs && (nowMs - st.syncMs) < 1000UL) continue;
+    if (showduino_station_needs_ack(emergencyLocked ? 1 : 0, st.online ? 1 : 0,
+                                    st.latched ? 1 : 0, st.acked ? 1 : 0)) {
+      st.syncMs = nowMs;
+      routeTo(st.id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
+      st.acked = true;
+    } else if (showduino_station_needs_global_clear(emergencyLocked ? 1 : 0,
+                                                    st.online ? 1 : 0,
+                                                    st.latched ? 1 : 0)) {
+      st.syncMs = nowMs;
+      routeTo(st.id, sSeq++, SHOWDUINO_ESTOP_GLOBAL_OBSERVED);
+    }
+  }
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
     EmergencyNodeStatus &st = sNodes[i];
     if (!st.used || !st.online || !st.lastRxMs) continue;

@@ -14,6 +14,10 @@
 
 static int gFails = 0;
 
+static bool isCmd(const char *got, const char *want) {
+  return got != NULL && std::strcmp(got, want) == 0;
+}
+
 static void expect(bool ok, const char *msg) {
   if (ok) std::printf("PASS  %s\n", msg);
   else { std::printf("FAIL  %s\n", msg); gFails++; }
@@ -232,6 +236,58 @@ int main() {
     pressed = 0u;
     expect(showduino_station_clear_blocked(pressed) == 0,
            "T10e station released (input_open=0): clear allowed, no deadlock");
+  }
+
+  /* 11. Node emergency-state reconciliation (Pixel and MOSFET). A mismatch
+   * sends one command. A node that already agrees gets nothing, so repeated
+   * effect restarts cannot happen. */
+  expect(isCmd(showduino_node_emergency_resync_cmd(1, 0), "EMERGENCY:STOP"),
+         "T11a P4 locked, node not in EMERGENCY: EMERGENCY:STOP");
+  expect(showduino_node_emergency_resync_cmd(1, 1) == NULL,
+         "T11b P4 locked, node already EMERGENCY: no command (no restart)");
+  expect(isCmd(showduino_node_emergency_resync_cmd(0, 1), "EMERGENCY:CLEAR"),
+         "T11c P4 clear, node still EMERGENCY: EMERGENCY:CLEAR");
+  expect(showduino_node_emergency_resync_cmd(0, 0) == NULL,
+         "T11d both clear: no command");
+
+  /* 12. Wireless station re-acknowledge and global-clear resync. */
+  expect(showduino_station_needs_ack(1, 1, 1, 0) == 1, "T12a locked, online, unacked: ack");
+  expect(showduino_station_needs_ack(1, 1, 1, 1) == 0, "T12b already acked: no ack repeat");
+  expect(showduino_station_needs_ack(1, 0, 1, 0) == 0, "T12c offline: no ack until seen");
+  expect(showduino_station_needs_global_clear(0, 1, 1) == 1,
+         "T12d P4 clear, station still latched: GLOBAL:OBSERVED");
+  expect(showduino_station_needs_global_clear(1, 1, 1) == 0,
+         "T12e P4 locked: no global-clear resync");
+  expect(showduino_station_needs_global_clear(0, 1, 0) == 0,
+         "T12f station already clear: no resync");
+
+  /* 13. Wireless release policy (latest report wins; stale is never released). */
+  {
+    ShowduinoStationView st[1] = {{1, 1, 1, 1}};          /* pressed and online */
+    expect(showduino_stations_pressed(st, 1) == 1, "T13a asserted station blocks clear");
+    st[0].online = 0;                                      /* disconnect while asserted */
+    expect(showduino_stations_pressed(st, 1) == 1,
+           "T13b disconnect while asserted keeps blocking");
+    st[0].online = 1;                                      /* restart, no release report */
+    expect(showduino_stations_pressed(st, 1) == 1,
+           "T13c restart alone does not release the block");
+    st[0].input_open = 0; st[0].latched = 0;               /* fresh report: released */
+    expect(showduino_stations_pressed(st, 1) == 0,
+           "T13d fresh valid report input_open=0 releases the block");
+    st[0].input_open = 1;                                  /* pressed again: contradiction */
+    expect(showduino_stations_pressed(st, 1) == 1,
+           "T13e later assert overrides earlier release");
+    st[0].online = 0;                                      /* then silent for a long time */
+    expect(showduino_stations_pressed(st, 1) == 1,
+           "T13f stale pressed station still blocks (no timeout release)");
+  }
+  {
+    ShowduinoStationView st[2] = {{1, 1, 0, 0}, {0, 0, 1, 0}};  /* unused slot ignored */
+    expect(showduino_stations_pressed(st, 2) == 0,
+           "T13g unused slot does not block; released station does not block");
+    st[1].used = 1; st[1].online = 1; st[1].input_open = 1;
+    expect(showduino_stations_pressed(st, 2) == 1,
+           "T13h second station pressed blocks clear");
   }
 
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);

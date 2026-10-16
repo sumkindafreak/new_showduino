@@ -25,6 +25,7 @@
  *     persisted while the button was pressed stays latched after release.
  */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define SHOWDUINO_LATCH_NVS_NAMESPACE "showduino"
@@ -104,6 +105,50 @@ inline bool showduino_latch_clear_may_release(bool clearWriteVerified) {
  * because its state is unknown. Returns non-zero when clear must be refused. */
 static inline int showduino_station_clear_blocked(unsigned pressed_stations) {
   return pressed_stations != 0u;
+}
+
+/* ---- Node emergency-state reconciliation (pure policy) ----
+ * A node whose last announce reports EMERGENCY is in sync with an active P4
+ * latch. Returns the command that brings a mismatched node into line, or NULL. */
+static inline const char *showduino_node_emergency_resync_cmd(int p4_locked,
+                                                              int node_in_emergency) {
+  if (p4_locked && !node_in_emergency) return "EMERGENCY:STOP";
+  if (!p4_locked && node_in_emergency) return "EMERGENCY:CLEAR";
+  return NULL;
+}
+
+/* ---- Wireless Emergency Node policy ----
+ * Latest-report-wins view of one station. input_open=1 means the station's
+ * button is pressed. Offline does not clear input_open: a disconnected station
+ * keeps blocking clear, and only a fresh report with input_open=0 releases it. */
+typedef struct {
+  uint8_t used;
+  uint8_t online;
+  uint8_t input_open;
+  uint8_t latched;
+} ShowduinoStationView;
+
+static inline unsigned showduino_stations_pressed(const ShowduinoStationView *s,
+                                                  unsigned n) {
+  unsigned i, count = 0;
+  if (!s) return 0;
+  for (i = 0; i < n; i++) {
+    if (s[i].used && s[i].input_open) count++;
+  }
+  return count;
+}
+
+/* Re-acknowledge a station that the P4 latch covers but that has not acked. */
+static inline int showduino_station_needs_ack(int p4_locked, int online,
+                                              int latched, int acked) {
+  return p4_locked && online && latched && !acked;
+}
+
+/* Tell a latched station the P4 is clear. Its own handler re-latches only if
+ * its button is still pressed; otherwise it clears its latch. */
+static inline int showduino_station_needs_global_clear(int p4_locked, int online,
+                                                       int latched) {
+  return !p4_locked && online && latched;
 }
 
 #endif

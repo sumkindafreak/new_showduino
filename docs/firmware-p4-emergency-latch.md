@@ -47,3 +47,30 @@ This is an entertainment emergency function. It is not a certified emergency-sto
 - A failed ACTIVE write followed by power loss. The RAM latch is lost. The retry runs every 5 s, so the window is roughly one retry interval.
 - Loss of power during an NVS write. The namespace may read as FAULT, which is fail-safe (latched), or the previous value may survive.
 - Loss of P4 power generally. Outputs are not held by software once the P4 is unpowered. Their safe states depend on wiring and the power path, which are not verified here.
+
+## MISSION 001C — node synchronisation and wireless release policy
+
+### Node synchronisation (Priority 2)
+- **Audio and Lamp**: unchanged. Once-per-second resync against P4 state (`EmergencyInput.cpp`).
+- **Pixel and MOSFET**: new `reconcilePixelEmergency` / `reconcileMosfetEmergency`, run from their loops. Each node's announce `state` is compared with the P4 latch. A mismatch sends `EMERGENCY:STOP` (MOSFET also `MOSFET:ALL:OFF`) or `EMERGENCY:CLEAR`, at most once per second per node. Sending stops as soon as the node's announce reports the new state, so there are no repeated effect restarts.
+- **MOSFET outputs**: the node turns all outputs OFF on `EMERGENCY:STOP`, and on comms or authority loss (`mosfet-node-esp32`). P4 also zeroes its cached levels. Identifier lighting on MOSFET nodes is documented as leaving outputs OFF (`MosfetIdentifierPixels.cpp`), and no path maps emergency lighting to an output.
+- **Emergency (wireless) node**: **assert-only**. It never receives emergency-state commands as a "set state" and never clears P4. P4 sends it `ESTOP:ACK:LATCHED` if its announce says not acked, and `ESTOP:GLOBAL:OBSERVED` if it is still latched after a P4 clear. A station clears its own latch only on `GLOBAL:OBSERVED` with its button released. This is documented, not a new behaviour.
+- A node that is still pressed will re-latch on `GLOBAL:OBSERVED`. That is correct.
+
+### Wireless release policy (Priority 3)
+- Each station's latest report wins: an assert sets input pressed, and an announce sets `input_open` from the node.
+- **Disconnect while asserted**: the station record keeps `input_open=1`, so clear stays blocked. Offline does not clear input.
+- **Restart alone**: nothing in the reconnect path resets `input_open`. A restart does not release the block.
+- **Release**: only a fresh report with `input_open=0` releases.
+- **Stale or contradictory reports**: a pressed station that went silent blocks clear. There is no timeout release. Recovery is to power-cycle that station, which reports its real input state.
+- **Limitation, not fixed**: a P4 reboot drops the station table (`emergencyNodeLinkBegin`). Until stations re-announce, the restored latch has no station blocking state, and a clear could be accepted in that short window. Fix needs the assertion source persisted with the latch. This is not done here.
+
+### Compatibility
+- No change to `.shdo` or show formats.
+- No change to existing wire commands. New traffic uses existing commands only: `EMERGENCY:STOP`, `EMERGENCY:CLEAR`, `MOSFET:ALL:OFF`, `ESTOP:ACK:LATCHED`, `ESTOP:GLOBAL:OBSERVED`.
+- Added reply code: `EMERGENCY:CLEAR:REJECTED:WIRELESS_ASSERTED` (in addition to `PERSIST_FAILED`).
+
+### Tests (host, policy only)
+- Latch and policy suite: ALL PASS, including T11 (resync decisions), T12 (ack and global-clear decisions) and T13 (disconnect, restart, continued assertion, legitimate release, stale, contradictory).
+- Mutation check: a mutant that ignores `input_open` when a station is offline fails 3 checks. A mutant that never sends `EMERGENCY:STOP` fails 2 checks. Both exit 1.
+- Not compiled for the target. The node-link edits are unverified until the P4 firmware builds.
