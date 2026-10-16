@@ -30,6 +30,7 @@
 #include "src/EmergencyPixels.h"
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
+#include "src/EmergencyLatchStore.h"
 #include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
@@ -89,6 +90,7 @@ static bool sProductionStoreReady = false;
 static uint32_t sProductionStoreRetryMs = 0;
 
 bool emergencyLocked = false;
+static bool sRestoredEmergencyAtBoot = false;
 bool gMaintenanceMode = false;
 uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 USB, 4 wireless */
 unsigned long lastHeartbeatMs = 0;
@@ -380,6 +382,7 @@ void triggerEmergency(EmergencySource source) {
 
   if (already) {
     Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
+    emergencyLatchRetryIfDirty(true);
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
@@ -389,6 +392,12 @@ void triggerEmergency(EmergencySource source) {
                     source == EmergencySource::LocalUsb ? "source=usb" :
                     source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
 
+  /* Persist before the RAM latch engages. A failed write is retried and never
+   * stops the latch from engaging. */
+  if (!emergencyLatchRequest(true)) {
+    Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
+    stageLogEmergency("PERSIST_FAILED", "assert");
+  }
   emergencyLocked = true;
   if (source == EmergencySource::Physical) {
     gEmergencySourceId = 2;
@@ -463,7 +472,14 @@ static void rejectEmergencyClear(const char *code, const char *detail) {
   stageLogEmergency("CLEAR_REJECT", code);
 }
 
-static void applyEmergencyClear() {
+static bool applyEmergencyClear() {
+  /* Persist CLEAR before releasing RAM. If storage cannot confirm it, the latch
+   * stays active, so a reboot cannot silently return to normal playback. */
+  if (!emergencyLatchRequest(false)) {
+    Serial.println("[ESTOP] CLEAR refused — latch not stored, emergency remains ACTIVE");
+    stageLogEmergency("CLEAR_REJECT", "PERSIST_FAILED");
+    return false;
+  }
   Serial.println("[ESTOP] CLEAR authorised — releasing latch");
   emergencyInputCancelClear();
   stageAudioStopEmergency();
@@ -494,6 +510,7 @@ static void applyEmergencyClear() {
   showduino_log_emergency(false);
   Serial.println("[SHOW] Returning to safe idle state");
   stageLogEmergency("CLEAR_SUCCESS", "latch released");
+  return true;
 }
 
 void clearEmergencyStop() {
@@ -521,7 +538,9 @@ void clearEmergencyStop() {
     return;
   }
 
-  applyEmergencyClear();
+  if (!applyEmergencyClear()) {
+    rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
+  }
 }
 
 static void handleEmergencyClearRequest() {
@@ -585,7 +604,14 @@ static void handleEmergencyClearConfirm() {
   }
 
   Serial.println("[ESTOP] Clear confirmed");
-  applyEmergencyClear();
+  if (!applyEmergencyClear()) {
+    rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
+    if (sCmdSource != CommandSource::LocalUsb) {
+      sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+      sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+    }
+    return;
+  }
   sendCommandReply(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK);
 }
 
@@ -1588,6 +1614,35 @@ void readUsbSerial() {
   }
 }
 
+/* Outputs of a latch restored from storage are engaged once, after the runtime
+ * is idle. If a verified clear released the latch during boot, this is a no-op. */
+static void engageRestoredEmergencyAtBoot() {
+  if (!sRestoredEmergencyAtBoot || !emergencyLocked) return;
+  sRestoredEmergencyAtBoot = false;
+  Serial.println("[ESTOP] Restoring persisted emergency latch — outputs engaged");
+  stageLogEmergency("RESTORED", "persisted latch at boot");
+  stageAudioStopShow();
+  stageAmbienceOnEmergency(true);
+  audioNodeLinkOnEmergency(true);
+  lampNodeLinkOnEmergency(true);
+  pixelNodeLinkOnEmergency(true);
+  mosfetNodeLinkOnEmergency(true);
+  emergencyNodeLinkOnEmergency(true);
+  gRuntime.onEmergencyStop(millis(), &gEngine);
+  emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
+  statusLedWrite(HIGH);
+  pluginBusOnEmergency();
+  showduinoIOOnEmergency(true);
+  showduino_log_emergency(true);
+  sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + SHOWDUINO_WIRE_SHOW_EMERGENCY);
+  if (!stageAudioStartEmergency()) {
+    Serial.println("[ESTOP] WARNING: Emergency audio unavailable — latch remains active");
+  }
+}
+
 void servicePhysicalEstop() {
   /* Momentary pushbutton: debounced press latches immediately.
    * Release does not clear. An 8-second continuous hold requests Locate once.
@@ -1649,6 +1704,17 @@ void setup() {
 #else
   Serial.println("[ESTOP] Emergency input initialized (command path only; GPIO not assigned)");
 #endif
+
+  /* Persisted latch is restored before any output, show or node link is touched.
+   * Only RAM state is set here. Outputs engage once the runtime is idle. */
+  if (emergencyLatchRestoreAtBoot()) {
+    emergencyLocked = true;
+    gEmergencySourceId = 0; /* source label is not persisted */
+    gEngine.emergency = EmergencyState::Active;
+    gEngine.show = ShowRuntimeState::Emergency;
+    showEngineBump(gEngine);
+    sRestoredEmergencyAtBoot = true;
+  }
 
   /* Generic I/O enters explicit high-impedance safe state before SD mount. */
   showduinoIOBegin(sendToDirectorC);
@@ -1712,6 +1778,7 @@ void setup() {
   showNetworkBegin();
 
   gRuntime.bootToIdle();
+  engageRestoredEmergencyAtBoot();
   lastHeartbeatMs = millis();
   Serial.println("[SYSTEM] Showduino ready");
   sendToDirector("BOOT:STAGE_ENGINE_READY");
@@ -1747,6 +1814,14 @@ void loop() {
   gRuntime.service(millis(), &gEngine);
   showPixelsService();
 
+  if (emergencyLatchStorageFault()) {
+    /* Throttled retry only while a write is unverified. Not a per-loop write. */
+    static uint32_t sLatchRetryMs = 0;
+    if ((millis() - sLatchRetryMs) >= 5000UL) {
+      sLatchRetryMs = millis();
+      emergencyLatchRetryIfDirty(emergencyLocked);
+    }
+  }
   if (emergencyLocked) {
     statusLedWrite((millis() / 250) % 2 == 0 ? HIGH : LOW);
     emergencyPixelsService();
