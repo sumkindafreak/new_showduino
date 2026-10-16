@@ -31,6 +31,7 @@
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
 #include "src/EmergencyLatchStore.h"
+#include "src/EmergencyStationStore.h"
 #include "../../../protocol/showduino_emergency_latch.h"
 #include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
@@ -395,6 +396,7 @@ void triggerEmergency(EmergencySource source) {
 
   /* Persist before the RAM latch engages. A failed write is retried and never
    * stops the latch from engaging. */
+  emergencyNodeLinkPersistBlockers(); /* blocker set before the latch */
   if (!emergencyLatchRequest(true)) {
     Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
     stageLogEmergency("PERSIST_FAILED", "assert");
@@ -550,8 +552,8 @@ void clearEmergencyStop() {
 /* A wireless Emergency Node whose button is still pressed blocks clear. The
  * P4 cannot see that node's release, so it refuses instead of guessing. */
 static bool rejectClearIfStationPressed() {
-  if (!showduino_station_clear_blocked(emergencyNodeLinkPressedCount())) return false;
-  rejectEmergencyClear("WIRELESS_ASSERTED", "emergency station still pressed");
+  if (!emergencyNodeLinkClearBlocked()) return false;
+  rejectEmergencyClear("WIRELESS_ASSERTED", "wireless station blocks clear");
   if (sCmdSource != CommandSource::LocalUsb) {
     sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
     sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
@@ -1733,6 +1735,14 @@ void setup() {
     showEngineBump(gEngine);
     sRestoredEmergencyAtBoot = true;
   }
+  /* Station clear-blockers are restored with the latch, before any clear can be
+   * accepted. Unknown or corrupt storage stays blocked (fail closed). */
+  {
+    ShowduinoBlocker blockers[SHOWDUINO_BLOCKER_MAX];
+    uint8_t blockerCount = 0;
+    const ShowduinoBlockerStatus bs = emergencyStationStoreLoad(blockers, &blockerCount);
+    emergencyNodeLinkStageRestore(blockers, blockerCount, bs, sRestoredEmergencyAtBoot);
+  }
 
   /* Generic I/O enters explicit high-impedance safe state before SD mount. */
   showduinoIOBegin(sendToDirectorC);
@@ -1832,12 +1842,13 @@ void loop() {
   gRuntime.service(millis(), &gEngine);
   showPixelsService();
 
-  if (emergencyLatchStorageFault()) {
+  if (emergencyLatchStorageFault() || emergencyNodeLinkBlockerStorageFault()) {
     /* Throttled retry only while a write is unverified. Not a per-loop write. */
     static uint32_t sLatchRetryMs = 0;
     if ((millis() - sLatchRetryMs) >= 5000UL) {
       sLatchRetryMs = millis();
       emergencyLatchRetryIfDirty(emergencyLocked);
+      emergencyNodeLinkRetryBlockers();
     }
   }
   if (emergencyLocked) {

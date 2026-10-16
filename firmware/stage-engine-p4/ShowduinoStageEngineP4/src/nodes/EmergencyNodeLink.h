@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "../../../protocol/showduino_emergency_node.h"
+#include "../../../protocol/showduino_station_blockers.h"
 
 struct EmergencyNodeStatus {
   bool used = false;
@@ -40,6 +41,13 @@ uint8_t emergencyNodeLinkSeenCount();
 uint8_t emergencyNodeLinkOfflineCount();
 uint8_t emergencyNodeLinkAssertingCount();
 uint8_t emergencyNodeLinkPressedCount();
+/* Clear-blocker restore and persistence (MISSION 001D). */
+void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
+                                   ShowduinoBlockerStatus status, bool latched);
+bool emergencyNodeLinkPersistBlockers();
+void emergencyNodeLinkRetryBlockers();
+bool emergencyNodeLinkBlockerStorageFault();
+int emergencyNodeLinkClearBlocked();
 bool emergencyNodeLinkSafetyFault();
 const EmergencyNodeStatus *emergencyNodeLinkFind(const char *id);
 const EmergencyNodeStatus *emergencyNodeLinkSlot(uint8_t i);

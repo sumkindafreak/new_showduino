@@ -3,6 +3,7 @@
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_emergency_latch.h"
+#include "../EmergencyStationStore.h"
 #include "../../../protocol/showduino_node_packet.h"
 
 extern bool emergencyLocked;
@@ -52,6 +53,87 @@ static EmergencyNodeStatus *findByMac(const char *mac) {
     if (sNodes[i].used && !strcasecmp(sNodes[i].mac, mac)) return &sNodes[i];
   }
   return nullptr;
+}
+
+/* ---- Clear-blocker persistence (MISSION 001D) ----
+ * Only stations whose last valid report says pressed are stored. Stored only on
+ * a change, never per announce. A failed or unverified write sets sPersistDirty,
+ * and clear stays blocked until a verified write succeeds. While the boot-time
+ * record is unknown, nothing is written, so an unknown record is never replaced
+ * by an empty one. */
+static bool sBooted = false;
+static bool sUnknownBootState = false;
+static ShowduinoBlocker sStaged[SHOWDUINO_BLOCKER_MAX];
+static uint8_t sStagedCount = 0;
+static ShowduinoBlocker sPersisted[SHOWDUINO_BLOCKER_MAX];
+static uint8_t sPersistedCount = 0;
+static bool sPersistedValid = false;
+static bool sPersistDirty = false;
+
+static void snapshotPressed(ShowduinoBlocker *out, uint8_t *n) {
+  uint8_t k = 0;
+  memset(out, 0, sizeof(ShowduinoBlocker) * SHOWDUINO_BLOCKER_MAX);
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES && k < SHOWDUINO_BLOCKER_MAX; ++i) {
+    if (!sNodes[i].used || !sNodes[i].inputOpen || !sNodes[i].id[0]) continue;
+    strncpy(out[k].id, sNodes[i].id, SHOWDUINO_BLOCKER_ID_CHARS);
+    strncpy(out[k].mac, sNodes[i].mac, SHOWDUINO_BLOCKER_MAC_CHARS);
+    k++;
+  }
+  *n = k;
+}
+
+bool emergencyNodeLinkPersistBlockers() {
+  if (sUnknownBootState) return false; /* never overwrite an unknown record */
+  ShowduinoBlocker snap[SHOWDUINO_BLOCKER_MAX];
+  uint8_t n = 0;
+  snapshotPressed(snap, &n);
+  const int equal = showduino_blocker_sets_equal(snap, n, sPersisted, sPersistedCount);
+  if (!showduino_station_persist_needed(sPersistedValid ? 1 : 0, sPersistDirty ? 1 : 0, equal)) {
+    return true;
+  }
+  char enc[SHOWDUINO_BLOCKER_BUF];
+  if (showduino_blocker_encode(snap, n, enc, sizeof(enc)) < 0 ||
+      !emergencyStationStoreSave(enc)) {
+    sPersistDirty = true;
+    SD_LOGW("ESTOP", "station blocker set not stored — emergency clear stays blocked");
+    return false;
+  }
+  memcpy(sPersisted, snap, sizeof(snap));
+  sPersistedCount = n;
+  sPersistedValid = true;
+  sPersistDirty = false;
+  return true;
+}
+
+void emergencyNodeLinkRetryBlockers() {
+  if (sPersistDirty && !sUnknownBootState) emergencyNodeLinkPersistBlockers();
+}
+
+bool emergencyNodeLinkBlockerStorageFault() { return sPersistDirty || sUnknownBootState; }
+
+int emergencyNodeLinkClearBlocked() {
+  return showduino_station_clear_blocked_full(emergencyNodeLinkPressedCount(),
+                                              sUnknownBootState ? 1 : 0,
+                                              sPersistDirty ? 1 : 0,
+                                              sBooted ? 1 : 0);
+}
+
+void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
+                                   ShowduinoBlockerStatus status, bool latched) {
+  sStagedCount = 0;
+  sPersistedValid = false;
+  sUnknownBootState = latched && status != SHOWDUINO_BLOCKER_OK;
+  if (sUnknownBootState) {
+    SD_LOGE("ESTOP", "station record unknown after restart — clear blocked, service recovery required");
+    return;
+  }
+  if (latched && status == SHOWDUINO_BLOCKER_OK && list && n <= SHOWDUINO_BLOCKER_MAX) {
+    memcpy(sStaged, list, sizeof(ShowduinoBlocker) * n);
+    sStagedCount = n;
+    memcpy(sPersisted, list, sizeof(ShowduinoBlocker) * n);
+    sPersistedCount = n;
+    sPersistedValid = true;
+  }
 }
 
 static EmergencyNodeStatus *allocSlot(const char *id, const char *mac) {
@@ -272,6 +354,7 @@ static void applyAssert(const char *id, const char *name) {
     if (name && name[0]) strncpy(st->name, name, sizeof(st->name) - 1);
     strncpy(st->state, "LATCHED", sizeof(st->state) - 1);
   }
+  emergencyNodeLinkPersistBlockers(); /* the asserting station is pressed */
   const int first = showduino_emergency_authority_assert(&sAuth, id, name);
   if (first && !emergencyLocked) {
     SD_LOGI("ESTOP", "EMERGENCY ASSERT SOURCE=%s NAME=%s",
@@ -293,6 +376,20 @@ void emergencyNodeLinkBegin() {
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
     sNodes[i] = EmergencyNodeStatus();
   }
+  /* Restored clear blockers come back as pressed, unseen, offline records.
+   * They keep blocking until a fresh released report from the same identity. */
+  for (uint8_t k = 0; k < sStagedCount; ++k) {
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      if (sNodes[i].used) continue;
+      sNodes[i].used = true;
+      sNodes[i].inputOpen = true;
+      strncpy(sNodes[i].id, sStaged[k].id, sizeof(sNodes[i].id) - 1);
+      strncpy(sNodes[i].mac, sStaged[k].mac, sizeof(sNodes[i].mac) - 1);
+      strncpy(sNodes[i].state, "OFFLINE", sizeof(sNodes[i].state) - 1);
+      break;
+    }
+  }
+  sBooted = true;
   showduino_emergency_authority_init(&sAuth);
   sLastWire[0] = 0;
   sLastDetail[0] = 0;
@@ -380,14 +477,20 @@ bool emergencyNodeLinkHandleReport(const char *line) {
     st->seen = true;
     st->online = true;
     st->lastRxMs = millis();
+    /* Identity check uses the MAC stored before this report overwrites it. */
+    const int openNow = showduino_station_apply_report(st->inputOpen ? 1 : 0,
+                                                       an.input_open ? 1 : 0,
+                                                       st->mac, an.mac);
+    const bool openChanged = (openNow != 0) != st->inputOpen;
     if (an.id[0]) strncpy(st->id, an.id, sizeof(st->id) - 1);
     if (an.name[0]) strncpy(st->name, an.name, sizeof(st->name) - 1);
     if (an.mac[0]) strncpy(st->mac, an.mac, sizeof(st->mac) - 1);
     if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
     if (an.state[0]) strncpy(st->state, an.state, sizeof(st->state) - 1);
-    st->inputOpen = an.input_open != 0;
+    st->inputOpen = openNow != 0;
     st->latched = an.latched != 0;
     st->acked = an.acked != 0;
+    if (openChanged) emergencyNodeLinkPersistBlockers();
     if (!wasOnline) {
       SD_LOGI("ESTOP", "EMERGENCY NODE ONLINE %s %s",
               st->id[0] ? st->id : "-",

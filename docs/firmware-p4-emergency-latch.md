@@ -74,3 +74,13 @@ This is an entertainment emergency function. It is not a certified emergency-sto
 - Latch and policy suite: ALL PASS, including T11 (resync decisions), T12 (ack and global-clear decisions) and T13 (disconnect, restart, continued assertion, legitimate release, stale, contradictory).
 - Mutation check: a mutant that ignores `input_open` when a station is offline fails 3 checks. A mutant that never sends `EMERGENCY:STOP` fails 2 checks. Both exit 1.
 - Not compiled for the target. The node-link edits are unverified until the P4 firmware builds.
+
+## MISSION 001D — persistent wireless blockers
+
+- **Stored:** the set of stations whose last valid report is pressed (ID and MAC) in `estop_blk`. Written on change only, read back to verify.
+- **Restored:** a stored set is staged at boot right after the latch is restored, and applied in `emergencyNodeLinkBegin`. Clear is refused before that point.
+- **Release:** only a fresh released report with a matching stored MAC. See `docs/emergency-station-service-recovery.md`.
+- **Fail closed:** missing, corrupt or unverified data blocks clear. A latched boot with an unknown record never overwrites it.
+- **Limitations:** replacing a station changes its MAC, which blocks release until service. There is no software exit from an unknown boot state. Full list in the service document.
+- **Tests:** latch suite T14–T23 (codec, reboot, reconnect, release, indefinite offline, multiple stations, write failure, corrupt and absent data, repeated announces). Mutation checks: four mutants, all caught.
+- **Not compiled for the target. Not hardware-tested.**

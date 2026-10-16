@@ -9,6 +9,7 @@
  * Engine sketch is NOT covered here and needs hardware acceptance.
  */
 #include "showduino_emergency_latch.h"
+#include "showduino_station_blockers.h"
 #include <cstdio>
 #include <cstring>
 
@@ -288,6 +289,210 @@ int main() {
     st[1].used = 1; st[1].online = 1; st[1].input_open = 1;
     expect(showduino_stations_pressed(st, 2) == 1,
            "T13h second station pressed blocks clear");
+  }
+
+  /* ---- MISSION 001D: persistent wireless clear blockers ----
+   * Persistence sequences use a fake store that mirrors the NVS wrapper:
+   * whole-string write, then read-back compare. The node-link glue is
+   * mirrored here as the same calls in the same order. Target code is not run. */
+  struct BlockerStore {
+    bool present = false;
+    char val[SHOWDUINO_BLOCKER_BUF] = "";
+    int writes = 0;
+    bool failWrite = false;
+    bool corrupt = false; /* simulates a damaged stored string */
+  };
+  auto storeSave = [](BlockerStore &st, const char *enc) -> bool {
+    st.writes++;
+    if (st.failWrite) return false;
+    std::snprintf(st.val, sizeof(st.val), "%s", enc);
+    st.present = true;
+    return std::strcmp(st.val, enc) == 0;
+  };
+  auto storeLoad = [](BlockerStore &st, ShowduinoBlocker *out, uint8_t *n) {
+    *n = 0;
+    if (!st.present) return SHOWDUINO_BLOCKER_ABSENT;
+    return showduino_blocker_decode(st.corrupt ? "B1;garbage" : st.val, out, n);
+  };
+  auto mk = [](ShowduinoBlocker &b, const char *id, const char *mac) {
+    std::snprintf(b.id, sizeof(b.id), "%s", id);
+    std::snprintf(b.mac, sizeof(b.mac), "%s", mac);
+  };
+  const char *MAC1 = "AA:BB:CC:DD:EE:01";
+  const char *MAC2 = "AA:BB:CC:DD:EE:02";
+
+  /* 14. Codec: round trip, and every damaged form is CORRUPT. */
+  {
+    ShowduinoBlocker in[2], out[SHOWDUINO_BLOCKER_MAX];
+    uint8_t n = 0;
+    mk(in[0], "ESTOP-01", MAC1); mk(in[1], "ESTOP-02", "-");
+    char enc[SHOWDUINO_BLOCKER_BUF];
+    int len = showduino_blocker_encode(in, 2, enc, sizeof(enc));
+    expect(len > 0, "T14a encode a two-station set");
+    expect(showduino_blocker_decode(enc, out, &n) == SHOWDUINO_BLOCKER_OK && n == 2,
+           "T14b round trip restores both stations");
+    expect(out[1].mac[0] == '\0', "T14c MOSFET-style '-' mac round-trips as empty");
+    char empty[64];
+    int el = showduino_blocker_encode(in, 0, empty, sizeof(empty));
+    expect(el > 0 && showduino_blocker_decode(empty, out, &n) == SHOWDUINO_BLOCKER_OK && n == 0,
+           "T14d empty set round trips as OK with zero stations");
+    char trunc[SHOWDUINO_BLOCKER_BUF];
+    std::snprintf(trunc, sizeof(trunc), "%.*s", (int)std::strlen(enc) - 5, enc);
+    expect(showduino_blocker_decode(trunc, out, &n) == SHOWDUINO_BLOCKER_CORRUPT,
+           "T14e incomplete string (no checksum) is CORRUPT");
+    char flip[SHOWDUINO_BLOCKER_BUF];
+    std::snprintf(flip, sizeof(flip), "%s", enc);
+    flip[10] = (flip[10] == '1') ? '2' : '1'; /* digit inside a valid ID: only the checksum catches it */
+    expect(showduino_blocker_decode(flip, out, &n) == SHOWDUINO_BLOCKER_CORRUPT,
+           "T14f altered byte fails the checksum (CORRUPT)");
+    expect(showduino_blocker_decode("XX;#0000", out, &n) == SHOWDUINO_BLOCKER_CORRUPT,
+           "T14g wrong prefix is CORRUPT");
+    /* Nine entries with a valid checksum: over the station limit. */
+    char nine[SHOWDUINO_BLOCKER_BUF] = "B1;";
+    for (int i = 0; i < 9; i++) {
+      std::snprintf(nine + std::strlen(nine), sizeof(nine) - std::strlen(nine),
+                    "ESTOP-%02d,%s;", i + 1, MAC1);
+    }
+    static char withCrc[1024];
+    std::snprintf(withCrc, sizeof(withCrc), "%s#%04X", nine,
+                  (unsigned)showduino_blocker_crc16(nine, std::strlen(nine)));
+    expect(showduino_blocker_decode(withCrc, out, &n) == SHOWDUINO_BLOCKER_CORRUPT,
+           "T14h more than the station limit is CORRUPT");
+  }
+
+  /* 15. Reboot after a wireless assertion: the restored record blocks clear. */
+  {
+    ShowduinoBlocker set[1], back[SHOWDUINO_BLOCKER_MAX];
+    mk(set[0], "ESTOP-01", MAC1);
+    BlockerStore st; uint8_t n = 0;
+    char enc[SHOWDUINO_BLOCKER_BUF];
+    showduino_blocker_encode(set, 1, enc, sizeof(enc));
+    storeSave(st, enc);
+    ShowduinoBlockerStatus bs = storeLoad(st, back, &n);
+    ShowduinoStationView rv[1] = {{1, 0, 1, 0}};         /* restored: pressed, offline */
+    expect(bs == SHOWDUINO_BLOCKER_OK && n == 1, "T15a stored set reloads after reboot");
+    expect(showduino_station_clear_blocked_full(showduino_stations_pressed(rv, 1), 0, 0, 1),
+           "T15b clear blocked after P4 reboot by restored wireless assertion");
+  }
+
+  /* 16. Clear attempted before the station reconnects. */
+  {
+    ShowduinoStationView rv[1] = {{1, 0, 1, 0}};
+    expect(showduino_station_clear_blocked_full(showduino_stations_pressed(rv, 1), 0, 0, 1),
+           "T16a clear before reconnect is blocked");
+    expect(showduino_station_clear_blocked_full(0u, 0, 0, 0),
+           "T16b clear before the station table is applied is blocked");
+  }
+
+  /* 17. Reconnection with the input still asserted. */
+  {
+    expect(showduino_station_apply_report(1, 1, MAC1, MAC1) == 1,
+           "T17a reconnect with input asserted stays pressed");
+    expect(showduino_station_clear_blocked_full(1u, 0, 0, 1),
+           "T17b clear blocked after reconnect while asserted");
+  }
+
+  /* 18. Reconnection with a fresh, valid released report. */
+  {
+    expect(showduino_station_apply_report(1, 0, MAC1, MAC1) == 0,
+           "T18a fresh released report from the same MAC releases");
+    expect(!showduino_station_clear_blocked_full(0u, 0, 0, 1),
+           "T18b clear allowed after confirmed release");
+    expect(showduino_station_apply_report(1, 0, MAC1, MAC2) == 1,
+           "T18c released report from a different MAC does not release");
+    expect(showduino_station_apply_report(1, 0, MAC1, "") == 1,
+           "T18d released report with no MAC does not release a MAC-identified station");
+    expect(showduino_station_apply_report(0, 0, MAC1, MAC2) == 0,
+           "T18e a different MAC cannot create a block from a released state");
+  }
+
+  /* 19. Station disconnected indefinitely: no report, no release. */
+  {
+    ShowduinoStationView rv[1] = {{1, 0, 1, 1}};
+    int blocked = 1;
+    for (int tick = 0; tick < 100000; tick++) {
+      blocked = showduino_station_clear_blocked_full(showduino_stations_pressed(rv, 1), 0, 0, 1);
+    }
+    expect(blocked, "T19 station offline indefinitely keeps clear blocked (no timeout release)");
+  }
+
+  /* 20. Multiple asserting stations, only one released. */
+  {
+    ShowduinoStationView rv[2] = {{1, 1, 1, 1}, {1, 1, 1, 1}};
+    rv[0].input_open = showduino_station_apply_report(rv[0].input_open, 0, MAC1, MAC1);
+    expect(showduino_station_clear_blocked_full(showduino_stations_pressed(rv, 2), 0, 0, 1),
+           "T20a one of two stations released: clear still blocked");
+    rv[1].input_open = showduino_station_apply_report(rv[1].input_open, 0, MAC2, MAC2);
+    expect(!showduino_station_clear_blocked_full(showduino_stations_pressed(rv, 2), 0, 0, 1),
+           "T20b both released: clear allowed");
+  }
+
+  /* 21. NVS write failure: unverified blockers keep clear blocked, then retry. */
+  {
+    ShowduinoBlocker set[1];
+    mk(set[0], "ESTOP-03", MAC1);
+    BlockerStore st; st.failWrite = true;
+    char enc[SHOWDUINO_BLOCKER_BUF];
+    showduino_blocker_encode(set, 1, enc, sizeof(enc));
+    int dirty = !storeSave(st, enc);
+    expect(dirty == 1, "T21a failed blocker write is reported as unverified");
+    expect(showduino_station_clear_blocked_full(0u, 0, dirty, 1),
+           "T21b unverified blocker write keeps clear blocked");
+    st.failWrite = false;
+    dirty = !storeSave(st, enc);
+    expect(dirty == 0 && !showduino_station_clear_blocked_full(0u, 0, dirty, 1),
+           "T21c successful retry clears the dirty state");
+  }
+
+  /* 22. Corrupt or missing persisted data while latched: fail closed. */
+  {
+    ShowduinoBlocker back[SHOWDUINO_BLOCKER_MAX]; uint8_t n = 0;
+    BlockerStore st; st.corrupt = true; st.present = true;
+    ShowduinoBlockerStatus bs = storeLoad(st, back, &n);
+    expect(bs == SHOWDUINO_BLOCKER_CORRUPT, "T22a corrupt stored string is CORRUPT");
+    expect(showduino_station_clear_blocked_full(0u, bs != SHOWDUINO_BLOCKER_OK, 0, 1),
+           "T22b corrupt record while latched blocks clear (fail closed)");
+    BlockerStore none;
+    bs = storeLoad(none, back, &n);
+    expect(bs == SHOWDUINO_BLOCKER_ABSENT &&
+           showduino_station_clear_blocked_full(0u, 1, 0, 1),
+           "T22c absent record while latched blocks clear (fail closed)");
+    expect(!showduino_station_clear_blocked_full(0u, 0, 0, 1),
+           "T22d latch clear at boot: no unknown record, no block");
+  }
+
+  /* 23. Repeated announcements write nothing; only a change writes. */
+  {
+    ShowduinoBlocker set[1];
+    mk(set[0], "ESTOP-01", MAC1);
+    BlockerStore st;
+    char enc[SHOWDUINO_BLOCKER_BUF];
+    showduino_blocker_encode(set, 1, enc, sizeof(enc));
+    int valid = 1, dirty = 0;
+    ShowduinoBlocker persisted[1]; uint8_t persistedN = 1;
+    mk(persisted[0], "ESTOP-01", MAC1);
+    int open = 1;
+    for (int i = 0; i < 1000; i++) {                   /* repeated pressed announces */
+      open = showduino_station_apply_report(open, 1, MAC1, MAC1);
+      ShowduinoBlocker snap[1]; mk(snap[0], "ESTOP-01", MAC1);
+      if (showduino_station_persist_needed(valid, dirty,
+              showduino_blocker_sets_equal(snap, 1, persisted, persistedN))) {
+        storeSave(st, enc);
+      }
+    }
+    expect(st.writes == 0, "T23a 1000 repeated pressed announces: no NVS writes");
+    open = showduino_station_apply_report(open, 0, MAC1, MAC1);
+    {
+      ShowduinoBlocker snap[1]; uint8_t n = 0;
+      if (!open) n = 0;
+      if (showduino_station_persist_needed(valid, dirty,
+              showduino_blocker_sets_equal(snap, n, persisted, persistedN))) {
+        char e2[SHOWDUINO_BLOCKER_BUF];
+        showduino_blocker_encode(snap, n, e2, sizeof(e2));
+        storeSave(st, e2);
+      }
+    }
+    expect(st.writes == 1, "T23b one genuine release transition writes exactly once");
   }
 
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);
