@@ -94,3 +94,39 @@ This is an entertainment emergency function. It is not a certified emergency-sto
 - **Known gap:** if the latch write also fails, the assertion is held only in RAM. A restart before any verified write loses it, and the physical button (or a station re-assert) must re-create it. Software cannot recover an assertion that was never durably stored.
 - **Tests:** latch suite T24–T32 (value mapping, transitions, failed writes, interrupted assertion, upgrade with a missing record, corrupt byte, crash between writes). Mutation checks: four mutants, all caught.
 - **Not compiled for target. Not hardware-tested.**
+
+## MISSION 001G — actuation order, identity pinning, CI
+
+### Actuation order (all assertion sources)
+Local button, USB, Director command, and wireless assert now run in this order:
+1. **RAM latch and every emergency-safe output.** Latch, show stop, pixels to white, audio, node commands, Director notice. Never waits on storage. Implemented in `emergencyEngageRamCb` and sequenced by `protocol/showduino_emergency_engage.h`.
+2. **Blocker record** (`emergencyNodeLinkPersistBlockers`). Written and read back.
+3. **Latch byte** (`emergencyLatchSetActive`), told whether the blocker record verified.
+4. **Wireless only:** ACK to the asserting station, then the station table update.
+
+A storage failure or delay after step 1 never undoes or delays step 1. The latch stays active in RAM and is retried every 5 s.
+
+**Trade-off, stated plainly:** an assertion lost before step 2 or 3 is durable cannot survive a P4 reboot. Software cannot recover it. The physical button or a station re-assert must recreate it. Ordering only changes what happens while the powered P4 is running; it does not make a power cut safe.
+
+**Not measured:** no timing was measured on hardware. The claim that outputs no longer wait on flash is from the code path, not from a bench measurement. Serial logging still runs before step 1 (`Serial.printf`). If the USB host stops reading, that can block. This is a bench item.
+
+### Station identity pinning
+A station's pinned ID and MAC are the record. An announce whose ID or MAC conflicts with the pinned record is **rejected whole**. It changes nothing: no liveness, no ID or MAC change, no release. The release rule reads the MAC pinned before the report.
+
+A MAC match is continuity, not authentication. ESP-NOW frames are unsigned, so any radio in range can send a matching identity. The unauthenticated release problem remains a separate **High** release blocker for the Comms security mission.
+
+### CI (GitHub Actions)
+- The earlier "success" was false. GitHub's default Linux shell has no `pipefail`, so `arduino-cli ... | tee` hid compile failures. All jobs now use `shell: bash` (`-eo pipefail`).
+- Diagnostics are visible as check-run annotations: GCC problem matcher, error and warning counts, and sketch size.
+- New Stage Engine files include protocol headers by bare name. The workflow passes an absolute `-I` for the protocol directory.
+
+### Tests
+- Latch suite: **114 checks, all pass.** T33a–f: RAM first at t=0 under a 60 s storage delay, storage failure leaves outputs engaged, unverified blocker passed to latch, no second engage. T34–T41: forged and repeated announces rejected, pin survives, original station releases afterwards.
+- Mutation checks: ordering reversed, or outputs gated on storage, caught. Identity check removed (the original defect) caught by 4 checks.
+- Host suites: button suite pass; director sheet suite pass (pre-existing `snprintf` warning).
+
+### Compile result (CI, this branch)
+- Current: **0 errors, 1 warning** (ESP32 core `esp32-hal-spi.c:584`, not project code). Sketch **1182942 bytes (90%)**. Globals **81636 bytes (24%)**.
+- Baseline `a8b3cb8`: 0 errors, 1 warning (same core warning). Sketch 1164198 bytes (88%). Globals 79964 bytes (24%).
+
+**Not hardware-tested.** Compile success does not show the P4 behaves correctly.
