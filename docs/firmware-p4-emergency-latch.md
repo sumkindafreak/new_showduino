@@ -186,4 +186,11 @@ The functions were read before editing. The change is limited to `emergencyEngag
 - Mutation checks on the new rules: bare ASSERT sets online (caught, 4 fails); required set = pressed only (the 001H rule, caught, 6 fails); episode never ends (caught, 3 fails); silent drop of an unbuildable set (caught, 3 fails).
 
 ### Compile result (CI)
-PENDING: to be filled from the CI run for this commit (errors, warnings, sketch and globals sizes).
+CI run 38949071891 on commit `1689919` (GitHub Actions, real compile):
+- Current: **0 errors, 1 warning** (ESP32 core `esp32-hal-spi.c:584`, not project code). Sketch **1184792 bytes (90%)**. Globals **81636 bytes (24%)**.
+- Baseline `a8b3cb8`: 0 errors, 1 warning (same core warning). Sketch 1164198 bytes (88%). Globals 79964 bytes (24%).
+- Host-tests job, same run: all four steps passed (latch, button, director sheet, station integration).
+
+Sketch growth from 001G (1182942 to 1184792 bytes, +1850) reflects the station-freshness and episode code. Globals are unchanged.
+
+**Not hardware-tested.** Compile success does not show the P4 behaves correctly.
