@@ -356,7 +356,8 @@ struct EmergencyEngageCtx {
   EmergencySource source;
 };
 
-static void emergencyEngageRam(EmergencySource source) {
+static void emergencyEngageRamCb(void *ctx) {
+  const EmergencySource source = static_cast<EmergencyEngageCtx *>(ctx)->source;
   emergencyLocked = true;
   if (source == EmergencySource::Physical) {
     gEmergencySourceId = 2;
@@ -413,10 +414,6 @@ static void emergencyEngageRam(EmergencySource source) {
                     source == EmergencySource::LocalUsb ? "source=usb" :
                     source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
 
-}
-
-static void emergencyEngageRamCb(void *ctx) {
-  emergencyEngageRam(static_cast<EmergencyEngageCtx *>(ctx)->source);
 }
 
 static int emergencyPersistBlockersCb(void *ctx) {

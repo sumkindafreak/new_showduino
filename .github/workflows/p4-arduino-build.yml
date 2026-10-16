@@ -118,7 +118,6 @@ jobs:
           arduino-cli core install "esp32:esp32@${ESP32_CORE}"
       - name: Compile baseline sketch
         run: |
-          echo "::add-matcher::.github/problem-matchers/gcc.json"
           arduino-cli compile --fqbn "$FQBN" --warnings default \
             --build-path build "$SKETCH_DIR" 2>&1 | tee compile.log
       - name: Compile diagnostics and size
@@ -127,6 +126,9 @@ jobs:
           errs=$(grep -cE ': (fatal )?error:' compile.log || true)
           warns=$(grep -cE ': warning:' compile.log || true)
           echo "::notice title=Baseline diagnostics::errors=${errs} warnings=${warns}"
+          grep -E ': (fatal )?error:|: warning:' compile.log | head -20 | while read -r l; do
+            echo "::warning title=Baseline diagnostic::${l}"
+          done
           grep -E 'Sketch uses|Global variables use' compile.log | while read -r l; do
             echo "::notice title=Baseline size::${l}"
           done
