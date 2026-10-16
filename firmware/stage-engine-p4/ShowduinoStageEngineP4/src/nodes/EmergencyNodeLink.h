@@ -38,6 +38,7 @@ uint8_t emergencyNodeLinkOnlineCount();
 uint8_t emergencyNodeLinkSeenCount();
 uint8_t emergencyNodeLinkOfflineCount();
 uint8_t emergencyNodeLinkAssertingCount();
+uint8_t emergencyNodeLinkPressedCount();
 bool emergencyNodeLinkSafetyFault();
 const EmergencyNodeStatus *emergencyNodeLinkFind(const char *id);
 const EmergencyNodeStatus *emergencyNodeLinkSlot(uint8_t i);

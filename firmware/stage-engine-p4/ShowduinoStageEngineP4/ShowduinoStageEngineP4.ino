@@ -31,6 +31,7 @@
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
 #include "src/EmergencyLatchStore.h"
+#include "../../../protocol/showduino_emergency_latch.h"
 #include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
@@ -513,6 +514,8 @@ static bool applyEmergencyClear() {
   return true;
 }
 
+static bool rejectClearIfStationPressed();
+
 void clearEmergencyStop() {
   /* USB / diagnostics maintenance path. Still refuses a physically open loop. */
   if (physicalEstopAssertedNow()) {
@@ -538,14 +541,28 @@ void clearEmergencyStop() {
     return;
   }
 
+  if (rejectClearIfStationPressed()) return;
   if (!applyEmergencyClear()) {
     rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
   }
 }
 
+/* A wireless Emergency Node whose button is still pressed blocks clear. The
+ * P4 cannot see that node's release, so it refuses instead of guessing. */
+static bool rejectClearIfStationPressed() {
+  if (!showduino_station_clear_blocked(emergencyNodeLinkPressedCount())) return false;
+  rejectEmergencyClear("WIRELESS_ASSERTED", "emergency station still pressed");
+  if (sCmdSource != CommandSource::LocalUsb) {
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+    sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  }
+  return true;
+}
+
 static void handleEmergencyClearRequest() {
   const uint32_t now = millis();
   Serial.println("[ESTOP] Clear requested by Director");
+  if (rejectClearIfStationPressed()) return;
   const int rc = emergencyInputBeginDirectorClear(now);
   if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
     rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
@@ -603,6 +620,7 @@ static void handleEmergencyClearConfirm() {
     return;
   }
 
+  if (rejectClearIfStationPressed()) return;
   Serial.println("[ESTOP] Clear confirmed");
   if (!applyEmergencyClear()) {
     rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");

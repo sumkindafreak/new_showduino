@@ -112,6 +112,14 @@ static void publishSource() {
   }
 }
 
+uint8_t emergencyNodeLinkPressedCount() {
+  uint8_t n = 0;
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    if (sNodes[i].used && sNodes[i].inputOpen) n++;
+  }
+  return n;
+}
+
 static const char *wireToken() {
   uint8_t online = 0, seen = 0, asserting = 0, offline = 0;
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
@@ -258,6 +266,7 @@ static void applyAssert(const char *id, const char *name) {
     st->online = true;
     st->lastRxMs = millis();
     st->latched = true;
+    st->inputOpen = true; /* an assert is only sent while the button is pressed */
     strncpy(st->id, id, sizeof(st->id) - 1);
     if (name && name[0]) strncpy(st->name, name, sizeof(st->name) - 1);
     strncpy(st->state, "LATCHED", sizeof(st->state) - 1);

@@ -97,4 +97,13 @@ inline bool showduino_latch_clear_may_release(bool clearWriteVerified) {
   return clearWriteVerified;
 }
 
+/* Wireless / station gate for a Director or USB clear.
+ * `pressed_stations` is the number of Emergency Nodes whose most recent report
+ * says their button is still pressed (input_open=1). A pressed station blocks
+ * clear. A station that was pressed and has since gone silent also blocks,
+ * because its state is unknown. Returns non-zero when clear must be refused. */
+static inline int showduino_station_clear_blocked(unsigned pressed_stations) {
+  return pressed_stations != 0u;
+}
+
 #endif

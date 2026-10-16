@@ -215,6 +215,25 @@ int main() {
     expect(nvs.writes == 1, "transition-only: 1000 repeated assertions write once");
   }
 
+  /* 10. Wireless station gate. A pressed Emergency Node blocks clear. A
+   * released station must not block (that would deadlock a wireless latch). */
+  expect(showduino_station_clear_blocked(0u) == 0,
+         "T10a no pressed station: clear allowed");
+  expect(showduino_station_clear_blocked(1u) != 0,
+         "T10b one pressed station: clear refused");
+  expect(showduino_station_clear_blocked(3u) != 0,
+         "T10c several pressed stations: clear refused");
+  {
+    /* Station pressed -> assert -> released -> Director clear must be allowed.
+     * The station's own release is reported through input_open=0. */
+    unsigned pressed = 1u;
+    expect(showduino_station_clear_blocked(pressed) != 0,
+           "T10d station still pressed during latch: refused");
+    pressed = 0u;
+    expect(showduino_station_clear_blocked(pressed) == 0,
+           "T10e station released (input_open=0): clear allowed, no deadlock");
+  }
+
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);
   return gFails == 0 ? 0 : 1;
 }
