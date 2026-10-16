@@ -10,6 +10,10 @@ struct EmergencyNodeStatus {
   bool seen = false;
   bool online = false;
   bool inputOpen = false;
+  /* MISSION 001H: an identity-verified ANNOUNCE was accepted this session, and the
+   * L= value from that report. A bare ASSERT alone never sets a verified release. */
+  bool reportKnown = false;
+  bool announcedLatched = false;
   bool latched = false;
   bool acked = false;
   uint32_t syncMs = 0;

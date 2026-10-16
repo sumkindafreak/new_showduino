@@ -1,4 +1,5 @@
 #include "EmergencyNodeLink.h"
+#include "showduino_station_model.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
@@ -201,12 +202,39 @@ static void publishSource() {
   }
 }
 
-uint8_t emergencyNodeLinkPressedCount() {
-  uint8_t n = 0;
+/* Adapter between the firmware station table and the shared P4 model. */
+static void loadStationModel(ShowduinoStationModel *t, bool *prevOnline, bool *prevOpen) {
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
-    if (sNodes[i].used && sNodes[i].inputOpen) n++;
+    memset(&t[i], 0, sizeof(t[i]));
+    t[i].used = sNodes[i].used ? 1 : 0;
+    t[i].online = sNodes[i].online ? 1 : 0;
+    t[i].reportKnown = sNodes[i].reportKnown ? 1 : 0;
+    t[i].inputOpen = sNodes[i].inputOpen ? 1 : 0;
+    t[i].announcedLatched = sNodes[i].announcedLatched ? 1 : 0;
+    showduino_station_copy(t[i].id, sizeof(t[i].id), sNodes[i].id);
+    showduino_station_copy(t[i].mac, sizeof(t[i].mac), sNodes[i].mac);
+    if (prevOnline) prevOnline[i] = sNodes[i].online;
+    if (prevOpen) prevOpen[i] = sNodes[i].inputOpen;
   }
-  return n;
+}
+
+static void storeStationModel(const ShowduinoStationModel *t) {
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    sNodes[i].used = t[i].used ? true : false;
+    sNodes[i].online = t[i].online ? true : false;
+    sNodes[i].reportKnown = t[i].reportKnown ? true : false;
+    sNodes[i].inputOpen = t[i].inputOpen ? true : false;
+    sNodes[i].announcedLatched = t[i].announcedLatched ? true : false;
+    showduino_station_copy(sNodes[i].id, sizeof(sNodes[i].id), t[i].id);
+    showduino_station_copy(sNodes[i].mac, sizeof(sNodes[i].mac), t[i].mac);
+  }
+}
+
+uint8_t emergencyNodeLinkPressedCount() {
+  /* Stations that block clear: PRESSED, no verified report this session, or OFFLINE. */
+  ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+  loadStationModel(t, nullptr, nullptr);
+  return (uint8_t)showduino_station_model_count_blocking(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
 }
 
 static const char *wireToken() {
@@ -347,7 +375,9 @@ void emergencyNodeLinkPrimarySource(char *kind, size_t kindn,
   }
 }
 
-static void applyAssert(const char *id, const char *name) {
+/* MISSION 001H: the P4 global latch request. Never changes the button state.
+ * Button state is decided by showduino_station_model (ANNOUNCE or ASSERT rules). */
+static void applyStationLatch(const char *id, const char *name) {
   if (!showduino_emergency_id_ok(id)) return;
   EmergencyNodeStatus *st = allocSlot(id, nullptr);
   if (st) {
@@ -355,7 +385,6 @@ static void applyAssert(const char *id, const char *name) {
     st->online = true;
     st->lastRxMs = millis();
     st->latched = true;
-    st->inputOpen = true; /* an assert is only sent while the button is pressed */
     strncpy(st->id, id, sizeof(st->id) - 1);
     if (name && name[0]) strncpy(st->name, name, sizeof(st->name) - 1);
     strncpy(st->state, "LATCHED", sizeof(st->state) - 1);
@@ -370,13 +399,10 @@ static void applyAssert(const char *id, const char *name) {
       SD_LOGI("ESTOP", "EMERGENCY DUPLICATE SOURCE=%s", id);
     }
   }
-  /* The asserting station is pressed. Stored after actuation (MISSION 001F). */
-  emergencyNodeLinkPersistBlockers();
   if (st && st->id[0]) {
     routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
     st->acked = true;
   }
-  publishState(true);
 }
 
 void emergencyNodeLinkBegin() {
@@ -462,78 +488,65 @@ bool emergencyNodeLinkHandleReport(const char *line) {
     return true;
   }
 
-  char assertId[16] = "";
-  char assertName[24] = "";
-  if (showduino_emergency_parse_assert(p, assertId, sizeof(assertId),
-                                       assertName, sizeof(assertName))) {
-    applyAssert(assertId, assertName);
-    return true;
-  }
+  /* MISSION 001H: one interpretation for ASSERT, ANNOUNCE and STATUS. The shared
+   * model (protocol/showduino_station_model.h) decides identity and button state.
+   * This code performs the effects only. */
+  if (!strncmp(p, "ANNOUNCE:", 9) || showduino_emergency_is_assert(p) || !strncmp(p, "STATUS:", 7)) {
+    ShowduinoStationModel table[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+    bool prevOnline[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+    bool prevOpen[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+    loadStationModel(table, prevOnline, prevOpen);
+    ShowduinoStationResult res{};
+    const int handled = showduino_station_interpret_line(table, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p, &res);
+    if (!handled) return true;
+    if (res.kind == SHOWDUINO_STATION_LINE_ANNOUNCE && !res.accepted) {
+      /* Identity conflict or table full: nothing was applied. */
+      storeStationModel(table);
+      SD_LOGW("ESTOP", "Rejected announce %s: identity conflicts with pinned station or no slot",
+              res.name[0] ? res.name : "-");
+      return true;
+    }
+    storeStationModel(table);
 
-  if (!strncmp(p, "ANNOUNCE:", 9)) {
+    if (res.kind == SHOWDUINO_STATION_LINE_ASSERT) {
+      if (res.accepted) applyStationLatch(res.ackId, res.name);
+      emergencyNodeLinkPersistBlockers(); /* after actuation (MISSION 001F) */
+      publishState(true);
+      return true;
+    }
+
+    if (res.kind == SHOWDUINO_STATION_LINE_STATUS) {
+      if (res.slot >= 0) sNodes[res.slot].lastRxMs = millis();
+      if (res.globalLatch) applyStationLatch(res.ackId, sNodes[res.slot].name);
+      publishState();
+      return true;
+    }
+
+    /* ANNOUNCE, accepted. */
     ShowduinoEmergencyAnnounce an{};
     if (!showduino_emergency_parse_announce(p, &an)) return true;
-    EmergencyNodeStatus *st = allocSlot(an.id, an.mac);
-    if (!st) {
-      SD_LOGW("ESTOP", "No slot for %s — max %u Emergency Nodes",
-              an.id[0] ? an.id : an.mac,
-              (unsigned)SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-      return true;
-    }
-    /* MISSION 001F identity pinning. A report whose ID or MAC conflicts with the
-     * pinned record is rejected whole: no liveness, no ID/MAC change, no release.
-     * The release rule reads the MAC pinned before this report. MAC equality is
-     * continuity, not authentication (ESP-NOW is unsigned). */
-    const bool wasOnline = st->online;
-    int openNow = st->inputOpen ? 1 : 0;
-    if (!showduino_station_apply_identified_report(st->id, sizeof(st->id),
-                                                   st->mac, sizeof(st->mac),
-                                                   &openNow, an.id, an.mac,
-                                                   an.input_open ? 1 : 0)) {
-      SD_LOGW("ESTOP", "Rejected announce %s: identity conflicts with pinned station",
-              an.id[0] ? an.id : "-");
-      return true;
-    }
+    const int slot = res.slot;
+    EmergencyNodeStatus *st = &sNodes[slot];
     st->seen = true;
-    st->online = true;
     st->lastRxMs = millis();
-    const bool openChanged = (openNow != 0) != st->inputOpen;
     if (an.name[0]) strncpy(st->name, an.name, sizeof(st->name) - 1);
     if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
     if (an.state[0]) strncpy(st->state, an.state, sizeof(st->state) - 1);
-    st->inputOpen = openNow != 0;
     st->latched = an.latched != 0;
     st->acked = an.acked != 0;
-    if (!wasOnline) {
+    if (!prevOnline[slot]) {
       SD_LOGI("ESTOP", "EMERGENCY NODE ONLINE %s %s",
               st->id[0] ? st->id : "-",
               st->name[0] ? st->name : "-");
     }
-    if (st->latched && st->id[0]) {
-      applyAssert(st->id, st->name);
+    const bool openChanged = (st->inputOpen ? true : false) != prevOpen[slot];
+    if (res.globalLatch) {
+      applyStationLatch(res.ackId, res.name);
     } else if (st->id[0]) {
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_OWN_GRANT);
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_STATUS);
     }
-    /* After actuation: storage never delays the emergency (MISSION 001F). */
-    if (openChanged) emergencyNodeLinkPersistBlockers();
-    publishState();
-    return true;
-  }
-
-  if (!strncmp(p, "STATUS:", 7)) {
-    EmergencyNodeStatus *only = nullptr;
-    uint8_t nOn = 0;
-    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
-      if (sNodes[i].used && sNodes[i].online) {
-        nOn++;
-        only = &sNodes[i];
-      }
-    }
-    if (nOn == 1 && only) only->lastRxMs = millis();
-    if (strstr(p, "L=1") && only && only->id[0]) {
-      applyAssert(only->id, only->name);
-    }
+    if (openChanged) emergencyNodeLinkPersistBlockers(); /* after actuation (MISSION 001F) */
     publishState();
     return true;
   }
