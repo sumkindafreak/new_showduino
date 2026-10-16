@@ -188,4 +188,46 @@ static inline int showduino_station_persist_needed(int validInStorage, int dirty
   return !validInStorage || dirty || !setsEqual;
 }
 
+/* Identity pinning (MISSION 001F). A report is accepted only when its ID and
+ * MAC agree with the pinned identity. A conflicting report is rejected whole.
+ * MAC equality is identity continuity, NOT authentication: ESP-NOW frames are
+ * unsigned, so any radio in range can send a matching identity. */
+static inline int showduino_station_identity_matches(const char *pinnedId,
+                                                     const char *pinnedMac,
+                                                     const char *reportId,
+                                                     const char *reportMac) {
+  if (pinnedId && pinnedId[0] && reportId && reportId[0] &&
+      strcmp(pinnedId, reportId) != 0) return 0;
+  if (pinnedMac && pinnedMac[0] && reportMac && reportMac[0] &&
+      strcmp(pinnedMac, reportMac) != 0) return 0;
+  return 1;
+}
+
+/* Applies one announce to a pinned station record. Returns 0 and changes
+ * nothing when the identity conflicts. On success it pins an empty ID or MAC,
+ * then sets *inputOpen by the release rule. The release rule reads the MAC
+ * that was pinned before this report, so a forged MAC cannot release. */
+static inline int showduino_station_apply_identified_report(char *pinnedId, size_t idCap,
+                                                            char *pinnedMac, size_t macCap,
+                                                            int *inputOpen,
+                                                            const char *reportId,
+                                                            const char *reportMac,
+                                                            int reportOpen) {
+  if (!inputOpen || !pinnedId || !pinnedMac || idCap == 0 || macCap == 0) return 0;
+  if (!showduino_station_identity_matches(pinnedId, pinnedMac, reportId, reportMac)) return 0;
+  const int openNow = showduino_station_apply_report(*inputOpen ? 1 : 0,
+                                                     reportOpen ? 1 : 0,
+                                                     pinnedMac, reportMac);
+  if (reportId && reportId[0] && !pinnedId[0]) {
+    strncpy(pinnedId, reportId, idCap - 1);
+    pinnedId[idCap - 1] = 0;
+  }
+  if (reportMac && reportMac[0] && !pinnedMac[0]) {
+    strncpy(pinnedMac, reportMac, macCap - 1);
+    pinnedMac[macCap - 1] = 0;
+  }
+  *inputOpen = openNow ? 1 : 0;
+  return 1;
+}
+
 #endif

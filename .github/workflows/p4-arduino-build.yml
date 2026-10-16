@@ -1,7 +1,12 @@
 name: P4 Stage Engine (Arduino) build and host tests
 
-# Added for MISSION 001E. Does not replace p4-stage-engine-build.yml, which targets
-# a path (stage-engine/esp32-p4) that does not exist in this repository.
+# Added for MISSION 001E; corrected in MISSION 001G. Does not replace
+# p4-stage-engine-build.yml, which targets a path (stage-engine/esp32-p4) that
+# does not exist in this repository.
+#
+# Shell: every job uses `shell: bash`, which runs `bash --noprofile --norc -eo
+# pipefail {0}`. The GitHub default on Linux is `bash -e {0}` WITHOUT pipefail,
+# which let a failing arduino-cli pass through `| tee` and report success.
 
 on:
   push:
@@ -11,12 +16,14 @@ on:
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
+      - ".github/problem-matchers/gcc.json"
   pull_request:
     paths:
       - "firmware/stage-engine-p4/**"
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
+      - ".github/problem-matchers/gcc.json"
   workflow_dispatch:
 
 env:
@@ -24,6 +31,10 @@ env:
   FQBN: "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3"
   ESP32_CORE: "3.3.11"
   BOARD_INDEX: "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   host-tests:
@@ -35,13 +46,11 @@ jobs:
         run: bash tools/emergency-latch-tests/run_tests.sh
       - name: Emergency button suite (-Werror)
         run: |
-          set -o pipefail
           g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
             tools/emergency-button-tests/test_emergency_button.cpp -o /tmp/btn
           /tmp/btn
       - name: "Director emergency sheet suite (no -Werror; pre-existing snprintf warning)"
         run: |
-          set -o pipefail
           g++ -std=c++17 -Wall -Wextra -Iprotocol \
             tools/director-tests/test_emergency_sheet.cpp -o /tmp/sheet
           /tmp/sheet
@@ -63,8 +72,23 @@ jobs:
           arduino-cli core list
       - name: Compile sketch
         run: |
+          test -f protocol/showduino_emergency_engage.h
+          test -f protocol/showduino_station_blockers.h
+          echo "::add-matcher::.github/problem-matchers/gcc.json"
+          # pipefail: a failing arduino-cli fails this step, even through tee.
           arduino-cli compile --fqbn "$FQBN" --warnings default \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol" \
+            --build-property "compiler.c.extra_flags=-I$GITHUB_WORKSPACE/protocol" \
             --build-path build "$SKETCH_DIR" 2>&1 | tee compile.log
+      - name: Compile diagnostics and size
+        if: always()
+        run: |
+          errs=$(grep -cE ': (fatal )?error:' compile.log || true)
+          warns=$(grep -cE ': warning:' compile.log || true)
+          echo "::notice title=Compile diagnostics::errors=${errs} warnings=${warns}"
+          grep -E 'Sketch uses|Global variables use' compile.log | while read -r l; do
+            echo "::notice title=Size::${l}"
+          done
       - name: Upload build log and binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -94,8 +118,18 @@ jobs:
           arduino-cli core install "esp32:esp32@${ESP32_CORE}"
       - name: Compile baseline sketch
         run: |
+          echo "::add-matcher::.github/problem-matchers/gcc.json"
           arduino-cli compile --fqbn "$FQBN" --warnings default \
             --build-path build "$SKETCH_DIR" 2>&1 | tee compile.log
+      - name: Compile diagnostics and size
+        if: always()
+        run: |
+          errs=$(grep -cE ': (fatal )?error:' compile.log || true)
+          warns=$(grep -cE ': warning:' compile.log || true)
+          echo "::notice title=Baseline diagnostics::errors=${errs} warnings=${warns}"
+          grep -E 'Sketch uses|Global variables use' compile.log | while read -r l; do
+            echo "::notice title=Baseline size::${l}"
+          done
       - name: Upload baseline log
         if: always()
         uses: actions/upload-artifact@v4

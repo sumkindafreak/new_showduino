@@ -8,7 +8,7 @@
  */
 
 #include <Arduino.h>
-#include "../../../../protocol/showduino_station_blockers.h"
+#include "showduino_station_blockers.h"
 
 /* Reads and decodes the stored set. Absent, unreadable and corrupt are distinct
  * results. None of them may be treated as "no blockers". */

@@ -1,6 +1,6 @@
 #include "EmergencyLatchStore.h"
 #include <Preferences.h>
-#include "../../../../protocol/showduino_emergency_latch.h"
+#include "showduino_emergency_latch.h"
 
 static ShowduinoLatchTrack sTrack = {false, true, false};
 static ShowduinoLatchRead sBootRead = SHOWDUINO_LATCH_READ_FAULT;

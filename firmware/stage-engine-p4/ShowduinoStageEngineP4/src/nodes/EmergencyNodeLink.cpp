@@ -360,17 +360,18 @@ static void applyAssert(const char *id, const char *name) {
     if (name && name[0]) strncpy(st->name, name, sizeof(st->name) - 1);
     strncpy(st->state, "LATCHED", sizeof(st->state) - 1);
   }
-  emergencyNodeLinkPersistBlockers(); /* the asserting station is pressed */
   const int first = showduino_emergency_authority_assert(&sAuth, id, name);
   if (first && !emergencyLocked) {
     SD_LOGI("ESTOP", "EMERGENCY ASSERT SOURCE=%s NAME=%s",
             id, (name && name[0]) ? name : "-");
-    triggerEmergencyWireless();
+    triggerEmergencyWireless(); /* RAM and outputs first, then storage */
   } else {
     if (showduino_log_rate_ok(&sDupLogMs, millis(), 2000UL)) {
       SD_LOGI("ESTOP", "EMERGENCY DUPLICATE SOURCE=%s", id);
     }
   }
+  /* The asserting station is pressed. Stored after actuation (MISSION 001F). */
+  emergencyNodeLinkPersistBlockers();
   if (st && st->id[0]) {
     routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
     st->acked = true;
@@ -479,24 +480,30 @@ bool emergencyNodeLinkHandleReport(const char *line) {
               (unsigned)SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
       return true;
     }
+    /* MISSION 001F identity pinning. A report whose ID or MAC conflicts with the
+     * pinned record is rejected whole: no liveness, no ID/MAC change, no release.
+     * The release rule reads the MAC pinned before this report. MAC equality is
+     * continuity, not authentication (ESP-NOW is unsigned). */
     const bool wasOnline = st->online;
+    int openNow = st->inputOpen ? 1 : 0;
+    if (!showduino_station_apply_identified_report(st->id, sizeof(st->id),
+                                                   st->mac, sizeof(st->mac),
+                                                   &openNow, an.id, an.mac,
+                                                   an.input_open ? 1 : 0)) {
+      SD_LOGW("ESTOP", "Rejected announce %s: identity conflicts with pinned station",
+              an.id[0] ? an.id : "-");
+      return true;
+    }
     st->seen = true;
     st->online = true;
     st->lastRxMs = millis();
-    /* Identity check uses the MAC stored before this report overwrites it. */
-    const int openNow = showduino_station_apply_report(st->inputOpen ? 1 : 0,
-                                                       an.input_open ? 1 : 0,
-                                                       st->mac, an.mac);
     const bool openChanged = (openNow != 0) != st->inputOpen;
-    if (an.id[0]) strncpy(st->id, an.id, sizeof(st->id) - 1);
     if (an.name[0]) strncpy(st->name, an.name, sizeof(st->name) - 1);
-    if (an.mac[0]) strncpy(st->mac, an.mac, sizeof(st->mac) - 1);
     if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
     if (an.state[0]) strncpy(st->state, an.state, sizeof(st->state) - 1);
     st->inputOpen = openNow != 0;
     st->latched = an.latched != 0;
     st->acked = an.acked != 0;
-    if (openChanged) emergencyNodeLinkPersistBlockers();
     if (!wasOnline) {
       SD_LOGI("ESTOP", "EMERGENCY NODE ONLINE %s %s",
               st->id[0] ? st->id : "-",
@@ -508,6 +515,8 @@ bool emergencyNodeLinkHandleReport(const char *line) {
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_OWN_GRANT);
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_STATUS);
     }
+    /* After actuation: storage never delays the emergency (MISSION 001F). */
+    if (openChanged) emergencyNodeLinkPersistBlockers();
     publishState();
     return true;
   }

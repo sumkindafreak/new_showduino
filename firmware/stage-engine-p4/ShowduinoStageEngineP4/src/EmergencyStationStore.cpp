@@ -1,6 +1,6 @@
 #include "EmergencyStationStore.h"
 #include <Preferences.h>
-#include "../../../../protocol/showduino_emergency_latch.h"
+#include "showduino_emergency_latch.h"
 
 /* Namespace is opened read-write so a fresh device creates it instead of
  * reporting an unreadable store. */

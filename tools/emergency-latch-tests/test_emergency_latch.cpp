@@ -10,6 +10,7 @@
  */
 #include "showduino_emergency_latch.h"
 #include "showduino_station_blockers.h"
+#include "showduino_emergency_engage.h"
 #include <cstdio>
 #include <cstring>
 
@@ -643,6 +644,139 @@ int main() {
     /* While dirty, the RAM side must keep blocking clear. */
     expect(showduino_station_clear_blocked_full(0u, 0, t.dirty ? 1 : 0, 1),
            "T32b dirty latch keeps clear blocked in RAM");
+  }
+
+  /* ---- MISSION 001F: actuation order and storage delay ---- */
+  struct EngageSim {
+    int order[4] = {0, 0, 0, 0};
+    int n = 0;
+    int ramCalls = 0;
+    unsigned long clock = 0;
+    unsigned long ramAt = 0xFFFFFFFFul;
+    unsigned long blockersDelay = 0;
+    unsigned long latchDelay = 0;
+    bool blockersFail = false;
+    bool latchFail = false;
+    int latchArgBlockersVerified = -1;
+  };
+  auto simRam = [](void *c) {
+    EngageSim *s = static_cast<EngageSim *>(c);
+    s->ramCalls++;
+    s->ramAt = s->clock;
+    s->order[s->n++] = 1;
+  };
+  auto simBlockers = [](void *c) -> int {
+    EngageSim *s = static_cast<EngageSim *>(c);
+    s->clock += s->blockersDelay;
+    s->order[s->n++] = 2;
+    return s->blockersFail ? 0 : 1;
+  };
+  auto simLatch = [](void *c, int bv) -> int {
+    EngageSim *s = static_cast<EngageSim *>(c);
+    s->clock += s->latchDelay;
+    s->latchArgBlockersVerified = bv;
+    s->order[s->n++] = 3;
+    return s->latchFail ? 0 : 1;
+  };
+  auto runEngage = [&](EngageSim &sim) -> int {
+    ShowduinoEngageOps ops{&sim, simRam, simBlockers, simLatch};
+    return showduino_emergency_engage(&ops);
+  };
+
+  /* 33a. Outputs run first, at t=0, even when the blocker write takes 60 s. */
+  {
+    EngageSim sim; sim.blockersDelay = 60000ul; sim.latchDelay = 60000ul;
+    runEngage(sim);
+    expect(sim.order[0] == 1 && sim.ramAt == 0ul,
+           "T33a RAM engage is first and happens before any storage delay");
+  }
+  /* 33b. Storage fails on both writes: RAM still engaged once, return reports it. */
+  {
+    EngageSim sim; sim.blockersFail = true; sim.latchFail = true;
+    const int ok = runEngage(sim);
+    expect(sim.ramCalls == 1 && ok == 0 && sim.order[0] == 1 && sim.order[1] == 2 && sim.order[2] == 3,
+           "T33b storage failure: RAM engaged once, order 1-2-3, result not verified");
+  }
+  /* 33c. Blocker record unverified: latch is told so and stored as unverified. */
+  {
+    EngageSim sim; sim.blockersFail = true;
+    runEngage(sim);
+    expect(sim.latchArgBlockersVerified == 0,
+           "T33c unverified blocker record is passed to the latch write");
+  }
+  /* 33d. Everything verifies: result 1. */
+  {
+    EngageSim sim;
+    const int ok = runEngage(sim);
+    expect(ok == 1 && sim.latchArgBlockersVerified == 1,
+           "T33d verified storage returns 1 with verified blocker record");
+  }
+  /* 33e. Delayed storage does not cause a second RAM engage in the same call. */
+  {
+    EngageSim sim; sim.blockersDelay = 60000ul; sim.latchFail = true;
+    runEngage(sim);
+    expect(sim.ramCalls == 1, "T33e delayed or failed storage never re-runs outputs");
+  }
+  /* 33f. Missing callbacks: nothing is engaged and the call reports failure. */
+  {
+    ShowduinoEngageOps ops{nullptr, nullptr, simBlockers, simLatch};
+    expect(showduino_emergency_engage(&ops) == 0, "T33f incomplete ops are rejected");
+  }
+
+  /* ---- MISSION 001F: station identity pinning ---- */
+  auto pinnedApply = [](char *id, char *mac, int *open, const char *rid,
+                        const char *rmac, int ropen) -> int {
+    return showduino_station_apply_identified_report(id, 16, mac, 18, open, rid, rmac, ropen);
+  };
+  const char *legitMac = "AA:BB:CC:DD:EE:01";
+  const char *forgedMac = "11:22:33:44:55:66";
+
+  /* 34. Forged released report with the pinned ID and another MAC is rejected:
+   * the press stays, the pinned MAC does not change. */
+  {
+    char id[16] = "ESTOP-01"; char mac[18]; std::strcpy(mac, legitMac); int open = 1;
+    const int ok = pinnedApply(id, mac, &open, "ESTOP-01", forgedMac, 0);
+    expect(ok == 0 && open == 1 && isCmd(mac, legitMac),
+           "T34 forged released report (same ID, other MAC) is rejected and pin is kept");
+    /* 35. Repeat forged releases, including one that copies the forged MAC. */
+    const int ok2 = pinnedApply(id, mac, &open, "ESTOP-01", forgedMac, 0);
+    const int ok3 = pinnedApply(id, mac, &open, "ESTOP-01", forgedMac, 0);
+    expect(ok2 == 0 && ok3 == 0 && open == 1 && isCmd(mac, legitMac),
+           "T35 repeated forged releases never overwrite the pinned MAC or release");
+    /* 36. Forged report with a new ID and the forged MAC is rejected. */
+    const int ok4 = pinnedApply(id, mac, &open, "ESTOP-99", forgedMac, 0);
+    expect(ok4 == 0 && open == 1 && isCmd(id, "ESTOP-01") && isCmd(mac, legitMac),
+           "T36 forged report with a different ID is rejected and ID is kept");
+    /* 37. Pinned ID with empty MAC cannot release either. */
+    const int ok5 = pinnedApply(id, mac, &open, "ESTOP-01", "", 0);
+    expect(ok5 == 1 && open == 1 && isCmd(mac, legitMac),
+           "T37 released report with empty MAC keeps the press (no release)");
+    /* 38. The original station can still report a legitimate release afterwards. */
+    const int ok6 = pinnedApply(id, mac, &open, "ESTOP-01", legitMac, 0);
+    expect(ok6 == 1 && open == 0 && isCmd(mac, legitMac),
+           "T38 original station releases after forged attempts");
+    /* 39. After the release, the pin still holds against a forged MAC. */
+    const int ok7 = pinnedApply(id, mac, &open, "ESTOP-01", forgedMac, 1);
+    expect(ok7 == 0 && open == 0 && isCmd(mac, legitMac),
+           "T39 pin survives after release: forged MAC cannot re-press or change the record");
+  }
+  /* 40. The original station presses and releases normally from a fresh record. */
+  {
+    char id[16] = ""; char mac[18] = ""; int open = 0;
+    expect(pinnedApply(id, mac, &open, "ESTOP-02", legitMac, 1) == 1 && open == 1 &&
+           isCmd(id, "ESTOP-02") && isCmd(mac, legitMac),
+           "T40a first announce pins ID and MAC and records the press");
+    expect(pinnedApply(id, mac, &open, "ESTOP-02", legitMac, 0) == 1 && open == 0,
+           "T40b matching released report from pinned identity releases");
+  }
+  /* 41. Repeated announcements from the pinned identity do not change the record. */
+  {
+    char id[16] = "ESTOP-03"; char mac[18]; std::strcpy(mac, legitMac); int open = 1;
+    bool allOk = true;
+    for (int i = 0; i < 5; ++i) {
+      allOk = allOk && pinnedApply(id, mac, &open, "ESTOP-03", legitMac, 1) == 1 && open == 1;
+    }
+    expect(allOk, "T41 repeated pressed announcements keep the same pinned record");
   }
 
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);

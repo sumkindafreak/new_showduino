@@ -33,6 +33,7 @@
 #include "src/EmergencyLatchStore.h"
 #include "src/EmergencyStationStore.h"
 #include "../../../protocol/showduino_emergency_latch.h"
+#include "showduino_emergency_engage.h"
 #include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
@@ -348,61 +349,14 @@ static void sendCommandReply(const String &message) {
   sendToDirector(message);
 }
 
-void triggerEmergency(EmergencySource source) {
-  const bool already = emergencyLocked;
-  const int gpioRaw =
-#if SHOWDUINO_ESTOP_GPIO >= 0
-      digitalRead(SHOWDUINO_ESTOP_GPIO);
-#else
-      -1;
-#endif
+/* ---- MISSION 001F: actuation order ----
+ * emergencyEngageRam is the RAM latch and every local output. It never waits on
+ * storage. Storage callbacks run afterwards through showduino_emergency_engage. */
+struct EmergencyEngageCtx {
+  EmergencySource source;
+};
 
-  if (source == EmergencySource::Physical) {
-    Serial.println("[ESTOP] Physical emergency triggered");
-    Serial.printf("[ESTOP] TRIGGER source=PHYSICAL gpio=%d stable=%d latch=%s\n",
-                  gpioRaw, emergencyInputStableOpen(), already ? "ACTIVE" : "CLEAR");
-  } else if (source == EmergencySource::LocalUsb) {
-    Serial.println("[ESTOP] Local USB emergency triggered");
-    Serial.printf("[ESTOP] TRIGGER source=USB gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
-                  gpioRaw, already ? "ACTIVE" : "CLEAR");
-  } else if (source == EmergencySource::Wireless) {
-    Serial.println("[ESTOP] Wireless Emergency Node triggered");
-    Serial.printf("[ESTOP] TRIGGER source=WIRELESS gpio=%d latch=%s\n",
-                  gpioRaw, already ? "ACTIVE" : "CLEAR");
-  } else {
-    Serial.println("[ESTOP] Remote emergency triggered");
-    Serial.printf("[ESTOP] TRIGGER source=REMOTE gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
-                  gpioRaw, already ? "ACTIVE" : "CLEAR");
-  }
-
-  if (source != EmergencySource::Physical) {
-    emergencyInputNoteAssertion();
-    if (emergencyInputTakeClearSuperseded()) {
-      notifyPendingClearSuperseded();
-    }
-  }
-
-  if (already) {
-    Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
-    emergencyLatchReconcile(true, emergencyNodeLinkBlockersVerified());
-    stageLogEmergency("ACTIVATE_IGNORED", "already latched");
-    return;
-  }
-
-  stageLogEmergency("ACTIVATE",
-                    source == EmergencySource::Physical ? "source=physical" :
-                    source == EmergencySource::LocalUsb ? "source=usb" :
-                    source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
-
-  /* Persist before the RAM latch engages. A failed write is retried and never
-   * stops the latch from engaging. */
-  /* Blocker set first. The latch records whether that set verified, so a restart
-   * cannot treat an unverified record as known. */
-  const bool blockersVerified = emergencyNodeLinkPersistBlockers();
-  if (!emergencyLatchSetActive(blockersVerified)) {
-    Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
-    stageLogEmergency("PERSIST_FAILED", "assert");
-  }
+static void emergencyEngageRam(EmergencySource source) {
   emergencyLocked = true;
   if (source == EmergencySource::Physical) {
     gEmergencySourceId = 2;
@@ -452,6 +406,80 @@ void triggerEmergency(EmergencySource source) {
     Serial.println("[ESTOP] Emergency safety state remains operational");
   } else {
     Serial.println("[ESTOP] Emergency audio looping");
+  }
+  /* Logged after the outputs: the Emergency log channel flushes synchronously. */
+  stageLogEmergency("ACTIVATE",
+                    source == EmergencySource::Physical ? "source=physical" :
+                    source == EmergencySource::LocalUsb ? "source=usb" :
+                    source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
+
+}
+
+static void emergencyEngageRamCb(void *ctx) {
+  emergencyEngageRam(static_cast<EmergencyEngageCtx *>(ctx)->source);
+}
+
+static int emergencyPersistBlockersCb(void *ctx) {
+  (void)ctx;
+  return emergencyNodeLinkPersistBlockers() ? 1 : 0;
+}
+
+static int emergencyPersistLatchCb(void *ctx, int blockersVerified) {
+  (void)ctx;
+  if (emergencyLatchSetActive(blockersVerified != 0)) return 1;
+  Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
+  return 0;
+}
+
+void triggerEmergency(EmergencySource source) {
+  const bool already = emergencyLocked;
+  const int gpioRaw =
+#if SHOWDUINO_ESTOP_GPIO >= 0
+      digitalRead(SHOWDUINO_ESTOP_GPIO);
+#else
+      -1;
+#endif
+
+  if (source == EmergencySource::Physical) {
+    Serial.println("[ESTOP] Physical emergency triggered");
+    Serial.printf("[ESTOP] TRIGGER source=PHYSICAL gpio=%d stable=%d latch=%s\n",
+                  gpioRaw, emergencyInputStableOpen(), already ? "ACTIVE" : "CLEAR");
+  } else if (source == EmergencySource::LocalUsb) {
+    Serial.println("[ESTOP] Local USB emergency triggered");
+    Serial.printf("[ESTOP] TRIGGER source=USB gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
+                  gpioRaw, already ? "ACTIVE" : "CLEAR");
+  } else if (source == EmergencySource::Wireless) {
+    Serial.println("[ESTOP] Wireless Emergency Node triggered");
+    Serial.printf("[ESTOP] TRIGGER source=WIRELESS gpio=%d latch=%s\n",
+                  gpioRaw, already ? "ACTIVE" : "CLEAR");
+  } else {
+    Serial.println("[ESTOP] Remote emergency triggered");
+    Serial.printf("[ESTOP] TRIGGER source=REMOTE gpio=%d latch=%s cmd=EMERGENCY:STOP\n",
+                  gpioRaw, already ? "ACTIVE" : "CLEAR");
+  }
+
+  if (source != EmergencySource::Physical) {
+    emergencyInputNoteAssertion();
+    if (emergencyInputTakeClearSuperseded()) {
+      notifyPendingClearSuperseded();
+    }
+  }
+
+  if (already) {
+    Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
+    emergencyLatchReconcile(true, emergencyNodeLinkBlockersVerified());
+    stageLogEmergency("ACTIVATE_IGNORED", "already latched");
+    return;
+  }
+
+  /* MISSION 001F: the RAM latch and every emergency-safe output run first.
+   * Storage (blocker record, latch record) runs after and never delays or
+   * gates actuation. See protocol/showduino_emergency_engage.h. */
+  EmergencyEngageCtx engageCtx{source};
+  ShowduinoEngageOps engageOps{&engageCtx, emergencyEngageRamCb,
+                               emergencyPersistBlockersCb, emergencyPersistLatchCb};
+  if (!showduino_emergency_engage(&engageOps)) {
+    stageLogEmergency("PERSIST_FAILED", "assert");
   }
 }
 
