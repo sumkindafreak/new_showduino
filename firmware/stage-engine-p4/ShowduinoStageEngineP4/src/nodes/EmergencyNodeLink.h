@@ -14,6 +14,10 @@ struct EmergencyNodeStatus {
    * L= value from that report. A bare ASSERT alone never sets a verified release. */
   bool reportKnown = false;
   bool announcedLatched = false;
+  /* MISSION 001I: in the current global-latch episode (any ASSERT, or an announced
+   * latched station). Keeps the station in the stored clear-blocker set until an
+   * accepted Director clear ends the episode. */
+  bool asserted = false;
   bool latched = false;
   bool acked = false;
   uint32_t syncMs = 0;
@@ -51,6 +55,7 @@ void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
                                    bool latchUnknown);
 bool emergencyNodeLinkBlockersVerified();
 bool emergencyNodeLinkPersistBlockers();
+void emergencyNodeLinkEndEpisode();
 void emergencyNodeLinkRetryBlockers();
 bool emergencyNodeLinkBlockerStorageFault();
 int emergencyNodeLinkClearBlocked();

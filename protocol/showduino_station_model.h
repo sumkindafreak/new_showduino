@@ -19,6 +19,15 @@
  * Clear blocking uses shared rules: any station that is PRESSED, has no
  * verified report this session, or is OFFLINE blocks clear.
  *
+ * MISSION 001I freshness rule: a bare ASSERT never sets online. Only a fresh,
+ * identity-validated full ANNOUNCE can make a station online again, so a
+ * disconnected station stays blocking after an ASSERT alone.
+ *
+ * Persistence rule: a station that took part in the current global-latch
+ * episode (asserted) stays in the stored blocker set until an accepted Director
+ * clear ends the episode. This holds even when it was released before it
+ * disconnected, so a reboot cannot drop it from the clear conditions.
+ *
  * Identity (ID and MAC) is continuity, NOT authentication. ESP-NOW frames are
  * unsigned. The wireless-authentication problem remains a release blocker.
  */
@@ -35,6 +44,7 @@ typedef struct ShowduinoStationModel {
   uint8_t reportKnown;      /* an identity-verified ANNOUNCE was accepted */
   uint8_t inputOpen;        /* 1 = PRESSED. Only a verified ANNOUNCE can set 0. */
   uint8_t announcedLatched; /* L= from the last verified ANNOUNCE */
+  uint8_t asserted;         /* in the current global-latch episode (see header note) */
   char id[SHOWDUINO_BLOCKER_ID_CHARS + 1];
   char mac[SHOWDUINO_BLOCKER_MAC_CHARS + 1];
 } ShowduinoStationModel;
@@ -69,6 +79,7 @@ static inline void showduino_station_model_restore(ShowduinoStationModel *m,
   memset(m, 0, sizeof(*m));
   m->used = 1;
   m->inputOpen = 1;
+  m->asserted = 1; /* a stored blocker always belongs to an active episode */
   showduino_station_copy(m->id, sizeof(m->id), id);
   showduino_station_copy(m->mac, sizeof(m->mac), mac);
 }
@@ -119,17 +130,19 @@ static inline int showduino_station_model_on_announce(ShowduinoStationModel *m,
   m->reportKnown = 1;
   m->online = 1;
   m->announcedLatched = an->latched ? 1 : 0;
+  if (an->latched) m->asserted = 1;
   if (globalLatch) *globalLatch = an->latched ? 1 : 0;
   return 1;
 }
 
-/* Bare ASSERT. Never sets RELEASED. See the header comment for the rule. */
+/* Bare ASSERT. Never sets RELEASED and never sets ONLINE (MISSION 001I).
+ * Only a fresh, identity-validated ANNOUNCE can restore a station to online. */
 static inline int showduino_station_model_on_assert(ShowduinoStationModel *m,
                                                     const char *id, int *globalLatch) {
   if (!m || !id || !id[0]) return 0;
   if (m->id[0] && strcmp(m->id, id) != 0) return 0;
   if (!m->id[0]) showduino_station_copy(m->id, sizeof(m->id), id);
-  m->online = 1;
+  m->asserted = 1;
   if (!m->reportKnown || !m->announcedLatched) m->inputOpen = 1;
   if (globalLatch) *globalLatch = 1;
   return 1;
@@ -149,6 +162,38 @@ static inline int showduino_station_model_count_blocking(const ShowduinoStationM
   int c = 0;
   for (int i = 0; t && i < n; ++i) c += showduino_station_model_blocks_clear(&t[i]);
   return c;
+}
+
+/* 1 = this station must be in the stored blocker set. Superset of blocks_clear:
+ * an asserted station stays required after it is released and verified. */
+static inline int showduino_station_model_required(const ShowduinoStationModel *m) {
+  if (!m || !m->used) return 0;
+  return (m->asserted || showduino_station_model_blocks_clear(m)) ? 1 : 0;
+}
+
+/* Accepted Director clear: the episode is over, so no station is required. */
+static inline void showduino_station_model_end_episode(ShowduinoStationModel *t, int n) {
+  for (int i = 0; t && i < n; ++i) t[i].asserted = 0;
+}
+
+/* Builds the stored blocker set. Returns 0 when it cannot be built faithfully (a
+ * required station without an identity, or more entries than cap). The caller
+ * must then treat storage as failed, so clear stays blocked. Never drops silently. */
+static inline int showduino_station_model_collect_required(const ShowduinoStationModel *t, int n,
+                                                           ShowduinoBlocker *out, int cap,
+                                                           int *count) {
+  if (!count) return 0;
+  *count = 0;
+  if (!t || !out) return 0;
+  for (int i = 0; i < n; ++i) {
+    if (!showduino_station_model_required(&t[i])) continue;
+    if (!t[i].id[0]) return 0;
+    if (*count >= cap) return 0;
+    showduino_station_copy(out[*count].id, sizeof(out[*count].id), t[i].id);
+    showduino_station_copy(out[*count].mac, sizeof(out[*count].mac), t[i].mac);
+    (*count)++;
+  }
+  return 1;
 }
 
 /* Interprets one wireless line from an Emergency Node against the station table.

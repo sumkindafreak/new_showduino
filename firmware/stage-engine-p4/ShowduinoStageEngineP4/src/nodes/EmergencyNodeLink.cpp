@@ -71,23 +71,34 @@ static uint8_t sPersistedCount = 0;
 static bool sPersistedValid = false;
 static bool sPersistDirty = false;
 
-static void snapshotPressed(ShowduinoBlocker *out, uint8_t *n) {
-  uint8_t k = 0;
+static void loadStationModel(ShowduinoStationModel *t, bool *prevOnline, bool *prevOpen);
+
+/* MISSION 001I: the stored set is every station the clear depends on (asserted in
+ * this episode, or not yet verified, or offline, or pressed). Built by the same
+ * shared rule the clear gate uses. Returns false if it cannot be built faithfully. */
+static bool snapshotRequired(ShowduinoBlocker *out, uint8_t *n) {
+  ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+  loadStationModel(t, nullptr, nullptr);
   memset(out, 0, sizeof(ShowduinoBlocker) * SHOWDUINO_BLOCKER_MAX);
-  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES && k < SHOWDUINO_BLOCKER_MAX; ++i) {
-    if (!sNodes[i].used || !sNodes[i].inputOpen || !sNodes[i].id[0]) continue;
-    strncpy(out[k].id, sNodes[i].id, SHOWDUINO_BLOCKER_ID_CHARS);
-    strncpy(out[k].mac, sNodes[i].mac, SHOWDUINO_BLOCKER_MAC_CHARS);
-    k++;
+  int count = 0;
+  if (!showduino_station_model_collect_required(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES,
+                                                out, SHOWDUINO_BLOCKER_MAX, &count)) {
+    *n = 0;
+    return false;
   }
-  *n = k;
+  *n = (uint8_t)count;
+  return true;
 }
 
 bool emergencyNodeLinkPersistBlockers() {
   if (sUnknownBootState) return false; /* never overwrite an unknown record */
   ShowduinoBlocker snap[SHOWDUINO_BLOCKER_MAX];
   uint8_t n = 0;
-  snapshotPressed(snap, &n);
+  if (!snapshotRequired(snap, &n)) {
+    sPersistDirty = true;
+    SD_LOGW("ESTOP", "station blocker set cannot be built — emergency clear stays blocked");
+    return false;
+  }
   const int equal = showduino_blocker_sets_equal(snap, n, sPersisted, sPersistedCount);
   if (!showduino_station_persist_needed(sPersistedValid ? 1 : 0, sPersistDirty ? 1 : 0, equal)) {
     return true;
@@ -104,6 +115,16 @@ bool emergencyNodeLinkPersistBlockers() {
   sPersistedValid = true;
   sPersistDirty = false;
   return true;
+}
+
+/* MISSION 001I: an accepted Director clear ends the global-latch episode. Each
+ * station is then required only while it is still pressed, unverified or offline.
+ * Called after the latch clear is stored. */
+void emergencyNodeLinkEndEpisode() {
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    sNodes[i].asserted = false;
+  }
+  emergencyNodeLinkPersistBlockers();
 }
 
 void emergencyNodeLinkRetryBlockers() {
@@ -211,6 +232,7 @@ static void loadStationModel(ShowduinoStationModel *t, bool *prevOnline, bool *p
     t[i].reportKnown = sNodes[i].reportKnown ? 1 : 0;
     t[i].inputOpen = sNodes[i].inputOpen ? 1 : 0;
     t[i].announcedLatched = sNodes[i].announcedLatched ? 1 : 0;
+    t[i].asserted = sNodes[i].asserted ? 1 : 0;
     showduino_station_copy(t[i].id, sizeof(t[i].id), sNodes[i].id);
     showduino_station_copy(t[i].mac, sizeof(t[i].mac), sNodes[i].mac);
     if (prevOnline) prevOnline[i] = sNodes[i].online;
@@ -225,6 +247,7 @@ static void storeStationModel(const ShowduinoStationModel *t) {
     sNodes[i].reportKnown = t[i].reportKnown ? true : false;
     sNodes[i].inputOpen = t[i].inputOpen ? true : false;
     sNodes[i].announcedLatched = t[i].announcedLatched ? true : false;
+    sNodes[i].asserted = t[i].asserted ? true : false;
     showduino_station_copy(sNodes[i].id, sizeof(sNodes[i].id), t[i].id);
     showduino_station_copy(sNodes[i].mac, sizeof(sNodes[i].mac), t[i].mac);
   }
@@ -381,9 +404,9 @@ static void applyStationLatch(const char *id, const char *name) {
   if (!showduino_emergency_id_ok(id)) return;
   EmergencyNodeStatus *st = allocSlot(id, nullptr);
   if (st) {
+    /* MISSION 001I: a bare ASSERT never sets online or lastRxMs. Only an accepted,
+     * identity-validated ANNOUNCE (or STATUS from a single online station) does. */
     st->seen = true;
-    st->online = true;
-    st->lastRxMs = millis();
     st->latched = true;
     strncpy(st->id, id, sizeof(st->id) - 1);
     if (name && name[0]) strncpy(st->name, name, sizeof(st->name) - 1);
@@ -416,6 +439,7 @@ void emergencyNodeLinkBegin() {
       if (sNodes[i].used) continue;
       sNodes[i].used = true;
       sNodes[i].inputOpen = true;
+      sNodes[i].asserted = true;
       strncpy(sNodes[i].id, sStaged[k].id, sizeof(sNodes[i].id) - 1);
       strncpy(sNodes[i].mac, sStaged[k].mac, sizeof(sNodes[i].mac) - 1);
       strncpy(sNodes[i].state, "OFFLINE", sizeof(sNodes[i].state) - 1);
@@ -546,7 +570,8 @@ bool emergencyNodeLinkHandleReport(const char *line) {
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_OWN_GRANT);
       routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_STATUS);
     }
-    if (openChanged) emergencyNodeLinkPersistBlockers(); /* after actuation (MISSION 001F) */
+    /* After actuation (MISSION 001F). Writes only when the stored set changes. */
+    emergencyNodeLinkPersistBlockers();
     publishState();
     return true;
   }

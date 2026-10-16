@@ -130,3 +130,60 @@ A MAC match is continuity, not authentication. ESP-NOW frames are unsigned, so a
 - Baseline `a8b3cb8`: 0 errors, 1 warning (same core warning). Sketch 1164198 bytes (88%). Globals 79964 bytes (24%).
 
 **Not hardware-tested.** Compile success does not show the P4 behaves correctly.
+
+## MISSION 001I — station freshness, persisted set, output order
+
+### Station freshness (Requirement 1)
+- A bare `ESTOP:ASSERT` never sets a station online and never refreshes its liveness. The shared model (`protocol/showduino_station_model.h`) and the P4 link (`applyStationLatch`) both follow this.
+- Only a fresh, identity-validated full `ANNOUNCE` (or a `STATUS` from the single online station) restores ONLINE. Only a verified `ANNOUNCE` can record RELEASED.
+- The global latch is still asserted immediately by any ASSERT.
+- Tested end to end (S13): release confirmed → disconnect → bare ASSERT → clear refused → fresh released ANNOUNCE → clear accepted.
+
+### Persisted blocker set (Requirement 2)
+- Previously the stored set held only physically pressed stations. A station released and then disconnected dropped out of the record on the next write, so a reboot could lose a clear condition.
+- A station is now stored while it is **asserted in the current episode**, or while it blocks clear. The clear gate and the stored set use the same shared rule (`showduino_station_model_required`).
+- An accepted Director clear ends the episode (`emergencyNodeLinkEndEpisode`), then stores the set. A completed clear stores no stale blockers.
+- Stored blockers come back as asserted, unseen, offline records. They need a fresh released ANNOUNCE before clear.
+- The set is built by `showduino_station_model_collect_required`. If it cannot be built faithfully (more entries than the record holds, or a required station without an identity), that is a storage fault: clear stays blocked. Nothing is dropped silently.
+- Storage is written after every accepted station line, and only when the stored set changes. A failed write marks the record dirty. Clear stays blocked until a write is verified.
+- An unreadable record after a latched restart keeps the existing fail-closed unknown-boot state.
+- Tests S14–S18 cover reboot after release-then-disconnect, a missing announcement after reboot, several stations in mixed states, a failed write with all stations released, storage recovery, an unreadable record, and the rule that a completed clear leaves no stored blocker.
+
+### Output order (Requirement 3)
+The functions were read before editing. The change is limited to `emergencyEngageRamCb` and `triggerEmergency` in `ShowduinoStageEngineP4.ino`.
+- Now first, after the RAM state is set: `showduinoIOOnEmergency(true)`, `emergencyPixelsSetWhite()`, `showPixelsOnEmergency(true)`, `statusLedWrite(HIGH)`.
+- Then: Serial and SD activation logs, show stop, ambience, node and remote propagation, the runtime stop, the plugin bus, Director notices, emergency audio, the `ACTIVATE` log record.
+- The trigger banners, the superseded-clear notice and the `PERSIST_FAILED` record now follow the engage call. The blocker and latch writes still run after the outputs, as in 001F.
+- The clear path is unchanged. The latch clear is still stored before RAM is released.
+- "Deactivation" in the mission brief was read as the emergency output state change. The clear path was not reordered.
+
+**Residual blocking, not fixed:** `emergencyPixelsSetWhite`, `showPixelsOnEmergency` and `showduinoIOOnEmergency` print to Serial internally. Those prints still sit inside the output path. A stalled USB host could delay them. This is a bench item.
+
+### Not verified
+- **No timing has been measured.** The ordering claim comes from the code path only. The P4 wrapper is compiled by CI and not exercised on the host.
+- The C3 Arduino wrapper is not compiled by any CI job. Its protocol logic is covered by the integration suite.
+
+### Remaining limitations
+- **ESP-NOW is unauthenticated.** Release messages can be forged by any radio that speaks the protocol. This is a **High** release blocker for the Comms security mission. Identity (ID and MAC) matching is continuity, not authentication.
+- **The authorised maintenance-recovery procedure is not implemented.** An unknown-boot record blocks clear until a service procedure resets it. The procedure is described in `docs/emergency-station-service-recovery.md` but is not in firmware.
+- A late ASSERT after clear re-latches the P4. This is deliberate and conservative.
+- A pressed state can lag one announce interval (2 s) when the station is already latched. Not measured.
+
+### Hardware acceptance tests (not run)
+1. Bench, outputs disconnected: press, release, confirm, clear through the Director. The legitimate sequence must succeed.
+2. Station powered off while released: clear refused. Power back on, released ANNOUNCE: clear accepted.
+3. P4 power-cycled with a stored blocker and the station offline: clear refused until the station announces.
+4. SD or NVS write failure and unreadable record: clear refused, recovery works.
+5. Scope: debounced input edge to first output pin change. Record the measured value. Do not claim it without the measurement.
+6. Serial stopped being read by the host: outputs still change.
+7. C3 build with its documented board configuration. No CI target exists yet.
+
+### Host tests (this commit)
+- Latch suite: 114 checks, all pass.
+- Button suite: 43 checks, all pass.
+- Director sheet suite: 12 checks, all pass.
+- Station integration suite: 66 checks, all pass, compiled with `-Wall -Wextra -Werror`.
+- Mutation checks on the new rules: bare ASSERT sets online (caught, 4 fails); required set = pressed only (the 001H rule, caught, 6 fails); episode never ends (caught, 3 fails); silent drop of an unbuildable set (caught, 3 fails).
+
+### Compile result (CI)
+PENDING: to be filled from the CI run for this commit (errors, warnings, sketch and globals sizes).

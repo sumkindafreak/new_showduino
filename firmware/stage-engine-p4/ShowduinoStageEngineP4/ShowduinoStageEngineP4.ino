@@ -372,6 +372,15 @@ static void emergencyEngageRamCb(void *ctx) {
   gEngine.show = ShowRuntimeState::Emergency;
   showEngineBump(gEngine);
 
+  /* MISSION 001I: local emergency-safe outputs first. Serial, SD, network and
+   * audio work follow. Pixel white and the generic IO override are local
+   * hardware and must not wait behind logging or remote propagation. */
+  showduinoIOOnEmergency(true);
+  /* Hard Showduino rule: every pixel-capable local output goes bright white. */
+  emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
+  statusLedWrite(HIGH);
+
   Serial.println("[ESTOP] EMERGENCY ACTIVE");
   showduino_log_emergency(true);
   Serial.printf("[ESTOP] source_id=%u emergency_pixels=%s show_pixels=%s audio_wav=%s\n",
@@ -389,12 +398,7 @@ static void emergencyEngageRamCb(void *ctx) {
   emergencyNodeLinkOnEmergency(true);
   gRuntime.onEmergencyStop(millis(), &gEngine);
 
-  /* Hard Showduino rule: every pixel-capable local output goes bright white. */
-  emergencyPixelsSetWhite();
-  showPixelsOnEmergency(true);
-  statusLedWrite(HIGH);
   pluginBusOnEmergency();
-  showduinoIOOnEmergency(true);
 
   sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
   sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
@@ -430,6 +434,23 @@ static int emergencyPersistLatchCb(void *ctx, int blockersVerified) {
 
 void triggerEmergency(EmergencySource source) {
   const bool already = emergencyLocked;
+  bool superseded = false;
+  if (source != EmergencySource::Physical) {
+    emergencyInputNoteAssertion();
+    superseded = emergencyInputTakeClearSuperseded();
+  }
+
+  /* MISSION 001F/001I: the RAM latch and every local emergency-safe output run
+   * first (emergencyEngageRamCb). Storage runs after and never gates actuation.
+   * Serial banners and Director notices are printed after the outputs. */
+  int durable = 1;
+  if (!already) {
+    EmergencyEngageCtx engageCtx{source};
+    ShowduinoEngageOps engageOps{&engageCtx, emergencyEngageRamCb,
+                                 emergencyPersistBlockersCb, emergencyPersistLatchCb};
+    durable = showduino_emergency_engage(&engageOps);
+  }
+
   const int gpioRaw =
 #if SHOWDUINO_ESTOP_GPIO >= 0
       digitalRead(SHOWDUINO_ESTOP_GPIO);
@@ -455,27 +476,15 @@ void triggerEmergency(EmergencySource source) {
                   gpioRaw, already ? "ACTIVE" : "CLEAR");
   }
 
-  if (source != EmergencySource::Physical) {
-    emergencyInputNoteAssertion();
-    if (emergencyInputTakeClearSuperseded()) {
-      notifyPendingClearSuperseded();
-    }
-  }
+  if (superseded) notifyPendingClearSuperseded();
 
   if (already) {
-    Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
     emergencyLatchReconcile(true, emergencyNodeLinkBlockersVerified());
+    Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
-
-  /* MISSION 001F: the RAM latch and every emergency-safe output run first.
-   * Storage (blocker record, latch record) runs after and never delays or
-   * gates actuation. See protocol/showduino_emergency_engage.h. */
-  EmergencyEngageCtx engageCtx{source};
-  ShowduinoEngageOps engageOps{&engageCtx, emergencyEngageRamCb,
-                               emergencyPersistBlockersCb, emergencyPersistLatchCb};
-  if (!showduino_emergency_engage(&engageOps)) {
+  if (!durable) {
     stageLogEmergency("PERSIST_FAILED", "assert");
   }
 }
@@ -510,6 +519,8 @@ static bool applyEmergencyClear() {
     stageLogEmergency("CLEAR_REJECT", "PERSIST_FAILED");
     return false;
   }
+  /* MISSION 001I: the stored latch is clear, so the episode is over. */
+  emergencyNodeLinkEndEpisode();
   Serial.println("[ESTOP] CLEAR authorised — releasing latch");
   emergencyInputCancelClear();
   stageAudioStopEmergency();

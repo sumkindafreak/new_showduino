@@ -109,6 +109,26 @@ struct C3 {
   void setPressed(bool p) { pressed = p; }
 };
 
+/* A bare ASSERT line as sent by a C3 (no button state). */
+static std::string bareAssert(const C3 &c) {
+  char buf[64];
+  showduino_emergency_format_assert(c.id, c.name, buf, sizeof(buf));
+  return std::string(buf);
+}
+
+/* ---------------- Stored blocker record (simulated NVS / SD) ---------------- */
+struct StoreSim {
+  std::string value;
+  bool valid = false;
+  int failWrites = 0; /* next N writes fail */
+  bool save(const std::string &enc) {
+    if (failWrites > 0) { failWrites--; return false; }
+    value = enc;
+    valid = true;
+    return true;
+  }
+};
+
 /* ---------------- P4 Stage Engine (real interpretation) ---------------- */
 struct P4 {
   ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES]{};
@@ -117,6 +137,11 @@ struct P4 {
   int clearsAccepted = 0;
   int clearsRefused = 0;
   std::vector<C3 *> stations;
+  StoreSim store;
+  bool persistDirty = false;   /* a write failed or was not verified: clear blocked */
+  bool persistValid = false;
+  bool bootUnknown = false;    /* stored record unreadable after a latched restart */
+  std::string persistedEnc;
 
   C3 *byId(const char *id) {
     for (C3 *s : stations) if (!std::strcmp(s->id, id)) return s;
@@ -130,6 +155,8 @@ struct P4 {
                                                    line.c_str(), &res);
     if (handled) *handled = h != 0;
     if (!h) return res;
+    /* P4 storage runs after every handled station line; it writes only on change. */
+    persist();
     if (res.globalLatch && !globalLatched) {
       globalLatched = true;
       globalTriggers++;
@@ -151,12 +178,16 @@ struct P4 {
   /* Director CLEAR. Refused while any station blocks clear. */
   bool directorClear() {
     const int blocking = showduino_station_model_count_blocking(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-    if (showduino_station_clear_blocked_full((unsigned)blocking, 0, 0, 1)) {
+    if (showduino_station_clear_blocked_full((unsigned)blocking, bootUnknown ? 1 : 0,
+                                             persistDirty ? 1 : 0, 1)) {
       clearsRefused++;
       return false;
     }
     globalLatched = false;
     clearsAccepted++;
+    /* P4 applyEmergencyClear: the episode ends, then the empty set is stored. */
+    showduino_station_model_end_episode(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
+    persist();
     for (C3 *s : stations) {
       for (const std::string &r : s->receive("EMERGENCY:CLEAR")) deliver(r);
     }
@@ -172,28 +203,45 @@ struct P4 {
     return showduino_station_model_find_id(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, id);
   }
 
-  /* Persist the pressed set, as the P4 does on change. */
-  std::string persistPressed() const {
+  /* Mirrors emergencyNodeLinkPersistBlockers(): the required set is written on
+   * change only. A failed or unbuildable write leaves persistDirty set. */
+  bool persist() {
     ShowduinoBlocker list[SHOWDUINO_BLOCKER_MAX];
-    uint8_t n = 0;
-    for (int i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES && n < SHOWDUINO_BLOCKER_MAX; ++i) {
-      if (!t[i].used || !t[i].inputOpen || !t[i].id[0]) continue;
-      std::snprintf(list[n].id, sizeof(list[n].id), "%s", t[i].id);
-      std::snprintf(list[n].mac, sizeof(list[n].mac), "%s", t[i].mac[0] ? t[i].mac : "-");
-      n++;
+    int n = 0;
+    if (!showduino_station_model_collect_required(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES,
+                                                  list, SHOWDUINO_BLOCKER_MAX, &n)) {
+      persistDirty = true;
+      return false;
     }
     char buf[SHOWDUINO_BLOCKER_BUF];
-    showduino_blocker_encode(list, n, buf, sizeof(buf));
-    return std::string(buf);
+    if (showduino_blocker_encode(list, (uint8_t)n, buf, sizeof(buf)) < 0) {
+      persistDirty = true;
+      return false;
+    }
+    const std::string enc(buf);
+    if (persistValid && !persistDirty && enc == persistedEnc) return true;
+    if (!store.save(enc)) {
+      persistDirty = true;
+      return false;
+    }
+    persistedEnc = enc;
+    persistValid = true;
+    persistDirty = false;
+    return true;
   }
 };
 
 /* Reboot: a new P4 that restores only the stored blockers. */
-static void rebootFromStore(P4 &fresh, const std::string &stored) {
+static void rebootFromStore(P4 &fresh, const std::string &stored, bool latched = true) {
+  fresh.globalLatched = latched;
   ShowduinoBlocker list[SHOWDUINO_BLOCKER_MAX];
   uint8_t n = 0;
   const ShowduinoBlockerStatus st = showduino_blocker_decode(stored.c_str(), list, &n);
-  if (st != SHOWDUINO_BLOCKER_OK) return;
+  if (st != SHOWDUINO_BLOCKER_OK) {
+    /* Latched with an unreadable record: clear stays refused (fail closed). */
+    fresh.bootUnknown = latched;
+    return;
+  }
   for (uint8_t i = 0; i < n; ++i) {
     const int slot = showduino_station_model_alloc(fresh.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
     if (slot >= 0) showduino_station_model_restore(&fresh.t[slot], list[i].id, list[i].mac);
@@ -395,7 +443,8 @@ int main() {
     before.stations = {&a, &b};
     a.setPressed(true);  before.pump(a, 0);
     b.setPressed(true);  before.pump(b, 0);
-    const std::string stored = before.persistPressed();
+    before.persist();
+    const std::string stored = before.store.value;
 
     /* P4 reboots. Only the stored set survives. */
     P4 after;
@@ -464,6 +513,185 @@ int main() {
     a.setPressed(true);  p4.pump(a, 6000);
     expect(p4.globalLatched && !p4.directorClear(),
            "S12b a new press after clear re-latches the P4 and blocks clear again");
+  }
+
+  /* ============ Scenario 13 (MISSION 001I): bare ASSERT never restores freshness ============ */
+  {
+    C3 a("ESTOP-40", MAC_A, false);
+    P4 p4;
+    p4.stations.push_back(&a);
+    a.setPressed(true);  p4.pump(a, 0);
+    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
+    const int slot = p4.slotOf("ESTOP-40");
+    expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.t[slot].online == 1,
+           "S13a release confirmed by a verified ANNOUNCE while online");
+
+    /* 1. Disconnection before the clear. */
+    a.connected = false;
+    p4.timeout("ESTOP-40");
+    expect(slot >= 0 && p4.t[slot].online == 0 &&
+           showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1,
+           "S13b disconnected station blocks clear, even though its last report was released");
+
+    /* 2. A bare ASSERT arrives. It must not restore online or establish release. */
+    bool handled = false;
+    p4.deliver(bareAssert(a), &handled);
+    expect(handled && p4.globalLatched && p4.t[slot].online == 0,
+           "S13c bare ASSERT keeps the global latch and does NOT restore ONLINE");
+    expect(!p4.directorClear() && p4.clearsRefused >= 1,
+           "S13d attempted clear refused after a bare ASSERT from an offline station");
+
+    /* 3. Fresh, identity-validated released ANNOUNCE after reconnection. */
+    a.connected = true;
+    p4.deliver(a.announce(8000));
+    expect(p4.t[slot].online == 1 && p4.t[slot].inputOpen == 0 && p4.t[slot].reportKnown == 1,
+           "S13e fresh released ANNOUNCE restores ONLINE and RELEASED");
+
+    /* 4. Authorised clear. */
+    expect(p4.directorClear() && !p4.globalLatched && p4.clearsAccepted == 1,
+           "S13f authorised clear accepted after the fresh released ANNOUNCE");
+  }
+
+  /* ============ Scenario 14 (MISSION 001I): reboot after release-then-disconnect ============ */
+  {
+    C3 a("ESTOP-50", MAC_A, false);
+    P4 p4;
+    p4.stations.push_back(&a);
+    a.setPressed(true);  p4.pump(a, 0);
+    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
+    a.connected = false;
+    p4.timeout("ESTOP-50");
+    expect(p4.persist() && p4.store.value.find("ESTOP-50") != std::string::npos,
+           "S14a released-then-disconnected station stays in the stored blocker set");
+
+    P4 after;
+    after.stations.push_back(&a);
+    rebootFromStore(after, p4.store.value, true);
+    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1
+           && !after.bootUnknown,
+           "S14b reboot restores the station as a clear blocker");
+    expect(!after.directorClear(),
+           "S14c clear refused after reboot while no announcement has been received");
+
+    after.deliver(bareAssert(a));
+    expect(!after.directorClear(),
+           "S14d bare ASSERT after reboot does not satisfy the clear requirement");
+
+    a.connected = true;
+    after.deliver(a.announce(6000));
+    expect(after.directorClear(),
+           "S14e fresh released ANNOUNCE after reboot allows the authorised clear");
+  }
+
+  /* ============ Scenario 15 (MISSION 001I): reboot with several stations in different states ============ */
+  {
+    C3 a("ESTOP-60", MAC_A, false);
+    C3 b("ESTOP-61", MAC_B, false);
+    P4 p4;
+    p4.stations.push_back(&a);
+    p4.stations.push_back(&b);
+    a.setPressed(true);  p4.pump(a, 0);
+    b.setPressed(true);  p4.pump(b, 0);
+    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
+    a.connected = false;
+    p4.timeout("ESTOP-60");            /* A: released, then offline. B: still pressed. */
+    p4.persist();
+
+    P4 after;
+    after.stations.push_back(&a);
+    after.stations.push_back(&b);
+    rebootFromStore(after, p4.store.value, true);
+    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 2,
+           "S15a after reboot both the released-then-offline A and the pressed B block clear");
+
+    b.setPressed(false); after.pump(b, 6000); after.pump(b, 8000);
+    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1
+           && !after.directorClear(),
+           "S15b B confirmed released; A still required, clear refused");
+
+    a.connected = true;
+    after.deliver(a.announce(10000));
+    expect(after.directorClear(),
+           "S15c A fresh released ANNOUNCE and B released: authorised clear accepted");
+  }
+
+  /* ============ Scenario 16 (MISSION 001I): storage faults stay fail-closed ============ */
+  {
+    C3 a("ESTOP-70", MAC_A, false);
+    C3 b("ESTOP-71", MAC_B, false);
+    P4 p4;
+    p4.stations.push_back(&a);
+    p4.stations.push_back(&b);
+    a.setPressed(true);  p4.pump(a, 0);
+    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
+
+    /* Storage becomes unavailable, then B asserts. The required set changes and
+     * the write fails. */
+    p4.store.failWrites = 1000;
+    b.setPressed(true);  p4.pump(b, 6000);
+    b.setPressed(false); p4.pump(b, 8000); p4.pump(b, 10000);
+    expect(p4.persistDirty && showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
+           "S16a failed write: every station is released, yet the unverified record blocks clear");
+    expect(!p4.directorClear(),
+           "S16b clear refused while the blocker record is unverified");
+
+    /* Storage recovers. The next station line retries and verifies the write. */
+    p4.store.failWrites = 0;
+    p4.deliver(b.announce(12000));
+    expect(!p4.persistDirty && p4.store.valid,
+           "S16c retry after recovery verifies the blocker record");
+    expect(p4.directorClear(),
+           "S16d clear allowed once the record is verified and all stations are released");
+  }
+  {
+    /* Unreadable record after a latched restart: fail closed, even with no stations. */
+    C3 a("ESTOP-80", MAC_A, false);
+    P4 corrupt;
+    corrupt.stations.push_back(&a);
+    rebootFromStore(corrupt, "B1;corrupted;#0000", true);
+    expect(corrupt.bootUnknown && showduino_station_model_count_blocking(corrupt.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
+           "S16e unreadable record after latched reboot: no stations, yet boot state is unknown");
+    a.connected = true;
+    corrupt.deliver(a.announce(2000));
+    expect(!corrupt.directorClear(),
+           "S16f unknown boot state stays fail-closed, even after a released ANNOUNCE");
+  }
+
+  /* ============ Scenario 17 (MISSION 001I): an accepted clear ends the episode ============ */
+  {
+    C3 a("ESTOP-90", MAC_A, false);
+    P4 p4;
+    p4.stations.push_back(&a);
+    a.setPressed(true);  p4.pump(a, 0);
+    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
+    expect(p4.store.value.find("ESTOP-90") != std::string::npos,
+           "S17a before clear the released station is still a stored blocker");
+    expect(p4.directorClear(), "S17b authorised clear accepted");
+    expect(p4.store.value.find("ESTOP-90") == std::string::npos,
+           "S17c after the accepted clear the stored record holds no stale blocker");
+
+    P4 after;
+    after.stations.push_back(&a);
+    rebootFromStore(after, p4.store.value, false);
+    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
+           "S17d reboot after a completed clear restores no blockers");
+  }
+
+  /* ============ Scenario 18 (MISSION 001I): the stored set is never dropped silently ============ */
+  {
+    ShowduinoStationModel t[3]{};
+    t[0].used = 1; t[0].asserted = 1; std::snprintf(t[0].id, sizeof(t[0].id), "%s", "ESTOP-A");
+    t[1].used = 1; t[1].asserted = 1; std::snprintf(t[1].id, sizeof(t[1].id), "%s", "ESTOP-B");
+    ShowduinoBlocker out[SHOWDUINO_BLOCKER_MAX];
+    int n = -1;
+    expect(showduino_station_model_collect_required(t, 3, out, 1, &n) == 0,
+           "S18a more required stations than the record can hold: collection fails");
+    ShowduinoStationModel noId[1]{};
+    noId[0].used = 1; noId[0].asserted = 1;
+    expect(showduino_station_model_collect_required(noId, 1, out, SHOWDUINO_BLOCKER_MAX, &n) == 0,
+           "S18b required station without an identity: collection fails");
+    expect(showduino_station_model_collect_required(t, 3, out, SHOWDUINO_BLOCKER_MAX, &n) == 1 && n == 2,
+           "S18c two required stations collect in full");
   }
 
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);

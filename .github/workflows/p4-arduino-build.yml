@@ -54,6 +54,11 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Iprotocol \
             tools/director-tests/test_emergency_sheet.cpp -o /tmp/sheet
           /tmp/sheet
+      - name: Wireless station integration suite (-Werror; MISSION 001H/001I)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-station-integration-tests/test_station_integration.cpp -o /tmp/station_it
+          /tmp/station_it
 
   build-current:
     name: Compile P4 Stage Engine (this commit)
