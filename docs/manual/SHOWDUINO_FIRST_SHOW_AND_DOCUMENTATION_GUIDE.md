@@ -1,0 +1,46 @@
+# Showduino: Weekend Build and First-Show Guide
+
+Product: 1.0.0-rc.1 / SHDO v2. Status: documentation work in progress.
+
+This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md), [User Manual](SHOWDUINO_USER_MANUAL.md), [Quick Start](SHOWDUINO_QUICK_START.md), [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md), and [Manual Gaps](SHOWDUINO_MANUAL_GAPS.md).
+
+## Capture your installed build
+
+1. Photograph the three main boards in the central enclosure: Director S3 touchscreen, dedicated Comms S3, and P4 Show Engine.
+2. Photograph Audio, Lamp, Pixel, Emergency and MOSFET nodes individually. Capture both PCB sides, connectors, and fitted enclosures.
+3. For every part, record exact PCB revision, manufacturer, supplier, quantity, voltage, role, mounting, and spare availability.
+4. Record firmware Git commit, board manager core version, installed libraries, FQBN options, and physical test evidence per node.
+
+Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working source for pinouts and vendor/firmware references. Do not claim a representative product photo is a verified photo of the installed module.
+
+## First show: safe workflow
+
+1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
+2. Confirm the link and P4 authority before using the Director.
+3. Create one simple scene and one timed Pixel or Audio clip inside Studio.
+4. Validate and export SHDO v2. Refer to [show format](../show-file-format.md) and [Studio documentation](../studio/README.md).
+5. Verify which authored cue types the installed P4 firmware can deploy and execute; Studio preview alone is not physical proof.
+6. Load the production without automatically starting it. Start and stop it explicitly and record actual hardware responses.
+7. Test Emergency assertion, operator-authorised clear, blackout or override, and no automatic show restart.
+
+Showduino Emergency is a theatrical show-control function and is not a certified life-safety system. Isolate risky loads during bench tests.
+
+## Record physical acceptance
+
+| Test | Status (fill in after bench test) |
+| --- | --- |
+| P4 boot, SD, system audio | NOT YET VERIFIED |
+| Comms S3 UART and ESP-NOW | NOT YET VERIFIED |
+| Director screen and touch | NOT YET VERIFIED |
+| Audio Node WAV and Emergency | NOT YET VERIFIED |
+| GPIO23 show pixels and GPIO24 signage | NOT YET VERIFIED |
+| C3 Pixel and Emergency Nodes | NOT YET VERIFIED |
+| Lamp Node | NOT YET VERIFIED |
+| MOSFET physical DC outputs | NOT YET VERIFIED |
+| Full show plus recovery | NOT YET VERIFIED |
+
+For each PASS, save a dated log, photograph, voltage reading if applicable, node identity and Git commit. Keep personal purchase records and credentials out of public documentation.
+
+## Finish-line checklist
+
+The weekend documentation is complete when a technician can find the part, identify the correct PCB variant, locate its firmware, understand its wiring, restore the configuration, and repeat its commissioning test without asking the original builder.
