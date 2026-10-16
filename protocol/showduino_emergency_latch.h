@@ -32,11 +32,15 @@
 #define SHOWDUINO_LATCH_NVS_KEY       "estop_latch"
 #define SHOWDUINO_LATCH_VALUE_ACTIVE  0xA5u
 #define SHOWDUINO_LATCH_VALUE_CLEAR   0x5Au
+/* Latched, but the wireless blocker record was NOT verified when this value
+ * was written. Boot treats it as unknown, so clear stays blocked. */
+#define SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED 0xA6u
 
 enum ShowduinoLatchRead : uint8_t {
   SHOWDUINO_LATCH_READ_CLEAR  = 0,
   SHOWDUINO_LATCH_READ_ACTIVE = 1,
-  SHOWDUINO_LATCH_READ_FAULT  = 2
+  SHOWDUINO_LATCH_READ_FAULT  = 2,
+  SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED = 3
 };
 
 struct ShowduinoLatchReadInput {
@@ -49,12 +53,14 @@ struct ShowduinoLatchReadInput {
 struct ShowduinoLatchTrack {
   bool durableActive; /* last value confirmed in storage */
   bool dirty;         /* storage does not yet hold the desired state */
+  bool durableUnverified; /* stored ACTIVE carries "blocker record unverified" */
 };
 
 inline ShowduinoLatchRead showduino_latch_decode(const ShowduinoLatchReadInput &in) {
   if (!in.storeOpened || !in.readOk) return SHOWDUINO_LATCH_READ_FAULT;
   if (!in.keyPresent) return SHOWDUINO_LATCH_READ_CLEAR;
   if (in.value == SHOWDUINO_LATCH_VALUE_ACTIVE) return SHOWDUINO_LATCH_READ_ACTIVE;
+  if (in.value == SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED) return SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED;
   if (in.value == SHOWDUINO_LATCH_VALUE_CLEAR)  return SHOWDUINO_LATCH_READ_CLEAR;
   return SHOWDUINO_LATCH_READ_FAULT;
 }
@@ -68,9 +74,12 @@ inline bool showduino_latch_boot_latched(ShowduinoLatchRead r) {
  * unknown, so the desired ACTIVE state is marked dirty and written on the next
  * opportunity. */
 inline void showduino_latch_track_from_boot(ShowduinoLatchTrack *t, ShowduinoLatchRead r) {
+  t->durableUnverified = false;
   switch (r) {
     case SHOWDUINO_LATCH_READ_ACTIVE:
       t->durableActive = true;  t->dirty = false; break;
+    case SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED:
+      t->durableActive = true;  t->dirty = false; t->durableUnverified = true; break;
     case SHOWDUINO_LATCH_READ_CLEAR:
       t->durableActive = false; t->dirty = false; break;
     default:
@@ -149,6 +158,41 @@ static inline int showduino_station_needs_ack(int p4_locked, int online,
 static inline int showduino_station_needs_global_clear(int p4_locked, int online,
                                                        int latched) {
   return !p4_locked && online && latched;
+}
+
+/* ---- Verified-or-unverified latch value (MISSION 001E) ----
+ * Byte written for an ACTIVE latch: 0xA5 when the wireless blocker record was
+ * verified, 0xA6 when it was not. CLEAR is always 0x5A. */
+inline uint8_t showduino_latch_value_for(bool desiredActive, bool blockersVerified) {
+  if (!desiredActive) return SHOWDUINO_LATCH_VALUE_CLEAR;
+  return blockersVerified ? SHOWDUINO_LATCH_VALUE_ACTIVE : SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED;
+}
+
+/* Write needed to reach (desiredActive, blockersVerified). Repeated identical
+ * states are never written. */
+inline bool showduino_latch_needs_write_v2(const ShowduinoLatchTrack *t, bool desiredActive,
+                                           bool blockersVerified) {
+  const bool wantUnverified = desiredActive && !blockersVerified;
+  return t->dirty || (t->durableActive != desiredActive) ||
+         (desiredActive && t->durableUnverified != wantUnverified);
+}
+
+inline void showduino_latch_record_write_v2(ShowduinoLatchTrack *t, bool desiredActive,
+                                            bool blockersVerified, bool verified) {
+  if (verified) {
+    t->durableActive = desiredActive;
+    t->durableUnverified = desiredActive && !blockersVerified;
+    t->dirty = false;
+  } else {
+    t->dirty = true;
+  }
+}
+
+/* Boot-time "unknown" for the whole safety state: latched, and either the latch
+ * byte is unreadable/corrupt, or it was written with an unverified blocker
+ * record. Unknown means clear is refused until a service action. */
+inline bool showduino_latch_boot_unknown(ShowduinoLatchRead r) {
+  return r == SHOWDUINO_LATCH_READ_FAULT || r == SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED;
 }
 
 #endif

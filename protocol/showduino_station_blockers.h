@@ -169,6 +169,19 @@ static inline int showduino_station_clear_blocked_full(unsigned pressedStations,
   return (pressedStations != 0u) || unknownBootState || persistDirty;
 }
 
+/* Whole-state boot decision (MISSION 001E).
+ *   latched == 0: nothing to fail closed on; the stored set is only used when
+ *                 the latch is restored.
+ *   latched != 0: the record must be OK, and the latch must not be marked
+ *                 unverified or corrupt, or clear is refused.
+ * blockerStatus uses ShowduinoBlockerStatus values. latchUnknown is 1 when the
+ * latch byte was FAULT or ACTIVE_UNVERIFIED. */
+static inline int showduino_boot_state_unknown(int latched, int blockerStatus,
+                                               int latchUnknown) {
+  if (!latched) return 0;
+  return (blockerStatus != (int)SHOWDUINO_BLOCKER_OK) || latchUnknown ? 1 : 0;
+}
+
 /* Persist only on a meaningful change, or when storage was never verified. */
 static inline int showduino_station_persist_needed(int validInStorage, int dirty,
                                                    int setsEqual) {

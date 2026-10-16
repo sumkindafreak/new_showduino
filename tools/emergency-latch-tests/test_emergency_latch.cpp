@@ -495,6 +495,156 @@ int main() {
     expect(st.writes == 1, "T23b one genuine release transition writes exactly once");
   }
 
+  /* ---- MISSION 001E: one coherent safety-state model ----
+   * Latch byte and blocker record are written in order (blockers, then latch).
+   * The latch byte records whether the blocker record was verified. Boot treats
+   * an unverified latch, an unreadable latch, or a latch with a missing or corrupt
+   * blocker record as unknown, and refuses clear. */
+  struct ByteStore {
+    bool present = false;
+    uint8_t v = 0;
+    int writes = 0;
+    bool failWrite = false;
+  };
+  auto latchWrite = [](ByteStore &b, uint8_t val) -> bool {
+    b.writes++;
+    if (b.failWrite) return false;
+    b.present = true; b.v = val; return true;
+  };
+  auto latchBoot = [](const ByteStore &b) -> ShowduinoLatchRead {
+    ShowduinoLatchReadInput in{};
+    in.storeOpened = true; in.readOk = true;
+    in.keyPresent = b.present; in.value = b.v;
+    return showduino_latch_decode(in);
+  };
+
+  /* 24. Unverified value decodes as latched and unknown. */
+  {
+    ByteStore b; b.present = true; b.v = SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED;
+    ShowduinoLatchRead r = latchBoot(b);
+    expect(r == SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED, "T24a 0xA6 decodes as ACTIVE_UNVERIFIED");
+    expect(showduino_latch_boot_latched(r) && showduino_latch_boot_unknown(r),
+           "T24b unverified latch restores latched and unknown");
+    b.v = SHOWDUINO_LATCH_VALUE_ACTIVE;
+    expect(!showduino_latch_boot_unknown(latchBoot(b)),
+           "T24c verified 0xA5 is not unknown");
+  }
+
+  /* 25. Value mapping. */
+  expect(showduino_latch_value_for(true, true) == SHOWDUINO_LATCH_VALUE_ACTIVE, "T25a verified ACTIVE is 0xA5");
+  expect(showduino_latch_value_for(true, false) == SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED, "T25b unverified ACTIVE is 0xA6");
+  expect(showduino_latch_value_for(false, false) == SHOWDUINO_LATCH_VALUE_CLEAR, "T25c CLEAR is 0x5A regardless");
+
+  /* 26. Transitions write once; repeats never write. */
+  {
+    ByteStore b; ShowduinoLatchTrack t{};
+    showduino_latch_track_from_boot(&t, SHOWDUINO_LATCH_READ_CLEAR);
+    for (int i = 0; i < 500; i++) {
+      if (showduino_latch_needs_write_v2(&t, true, true)) {
+        bool ok = latchWrite(b, showduino_latch_value_for(true, true));
+        showduino_latch_record_write_v2(&t, true, true, ok);
+      }
+    }
+    expect(b.writes == 1, "T26a repeated verified ACTIVE: one write");
+    for (int i = 0; i < 500; i++) {
+      if (showduino_latch_needs_write_v2(&t, true, false)) {
+        bool ok = latchWrite(b, showduino_latch_value_for(true, false));
+        showduino_latch_record_write_v2(&t, true, false, ok);
+      }
+    }
+    expect(b.writes == 2 && b.v == SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED,
+           "T26b verified to unverified is one write, stored as 0xA6");
+    for (int i = 0; i < 500; i++) {
+      if (showduino_latch_needs_write_v2(&t, true, true)) {
+        bool ok = latchWrite(b, showduino_latch_value_for(true, true));
+        showduino_latch_record_write_v2(&t, true, true, ok);
+      }
+    }
+    expect(b.writes == 3 && b.v == SHOWDUINO_LATCH_VALUE_ACTIVE,
+           "T26c unverified converges to verified with one write");
+  }
+
+  /* 27. A failed unverified write stays dirty and is retried. */
+  {
+    ByteStore b; b.failWrite = true; ShowduinoLatchTrack t{};
+    showduino_latch_track_from_boot(&t, SHOWDUINO_LATCH_READ_CLEAR);
+    bool ok = latchWrite(b, showduino_latch_value_for(true, false));
+    showduino_latch_record_write_v2(&t, true, false, ok);
+    expect(!ok && t.dirty && showduino_latch_needs_write_v2(&t, true, false),
+           "T27a failed unverified write is dirty and needs retry");
+    b.failWrite = false;
+    ok = latchWrite(b, showduino_latch_value_for(true, false));
+    showduino_latch_record_write_v2(&t, true, false, ok);
+    expect(ok && !t.dirty && b.v == SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED,
+           "T27b retry stores the unverified latch");
+  }
+
+  /* 28. Interrupted assertion: blockers fail, latch engages unverified, restart. */
+  {
+    ByteStore b;
+    /* Assertion: the blocker write failed, so the latch is written unverified. */
+    const bool blockersVerified = false;
+    bool ok = latchWrite(b, showduino_latch_value_for(true, blockersVerified));
+    expect(ok, "T28a latch written during blocker failure");
+    ShowduinoLatchRead r = latchBoot(b);
+    expect(showduino_boot_state_unknown(showduino_latch_boot_latched(r) ? 1 : 0,
+                                        SHOWDUINO_BLOCKER_ABSENT,
+                                        showduino_latch_boot_unknown(r) ? 1 : 0),
+           "T28b restart after unverified assertion: unknown, clear blocked");
+    /* Even with a valid but stale empty record, the unverified byte blocks clear. */
+    expect(showduino_boot_state_unknown(1, SHOWDUINO_BLOCKER_OK,
+                                        showduino_latch_boot_unknown(r) ? 1 : 0) == 1,
+           "T28c stale valid blocker record cannot release an unverified latch");
+  }
+
+  /* 29. Upgrade / missing record: latch ACTIVE with no blocker record. */
+  {
+    ByteStore b; latchWrite(b, SHOWDUINO_LATCH_VALUE_ACTIVE);
+    ShowduinoLatchRead r = latchBoot(b);
+    expect(showduino_boot_state_unknown(1, SHOWDUINO_BLOCKER_ABSENT, showduino_latch_boot_unknown(r) ? 1 : 0),
+           "T29a ACTIVE latch with no blocker record: unknown (fail closed)");
+    expect(!showduino_boot_state_unknown(0, SHOWDUINO_BLOCKER_ABSENT, 0),
+           "T29b no latch and no record: nothing unknown");
+  }
+
+  /* 30. Corrupt latch byte with an otherwise valid empty record: unknown. */
+  {
+    ShowduinoLatchReadInput in{}; in.storeOpened = true; in.readOk = true;
+    in.keyPresent = true; in.value = 0x33;
+    ShowduinoLatchRead r = showduino_latch_decode(in);
+    expect(r == SHOWDUINO_LATCH_READ_FAULT, "T30a unknown latch byte decodes as FAULT");
+    expect(showduino_boot_state_unknown(showduino_latch_boot_latched(r) ? 1 : 0,
+                                        SHOWDUINO_BLOCKER_OK,
+                                        showduino_latch_boot_unknown(r) ? 1 : 0),
+           "T30b corrupt latch with valid record: unknown, clear blocked");
+  }
+
+  /* 31. Crash between writes: blockers written, latch not. Restart is CLEAR, so
+   * nothing is latched; the next assertion rewrites the record first. */
+  {
+    ByteStore b;
+    expect(!showduino_boot_state_unknown(showduino_latch_boot_latched(latchBoot(b)) ? 1 : 0,
+                                         SHOWDUINO_BLOCKER_OK, 0),
+           "T31 crash after blocker write, before latch: clean CLEAR restart");
+  }
+
+  /* 32. Interrupted verified-to-unverified transition: latch still 0xA5 and the
+   * blocker record is then unverified in RAM. Restart must still not trust the
+   * blocker record unless it is stored as verified. */
+  {
+    ByteStore b; latchWrite(b, SHOWDUINO_LATCH_VALUE_ACTIVE);
+    ShowduinoLatchTrack t{};
+    showduino_latch_track_from_boot(&t, SHOWDUINO_LATCH_READ_ACTIVE);
+    /* A later unverified blocker set fails to become durable. The byte stays 0xA5. */
+    b.failWrite = true;
+    bool ok = latchWrite(b, showduino_latch_value_for(true, false));
+    showduino_latch_record_write_v2(&t, true, false, ok);
+    expect(!ok && t.dirty, "T32a failed unverified transition leaves storage dirty");
+    /* While dirty, the RAM side must keep blocking clear. */
+    expect(showduino_station_clear_blocked_full(0u, 0, t.dirty ? 1 : 0, 1),
+           "T32b dirty latch keeps clear blocked in RAM");
+  }
+
   std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);
   return gFails == 0 ? 0 : 1;
 }

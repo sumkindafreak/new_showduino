@@ -43,7 +43,9 @@ uint8_t emergencyNodeLinkAssertingCount();
 uint8_t emergencyNodeLinkPressedCount();
 /* Clear-blocker restore and persistence (MISSION 001D). */
 void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
-                                   ShowduinoBlockerStatus status, bool latched);
+                                   ShowduinoBlockerStatus status, bool latched,
+                                   bool latchUnknown);
+bool emergencyNodeLinkBlockersVerified();
 bool emergencyNodeLinkPersistBlockers();
 void emergencyNodeLinkRetryBlockers();
 bool emergencyNodeLinkBlockerStorageFault();

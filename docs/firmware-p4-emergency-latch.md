@@ -84,3 +84,13 @@ This is an entertainment emergency function. It is not a certified emergency-sto
 - **Limitations:** replacing a station changes its MAC, which blocks release until service. There is no software exit from an unknown boot state. Full list in the service document.
 - **Tests:** latch suite T14–T23 (codec, reboot, reconnect, release, indefinite offline, multiple stations, write failure, corrupt and absent data, repeated announces). Mutation checks: four mutants, all caught.
 - **Not compiled for the target. Not hardware-tested.**
+
+## MISSION 001E — one coherent safety-state model
+
+- **Latch byte** has three values: `0xA5` ACTIVE with a verified blocker record, `0xA6` ACTIVE with an **unverified** record, and `0x5A` CLEAR. Writes are transition-only and read back.
+- **Assertion order:** the blocker record is written first, then the latch takes the verified or unverified value. If the blocker write fails, the latch still engages in RAM and is stored as unverified.
+- **Boot:** a latch byte that is `0xA6`, unreadable or corrupt, or a latched boot with a missing or corrupt blocker record, is **unknown**. Clear is refused. Unknown storage is never overwritten.
+- **Retry:** every 5 s, the blocker write is retried, then the latch is reconciled. The latch converges to `0xA5` once the record verifies.
+- **Known gap:** if the latch write also fails, the assertion is held only in RAM. A restart before any verified write loses it, and the physical button (or a station re-assert) must re-create it. Software cannot recover an assertion that was never durably stored.
+- **Tests:** latch suite T24–T32 (value mapping, transitions, failed writes, interrupted assertion, upgrade with a missing record, corrupt byte, crash between writes). Mutation checks: four mutants, all caught.
+- **Not compiled for target. Not hardware-tested.**

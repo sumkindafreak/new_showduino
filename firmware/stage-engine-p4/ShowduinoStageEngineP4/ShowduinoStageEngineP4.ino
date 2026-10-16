@@ -384,7 +384,7 @@ void triggerEmergency(EmergencySource source) {
 
   if (already) {
     Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
-    emergencyLatchRetryIfDirty(true);
+    emergencyLatchReconcile(true, emergencyNodeLinkBlockersVerified());
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
@@ -396,8 +396,10 @@ void triggerEmergency(EmergencySource source) {
 
   /* Persist before the RAM latch engages. A failed write is retried and never
    * stops the latch from engaging. */
-  emergencyNodeLinkPersistBlockers(); /* blocker set before the latch */
-  if (!emergencyLatchRequest(true)) {
+  /* Blocker set first. The latch records whether that set verified, so a restart
+   * cannot treat an unverified record as known. */
+  const bool blockersVerified = emergencyNodeLinkPersistBlockers();
+  if (!emergencyLatchSetActive(blockersVerified)) {
     Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
     stageLogEmergency("PERSIST_FAILED", "assert");
   }
@@ -1741,7 +1743,8 @@ void setup() {
     ShowduinoBlocker blockers[SHOWDUINO_BLOCKER_MAX];
     uint8_t blockerCount = 0;
     const ShowduinoBlockerStatus bs = emergencyStationStoreLoad(blockers, &blockerCount);
-    emergencyNodeLinkStageRestore(blockers, blockerCount, bs, sRestoredEmergencyAtBoot);
+    emergencyNodeLinkStageRestore(blockers, blockerCount, bs, sRestoredEmergencyAtBoot,
+                                  emergencyLatchBootUnknown());
   }
 
   /* Generic I/O enters explicit high-impedance safe state before SD mount. */
@@ -1842,13 +1845,14 @@ void loop() {
   gRuntime.service(millis(), &gEngine);
   showPixelsService();
 
-  if (emergencyLatchStorageFault() || emergencyNodeLinkBlockerStorageFault()) {
-    /* Throttled retry only while a write is unverified. Not a per-loop write. */
+  {
+    /* Throttled (5 s). Retries unverified writes and converges the latch byte
+     * to the verified state once the blocker record verifies. Writes only on need. */
     static uint32_t sLatchRetryMs = 0;
     if ((millis() - sLatchRetryMs) >= 5000UL) {
       sLatchRetryMs = millis();
-      emergencyLatchRetryIfDirty(emergencyLocked);
       emergencyNodeLinkRetryBlockers();
+      emergencyLatchReconcile(emergencyLocked, emergencyNodeLinkBlockersVerified());
     }
   }
   if (emergencyLocked) {

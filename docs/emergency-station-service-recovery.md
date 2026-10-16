@@ -41,3 +41,30 @@ A USB-only maintenance command, `ESTOP:BLOCKERS:RESET:<confirm>`. It would:
 - write an audit line and reply with the record it removed;
 - be absent from the Director and all wireless paths.
 It needs review against the "no casual bypass, no automatic timeout, no undocumented remote clear" rule before it is built.
+
+## MISSION 001E review
+
+### Can the procedure be completed with the current firmware?
+**No.** Step 4 (failed or replaced station) has no supported software path:
+- A replacement station has a new MAC, so it cannot release the stored record.
+- Clearing a stored record needs a firmware action that does not exist.
+- An unknown boot state (corrupt or unverified storage) is blocked with no software exit.
+
+This is an **unresolved limitation**. Do not treat the station-replacement or unknown-state cases as recoverable on site until a working, tested mechanism exists.
+
+### Controlled physical-maintenance recovery (requirements for a future build)
+Any recovery mechanism must meet all of these:
+1. **Physical access only.** A USB maintenance session with the P4 in the installation, not a Director button and not any wireless or network path.
+2. **Outputs safe first.** Emergency latched, all show outputs in their emergency-safe state, and the show unable to run.
+3. **Explicit operator authority.** A named operator confirms, in writing and in the event log, that every Emergency Node was physically inspected, with its ID and button state recorded.
+4. **GPIO25 released** and every station with a fresh released report, **or** the station physically removed from the installation and recorded as removed.
+5. **Scoped action.** Removes only the stored blocker record. It never edits the latch byte, so the latch stays ACTIVE until a normal, verified CLEAR.
+6. **Verification.** Read back the stored record, reboot, and confirm the P4 reports the record as cleared before any clear is accepted.
+7. **Audit.** Every use writes a log line with the time, the operator, and the removed identities.
+
+### Wireless trust boundary (Priority 4): unresolved
+- ESP-NOW peers are added with `encrypt = false` (`firmware/c3-emergency-node/.../EspNowEmergencyTransport.cpp`).
+- Announce and assert messages carry no signature, nonce or counter that the P4 checks. The announce `sequence` field is not checked for freshness or replay.
+- A station's MAC address appears in clear text in every message. **A matching MAC is not authentication.**
+- Consequence: a device within radio range can send a forged released announce that matches a stored ID and MAC. That would drop a stored blocker. The emergency itself stays latched, and the operator still has to clear through the Director with GPIO25 released. Still, this weakens the release guarantee, and it is a **High** item.
+- Not fixed here. Dependency for the **Comms security mission**: authenticated, replay-protected station messages, for example a per-station key provisioned at commissioning with monotonic counters.

@@ -1,0 +1,105 @@
+name: P4 Stage Engine (Arduino) build and host tests
+
+# Added for MISSION 001E. Does not replace p4-stage-engine-build.yml, which targets
+# a path (stage-engine/esp32-p4) that does not exist in this repository.
+
+on:
+  push:
+    branches: ["fix/**", "main"]
+    paths:
+      - "firmware/stage-engine-p4/**"
+      - "protocol/**"
+      - "tools/**"
+      - ".github/workflows/p4-arduino-build.yml"
+  pull_request:
+    paths:
+      - "firmware/stage-engine-p4/**"
+      - "protocol/**"
+      - "tools/**"
+      - ".github/workflows/p4-arduino-build.yml"
+  workflow_dispatch:
+
+env:
+  SKETCH_DIR: firmware/stage-engine-p4/ShowduinoStageEngineP4
+  FQBN: "esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3"
+  ESP32_CORE: "3.3.11"
+  BOARD_INDEX: "https://espressif.github.io/arduino-esp32/package_esp32_index.json"
+
+jobs:
+  host-tests:
+    name: Host tests (policy only, not firmware)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Latch and station policy suite (-Werror)
+        run: bash tools/emergency-latch-tests/run_tests.sh
+      - name: Emergency button suite (-Werror)
+        run: |
+          set -o pipefail
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-button-tests/test_emergency_button.cpp -o /tmp/btn
+          /tmp/btn
+      - name: "Director emergency sheet suite (no -Werror; pre-existing snprintf warning)"
+        run: |
+          set -o pipefail
+          g++ -std=c++17 -Wall -Wextra -Iprotocol \
+            tools/director-tests/test_emergency_sheet.cpp -o /tmp/sheet
+          /tmp/sheet
+
+  build-current:
+    name: Compile P4 Stage Engine (this commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.1.1"
+      - name: Install ESP32 core ${{ env.ESP32_CORE }}
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls "$BOARD_INDEX"
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@${ESP32_CORE}"
+          arduino-cli core list
+      - name: Compile sketch
+        run: |
+          arduino-cli compile --fqbn "$FQBN" --warnings default \
+            --build-path build "$SKETCH_DIR" 2>&1 | tee compile.log
+      - name: Upload build log and binaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-arduino-current
+          path: |
+            compile.log
+            build/*.bin
+            build/*.elf
+          if-no-files-found: warn
+
+  build-baseline:
+    name: Compile P4 Stage Engine (baseline a8b3cb8, for comparison)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: a8b3cb81af6f807993480066f1cd139cb9a30e08
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.1.1"
+      - name: Install ESP32 core ${{ env.ESP32_CORE }}
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls "$BOARD_INDEX"
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@${ESP32_CORE}"
+      - name: Compile baseline sketch
+        run: |
+          arduino-cli compile --fqbn "$FQBN" --warnings default \
+            --build-path build "$SKETCH_DIR" 2>&1 | tee compile.log
+      - name: Upload baseline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-arduino-baseline
+          path: compile.log
+          if-no-files-found: warn

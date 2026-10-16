@@ -118,11 +118,17 @@ int emergencyNodeLinkClearBlocked() {
                                               sBooted ? 1 : 0);
 }
 
+bool emergencyNodeLinkBlockersVerified() { return !sPersistDirty && !sUnknownBootState; }
+
 void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
-                                   ShowduinoBlockerStatus status, bool latched) {
+                                   ShowduinoBlockerStatus status, bool latched,
+                                   bool latchUnknown) {
   sStagedCount = 0;
   sPersistedValid = false;
-  sUnknownBootState = latched && status != SHOWDUINO_BLOCKER_OK;
+  /* Latched with an unreadable or incomplete record, or a latch byte that was
+   * written unverified or cannot be read: clear stays refused. */
+  sUnknownBootState = showduino_boot_state_unknown(latched ? 1 : 0, (int)status,
+                                                   latchUnknown ? 1 : 0) != 0;
   if (sUnknownBootState) {
     SD_LOGE("ESTOP", "station record unknown after restart — clear blocked, service recovery required");
     return;

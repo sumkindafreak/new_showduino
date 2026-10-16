@@ -3,8 +3,9 @@
 
 /*
  * NVS-backed persistence for the P4 emergency latch.
- * Policy lives in protocol/showduino_emergency_latch.h. This file performs
- * the Preferences (NVS) calls. The byte is written only on latch transitions.
+ * Policy lives in protocol/showduino_emergency_latch.h. The stored byte is
+ * 0xA5 (ACTIVE, blocker record verified), 0xA6 (ACTIVE, blocker record NOT
+ * verified) or 0x5A (CLEAR). Written only on transitions, with read-back.
  */
 
 #include <Arduino.h>
@@ -14,15 +15,21 @@
  * true (fail-safe). */
 bool emergencyLatchRestoreAtBoot();
 
-/* Persist the desired state. Returns true when storage now matches (or no
- * write was needed). For a CLEAR, false must refuse the clear. */
+/* True when the boot read was FAULT or ACTIVE_UNVERIFIED. The safety state is
+ * then unknown and clear must be refused until a service action. */
+bool emergencyLatchBootUnknown();
+
+/* Persist ACTIVE. blockersVerified=false stores the unverified value. Returns
+ * true when storage now matches. */
+bool emergencyLatchSetActive(bool blockersVerified);
+
+/* Persist CLEAR. Returns true only when the CLEAR is verified. */
 bool emergencyLatchRequest(bool active);
 
-/* Retry a previously failed write, if any. ramActive is the RAM latch state,
- * which is what storage must converge to. */
-void emergencyLatchRetryIfDirty(bool ramActive);
+/* True when storage does not yet match the RAM latch and blocker verification. */
+bool emergencyLatchNeedsReconcile(bool ramActive, bool blockersVerified);
 
-/* True while storage is known not to hold the latched state. */
-bool emergencyLatchStorageFault();
+/* Bring storage to match. Writes only when needed. */
+void emergencyLatchReconcile(bool ramActive, bool blockersVerified);
 
 #endif
