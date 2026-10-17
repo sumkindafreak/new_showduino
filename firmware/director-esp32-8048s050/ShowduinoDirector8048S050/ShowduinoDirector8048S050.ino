@@ -362,6 +362,15 @@ void handleStageLine(String line) {
     return;
   }
 
+  /* P4-local PCM5102A ambience is controlled from the Director Audio page.
+   * Keep it separate from specialist AUDIO:NODE:* state. */
+  if (line.startsWith("AMBIENCE:STATUS:") ||
+      line.startsWith("OK:AMBIENCE:") ||
+      line.startsWith("ERR:AMBIENCE:")) {
+    page_05_audio_node_apply_ambience_line(line.c_str());
+    return;
+  }
+
   ui.applyStageCapabilityLine(line.c_str());
 
   if (ui.applyGatewayWire(line.c_str()) || ui.applyUpdateWire(line.c_str())) {

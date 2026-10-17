@@ -679,7 +679,7 @@ Current product/device concepts include:
 - specialist **Pixel Node** foundation (standalone C3);
 - **Wireless Emergency + Pixel Node** (`ESTOP-xx`: assert-only Emergency plus optional GPIO2 Pixel Line on the same peer);
 - P4 Plug-in Bus devices;
-- future **MOSFET Node**.
+- **MOSFET Node** (software implementation active; physical acceptance still required).
 
 The old Relay Node product direction is retired/legacy and must not be used as the basis of a new commercial workflow.
 
@@ -713,6 +713,7 @@ The current persistent P4 production format v1 is intentionally strict. At this 
 - `PIXEL` (commands must begin with `PIXEL:`)
 - `AUDIO` (commands must begin with `AUDIO:NODE:`)
 - `LAMP` (commands must begin with `LAMP:`)
+- `MOSFET` (commands must begin with `MOSFET:NODE:`)
 - internal `TEST` / `LOG`
 
 SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
@@ -885,7 +886,7 @@ The shared current FX vocabulary includes:
 
 That is **25** current Showduino FX entries shared across the Pixel-capable peers listed above.
 
-These are current engine/commissioning capabilities. Persistent production-file PIXEL cue support is not yet complete.
+These are current engine/commissioning capabilities. Persistent v1 now accepts bounded P4-local `PIXEL:` cues; SHDO compilation also covers the supported specialist pixel routes. Mixed-device hardware acceptance and Emergency Node pixel persistence remain open.
 
 ## 17.2 Outputs browser page
 
@@ -919,7 +920,11 @@ P4 system audio uses the onboard ES8311 path for Showduino sounds such as boot, 
 
 If a system WAV is missing or invalid, the Show Engine must continue operating rather than treating audio playback as the safety mechanism.
 
-## 18.2 Attraction/programme audio
+## 18.2 P4 ambience audio
+
+The P4 also has a dedicated **PCM5102A ambience output**, separate from both the onboard ES8311 system/safety speaker and the specialist Audio Node. The P4 accepts `AMBIENCE:PLAY`, `AMBIENCE:LOOP`, `AMBIENCE:STOP`, `AMBIENCE:VOLUME` and `AMBIENCE:STATUS`. The Director **AUDIO NODE** page exposes these controls through an **AMBIENCE** panel using the finish-line P4 SD asset `/showduino/audio/ambience.wav`. Emergency stops this stream and clear does not auto-resume it.
+
+## 18.3 Attraction/programme audio
 
 Attraction audio is produced by the specialist **Audio Node** from its local SD card.
 
@@ -929,7 +934,7 @@ Current Audio Node operations include play, loop, stop, pause, resume, volume, f
 
 The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
 
-## 18.3 Audio Node Emergency behaviour
+## 18.4 Audio Node Emergency behaviour
 
 Emergency:
 
@@ -1048,7 +1053,7 @@ Current persistent productions are stored under:
 
 Current production format v1 is bounded and validates file size, cue count, duplicate IDs, time order, path traversal and supported cue types.
 
-At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
+At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
 
 ## 21.3 SHDO v2
 
@@ -1288,7 +1293,7 @@ Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicit
 | P4 segmented Show Pixels | Implemented; hardware acceptance required |
 | C3 Pixel Node | Software/routing active; hardware acceptance required |
 | Wireless Emergency + Pixel Node | Software implemented (momentary + OLED + GPIO2 Pixel); GPIO/physical acceptance incomplete |
-| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/TEST/LOG; ESTOP cue type and full theatrical set still incomplete |
+| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/MOSFET/TEST/LOG; ESTOP cue type and full theatrical set still incomplete |
 | SHDO v2 | Active authoring/interchange contract |
 | System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
 | Comms self-OTA | Implemented in software; physical proof required |

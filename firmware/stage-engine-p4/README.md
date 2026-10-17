@@ -19,7 +19,7 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 ## Current implemented foundation
 
 - Authoritative show/emergency runtime.
-- Persistent P4 SD production discovery and transactional TEST/LOG timeline loading.
+- Persistent P4 SD production discovery and transactional bounded `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` / `TEST` / `LOG` timeline loading.
 - Start/pause/resume/stop timeline execution independent of Director/browser presence.
 - Dedicated S3 Comms UART on P4 GPIO4/5.
 - P4 onboard ES8311 system/safety audio.
@@ -31,7 +31,7 @@ Node     --ESP-NOW--> ESP32-S3 Comms Controller --UART--> this Show Engine
 - Plug-in Bus, storage, diagnostics and optional network foundations.
 - Optional Studio RAM timeline ingest (`/api/studio-timeline`) for PIXEL and AUDIO:NODE cues. This is commissioning-only; a loaded show does not depend on the WebUI.
 
-Persistent production format v1 still accepts only TEST/LOG cues. Production-file `AUDIO` and `PIXEL` cue types are not yet implemented. SHDO v2 is not parsed on the P4.
+Persistent production format v1 accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG` cues. SHDO v2 authoring packages are validated/compiled by the P4 deploy path into the runtime `manifest.json` + `timeline.json` representation; arbitrary SHDO JSON is not executed directly. Dedicated ESTOP cue persistence and the full theatrical feature set are not yet implemented.
 
 ## Arduino build / flash
 
@@ -108,7 +108,7 @@ Emergency changes **all GPIO24 pixels to bright white in one frame**.
 Implemented non-blocking segmented FX engine:
 
 ```text
-default count: 100
+default count: 10
 segment slots: 16
 frame service: 20 ms
 ```

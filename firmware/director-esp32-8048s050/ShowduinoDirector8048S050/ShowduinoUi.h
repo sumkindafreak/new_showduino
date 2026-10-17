@@ -2963,9 +2963,51 @@ private:
       page_05_audio_node_show_details(true);
       return;
     }
+    if (command == PAGE05_CMD_AMBIENCE) {
+      page_05_audio_node_show_ambience(true);
+      if (commandCallback) commandCallback("AMBIENCE:STATUS");
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_PLAY || command == PAGE05_CMD_AMB_LOOP) {
+      if (emergencyLocked) return;
+      if (commandCallback) {
+        commandCallback(String(command == PAGE05_CMD_AMB_LOOP ? "AMBIENCE:LOOP:" : "AMBIENCE:PLAY:") +
+                        PAGE05_AMBIENCE_DEFAULT_PATH);
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_STOP) {
+      if (commandCallback) {
+        commandCallback("AMBIENCE:STOP");
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_VOL_DN || command == PAGE05_CMD_AMB_VOL_UP) {
+      if (emergencyLocked) return;
+      int v = (int)page_05_audio_node_ambience_volume() +
+              (command == PAGE05_CMD_AMB_VOL_UP ? 10 : -10);
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      if (commandCallback) {
+        commandCallback(String("AMBIENCE:VOLUME:") + String(v));
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_STATUS) {
+      if (commandCallback) commandCallback("AMBIENCE:STATUS");
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_CLOSE) {
+      page_05_audio_node_show_ambience(false);
+      return;
+    }
     if (command == PAGE05_CMD_CLOSE) {
       page_05_audio_node_show_details(false);
       page_05_audio_node_show_select(false);
+      page_05_audio_node_show_ambience(false);
       return;
     }
     if (command == PAGE05_CMD_INV_NEXT) {
@@ -4246,7 +4288,10 @@ private:
         refreshAudioNodePage();
       }
       pushDisplaySnapshot();
-      if (commandCallback) commandCallback("STATUS:REQUEST");
+      if (commandCallback) {
+        commandCallback("STATUS:REQUEST");
+        commandCallback("AMBIENCE:STATUS");
+      }
     } else {
       Serial.println("[UI] Audio Node page unavailable");
       showNodes();

@@ -1,0 +1,490 @@
+{
+  "schema": "showduino-production-v2",
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "project": {
+    "id": "all_nodes_bench_test",
+    "name": "All Nodes Bench Test",
+    "description": "Finish-line non-DMX acceptance sequence. P4, C3 Pixel Node and Audio Node GPIO22 use 10 pixels. Lamp uses its permanent 7-pixel Jewel. Emergency Node is registered but its pixels are tested through the global Emergency path rather than a persisted ESTOP cue.",
+    "author": "Toby",
+    "version": "1.0.2",
+    "revision": 3,
+    "duration": 22000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-hand-authored",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "productionCannotDisable": true,
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "P4 Show Pixels",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "pixel-node-1",
+      "name": "C3 Pixel Node",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "audio-node",
+      "name": "Audio Node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "AUDIO-01"
+      }
+    },
+    {
+      "id": "audio-node-pixels",
+      "name": "Audio Node Pixels",
+      "type": "audio-node-pixels",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node-pixels",
+        "nodeId": "AUDIO-01",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "lamp-node",
+      "name": "Lamp Node",
+      "type": "lamp",
+      "enabled": true,
+      "binding": {
+        "route": "lamp-node",
+        "nodeId": "LAMP-01"
+      }
+    },
+    {
+      "id": "mosfet-node",
+      "name": "MOSFET Node",
+      "type": "mosfet-node",
+      "enabled": true,
+      "binding": {
+        "route": "mosfet-node",
+        "nodeId": "MOSFET-01"
+      }
+    },
+    {
+      "id": "emergency-node-pixels",
+      "name": "Emergency Node Pixels",
+      "type": "estop-node-pixels",
+      "enabled": true,
+      "binding": {
+        "route": "estop-node-pixels",
+        "nodeId": "ESTOP-01",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-p4-pixels",
+      "name": "P4 Pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "track-pixel-node",
+      "name": "Pixel Node",
+      "type": "pixel",
+      "enabled": true,
+      "order": 1,
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "track-audio-pixels",
+      "name": "Audio Node Pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 2,
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "track-audio",
+      "name": "Audio Node",
+      "type": "audio",
+      "enabled": true,
+      "order": 3,
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "track-lamp",
+      "name": "Lamp Node",
+      "type": "lamp",
+      "enabled": true,
+      "order": 4,
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "track-mosfet",
+      "name": "MOSFET Node",
+      "type": "mosfet",
+      "enabled": true,
+      "order": 5,
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "track-log",
+      "name": "Test Log",
+      "type": "log",
+      "enabled": true,
+      "order": 6
+    }
+  ],
+  "clips": [
+    {
+      "id": "p4-breathe",
+      "trackId": "track-p4-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-p4",
+      "name": "P4 10px blue breathe",
+      "type": "pixel",
+      "targetDeviceId": "p4-show-pixels",
+      "startMs": 1000,
+      "durationMs": 2000,
+      "enabled": true,
+      "params": {
+        "effect": "BREATHE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 80,
+        "b": 255,
+        "brightness": 160,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      }
+    },
+    {
+      "id": "c3-flicker",
+      "trackId": "track-pixel-node",
+      "sceneId": "scene-main",
+      "cueId": "cue-c3",
+      "name": "C3 Pixel Node 10px red flicker",
+      "type": "pixel",
+      "targetDeviceId": "pixel-node-1",
+      "startMs": 4000,
+      "durationMs": 2000,
+      "enabled": true,
+      "params": {
+        "effect": "FLICKER",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 160,
+        "speed": 55,
+        "intensity": 100,
+        "randomness": 45,
+        "reverse": false,
+        "blackoutAtEnd": true
+      }
+    },
+    {
+      "id": "audio-pixels-fire",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels",
+      "name": "Audio Node GPIO22 10px fire",
+      "type": "pixel",
+      "targetDeviceId": "audio-node-pixels",
+      "startMs": 7000,
+      "durationMs": 2000,
+      "enabled": true,
+      "params": {
+        "effect": "FIRE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 65,
+        "b": 0,
+        "brightness": 180,
+        "speed": 55,
+        "intensity": 100,
+        "randomness": 25,
+        "reverse": false,
+        "blackoutAtEnd": true
+      }
+    },
+    {
+      "id": "audio-play",
+      "trackId": "track-audio",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio",
+      "name": "Audio Node system test",
+      "type": "audio",
+      "targetDeviceId": "audio-node",
+      "startMs": 10000,
+      "durationMs": 4000,
+      "enabled": true,
+      "params": {
+        "file": "system-test.wav",
+        "volume": 50,
+        "loop": false
+      }
+    },
+    {
+      "id": "lamp-ignite",
+      "trackId": "track-lamp",
+      "sceneId": "scene-main",
+      "cueId": "cue-lamp-ignite",
+      "name": "Lamp Jewel ignite",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 15000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "effect": "IGNITE"
+      }
+    },
+    {
+      "id": "lamp-unstable",
+      "trackId": "track-lamp",
+      "sceneId": "scene-main",
+      "cueId": "cue-lamp-unstable",
+      "name": "Lamp Jewel unstable flame",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 16000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "effect": "UNSTABLE",
+        "brightness": 80
+      }
+    },
+    {
+      "id": "lamp-flare",
+      "trackId": "track-lamp",
+      "sceneId": "scene-main",
+      "cueId": "cue-lamp-flare",
+      "name": "Lamp Jewel flare",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 17000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "effect": "FLARE",
+        "brightness": 100
+      }
+    },
+    {
+      "id": "lamp-extinguish",
+      "trackId": "track-lamp",
+      "sceneId": "scene-main",
+      "cueId": "cue-lamp-extinguish",
+      "name": "Lamp Jewel extinguish",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "params": {
+        "effect": "EXTINGUISH"
+      }
+    },
+    {
+      "id": "mosfet-pulse",
+      "trackId": "track-mosfet",
+      "sceneId": "scene-main",
+      "cueId": "cue-mosfet",
+      "name": "MOSFET OUT1 safe pulse",
+      "type": "mosfet",
+      "targetDeviceId": "mosfet-node",
+      "startMs": 19000,
+      "durationMs": 500,
+      "enabled": true,
+      "params": {
+        "out": "out1",
+        "mode": "pulse",
+        "duty": 25,
+        "pulseMs": 500,
+        "safeOff": true
+      }
+    },
+    {
+      "id": "show-end",
+      "trackId": "track-log",
+      "sceneId": "scene-main",
+      "cueId": "cue-end",
+      "name": "complete",
+      "type": "log",
+      "startMs": 22000,
+      "durationMs": 0,
+      "enabled": true
+    }
+  ],
+  "markers": [
+    {
+      "id": "marker-start",
+      "name": "START",
+      "timeMs": 0
+    },
+    {
+      "id": "marker-end",
+      "name": "COMPLETE",
+      "timeMs": 22000
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene-main",
+      "name": "All Nodes Bench Test",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-p4",
+          "name": "P4 pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "p4-breathe"
+          ]
+        },
+        {
+          "id": "cue-c3",
+          "name": "C3 Pixel Node",
+          "trigger": "Timeline",
+          "clipIds": [
+            "c3-flicker"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels",
+          "name": "Audio Node pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-fire"
+          ]
+        },
+        {
+          "id": "cue-audio",
+          "name": "Audio Node playback",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-play"
+          ]
+        },
+        {
+          "id": "cue-lamp-ignite",
+          "name": "Lamp ignite",
+          "trigger": "Timeline",
+          "clipIds": [
+            "lamp-ignite"
+          ]
+        },
+        {
+          "id": "cue-lamp-unstable",
+          "name": "Lamp unstable",
+          "trigger": "Timeline",
+          "clipIds": [
+            "lamp-unstable"
+          ]
+        },
+        {
+          "id": "cue-lamp-flare",
+          "name": "Lamp flare",
+          "trigger": "Timeline",
+          "clipIds": [
+            "lamp-flare"
+          ]
+        },
+        {
+          "id": "cue-lamp-extinguish",
+          "name": "Lamp extinguish",
+          "trigger": "Timeline",
+          "clipIds": [
+            "lamp-extinguish"
+          ]
+        },
+        {
+          "id": "cue-mosfet",
+          "name": "MOSFET Node",
+          "trigger": "Timeline",
+          "clipIds": [
+            "mosfet-pulse"
+          ]
+        },
+        {
+          "id": "cue-end",
+          "name": "Show complete",
+          "trigger": "Timeline",
+          "clipIds": [
+            "show-end"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-system-test",
+      "name": "system-test.wav",
+      "type": "audio",
+      "path": "system-test.wav"
+    }
+  ],
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 500,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-finish-line-acceptance",
+    "notes": "Emergency Node is present in device metadata but deliberately has no persisted ESTOP pixel clip because runtime format v1 does not accept ESTOP cue type. Assert Emergency manually during the second pass."
+  }
+}

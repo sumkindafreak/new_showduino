@@ -281,6 +281,7 @@ void stageConfigBegin() {
   sE131 = StageE131Persist();
   sPixels = StagePixelsConfig();
   sPixels.gpio = (int16_t)SHOWDUINO_SHOW_PIXEL_PIN;
+  sPixels.pixelCount = (uint16_t)SHOWDUINO_SHOW_PIXEL_DEFAULT;
   sDirector = StageDirectorConfig();
 
   loadOrDefault(PATH_SYSTEM_CONFIG, parseSystemWrap, &sSystem, systemToJson(sSystem), "system.json");

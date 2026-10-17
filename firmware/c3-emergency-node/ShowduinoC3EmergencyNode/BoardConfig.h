@@ -51,6 +51,7 @@
 #define SHOWDUINO_PIXEL_DATA_PIN                SHOWDUINO_ESTOP_PIXEL_DATA_PIN
 #define SHOWDUINO_PIXEL_ORDER                   (NEO_GRB + NEO_KHZ800)
 #define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS      330
+#define SHOWDUINO_PIXEL_DEFAULT_COUNT            10
 
 /* Optional local buzzer. -1 = not fitted. Non-blocking. */
 #define SHOWDUINO_ESTOP_NODE_BUZZER_GPIO        (-1)
