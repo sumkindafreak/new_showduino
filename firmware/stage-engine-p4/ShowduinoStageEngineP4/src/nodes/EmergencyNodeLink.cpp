@@ -11,6 +11,8 @@
 #include "EmergencyStationKeys.h"
 #include "../../../protocol/showduino_director_auth.h"
 #include "../../../protocol/showduino_clear_txn.h"
+#include "../../../protocol/showduino_maintenance_recovery.h"
+#include "../EmergencyInput.h"
 
 extern bool emergencyLocked;
 extern uint8_t gEmergencySourceId;
@@ -188,6 +190,11 @@ static ShowduinoBlocker sPersisted[SHOWDUINO_BLOCKER_MAX];
 static uint8_t sPersistedCount = 0;
 static bool sPersistedValid = false;
 static bool sPersistDirty = false;
+/* MISSION 001L: blockers that were readable at boot while the overall state was
+ * unknown (e.g. the latch byte was lost). Kept only for maintenance recovery, which
+ * adds them to the conservative set; never used to shrink it. */
+static ShowduinoBlocker sRecoverReadable[SHOWDUINO_BLOCKER_MAX];
+static uint8_t sRecoverReadableCount = 0;
 
 static void loadStationModel(ShowduinoStationModel *t, bool *prevOnline, bool *prevOpen);
 
@@ -402,8 +409,14 @@ void emergencyNodeLinkStageRestore(const ShowduinoBlocker *list, uint8_t n,
    * written unverified or cannot be read: clear stays refused. */
   sUnknownBootState = showduino_boot_state_unknown(latched ? 1 : 0, (int)status,
                                                    latchUnknown ? 1 : 0) != 0;
+  sRecoverReadableCount = 0;
   if (sUnknownBootState) {
-    SD_LOGE("ESTOP", "station record unknown after restart — clear blocked, service recovery required");
+    if (status == SHOWDUINO_BLOCKER_OK && list && n <= SHOWDUINO_BLOCKER_MAX) {
+      memcpy(sRecoverReadable, list, sizeof(ShowduinoBlocker) * n);
+      sRecoverReadableCount = n;
+    }
+    SD_LOGE("ESTOP", "station record unknown after restart — clear blocked; inspect every station, "
+                     "then EMERGENCY:RECOVER:BLOCKERS:%s on USB", SHOWDUINO_RECOVER_BLOCKERS_TOKEN);
     return;
   }
   if (latched && status == SHOWDUINO_BLOCKER_OK && list && n <= SHOWDUINO_BLOCKER_MAX) {
@@ -692,9 +705,10 @@ static void applyStationLatch(const char *id, const char *name) {
   }
   const int first = showduino_emergency_authority_assert(&sAuth, id, name);
   if (first && !emergencyLocked) {
+    triggerEmergencyWireless(); /* RAM and outputs first, then storage */
+    /* MISSION 001L: logged after actuation, never before it. */
     SD_LOGI("ESTOP", "EMERGENCY ASSERT SOURCE=%s NAME=%s",
             id, (name && name[0]) ? name : "-");
-    triggerEmergencyWireless(); /* RAM and outputs first, then storage */
   } else {
     if (showduino_log_rate_ok(&sDupLogMs, millis(), 2000UL)) {
       SD_LOGI("ESTOP", "EMERGENCY DUPLICATE SOURCE=%s", id);
@@ -1083,7 +1097,8 @@ void emergencyNodeLinkOnEmergency(bool active) {
 
 bool emergencyNodeLinkIsMaintenanceCommand(const char *c) {
   return c && (!strncmp(c, "EMERGENCY:KEY:", 14) || !strncmp(c, "EMERGENCY:STATION:", 18) ||
-               !strncmp(c, "EMERGENCY:AUTH:", 15) || !strncmp(c, "EMERGENCY:DIRKEY:", 17));
+               !strncmp(c, "EMERGENCY:AUTH:", 15) || !strncmp(c, "EMERGENCY:DIRKEY:", 17) ||
+               !strncmp(c, "EMERGENCY:RECOVER:", 18));
 }
 
 static bool takeId(const char *src, char *out, size_t n, const char **rest) {
@@ -1200,6 +1215,90 @@ bool emergencyNodeLinkHandleMaintenance(const char *command, bool localUsb) {
     }
     return true;
   }
+  /* ---- MISSION 001L: local maintenance recovery (never clears the emergency) ---- */
+  if (!strncmp(command, "EMERGENCY:RECOVER:BLOCKERS:", 27)) {
+    const bool pressed = emergencyInputLoopOpen() || emergencyInputStableOpen() != 0;
+    int r = showduino_recover_blockers_allowed(1, emergencyLocked ? 1 : 0, sUnknownBootState ? 1 : 0,
+                                               pressed ? 1 : 0, command + 27);
+    int n = 0;
+    ShowduinoBlocker set[SHOWDUINO_BLOCKER_MAX];
+    if (r == SHOWDUINO_RECOVER_OK) {
+      char prov[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1];
+      const uint8_t pc = provisionedIds(prov);
+      r = showduino_recover_build_blockers(sRecoverReadable, sRecoverReadableCount, prov, pc, set,
+                                           SHOWDUINO_BLOCKER_MAX, &n);
+    }
+    if (r == SHOWDUINO_RECOVER_OK) {
+      /* Room check first: all or nothing. */
+      int missing = 0, freeSlots = 0;
+      for (int k = 0; k < n; ++k) missing += findById(set[k].id) ? 0 : 1;
+      for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) freeSlots += sNodes[i].used ? 0 : 1;
+      if (missing > freeSlots) r = SHOWDUINO_RECOVER_REFUSE_OVERFLOW;
+    }
+    if (r != SHOWDUINO_RECOVER_OK) {
+      Serial.printf("[ESTOP] RECOVER:BLOCKERS %s — emergency stays latched\n",
+                    showduino_recover_result_name(r));
+      if (r == SHOWDUINO_RECOVER_REFUSE_TOKEN) {
+        Serial.printf("[ESTOP] inspect EVERY emergency station (released, powered), then type "
+                      "EMERGENCY:RECOVER:BLOCKERS:%s\n", SHOWDUINO_RECOVER_BLOCKERS_TOKEN);
+      }
+      SD_LOGW("ESTOP", "MAINTENANCE blocker recovery %s", showduino_recover_result_name(r));
+      return true;
+    }
+    /* Same shape as a boot-restored blocker: pressed, asserted, offline, unseen. */
+    for (int k = 0; k < n; ++k) {
+      if (findById(set[k].id)) continue;
+      for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+        if (sNodes[i].used) continue;
+        sNodes[i] = EmergencyNodeStatus();
+        sNodes[i].used = true;
+        sNodes[i].inputOpen = true;
+        sNodes[i].asserted = true;
+        strncpy(sNodes[i].id, set[k].id, sizeof(sNodes[i].id) - 1);
+        strncpy(sNodes[i].mac, set[k].mac, sizeof(sNodes[i].mac) - 1);
+        strncpy(sNodes[i].state, "OFFLINE", sizeof(sNodes[i].state) - 1);
+        break;
+      }
+    }
+    sUnknownBootState = false;
+    sRecoverReadableCount = 0;
+    sPersistedValid = false; /* force a verified write of the conservative set */
+    const bool stored = emergencyNodeLinkPersistBlockers();
+    publishState(true);
+    Serial.printf("[ESTOP] RECOVER:BLOCKERS OK — %d station(s) must prove RELEASED; record %s; "
+                  "emergency still LATCHED\n", n, stored ? "stored" : "NOT stored (clear stays blocked, retrying)");
+    SD_LOGW("ESTOP", "MAINTENANCE blocker recovery OK n=%d stored=%u", n, stored ? 1U : 0U);
+    return true;
+  }
+  if (!strncmp(command, "EMERGENCY:RECOVER:COUNTER:", 26)) {
+    int r = showduino_recover_counter_allowed(1, sCounterLoaded ? 0 : 1, command + 26);
+    bool ok = false;
+    if (r == SHOWDUINO_RECOVER_OK) {
+      ok = stationCounterSave(SHOWDUINO_RECOVER_COUNTER_BASE);
+      uint32_t limit = 0;
+      ok = ok && stationCounterLoad(&limit) && limit == SHOWDUINO_RECOVER_COUNTER_BASE;
+      if (ok) {
+        showduino_auth_counter_boot(&sCtr, limit);
+        sCounterLoaded = true;
+        sCounterFault = false;
+      }
+    }
+    Serial.printf("[ESTOP] RECOVER:COUNTER %s%s\n",
+                  r == SHOWDUINO_RECOVER_OK ? (ok ? "OK" : "WRITE_FAILED") : showduino_recover_result_name(r),
+                  ok ? " — counter restarted high; re-provision any station that then rejects commands" : "");
+    SD_LOGW("ESTOP", "MAINTENANCE counter recovery %s",
+            r == SHOWDUINO_RECOVER_OK ? (ok ? "OK" : "WRITE_FAILED") : showduino_recover_result_name(r));
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:RECOVER:STATUS")) {
+    Serial.printf("[ESTOP] RECOVER latched=%u unknownBoot=%u readableBlockers=%u persistDirty=%u "
+                  "counterLoaded=%u keyFault=%u dirFault=%u loopOpen=%u\n",
+                  emergencyLocked ? 1U : 0U, sUnknownBootState ? 1U : 0U,
+                  (unsigned)sRecoverReadableCount, sPersistDirty ? 1U : 0U, sCounterLoaded ? 1U : 0U,
+                  stationKeysFault() ? 1U : 0U, directorKeyFault() ? 1U : 0U,
+                  emergencyInputLoopOpen() ? 1U : 0U);
+    return true;
+  }
   /* ---- MISSION 001K: Director credential ---- */
   if (!strncmp(command, "EMERGENCY:DIRKEY:SET:", 21)) {
     char did[SHOWDUINO_DIR_ID_MAX + 1] = "";
@@ -1256,7 +1355,8 @@ bool emergencyNodeLinkHandleMaintenance(const char *command, bool localUsb) {
   }
   Serial.println("[ESTOP] maintenance: DIRKEY:SET|DIRKEY:REVOKE|DIRKEY:STATUS|DIRKEY:RESET|"
                  "KEY:SET|KEY:REVOKE|KEY:LIST|KEY:RESET|"
-                 "STATION:DISMISS|AUTH:STATUS");
+                 "STATION:DISMISS|AUTH:STATUS|"
+                 "RECOVER:STATUS|RECOVER:BLOCKERS:<confirm>|RECOVER:COUNTER:<confirm>");
   return true;
 }
 

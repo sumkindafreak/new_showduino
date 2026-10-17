@@ -1,6 +1,7 @@
 #include "EmergencyLatchStore.h"
 #include <Preferences.h>
 #include "showduino_emergency_latch.h"
+#include "showduino_maintenance_recovery.h"
 
 static ShowduinoLatchTrack sTrack = {false, true, false};
 static ShowduinoLatchRead sBootRead = SHOWDUINO_LATCH_READ_FAULT;
@@ -16,6 +17,9 @@ static ShowduinoLatchRead readStore() {
     in.readOk = true;
     in.keyPresent = p.isKey(SHOWDUINO_LATCH_NVS_KEY);
     if (in.keyPresent) in.value = p.getUChar(SHOWDUINO_LATCH_NVS_KEY, 0);
+    in.markerPresent = p.isKey(SHOWDUINO_LATCH_NVS_MARKER_KEY);
+    /* MISSION 001L: migrate devices written before the marker existed. */
+    if (in.keyPresent && !in.markerPresent) p.putUChar(SHOWDUINO_LATCH_NVS_MARKER_KEY, 1);
     p.end();
   }
   return showduino_latch_decode(in);
@@ -27,6 +31,9 @@ static bool writeStore(bool active, bool blockersVerified) {
   const uint8_t v = showduino_latch_value_for(active, blockersVerified);
   bool ok = (p.putUChar(SHOWDUINO_LATCH_NVS_KEY, v) == sizeof(uint8_t));
   if (ok) ok = (p.getUChar(SHOWDUINO_LATCH_NVS_KEY, 0) == v); /* read-back verify */
+  /* MISSION 001L: "initialised" marker. With it, a later missing latch key reads as a
+   * lost record (fail-safe LATCHED), not as a fresh device. Best effort. */
+  if (ok && !p.isKey(SHOWDUINO_LATCH_NVS_MARKER_KEY)) p.putUChar(SHOWDUINO_LATCH_NVS_MARKER_KEY, 1);
   p.end();
   return ok;
 }
@@ -46,7 +53,8 @@ bool emergencyLatchRestoreAtBoot() {
       Serial.println("[ESTOP] Stored latch CLEAR");
       break;
     default:
-      Serial.println("[ESTOP] WARNING: latch storage unreadable or corrupt — fail-safe LATCHED, clear blocked");
+      Serial.println("[ESTOP] WARNING: latch storage unreadable, corrupt or lost — fail-safe LATCHED, clear blocked");
+      Serial.println("[ESTOP] Recovery: inspect every station, then EMERGENCY:RECOVER:BLOCKERS:" SHOWDUINO_RECOVER_BLOCKERS_TOKEN);
       break;
   }
   if (latched && sTrack.dirty) {

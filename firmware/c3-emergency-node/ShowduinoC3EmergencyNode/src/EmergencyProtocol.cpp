@@ -28,6 +28,8 @@ static void requestSoftAp() {
 
 static void sendLine(const char *line, uint32_t seq) {
   if (!line || !line[0]) return;
+  /* MISSION 001L: transmit first; the serial log never delays the radio frame. */
+  emergencyEspNowSend(line, seq);
   if (!strncmp(line, "ANNOUNCE:", 9) || !strncmp(line, "STATUS:", 7)) {
     SD_LOGT("ESTOP", "%s", line);
   } else if (showduino_emergency_is_assert(line)) {
@@ -40,7 +42,6 @@ static void sendLine(const char *line, uint32_t seq) {
   } else {
     SD_LOGI("ESTOP", "%s", line);
   }
-  emergencyEspNowSend(line, seq);
 }
 
 static void formatAnnounce(char *out, size_t n) {

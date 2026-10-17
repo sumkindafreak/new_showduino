@@ -25,8 +25,8 @@ struct KeyBlob {
 
 static KeyBlob sBlob;
 static bool sFault = false;
-static bool directorKeyEquals(const uint8_t *key);
 static void directorKeyLoad();
+static bool directorKeyConflicts(const uint8_t *key);
 
 static uint32_t crc32(const uint8_t *p, size_t n) {
   uint32_t c = 0xFFFFFFFFu;
@@ -124,7 +124,8 @@ bool stationKeysSet(const char *id, const uint8_t key[SHOWDUINO_AUTH_KEY_BYTES])
   int nonzero = 0;
   for (int i = 0; i < SHOWDUINO_AUTH_KEY_BYTES; ++i) nonzero |= key[i];
   if (!nonzero) return false;
-  if (directorKeyEquals(key)) return false; /* MISSION 001K: never share with the Director */
+  /* MISSION 001K/001L: never share a secret with the Director (shared policy). */
+  if (directorKeyConflicts(key)) return false;
   static KeyBlob next;
   memcpy(&next, &sBlob, sizeof(next));
   int slot = -1;
@@ -261,8 +262,8 @@ static void directorKeyLoad() {
   p.end();
 }
 
-static bool directorKeyEquals(const uint8_t *key) {
-  return sDirPresent && key && showduino_auth_ct_equal(sDir.key, key, SHOWDUINO_AUTH_KEY_BYTES);
+static bool directorKeyConflicts(const uint8_t *key) {
+  return sDirPresent && showduino_auth_key_conflicts(key, &sDir.key, 1);
 }
 
 bool directorKeyFault() { return sDirFault; }
@@ -306,12 +307,14 @@ bool directorKeySet(const char *id, const uint8_t key[SHOWDUINO_AUTH_KEY_BYTES],
   int nonzero = 0;
   for (int i = 0; i < SHOWDUINO_AUTH_KEY_BYTES; ++i) nonzero |= key[i];
   if (!nonzero) return false;
-  for (uint8_t i = 0; i < stationKeysCount(); ++i) {
-    uint8_t sk[SHOWDUINO_AUTH_KEY_BYTES];
-    const bool same = stationKeysLookup(stationKeysId(i), sk) >= 0 &&
-                      showduino_auth_ct_equal(sk, key, SHOWDUINO_AUTH_KEY_BYTES);
-    memset(sk, 0, sizeof(sk));
-    if (same) return false;
+  /* MISSION 001L: shared policy, the same function the host tests exercise. */
+  {
+    static uint8_t stationKeys[SHOWDUINO_STATION_KEYS_MAX][SHOWDUINO_AUTH_KEY_BYTES];
+    const uint8_t n = sBlob.count;
+    for (uint8_t i = 0; i < n; ++i) memcpy(stationKeys[i], sBlob.e[i].key, SHOWDUINO_AUTH_KEY_BYTES);
+    const int conflict = showduino_auth_key_conflicts(key, stationKeys, n);
+    memset(stationKeys, 0, sizeof(stationKeys));
+    if (conflict) return false;
   }
   const bool sameKey = sDirPresent && showduino_auth_ct_equal(sDir.key, key, SHOWDUINO_AUTH_KEY_BYTES) &&
                        strcmp(sDir.id, id) == 0;

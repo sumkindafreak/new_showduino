@@ -35,6 +35,8 @@
 #include <lvgl.h>
 #include <TAMC_GT911.h>
 #include <esp_heap_caps.h>
+#include <esp_ota_ops.h>     /* MISSION 001L: BUILD:INFO */
+#include <esp_idf_version.h>
 
 #include "BoardConfig.h"
 #include "lvgl_port.h"
@@ -1366,6 +1368,23 @@ void readStageSerial() {
 #endif
 }
 
+/* MISSION 001L: records the settings this board was ACTUALLY built and flashed with
+ * (partition, flash size, LVGL, core), so the commissioning record does not rely on
+ * the CI assumptions. */
+static void printDirectorBuildInfo() {
+  const esp_partition_t *run = esp_ota_get_running_partition();
+  Serial.printf("[BUILD] role=DIRECTOR fw=%s built=%s %s idf=%s arduino=%d.%d.%d lvgl=%d.%d.%d\n",
+                STORAGE_FW_VERSION, __DATE__, __TIME__, esp_get_idf_version(),
+                ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH,
+                (int)LVGL_VERSION_MAJOR, (int)LVGL_VERSION_MINOR, (int)LVGL_VERSION_PATCH);
+  Serial.printf("[BUILD] flash=%lu psram=%lu sketch=%lu free_sketch=%lu partition=%s offset=0x%lx "
+                "size=%lu\n",
+                (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(),
+                (unsigned long)ESP.getSketchSize(), (unsigned long)ESP.getFreeSketchSpace(),
+                run ? run->label : "?", run ? (unsigned long)run->address : 0UL,
+                run ? (unsigned long)run->size : 0UL);
+}
+
 // =========================================================
 // USB Serial command bridge for bench testing
 // =========================================================
@@ -1377,8 +1396,12 @@ void handleUsbLine(String command) {
   /* Clear request/confirm are touchscreen actions only: a USB line is forwarded as
    * plain text, which the Stage refuses (AUTH_REQUIRED). */
 
+  if (command == "BUILD:INFO") {
+    printDirectorBuildInfo();
+    return;
+  }
   if (command == "HELP") {
-    ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, TOUCH:STATUS, TOUCH:RESET, TOUCH:CALIBRATE, LOG:LEVEL");
+    ui.appendLog("USB: BUILD:INFO, HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, TOUCH:STATUS, TOUCH:RESET, TOUCH:CALIBRATE, LOG:LEVEL");
     return;
   }
 
@@ -1541,6 +1564,7 @@ void setup() {
     while (true) delay(2000);
   }
   Serial.printf("PSRAM: %u bytes free\n", (unsigned)ESP.getFreePsram());
+  printDirectorBuildInfo();
 
 #if SHOWDUINO_USE_ESPNOW
   /* Wi-Fi/ESP-NOW before LVGL: the RGB UI build leaves too little internal heap. */
