@@ -1,6 +1,9 @@
 # MISSION 001K — authenticated Director clear authority and clearance race
 
-Status: in progress. Sections 1–2 were written **before** any 001K code change.
+Status: **implemented in firmware, host-tested, compiled in CI (see §11). Not hardware
+tested. Not a certified safety function.** Sections 1–2 were written before any 001K
+code change. Showduino's emergency features are show-control interlocks for
+entertainment; they do not replace certified emergency-stop or life-safety equipment.
 
 Branch `fix/emergency-persistent-latch`, PR #33 (draft, do not merge). Starting head
 `b3b3f95` (001J). Not hardware tested. Not a certified safety function.
@@ -41,3 +44,157 @@ overflow, fresh proofs from every provisioned station).
 | Maintenance clear | person at the P4 USB port | physical access (documented, logged) |
 | Station release | each provisioned C3 | 001J station AUTH |
 | Comms S3 | nobody | relays only; cannot originate any authority |
+
+## 3. Protocol and cryptographic design
+
+Wire format (fits the 95-character desk packet and the S3 → P4 UART line):
+
+```
+DCLR:<REQ|CFM>:<dirId>:<episode8>:<txn16>:<counter8>:<tag32>
+tag = HMAC-SHA256(directorKey, "DIRCLR|v1|<dirId>|<op>|<episode8>|<txn16>|<counter8>")[0..16)
+```
+
+| Property | Mechanism |
+|---|---|
+| Unique Director credential | 32-byte key per Director (`DIR-<n>`), generated on the Director (true RNG while its Wi-Fi radio runs), entered on the P4 USB console. Stored in a record separate from station keys. |
+| Established primitives | HMAC-SHA256 truncated to 128 bits (mbedtls on the boards, OpenSSL in tests; same 001J helpers). Constant-time compare. |
+| Forged / modified | Tag over every field; any change fails (tests D2a–D2e, K2, K3, K13). |
+| Domain separation | `DIRCLR|v1` canonical prefix vs station `AUTH|v1` / `CMD|v1`; separate key record; the P4 firmware refuses a Director key equal to any station key and vice versa (firmware check, not host-tested). D2h shows a station-format tag does not verify as a Director message. |
+| Replay / duplicates / reordering | Director counter strictly increasing, block-persisted on the Director before use; P4 persists the last accepted counter **before** acting (D3, K5, K6, K9, K23). |
+| Cross-reboot replay | Both counters survive restarts; transaction nonces are per boot (K6, K7). |
+| Episode binding | Every message names the P4 episode (from the persisted counter); messages for another episode, or while no durable episode exists, are rejected (D4a/b, K4, K5). |
+| Explicit intent per attempt | REQ = touch "E-CLEAR"; CFM = touch "Confirm" in the dialog, signed over a fresh P4 transaction nonce. A CFM is single use and only valid for the open transaction (D1g, D4c–f, K23). |
+| P4 enforcement | `showduino_clear_entry()` routes every clear-related line; plain `EMERGENCY:CLEAR`, `CLEAR_REQUEST`, `CLEAR_CONFIRM` from the UART are refused `AUTH_REQUIRED` (P0, K8). No fallback. |
+| No production credential in source | None. Keys exist only in the NVS of the boards they were entered on. |
+
+P4 → Director notices (`STATE:EMERGENCY:EPISODE:<e8>`, `EMERGENCY:CLEAR:TXN:<e8>:<txn16>`)
+are unauthenticated. An S3 that alters them only makes the Director sign something the
+P4 rejects (K4): denial of service, never a clear.
+
+## 4. Clearance transaction (shared policy `protocol/showduino_clear_txn.h`)
+
+```
+Director touch E-CLEAR ──DCLR:REQ──► S3 ──► P4  verify tag/episode/counter (persist)
+                                              gate: GPIO25 released, no station blocker,
+                                                    durable episode
+                                              open transaction: fresh nonce
+Director ◄── EMERGENCY:CLEAR:TXN + CLEAR_REQUEST ─┘   (dialog opens)
+Director touch Confirm ──DCLR:CFM(txn)──► S3 ──► P4  verify tag/episode/counter/txn
+                                              begin VERIFY: challenge all stations NOW
+stations ◄── CHAL (broadcast, re-sent every 250 ms) ──┘
+stations ── AUTH (RELEASED/PRESSED) ──► S3 ──► P4  only answers to challenges issued
+                                              after the confirm count
+P4 loop: every provisioned station RELEASED + full 001J decision OK → reserve GCL
+         counters → re-check GPIO25 → store CLEAR → release latch → GCL → CLEAR_OK
+         any ASSERT / fresh PRESSED / new trigger / storage fault → REJECTED:<reason>[:<id>]
+         not all proven within 1000 ms → REJECTED:STATION_UNVERIFIED:<id>
+```
+
+The USB maintenance clear (`EMERGENCY:CLEAR` on the P4 console) runs the same
+transaction with the local authority, so it also needs fresh station proofs.
+
+## 5. J-05 closure evidence
+
+| Entry point (§1) | After 001K | Evidence |
+|---|---|---|
+| E1–E3 Director touch / OS2 | signed REQ/CFM only | `handleUiCommand()`, `onEmergencyClearConfirm()`, `CT::EmergencyClear`; K1, K25 |
+| E4 Director USB console | forwarded as plain text → refused `AUTH_REQUIRED`; `PROVISION` lines never forwarded | `handleUsbLine()` |
+| E5 Compromised S3 | cannot forge, alter or replay a DCLR (no key, counters, episode, txn) | D2, D3, K2–K9, K23 |
+| E6 S3 web UI | flag removed; plain text refused anyway | `CommsWebServerBase.h` |
+| E7 P4 web API | flag removed; plain text refused anyway | `WebApiHandlerBase.h` |
+| E8 Show cues | plain text → refused `AUTH_REQUIRED` | `showduino_clear_entry()`, P0 |
+| E9 P4 USB console | maintenance authority (physical access), same verification; DCLR / CONFIRM refused on USB | P2, P3, K10, K21 |
+
+Acceptance criterion: a compromised S3 cannot forge, modify or replay the operator
+authorisation required to clear the P4 latch. **Met in the shared policy and host tests;
+firmware compiled; not hardware tested.**
+
+## 6. J-14 findings and residual limitations
+
+What 001K changes:
+* Station proofs now come **after** the authenticated confirm (verify sequence), never
+  from before it (K14, mutant K14).
+* Any ASSERT, any fresh PRESSED answer, any new trigger (incl. GPIO25) or storage fault
+  ends the attempt (K15, K16b, K18, K19).
+* Two station-side defects found and fixed while testing this:
+  1. A re-press of a station that was still latched waited for the next 2 s heartbeat
+     before asserting. It now asserts at once (K16b0, mutant K18).
+  2. A latched, ACKed, released station repeated ASSERT every 2 s, which would have
+     cancelled every Director clear request (K25). It now stops once ACKed and
+     released (mutant K20).
+
+**Can the single wireless path guarantee that no station is pressed at the instant of
+clear? No.** Every station message crosses the Comms S3. An S3 that suppresses a
+station's ASSERT and its later answers makes "pressed" indistinguishable from "silent
+after a valid RELEASED". The boundary test K16c shows a clear accepted while a station
+is physically pressed under exactly that attack. The exposure is limited to a press made
+after the station's post-confirm RELEASED answer and before the clear is applied (at most
+the 1000 ms verification window), and only with an actively hostile S3; after the clear
+the station keeps re-asserting, which a hostile S3 can also hide. With an honest relay
+the gap is the radio latency (tens of ms) and the station's immediate re-assert
+re-latches the P4.
+
+Options for a stronger guarantee (not implemented):
+
+| Option | Guarantee | Cost |
+|---|---|---|
+| Hard-wired permissive loop: each station's second NC contact in series into a P4 input that must read closed to clear | No hidden press at the instant of clear, independent of radio | Wiring to every station; fits "readily available parts" |
+| Independent receiver: a second ESP-NOW receiver wired to the P4 (not via the S3) that must also confirm | Defeats a single compromised S3 | One more cheap board; still radio |
+| Operational policy: physical walk-round of every station before clear | Procedural only | Staff time |
+
+Until one of these exists, J-14 remains an **open, disclosed residual** for any
+installation where the Comms S3 could be compromised.
+
+## 7. Credential provisioning and recovery
+
+Enrol (Director released from any emergency, both boards on USB):
+1. Director USB console: `PROVISION DIRECTOR NEW DIR-01` → prints
+   `EMERGENCY:DIRKEY:SET:DIR-01:<64 hex>` and `fp=xxxxxxxx` once (never forwarded or
+   shown on screen).
+2. P4 USB console: paste the line → `DIRKEY:SET DIR-01 OK fp=xxxxxxxx`. Fingerprints
+   must match. Clear the terminal scroll-back.
+3. `EMERGENCY:DIRKEY:STATUS` on the P4; `PROVISION DIRECTOR STATUS` on the Director.
+
+Replace a Director: enrol the new board as above (same or new ID). The old key stops
+working at once (K12b). **Enrolled while an emergency is latched → restricted**: it cannot
+clear that emergency (K12a). The authorised maintenance procedure is the P4 USB clear
+(physical access, logged, still verifies every station); after any accepted clear the
+restriction is lifted (K12c/d).
+
+Revoke: `EMERGENCY:DIRKEY:REVOKE` (P4), `PROVISION DIRECTOR CLEAR` (Director).
+
+Failures:
+* Director lost or broken during an emergency → P4 USB clear (K10).
+* Comms S3 dead → no station proofs → even the USB clear is refused while provisioned
+  stations cannot answer; inspect each station, revoke and dismiss per 001J, then USB
+  clear (K11).
+* Director counter store lost (re-flash) → its messages look like replays; re-enrol
+  with a new key (D3f).
+* P4 Director record unreadable → nothing accepted; `EMERGENCY:DIRKEY:RESET`, re-enrol.
+* No universal pairing password; no automatic pairing grants clear authority.
+
+Flash encryption is not enabled on any board. Physical access to the Director or the P4
+exposes the Director key; revoke and re-enrol after loss.
+
+## 8. Threat model (operator authority)
+
+| Threat | Result |
+|---|---|
+| Compromised S3 sends plain clear text | Refused `AUTH_REQUIRED` |
+| Compromised S3 forges / alters a DCLR | Tag fails |
+| Compromised S3 replays a captured DCLR (same episode, later episode, after either reboot) | Counter / episode / transaction reject |
+| Compromised S3 alters P4→Director notices | Director signs wrong data → rejected (denial of service only) |
+| Compromised S3 drops or delays DCLR or station traffic | Clear does not happen (fail closed) |
+| Compromised S3 hides a press after a valid post-confirm proof | **Not prevented** (J-14 residual, §6) |
+| Stolen Director | Holder can request and confirm clears like the operator; station proofs still required. Revoke on the P4. |
+| Stolen P4 / Director flash dump | Keys readable (no flash encryption) |
+| New Director enrolled mid-emergency | Restricted until a maintenance clear |
+| Director reboot / disconnect | Nothing released; open request expires (K24) |
+
+## 9. Local emergency authority (unchanged)
+
+Activation never waits for authentication: GPIO25, USB, Director STOP and station ASSERT
+still run the 001F engage sequence first. `triggerEmergency()` only additionally cancels
+a pending clear transaction. Persisted latch, blocker set, emergency pixels, local
+outputs, audio and reboot recovery are unchanged; the 001E–001J suites still pass. No
+clear decision depends on S3 state: the S3 only relays signed or challenge-bound data.
