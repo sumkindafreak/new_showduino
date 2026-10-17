@@ -18,6 +18,7 @@
 #include <Arduino.h>
 #include "../../../protocol/showduino_emergency_node.h"
 #include "../../../protocol/showduino_station_auth.h"
+#include "../../../protocol/showduino_director_auth.h"
 
 #define SHOWDUINO_STATION_KEYS_MAX SHOWDUINO_EMERGENCY_NODE_MAX_NODES
 
@@ -37,6 +38,23 @@ bool stationKeysReset();
 /* First 4 bytes of HMAC(key, "SHOWDUINO-KEY-FP|v1") as hex, for matching a P4 slot
  * to a station without printing the key. Empty when the ID has no key. */
 void stationKeysFingerprint(const char *id, char out[9]);
+
+/* ---- MISSION 001K: enrolled Director credential (operator clear authority) ----
+ * NVS: estop_dkey (record + CRC32), estop_dctr (last accepted Director counter).
+ * One Director at a time. A key equal to any station key is refused (and a station
+ * key equal to the Director key), so station and operator authority never share a
+ * secret. Enrolling while latched marks the Director restricted until a clear is
+ * accepted through the USB maintenance authority. */
+bool directorKeyFault();
+/* Fills rec from RAM. present=0 when no Director is enrolled or on a fault. */
+void directorKeyGet(ShowduinoDirKeyRec *rec);
+bool directorKeySet(const char *id, const uint8_t key[SHOWDUINO_AUTH_KEY_BYTES], bool restricted);
+bool directorKeyRevoke();
+bool directorKeyClearRestriction();
+/* Persists the last accepted Director counter (verified write). */
+bool directorCounterSave(uint32_t value);
+void directorKeyFingerprint(char out[9]);
+bool directorKeyReset();
 
 /* Counter-block limit (shared by commands and episode ids). */
 bool stationCounterLoad(uint32_t *limit);

@@ -9,6 +9,8 @@
 #include "../../../protocol/showduino_station_auth.h"
 #include "../../../protocol/showduino_station_auth_esp32.h"
 #include "EmergencyStationKeys.h"
+#include "../../../protocol/showduino_director_auth.h"
+#include "../../../protocol/showduino_clear_txn.h"
 
 extern bool emergencyLocked;
 extern uint8_t gEmergencySourceId;
@@ -41,7 +43,10 @@ static uint32_t sEpisode = 0;           /* current episode; 0 when idle */
 static uint32_t sEpisodeRetryMs = 0;
 static ShowduinoNonceGen sNonce;
 static uint32_t sChalMs = 0;
-static uint32_t sClearRequestSeq = 0;
+/* MISSION 001K: the single emergency-clear transaction (Director or USB authority). */
+static ShowduinoClearTxn sTxn;
+static bool sTxnSuperseded = false;
+static char sLastEpisodeWire[40] = "";
 static bool sTableOverflow = false;
 static uint32_t sAuthRejectLogMs = 0;
 /* GCL commands reserved by a successful confirm, sent by emergencyNodeLinkOnEmergency(false). */
@@ -148,6 +153,7 @@ static void ensureEpisode() {
     sNodes[i].ackMs = 0;
   }
   SD_LOGI("ESTOP", "EMERGENCY EPISODE %lu", (unsigned long)sEpisode);
+  sLastEpisodeWire[0] = 0; /* republish on the next publishState */
 }
 
 static EmergencyNodeStatus *findById(const char *id) {
@@ -245,25 +251,38 @@ void emergencyNodeLinkRetryBlockers() {
 
 bool emergencyNodeLinkBlockerStorageFault() { return sPersistDirty || sUnknownBootState; }
 
-int emergencyNodeLinkClearBlocked(bool confirm) {
+static uint8_t provisionedIds(char ids[][SHOWDUINO_BLOCKER_ID_CHARS + 1]) {
+  memset(ids, 0, sizeof(char) * SHOWDUINO_EMERGENCY_NODE_MAX_NODES * (SHOWDUINO_BLOCKER_ID_CHARS + 1));
+  const uint8_t keyCount = stationKeysCount();
+  for (uint8_t i = 0; i < keyCount && i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    showduino_station_copy(ids[i], SHOWDUINO_BLOCKER_ID_CHARS + 1, stationKeysId(i));
+  }
+  return keyCount;
+}
+
+/* No durable episode while latched: no transaction, ACK or GCL can name it. */
+static bool counterBad() {
+  return sCounterFault || !sCounterLoaded || stationKeysFault() || (emergencyLocked && sEpisode == 0);
+}
+
+/* MISSION 001K: request-time gate only (station and storage blockers). Fresh station
+ * proofs are collected by the clearance transaction after the confirm. */
+int emergencyNodeLinkClearBlocked() {
   ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
   loadStationModel(t, nullptr, nullptr);
   char ids[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1];
-  memset(ids, 0, sizeof(ids));
-  const uint8_t keyCount = stationKeysCount();
-  for (uint8_t i = 0; i < keyCount && i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
-    showduino_station_copy(ids[i], sizeof(ids[i]), stationKeysId(i));
-  }
-  /* No durable episode while provisioned stations exist: no GCL can be issued. */
-  const bool counterBad = sCounterFault || !sCounterLoaded || stationKeysFault() ||
-                          (emergencyLocked && keyCount > 0 && sEpisode == 0);
-  const uint32_t since = confirm ? showduino_station_proof_since(sClearRequestSeq, sChal.lastSeq) : 0;
-  const int decision = showduino_station_clear_decision(
-      t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, confirm ? keyCount : 0, since,
-      sUnknownBootState ? 1 : 0, sPersistDirty ? 1 : 0, counterBad ? 1 : 0,
-      sTableOverflow ? 1 : 0, sBooted ? 1 : 0);
-  if (decision != SHOWDUINO_CLEAR_OK || !confirm) return decision;
-  /* Reserve one GCL counter per provisioned station before anything changes. */
+  provisionedIds(ids);
+  return showduino_station_clear_decision(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, 0, 0,
+                                          sUnknownBootState ? 1 : 0, sPersistDirty ? 1 : 0,
+                                          counterBad() ? 1 : 0, sTableOverflow ? 1 : 0,
+                                          sBooted ? 1 : 0);
+}
+
+/* Reserves (persists) one GCL counter per provisioned station before the clear is
+ * applied. Returns SHOWDUINO_CLEAR_OK or SHOWDUINO_CLEAR_BLOCK_STORAGE. */
+int emergencyNodeLinkReserveClear() {
+  char ids[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1];
+  const uint8_t keyCount = provisionedIds(ids);
   sGclReady = false;
   for (uint8_t i = 0; i < keyCount; ++i) {
     if (!nextCounter(&sGclCounters[i])) return SHOWDUINO_CLEAR_BLOCK_STORAGE;
@@ -275,6 +294,86 @@ int emergencyNodeLinkClearBlocked(bool confirm) {
   return SHOWDUINO_CLEAR_OK;
 }
 
+/* ---------------- MISSION 001K: clearance transaction ---------------- */
+
+static int persistDirectorCounterCb(void *ctx, uint32_t value) {
+  (void)ctx;
+  return directorCounterSave(value) ? 1 : 0;
+}
+
+int emergencyNodeLinkDirectorAccept(const char *line, int *opOut) {
+  ShowduinoDirKeyRec rec;
+  directorKeyGet(&rec);
+  ShowduinoDirMsg m;
+  const int r = showduino_dir_accept(&rec, line, emergencyLocked ? sEpisode : 0,
+                                     showduino_clear_txn_open_nonce(&sTxn),
+                                     showduino_auth_hmac_sha256_mbedtls, persistDirectorCounterCb,
+                                     nullptr, &m);
+  memset(&rec, 0, sizeof(rec));
+  if (opOut) *opOut = r == SHOWDUINO_DIR_OK ? m.op : SHOWDUINO_DIR_OP_NONE;
+  return r;
+}
+
+bool emergencyNodeLinkTxnOpen(int authority, char *notice, size_t n) {
+  if (notice && n) notice[0] = 0;
+  if (!emergencyLocked || counterBad() || !sNonce.seeded) return false;
+  if (!showduino_clear_txn_open(&sTxn, authority, sEpisode, millis(), nonceRandCb)) return false;
+  sTxnSuperseded = false;
+  if (notice) showduino_dir_format_txn_notice(sEpisode, sTxn.nonceHex, notice, n);
+  return true;
+}
+
+int emergencyNodeLinkTxnBeginVerify() {
+  const int r = showduino_clear_txn_begin_verify(&sTxn, emergencyLocked ? sEpisode : 0, millis(),
+                                                 showduino_auth_chal_next_seq(&sChal));
+  if (r == SHOWDUINO_TXN_PENDING) (void)issueChallenge();
+  return r;
+}
+
+int emergencyNodeLinkTxnAuthority() { return sTxn.authority; }
+bool emergencyNodeLinkTxnVerifying() { return sTxn.state == SHOWDUINO_TXN_VERIFY; }
+void emergencyNodeLinkTxnAbort() { showduino_clear_txn_abort(&sTxn); }
+
+bool emergencyNodeLinkTxnSupersede() {
+  if (showduino_clear_txn_on_assert(&sTxn)) {
+    sTxnSuperseded = true;
+    return true;
+  }
+  return false;
+}
+
+/* Returns -1 when there is nothing to report, else a ShowduinoClearTxnResult. Only a
+ * VERIFY transaction (or a superseded one) produces a result. */
+int emergencyNodeLinkTxnService(int *authorityOut, char *blockId, size_t n) {
+  if (blockId && n) blockId[0] = 0;
+  if (sTxnSuperseded) {
+    sTxnSuperseded = false;
+    if (authorityOut) *authorityOut = SHOWDUINO_CLEAR_BY_NONE;
+    return SHOWDUINO_TXN_REJECT_SUPERSEDED;
+  }
+  if (sTxn.state == SHOWDUINO_TXN_OPEN) {
+    if ((uint32_t)(millis() - sTxn.openedMs) > SHOWDUINO_CLEAR_TXN_OPEN_MS) showduino_clear_txn_abort(&sTxn);
+    return -1;
+  }
+  if (sTxn.state != SHOWDUINO_TXN_VERIFY) return -1;
+  const uint32_t now = millis();
+  if (showduino_clear_txn_want_rechallenge(&sTxn, now)) (void)issueChallenge();
+  ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+  loadStationModel(t, nullptr, nullptr);
+  char ids[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1];
+  const uint8_t keyCount = provisionedIds(ids);
+  const int authority = sTxn.authority;
+  const int r = showduino_clear_txn_evaluate(&sTxn, t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, keyCount,
+                                             emergencyLocked ? sEpisode : 0, now,
+                                             sUnknownBootState ? 1 : 0, sPersistDirty ? 1 : 0,
+                                             counterBad() ? 1 : 0, sTableOverflow ? 1 : 0,
+                                             sBooted ? 1 : 0);
+  if (r == SHOWDUINO_TXN_PENDING) return -1;
+  if (authorityOut) *authorityOut = authority;
+  if (blockId && n) showduino_station_copy(blockId, n, sTxn.blockId);
+  return r;
+}
+
 const char *emergencyNodeLinkClearReason(int decision) {
   switch (decision) {
     case SHOWDUINO_CLEAR_OK: return "OK";
@@ -284,11 +383,6 @@ const char *emergencyNodeLinkClearReason(int decision) {
     case SHOWDUINO_CLEAR_BLOCK_OVERFLOW: return "STATION_OVERFLOW";
     default: return "WIRELESS_BLOCKED";
   }
-}
-
-void emergencyNodeLinkOnClearRequest() {
-  sClearRequestSeq = showduino_auth_chal_next_seq(&sChal);
-  (void)issueChallenge();
 }
 
 void emergencyNodeLinkSeedNonce(const uint8_t seed[32]) {
@@ -438,6 +532,12 @@ static const char *wireToken() {
 
 static void publishState(bool force = false) {
   char line[48];
+  /* MISSION 001K: the Director signs its clear request for this episode. */
+  char ep[40];
+  showduino_dir_format_episode(emergencyLocked ? sEpisode : 0, ep, sizeof(ep));
+  if (force || strcmp(ep, sLastEpisodeWire) != 0) {
+    if (sendToDirector(String(ep))) strncpy(sLastEpisodeWire, ep, sizeof(sLastEpisodeWire) - 1);
+  }
   const char *tok = wireToken();
   if (force || strcmp(sLastWire, tok) != 0) {
     snprintf(line, sizeof(line), "%s%s", SHOWDUINO_WIRE_STATE_NODE_EMERGENCY_PREFIX, tok);
@@ -728,6 +828,8 @@ bool emergencyNodeLinkHandleReport(const char *line) {
     }
 
     if (res.kind == SHOWDUINO_STATION_LINE_ASSERT) {
+      /* MISSION 001K: any ASSERT ends a pending clear transaction. */
+      if (showduino_clear_txn_on_assert(&sTxn)) sTxnSuperseded = true;
       if (res.globalLatch) applyStationLatch(res.ackId, res.name);
       emergencyNodeLinkPersistBlockers(); /* after actuation (MISSION 001F) */
       publishState(true);
@@ -754,6 +856,9 @@ bool emergencyNodeLinkHandleReport(const char *line) {
                 st->name[0] ? st->name : "-");
       }
       (void)prevOpen;
+      if (res.globalLatch && !emergencyLocked && showduino_clear_txn_on_assert(&sTxn)) {
+        sTxnSuperseded = true;
+      }
       if (res.globalLatch) applyStationLatch(res.ackId, st->name);
       if (emergencyLocked && st->announcedLatched && !st->ackedReport) ackIfDue(st);
       emergencyNodeLinkPersistBlockers();
@@ -954,7 +1059,7 @@ void emergencyNodeLinkOnEmergency(bool active) {
     }
     sGclReady = false;
     sEpisode = 0;
-    sClearRequestSeq = 0;
+    showduino_clear_txn_abort(&sTxn);
     showduino_auth_chal_reset(&sChal);
     for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
       if (!sNodes[i].used || !sNodes[i].id[0]) continue;
@@ -978,7 +1083,7 @@ void emergencyNodeLinkOnEmergency(bool active) {
 
 bool emergencyNodeLinkIsMaintenanceCommand(const char *c) {
   return c && (!strncmp(c, "EMERGENCY:KEY:", 14) || !strncmp(c, "EMERGENCY:STATION:", 18) ||
-               !strncmp(c, "EMERGENCY:AUTH:", 15));
+               !strncmp(c, "EMERGENCY:AUTH:", 15) || !strncmp(c, "EMERGENCY:DIRKEY:", 17));
 }
 
 static bool takeId(const char *src, char *out, size_t n, const char **rest) {
@@ -1095,7 +1200,62 @@ bool emergencyNodeLinkHandleMaintenance(const char *command, bool localUsb) {
     }
     return true;
   }
-  Serial.println("[ESTOP] station maintenance: KEY:SET|KEY:REVOKE|KEY:LIST|KEY:RESET|"
+  /* ---- MISSION 001K: Director credential ---- */
+  if (!strncmp(command, "EMERGENCY:DIRKEY:SET:", 21)) {
+    char did[SHOWDUINO_DIR_ID_MAX + 1] = "";
+    const char *src = command + 21;
+    const char *c = strchr(src, ':');
+    const size_t len = c ? (size_t)(c - src) : 0;
+    if (!c || len == 0 || len >= sizeof(did) || strlen(c + 1) != SHOWDUINO_AUTH_KEY_HEX) {
+      Serial.println("[ESTOP] DIRKEY:SET usage: EMERGENCY:DIRKEY:SET:DIR-nn:<64 hex chars>");
+      return true;
+    }
+    memcpy(did, src, len);
+    did[len] = 0;
+    uint8_t key[SHOWDUINO_AUTH_KEY_BYTES];
+    const bool parsed = showduino_dir_id_ok(did) && showduino_auth_hex_decode(c + 1, sizeof(key), key);
+    /* Enrolled during an active emergency: it may not clear that emergency. */
+    const bool ok = parsed && directorKeySet(did, key, emergencyLocked);
+    memset(key, 0, sizeof(key));
+    char fp[9];
+    directorKeyFingerprint(fp);
+    Serial.printf("[ESTOP] DIRKEY:SET %s %s fp=%s%s\n", did, ok ? "OK" : "FAILED", ok ? fp : "-",
+                  ok && emergencyLocked ? " RESTRICTED (cannot clear this emergency; use USB clear)" : "");
+    SD_LOGW("ESTOP", "MAINTENANCE Director key %s for %s (fp=%s)%s", ok ? "set" : "set FAILED", did,
+            ok ? fp : "-", ok && emergencyLocked ? " restricted" : "");
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:DIRKEY:REVOKE")) {
+    const bool ok = directorKeyRevoke();
+    showduino_clear_txn_abort(&sTxn);
+    Serial.printf("[ESTOP] DIRKEY:REVOKE %s\n", ok ? "OK" : "FAILED");
+    SD_LOGW("ESTOP", "MAINTENANCE Director key revoke %s", ok ? "OK" : "FAILED");
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:DIRKEY:RESET")) {
+    if (!directorKeyFault()) {
+      Serial.println("[ESTOP] DIRKEY:RESET refused — record is readable (use DIRKEY:REVOKE)");
+      return true;
+    }
+    const bool ok = directorKeyReset();
+    Serial.printf("[ESTOP] DIRKEY:RESET %s — enrol the Director again\n", ok ? "OK" : "FAILED");
+    SD_LOGW("ESTOP", "MAINTENANCE Director key record reset %s", ok ? "OK" : "FAILED");
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:DIRKEY:STATUS")) {
+    ShowduinoDirKeyRec rec;
+    directorKeyGet(&rec);
+    char fp[9];
+    directorKeyFingerprint(fp);
+    Serial.printf("[ESTOP] DIRECTOR enrolled=%s id=%s fp=%s restricted=%u lastCounter=%lu fault=%u "
+                  "txn=%u\n", rec.present ? "yes" : "no", rec.present ? rec.id : "-", fp[0] ? fp : "-",
+                  (unsigned)rec.restricted, (unsigned long)rec.lastCounter,
+                  directorKeyFault() ? 1U : 0U, (unsigned)sTxn.state);
+    memset(&rec, 0, sizeof(rec));
+    return true;
+  }
+  Serial.println("[ESTOP] maintenance: DIRKEY:SET|DIRKEY:REVOKE|DIRKEY:STATUS|DIRKEY:RESET|"
+                 "KEY:SET|KEY:REVOKE|KEY:LIST|KEY:RESET|"
                  "STATION:DISMISS|AUTH:STATUS");
   return true;
 }

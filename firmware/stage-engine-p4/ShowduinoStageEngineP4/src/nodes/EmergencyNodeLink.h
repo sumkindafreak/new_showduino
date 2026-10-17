@@ -63,15 +63,22 @@ bool emergencyNodeLinkPersistBlockers();
 void emergencyNodeLinkEndEpisode();
 void emergencyNodeLinkRetryBlockers();
 bool emergencyNodeLinkBlockerStorageFault();
-/* MISSION 001J: returns a ShowduinoClearDecision (0 = clear permitted).
- *   confirm=false (CLEAR_REQUEST): station and storage blockers only.
- *   confirm=true  (CLEAR_CONFIRM, USB clear): also every provisioned station must
- *   have a fresh verified RELEASED proof, and the GCL command counters are reserved
- *   (persisted) before this returns 0. */
-int emergencyNodeLinkClearBlocked(bool confirm);
+/* MISSION 001K: request-time gate (station and storage blockers), a
+ * ShowduinoClearDecision (0 = no blocker). Fresh station proofs are collected by the
+ * clearance transaction after an authorised confirm. */
+int emergencyNodeLinkClearBlocked();
+/* Persists one GCL counter per provisioned station. Call right before applying. */
+int emergencyNodeLinkReserveClear();
+/* MISSION 001K clearance transaction (protocol/showduino_clear_txn.h). */
+int emergencyNodeLinkDirectorAccept(const char *line, int *opOut);
+bool emergencyNodeLinkTxnOpen(int authority, char *notice, size_t n);
+int emergencyNodeLinkTxnBeginVerify();
+int emergencyNodeLinkTxnService(int *authorityOut, char *blockId, size_t n);
+int emergencyNodeLinkTxnAuthority();
+bool emergencyNodeLinkTxnVerifying();
+bool emergencyNodeLinkTxnSupersede();
+void emergencyNodeLinkTxnAbort();
 const char *emergencyNodeLinkClearReason(int decision);
-/* CLEAR_REQUEST accepted: proofs must answer challenges issued from now on. */
-void emergencyNodeLinkOnClearRequest();
 /* Once at boot, before any challenge. Seed from the SAR ADC entropy source. */
 void emergencyNodeLinkSeedNonce(const uint8_t seed[32]);
 /* EMERGENCY:KEY:* / EMERGENCY:STATION:* / EMERGENCY:AUTH:*. Returns true when the

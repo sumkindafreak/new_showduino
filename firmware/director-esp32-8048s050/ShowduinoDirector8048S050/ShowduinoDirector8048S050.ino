@@ -42,6 +42,7 @@
 #include "backlight.h"
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
+#include "DirectorClearAuth.h" /* MISSION 001K */
 #include "ShowduinoUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
@@ -123,8 +124,12 @@ static void directorWakeDisplay(const char *tag) {
   backlightNotifyActivity();
 }
 
+void handleUiCommand(const String &command);
+
+/* MISSION 001K: the dialog's Confirm is the operator's explicit intent. It is signed
+ * for the transaction the Stage issued for this request. */
 static void onEmergencyClearConfirm() {
-  sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
+  handleUiCommand(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
 }
 
 static void onEmergencyClearCancel() {
@@ -253,7 +258,7 @@ void drainOs2Commands() {
         Os2::commandService().markSucceeded(cmd.seq);
         break;
       case CT::EmergencyClear:
-        sendToStage("EMERGENCY:CLEAR");
+        handleUiCommand("EMERGENCY:CLEAR"); /* MISSION 001K: signed request */
         Os2::commandService().markSucceeded(cmd.seq);
         break;
       case CT::SelectProduction:
@@ -339,6 +344,7 @@ bool isQuietLinkTraffic(const String &msg) {
 void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
+  directorClearAuthOnStageLine(line); /* MISSION 001K: episode and clear transaction */
 
   rxCount++;
   lastStageReplyMs = millis();
@@ -431,6 +437,11 @@ void handleStageLine(String line) {
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK) {
     gDirectorEmergencyClearDialog.hide();
+  }
+
+  if (line == "EMERGENCY:CLEAR:VERIFYING") {
+    ui.appendLog("Clear confirmed - Stage is verifying every Emergency station");
+    ui.pushOperatorEvent("Verifying Emergency stations...");
   }
 
   {
@@ -641,8 +652,28 @@ void handleStageLine(String line) {
       gDirectorEmergencyClearDialog.hide();
       ui.noteEmergencyClearCancelled();
     } else {
-      ui.appendLog("CLEAR rejected - " + line);
-      ui.pushOperatorEvent("Emergency clear rejected");
+      /* MISSION 001K reasons, e.g. STATION_PRESSED:ESTOP-02, AUTH_REQUIRED. */
+      const String reason = line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)
+                                ? line.substring(strlen(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX))
+                                : line;
+      String human = "Emergency clear rejected";
+      const int colon = reason.indexOf(':');
+      const String code = colon > 0 ? reason.substring(0, colon) : reason;
+      const String who = colon > 0 ? reason.substring(colon + 1) : String("");
+      if (code == "STATION_PRESSED") human = "Station " + who + " is still pressed";
+      else if (code == "STATION_UNVERIFIED") human = "Station " + (who.length() ? who : String("?")) + " did not confirm released";
+      else if (code == "STATION_BLOCKED" || code == "STATION_STORAGE" || code == "STATION_OVERFLOW")
+        human = "Stage station records need service (" + code + ")";
+      else if (code == "WIRELESS_ASSERTED") human = "A wireless station is pressed, missing or unverified";
+      else if (code == "AUTH_REQUIRED") human = "Unsigned clear refused by the Stage";
+      else if (code == "DIRECTOR_NOT_ENROLLED") human = "This Director is not enrolled on the Stage";
+      else if (code == "DIRECTOR_RESTRICTED") human = "Director enrolled during this emergency - clear from the P4 USB console";
+      else if (code == "AUTH_FAILED" || code == "DIRECTOR_UNKNOWN") human = "Clear authorisation rejected (key mismatch)";
+      else if (code == "REPLAY" || code == "WRONG_EPISODE" || code == "STALE_TRANSACTION")
+        human = "Clear authorisation was stale - press E-CLEAR again";
+      else if (code == "AUTH_STORAGE") human = "Stage could not store the authorisation - clear refused";
+      ui.appendLog("CLEAR rejected - " + reason);
+      ui.pushOperatorEvent(human);
       gDirectorEmergencyClearDialog.hide();
       ui.noteEmergencyClearCancelled();
     }
@@ -1224,8 +1255,16 @@ void handleUiCommand(const String &command) {
   }
 
   if (command == "EMERGENCY:CLEAR") {
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
-    ui.appendLog("E-CLEAR request sent to Stage");
+    /* MISSION 001K: signed request; the Stage refuses unsigned clear text. */
+    String signedReq, why;
+    if (!directorClearAuthSignRequest(signedReq, why)) {
+      ui.appendLog("E-CLEAR not sent - " + why);
+      ui.pushOperatorEvent(why);
+      ui.noteEmergencyClearRejected();
+      return;
+    }
+    sendToStage(signedReq);
+    ui.appendLog("E-CLEAR request (signed) sent to Stage");
     if (linkState != LINK_READY) {
       ui.appendLog("CLEAR requested - Stage offline, awaiting confirmation");
       ui.pushOperatorEvent("Cannot confirm emergency clear - Stage offline");
@@ -1234,8 +1273,16 @@ void handleUiCommand(const String &command) {
   }
 
   if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM);
-    ui.appendLog("E-CLEAR confirm sent to Stage");
+    String signedCfm, why;
+    if (!directorClearAuthSignConfirm(signedCfm, why)) {
+      ui.appendLog("E-CLEAR confirm not sent - " + why);
+      ui.pushOperatorEvent(why);
+      gDirectorEmergencyClearDialog.hide();
+      ui.noteEmergencyClearCancelled();
+      return;
+    }
+    sendToStage(signedCfm);
+    ui.appendLog("E-CLEAR confirm (signed) sent to Stage");
     if (linkState != LINK_READY) {
       ui.appendLog("CLEAR requested - Stage offline, awaiting confirmation");
       ui.pushOperatorEvent("Cannot confirm emergency clear - Stage offline");
@@ -1325,6 +1372,10 @@ void readStageSerial() {
 void handleUsbLine(String command) {
   command.trim();
   if (command.length() == 0) return;
+  /* MISSION 001K: key enrolment is handled first and never logged or forwarded. */
+  if (directorClearAuthHandleUsb(command)) return;
+  /* Clear request/confirm are touchscreen actions only: a USB line is forwarded as
+   * plain text, which the Stage refuses (AUTH_REQUIRED). */
 
   if (command == "HELP") {
     ui.appendLog("USB: HEALTH, HELLO, STATUS:REQUEST, SHOW:*, EMERGENCY:*, TOUCH:STATUS, TOUCH:RESET, TOUCH:CALIBRATE, LOG:LEVEL");
@@ -1497,6 +1548,7 @@ void setup() {
   espNowReady = espNowTransport.begin();
   Serial.println(espNowReady ? "ESP-NOW: begin ok" : "ESP-NOW: begin failed");
 #endif
+  directorClearAuthBegin(); /* MISSION 001K */
 
   /* SD before RGB: heavy SPI while the panel DMA is running trips Interrupt WDT. */
   Serial.println("SHOWDUINO DIRECTOR");

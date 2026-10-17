@@ -17,6 +17,7 @@ on:
       - "firmware/s3-comms-controller/**"
       - "firmware/shared-node/**"
       - "firmware/shared-pixel/**"
+      - "firmware/director-esp32-8048s050/**"
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
@@ -28,6 +29,7 @@ on:
       - "firmware/s3-comms-controller/**"
       - "firmware/shared-node/**"
       - "firmware/shared-pixel/**"
+      - "firmware/director-esp32-8048s050/**"
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
@@ -78,12 +80,17 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
             tools/emergency-auth-tests/test_station_auth.cpp -lcrypto -o /tmp/station_auth
           /tmp/station_auth
+      - name: Director clear authentication suite (-Werror; MISSION 001K)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-director-tests/test_director_auth.cpp -lcrypto -o /tmp/director_auth
+          /tmp/director_auth
       - name: Emergency Node protocol suite (-Werror)
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
             tools/emergency-node-tests/test_emergency_node.cpp -o /tmp/estop_node
           /tmp/estop_node
-      - name: Station auth mutation check (MISSION 001J)
+      - name: Station / Director auth mutation check (MISSION 001J/001K)
         run: bash tools/emergency-auth-tests/run_mutations.sh
 
   build-current:
@@ -171,18 +178,20 @@ jobs:
           path: compile.log
           if-no-files-found: warn
 
-  # MISSION 001J: the C3 Emergency Node and the S3 Comms relay are part of the
-  # station trust chain, so both are compiled. "pre-001J" compiles the same sketch
-  # at c7261c1 to separate pre-existing build problems from new ones.
+  # MISSION 001J/001K: the C3 Emergency Node, the S3 Comms relay and the Director
+  # are part of the emergency trust chain, so all three are compiled. "baseline"
+  # compiles the same sketch at b3b3f95 (end of 001J) to separate pre-existing build
+  # problems from new ones. Director library versions are not pinned in the repo:
+  # LVGL 9.2.2 and the current GFX Library for Arduino are a CI assumption.
   build-stations:
     name: Compile ${{ matrix.target }} (${{ matrix.ref_name }})
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.ref_name == 'pre-001J' }}
+    continue-on-error: ${{ matrix.ref_name == 'baseline' }}
     strategy:
       fail-fast: false
       matrix:
-        target: [c3-emergency-node, s3-comms-controller]
-        ref_name: [this-commit, pre-001J]
+        target: [c3-emergency-node, s3-comms-controller, director-s3]
+        ref_name: [this-commit, baseline]
         include:
           - target: c3-emergency-node
             sketch: firmware/c3-emergency-node/ShowduinoC3EmergencyNode
@@ -192,10 +201,15 @@ jobs:
             sketch: firmware/s3-comms-controller/ShowduinoS3CommsController
             fqbn: "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB"
             libs: ""
+          - target: director-s3
+            sketch: firmware/director-esp32-8048s050/ShowduinoDirector8048S050
+            fqbn: "esp32:esp32:esp32s3:CDCOnBoot=default,USBMode=default,FlashSize=16M,FlashMode=qio,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+            libs: "lvgl@9.2.2;GFX Library for Arduino;TAMC_GT911;Adafruit NeoPixel"
+            lvconf: firmware/director-esp32-8048s050/ShowduinoDirector8048S050/lv_conf.h
           - ref_name: this-commit
             ref: ""
-          - ref_name: pre-001J
-            ref: c7261c1aa12652691d3b2770d73985990702f3cd
+          - ref_name: baseline
+            ref: b3b3f959d6904f306c74c494d72046001b7e81ef
     steps:
       - uses: actions/checkout@v4
         with:
@@ -214,6 +228,12 @@ jobs:
             IFS=';' read -ra LIBS <<< "${{ matrix.libs }}"
             arduino-cli lib install "${LIBS[@]}"
             arduino-cli lib list
+          fi
+          if [ -n "${{ matrix.lvconf }}" ]; then
+            # LVGL is compiled as a library; it finds lv_conf.h next to its folder.
+            libdir="$(arduino-cli config get directories.user)/libraries"
+            cp "${{ matrix.lvconf }}" "$libdir/lv_conf.h"
+            ls -la "$libdir"
           fi
       - name: Compile ${{ matrix.target }}
         run: |
