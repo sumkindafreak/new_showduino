@@ -91,6 +91,23 @@ pin it once the bench version is known. CI cannot publish its binaries from this
 environment, so keep your own `.bin` files (Arduino IDE: *Sketch → Export Compiled
 Binary*) with the commit hash in the file name.
 
+### 1.4 Automated verification of the 001L firmware (not hardware evidence)
+
+CI run 39045184753 on `30da0db` (code identical to this document's commit): host tests,
+mutation check and all four compiles succeeded. 0 errors on every target.
+
+| Target | Flash | RAM | Change vs 6c5e1b7 | Warnings |
+|---|---|---|---|---|
+| P4 Stage Engine | 1,215,570 B (92% of 1,310,720) | 85,244 B (26%) | +5,310 B flash, +544 B RAM | 1 (core, pre-existing) |
+| Director (CI partition assumption) | 1,579,322 B (50% of 3,145,728) | 139,284 B (42%) | +948 B flash | 55, 0 in emergency files (pre-existing) |
+| C3 Emergency Node | 1,133,251 B (86%) | 39,840 B (12%) | +202 B flash | 0 |
+| Comms S3 | 1,396,087 B (41%) | 58,644 B (17%) | unchanged | 2 (pre-existing) |
+
+P4 headroom is now about 95 KB (7.3%). Host suites: latch 114, button 43, Director sheet
+12, emergency node 104, station auth 56, station integration 156, Director auth 51,
+001L recovery 26 — all pass; mutation check 55 mutants, 55 killed. These prove the
+policy code and that the firmware compiles; they say nothing about real boards.
+
 ---
 
 ## 2. Equipment checklist
