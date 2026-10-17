@@ -18,7 +18,12 @@
 #ifndef LV_CONF_H
 #define LV_CONF_H
 
+/* LVGL also preprocesses this file for its assembly sources; C headers must stay
+ * out of that pass (LVGL lv_conf_template.h rule). Added in MISSION 001K so the
+ * Director builds with LVGL releases that ship .S files. No effect on C/C++. */
+#if !defined(__ASSEMBLY__) && !defined(__ASSEMBLER__)
 #include <stdint.h>
+#endif
 
 #define LV_COLOR_DEPTH          16
 #define LV_COLOR_16_SWAP        0
