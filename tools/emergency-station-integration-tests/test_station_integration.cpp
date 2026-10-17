@@ -23,6 +23,8 @@
 #include "showduino_station_blockers.h"
 #include "showduino_station_model.h"
 #include "showduino_station_responder.h"
+#include "showduino_director_auth.h"
+#include "showduino_clear_txn.h"
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <cstdio>
@@ -229,6 +231,19 @@ struct P4 {
   uint32_t episode = 0;
   uint32_t now = 10000;
 
+  /* MISSION 001K: clearance transaction, physical input, Director credential. */
+  ShowduinoClearTxn txn{};
+  int lastTxnResult = -1;
+  bool txnSuperseded = false;
+  bool physicalPressed = false;       /* P4 GPIO25 loop open */
+  ShowduinoDirKeyRec dirRec{};
+  uint32_t dirCtrNvs = 0;             /* persisted last accepted Director counter */
+  int failDirWrites = 0;
+  int lastDirResult = -1;
+  std::string lastReply;
+  struct Director *director = nullptr;
+  bool dropToDirector = false;
+
   bool globalLatched = false;
   int globalTriggers = 0;
   int acksSent = 0;
@@ -325,8 +340,11 @@ struct P4 {
     upLog.push_back(line);
     if (dropAllUp) return;
     if (from && dropUp.count(from->id)) return;
+    if (holdUp && !std::strncmp(line.c_str(), "AUTH:", 5)) { heldUp.push_back({from, line}); return; }
+    if (dropAssertUp && showduino_emergency_is_assert(line.c_str())) return;
     deliver(line);
   }
+  bool dropAssertUp = false;
   void down(C3 *to, const std::string &line) {
     downLog.push_back(line);
     if (dropDown.count(to->id)) return;
@@ -368,6 +386,11 @@ struct P4 {
     if (handled) *handled = h != 0;
     if (!h) return res;
     if (res.tableFull) tableOverflow = true;
+    /* MISSION 001K: any ASSERT (or a verified latched report that re-engages) ends a
+     * pending clear transaction. Mirrors EmergencyNodeLink. */
+    if (res.kind == SHOWDUINO_STATION_LINE_ASSERT || (res.globalLatch && !globalLatched)) {
+      if (showduino_clear_txn_on_assert(&txn)) txnSuperseded = true;
+    }
     if (res.globalLatch && !globalLatched) engage();
     ensureEpisode();
     persist();
@@ -398,29 +421,71 @@ struct P4 {
   void pumpAll() { for (C3 *s : stations) pump(*s); }
   void advance(uint32_t ms) { now += ms; }
 
-  /* Director CLEAR_REQUEST then CLEAR_CONFIRM, with one challenge period between
-   * them (the P4 challenges every SHOWDUINO_STATION_CHAL_LATCHED_MS while latched).
-   * Mirrors EmergencyNodeLink: the confirm accepts proofs from one of the two most
-   * recent challenges issued after the request. */
-  bool directorClear() {
-    const uint32_t requestSeq = showduino_auth_chal_next_seq(&chal);
+  /* MISSION 001K: every clear runs the shared transaction (showduino_clear_txn.h):
+   * a confirm starts verification, only answers to challenges issued after it count,
+   * any ASSERT or fresh PRESSED aborts, missing answers fail at the window. */
+  static int mapTxn(int r, const ShowduinoClearTxn &t) {
+    if (r == SHOWDUINO_TXN_REJECT_PRESSED || r == SHOWDUINO_TXN_REJECT_SUPERSEDED) return SHOWDUINO_CLEAR_BLOCK_STATION;
+    if (r == SHOWDUINO_TXN_REJECT_UNVERIFIED || r == SHOWDUINO_TXN_REJECT_BLOCKED) return t.blockDecision;
+    if (r == SHOWDUINO_TXN_REJECT_EPISODE || r == SHOWDUINO_TXN_REJECT_NOT_OPEN) return SHOWDUINO_CLEAR_BLOCK_STORAGE;
+    return SHOWDUINO_CLEAR_BLOCK_STATION;
+  }
+  bool refuse(int decision, int txnResult, const char *reply) {
+    lastDecision = decision;
+    lastTxnResult = txnResult;
+    lastReply = reply;
+    clearsRefused++;
+    return false;
+  }
+
+  /* Local USB maintenance clear (EMERGENCY:CLEAR on the P4 console). */
+  bool directorClear() { return localClear(); }
+  bool localClear() {
+    if (showduino_clear_entry(1, "EMERGENCY:CLEAR") != SHOWDUINO_CLEAR_ENTRY_LOCAL) return false;
+    if (!globalLatched) return refuse(SHOWDUINO_CLEAR_BLOCK_STATION, -1, "NOT_LATCHED");
+    if (physicalPressed) return refuse(SHOWDUINO_CLEAR_BLOCK_STATION, -2, "BUTTON_ACTIVE");
+    if (!showduino_clear_txn_open(&txn, SHOWDUINO_CLEAR_BY_LOCAL_USB, episode, now, testRand)) {
+      return refuse(SHOWDUINO_CLEAR_BLOCK_STORAGE, SHOWDUINO_TXN_REJECT_EPISODE, "STATION_STORAGE");
+    }
+    return confirmAndVerify();
+  }
+
+  /* Confirm accepted: verification, then apply. */
+  bool confirmAndVerify() {
+    txnSuperseded = false;
+    if (physicalPressed) {
+      showduino_clear_txn_abort(&txn);
+      return refuse(SHOWDUINO_CLEAR_BLOCK_STATION, -2, "BUTTON_ACTIVE");
+    }
+    int r = showduino_clear_txn_begin_verify(&txn, episode, now, showduino_auth_chal_next_seq(&chal));
+    if (r != SHOWDUINO_TXN_PENDING) return refuse(mapTxn(r, txn), r, showduino_clear_txn_result_name(r));
     challengeRound();
-    advance(SHOWDUINO_STATION_CHAL_LATCHED_MS);
-    challengeRound();
-    const uint32_t proofSince = showduino_station_proof_since(requestSeq, chal.lastSeq);
-    lastDecision = showduino_station_clear_decision(
-        t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, keyCount, proofSince, bootUnknown ? 1 : 0,
-        persistDirty ? 1 : 0, counterFault ? 1 : 0, tableOverflow ? 1 : 0, 1);
-    if (lastDecision != SHOWDUINO_CLEAR_OK) { clearsRefused++; return false; }
+    for (int guard = 0;; ++guard) {
+      if (guard > 64) { r = -99; break; }   /* verification never ended: a test failure */
+      if (txnSuperseded) { r = SHOWDUINO_TXN_REJECT_SUPERSEDED; break; }
+      r = showduino_clear_txn_evaluate(&txn, t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, keyCount,
+                                       episode, now, bootUnknown ? 1 : 0, persistDirty ? 1 : 0,
+                                       counterFault ? 1 : 0, tableOverflow ? 1 : 0, 1);
+      if (r != SHOWDUINO_TXN_PENDING) break;
+      advance(SHOWDUINO_CLEAR_VERIFY_RECHAL_MS);
+      if (showduino_clear_txn_want_rechallenge(&txn, now)) challengeRound();
+    }
+    if (r != SHOWDUINO_TXN_ACCEPT) return refuse(mapTxn(r, txn), r, showduino_clear_txn_result_name(r));
+    if (physicalPressed) return refuse(SHOWDUINO_CLEAR_BLOCK_STATION, -2, "BUTTON_ACTIVE");
     /* Reserve one GCL counter per station before anything changes. */
     std::vector<uint32_t> reserved;
     for (int i = 0; i < keyCount; ++i) {
       uint32_t c = 0;
-      if (!nextCounter(&c)) { lastDecision = SHOWDUINO_CLEAR_BLOCK_STORAGE; clearsRefused++; return false; }
+      if (!nextCounter(&c)) return refuse(SHOWDUINO_CLEAR_BLOCK_STORAGE, -3, "STATION_STORAGE");
       reserved.push_back(c);
     }
+    lastDecision = SHOWDUINO_CLEAR_OK;
+    lastTxnResult = SHOWDUINO_TXN_ACCEPT;
+    lastReply = "EMERGENCY:CLEAR_OK";
     globalLatched = false;
     clearsAccepted++;
+    /* An accepted clear lifts the restriction on a Director enrolled mid-emergency. */
+    dirRec.restricted = 0;
     const uint32_t ended = episode;
     showduino_station_model_end_episode(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
     persist();
@@ -436,6 +501,71 @@ struct P4 {
       }
     }
     return true;
+  }
+
+  /* ---- Director path: Director -> S3 -> P4 (fromComms) and P4 -> S3 -> Director ---- */
+  static int dirPersistCb(void *ctx, uint32_t v) {
+    P4 *p = static_cast<P4 *>(ctx);
+    if (p->failDirWrites > 0) { p->failDirWrites--; return 0; }
+    p->dirCtrNvs = v;
+    return 1;
+  }
+  void enrollDirector(const char *id, const Key &k) {
+    dirRec = ShowduinoDirKeyRec{};
+    dirRec.present = 1;
+    std::snprintf(dirRec.id, sizeof(dirRec.id), "%s", id);
+    std::memcpy(dirRec.key, k.b, sizeof(dirRec.key));
+    dirRec.restricted = globalLatched ? 1 : 0;   /* EmergencyDirectorKey rule */
+    dirRec.lastCounter = 0;
+    dirCtrNvs = 0;
+  }
+  void toDirector(const std::string &line);
+  void publishEpisode() {
+    char buf[64];
+    showduino_dir_format_episode(globalLatched ? episode : 0, buf, sizeof(buf));
+    toDirector(buf);
+  }
+  /* A line arriving on the P4 UART (Comms source). Mirrors the sketch dispatch. */
+  int fromComms(const std::string &line) {
+    const int e = showduino_clear_entry(0, line.c_str());
+    if (e == SHOWDUINO_CLEAR_ENTRY_REFUSE_AUTH) {
+      lastReply = "EMERGENCY:CLEAR:REJECTED:AUTH_REQUIRED";
+      clearsRefused++;
+      return e;
+    }
+    if (e == SHOWDUINO_CLEAR_ENTRY_CANCEL) { showduino_clear_txn_abort(&txn); return e; }
+    if (e != SHOWDUINO_CLEAR_ENTRY_DIRECTOR) return e;
+    ShowduinoDirMsg m;
+    lastDirResult = showduino_dir_accept(&dirRec, line.c_str(), globalLatched ? episode : 0,
+                                         showduino_clear_txn_open_nonce(&txn), hmacSha256,
+                                         dirPersistCb, this, &m);
+    if (lastDirResult != SHOWDUINO_DIR_OK) {
+      lastReply = std::string("EMERGENCY:CLEAR:REJECTED:") + showduino_dir_result_name(lastDirResult);
+      clearsRefused++;
+      return e;
+    }
+    if (m.op == SHOWDUINO_DIR_OP_REQ) {
+      if (physicalPressed) { refuse(SHOWDUINO_CLEAR_BLOCK_STATION, -2, "BUTTON_ACTIVE"); return e; }
+      if (!showduino_clear_txn_open(&txn, SHOWDUINO_CLEAR_BY_DIRECTOR, episode, now, testRand)) {
+        refuse(SHOWDUINO_CLEAR_BLOCK_STORAGE, SHOWDUINO_TXN_REJECT_EPISODE, "STATION_STORAGE");
+        return e;
+      }
+      char buf[64];
+      showduino_dir_format_txn_notice(episode, txn.nonceHex, buf, sizeof(buf));
+      toDirector(buf);
+      return e;
+    }
+    confirmAndVerify();
+    return e;
+  }
+
+  /* Relay holding station answers (models a delaying S3). */
+  std::vector<std::pair<C3 *, std::string>> heldUp;
+  bool holdUp = false;
+  void releaseHeld() {
+    auto h = heldUp;
+    heldUp.clear();
+    for (auto &x : h) deliver(x.second);
   }
 
   void timeout(const char *id) {
@@ -483,6 +613,69 @@ struct P4 {
   }
 };
 
+/* ================= Director (real signer) ================= */
+struct Director {
+  ShowduinoDirSigner s{};
+  uint32_t nvsCtr = 1;            /* persisted counter-block limit */
+  int failWrites = 0;
+  P4 *p4 = nullptr;
+  std::vector<std::string> sent;  /* everything the relay saw from the Director */
+  int signFailures = 0;
+
+  Director(const char *id, const Key &k) { enroll(id, k); }
+  void enroll(const char *id, const Key &k) {
+    s = ShowduinoDirSigner{};
+    s.provisioned = 1;
+    std::snprintf(s.id, sizeof(s.id), "%s", id);
+    std::memcpy(s.key, k.b, sizeof(s.key));
+    showduino_auth_counter_boot(&s.ctr, nvsCtr);
+  }
+  /* Power cycle: RAM (episode, txn) lost, key and counter limit kept. */
+  void reboot() {
+    const uint8_t prov = s.provisioned;
+    char id[sizeof(s.id)];
+    std::memcpy(id, s.id, sizeof(id));
+    uint8_t key[32];
+    std::memcpy(key, s.key, 32);
+    s = ShowduinoDirSigner{};
+    s.provisioned = prov;
+    std::memcpy(s.id, id, sizeof(id));
+    std::memcpy(s.key, key, 32);
+    showduino_auth_counter_boot(&s.ctr, nvsCtr);
+  }
+  static int persistCb(void *ctx, uint32_t v) {
+    Director *d = static_cast<Director *>(ctx);
+    if (d->failWrites > 0) { d->failWrites--; return 0; }
+    d->nvsCtr = v;
+    return 1;
+  }
+  void onNotice(const std::string &line) {
+    uint32_t e = 0;
+    if (showduino_dir_parse_episode(line.c_str(), &e)) s.episode = e;
+    showduino_dir_parse_txn_notice(line.c_str(), &s.txnEpisode, s.txnHex);
+  }
+  /* Touch "E-CLEAR". */
+  bool tapClear() {
+    char buf[128];
+    if (!showduino_dir_sign_req(&s, hmacSha256, persistCb, this, buf, sizeof(buf))) { signFailures++; return false; }
+    sent.push_back(buf);
+    if (p4) p4->fromComms(buf);
+    return true;
+  }
+  /* Touch "Confirm" in the clear dialog. */
+  bool tapConfirm() {
+    char buf[128];
+    if (!showduino_dir_sign_cfm(&s, hmacSha256, persistCb, this, buf, sizeof(buf))) { signFailures++; return false; }
+    sent.push_back(buf);
+    if (p4) p4->fromComms(buf);
+    return true;
+  }
+};
+
+void P4::toDirector(const std::string &line) {
+  if (director && !dropToDirector) director->onNotice(line);
+}
+
 /* Reboot: a new P4 with the same NVS (keys, counter limit, blocker record). */
 static void rebootP4(const P4 &old, P4 &fresh, bool latched = true) {
   for (int i = 0; i < old.keyCount; ++i) fresh.provision(old.ids[i], old.keys[i]);
@@ -508,6 +701,12 @@ static void rebootP4(const P4 &old, P4 &fresh, bool latched = true) {
   }
   fresh.persistedEnc = old.store.value;
   fresh.persistValid = old.store.valid;
+  /* Director credential and its last accepted counter come back from NVS. */
+  fresh.dirRec = old.dirRec;
+  fresh.dirRec.lastCounter = old.dirCtrNvs;
+  fresh.dirCtrNvs = old.dirCtrNvs;
+  fresh.director = old.director;
+  if (fresh.director) fresh.director->p4 = &fresh;
 }
 
 /* A valid-looking AUTH forged without the key (random tag). */
@@ -1036,8 +1235,10 @@ int main() {
     a.pressed = true; p4.pump(a);
     expect(p4.globalLatched && p4.tableOverflow,
            "S18a real ASSERT still latches when the table is full of forged IDs");
-    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_OVERFLOW,
-           "S18b table overflow blocks clear");
+    const uint32_t t0 = p4.now;
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_OVERFLOW &&
+           p4.lastTxnResult == SHOWDUINO_TXN_REJECT_BLOCKED && p4.now == t0,
+           "S18b table overflow blocks clear immediately (no verification wait)");
   }
 
   /* ===== S19 (001I carried): bare ASSERT never restores freshness ===== */
@@ -1106,6 +1307,393 @@ int main() {
     int n = 0;
     expect(showduino_station_model_collect_required(t, 3, out, 1, &n) == 0,
            "S23a overflow of the stored set reports failure");
+  }
+
+  /* ======================= MISSION 001K: Director authority ======================= */
+  const Key KD = makeKey(40), KD2 = makeKey(41), KDX = makeKey(42);
+
+  /* K1: genuine Director request and confirmation */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode();
+    expect(d.tapClear() && p4.lastDirResult == SHOWDUINO_DIR_OK && p4.txn.state == SHOWDUINO_TXN_OPEN &&
+           d.s.txnHex[0], "K1a signed REQ accepted; P4 opens a transaction and tells the Director");
+    p4.advance(10);
+    expect(d.tapConfirm() && p4.clearsAccepted == 1 && !p4.globalLatched &&
+           a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "K1b signed CFM + fresh station proofs: clear accepted, station normalised");
+  }
+
+  /* K2/K3/K22: forged request, forged confirmation, failed auth in an otherwise valid clear */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    Director fake("DIR-01", KDX); fake.p4 = &p4;  /* attacker without the key */
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); fake.s.episode = p4.episode;
+    fake.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_TAG && p4.txn.state == SHOWDUINO_TXN_IDLE,
+           "K2 forged REQ rejected; no transaction opened");
+    d.tapClear();
+    std::snprintf(fake.s.txnHex, sizeof(fake.s.txnHex), "%s", p4.txn.nonceHex);
+    fake.s.txnEpisode = p4.episode;
+    fake.tapConfirm();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_TAG && p4.globalLatched &&
+           p4.txn.state == SHOWDUINO_TXN_OPEN,
+           "K3/K22 forged CFM rejected with every station released; latch kept, real txn still open");
+    p4.advance(10);
+    expect(d.tapConfirm() && !p4.globalLatched, "K3b the genuine confirm still works afterwards");
+  }
+
+  /* K4: S3 tampers with the episode notice -> Director signs the wrong episode */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    d.onNotice("STATE:EMERGENCY:EPISODE:7fffffff");   /* forged by the relay */
+    d.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_EPISODE && p4.txn.state == SHOWDUINO_TXN_IDLE,
+           "K4 Director message for an episode the P4 is not in is rejected (fail closed)");
+  }
+
+  /* K5/K9/K23: captured Director traffic replayed by a compromised S3 */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10); d.tapConfirm();
+    expect(!p4.globalLatched, "K5 setup: genuine clear in episode 1");
+    const std::string oldReq = d.sent[0], oldCfm = d.sent[1];
+    p4.fromComms(oldCfm);
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_EPISODE, "K23 replayed CFM after the clear rejected");
+    a.pressed = true; p4.advance(100); p4.pump(a); a.pressed = false; p4.pump(a);
+    expect(p4.globalLatched, "K5 new emergency (episode 2)");
+    p4.fromComms(oldReq);
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_EPISODE && p4.txn.state == SHOWDUINO_TXN_IDLE,
+           "K5a replayed REQ from episode 1 rejected in episode 2");
+    p4.fromComms(oldCfm);
+    expect(p4.lastDirResult != SHOWDUINO_DIR_OK && p4.globalLatched,
+           "K5b replayed CFM from episode 1 rejected; latch kept");
+    p4.publishEpisode(); d.tapClear();
+    const std::string req2 = d.sent.back();
+    p4.fromComms(req2);
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_REPLAY, "K9 same-episode REQ replay rejected by counter");
+  }
+
+  /* K6/K7: replay after Director restart and after P4 restart */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear();
+    const std::string req = d.sent.back();
+    d.reboot();
+    p4.fromComms(req);
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_REPLAY, "K6a pre-restart REQ replay rejected");
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    expect(p4.lastDirResult == SHOWDUINO_DIR_OK && p4.txn.state == SHOWDUINO_TXN_OPEN,
+           "K6b restarted Director signs fresh requests (counter resumed above stored block)");
+    const std::string openNonce = p4.txn.nonceHex;
+    P4 after; rebootP4(p4, after);
+    after.fromComms(req);
+    expect(after.lastDirResult == SHOWDUINO_DIR_REJECT_EPISODE || after.lastDirResult == SHOWDUINO_DIR_REJECT_REPLAY,
+           "K7a pre-reboot REQ rejected after P4 restart");
+    d.tapConfirm();   /* CFM for the transaction that died with the reboot */
+    expect(after.lastDirResult != SHOWDUINO_DIR_OK && after.globalLatched,
+           "K7b CFM for a pre-reboot transaction rejected; latch restored and kept");
+    after.publishEpisode(); after.ackSweep(); d.tapClear(); after.advance(10); d.tapConfirm();
+    expect(!after.globalLatched && std::string(openNonce) != "",
+           "K7c a fresh request/confirm after the P4 restart clears normally");
+  }
+
+  /* K8: S3-generated clearance (plain text) */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    for (const char *c : {"EMERGENCY:CLEAR", "EMERGENCY:CLEAR_REQUEST", "EMERGENCY:CLEAR_CONFIRM"}) {
+      p4.fromComms(c);
+    }
+    expect(p4.globalLatched && p4.txn.state == SHOWDUINO_TXN_IDLE &&
+           p4.lastReply == "EMERGENCY:CLEAR:REJECTED:AUTH_REQUIRED",
+           "K8 plain clear request/confirm from the UART never clears (AUTH_REQUIRED)");
+  }
+
+  /* K10: missing Director -> only the USB maintenance authority can clear */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);   /* no Director enrolled */
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    Director rogue("DIR-01", KD); rogue.p4 = &p4; rogue.s.episode = p4.episode;
+    rogue.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_NO_KEY && p4.globalLatched,
+           "K10a with no enrolled Director nothing on the UART can clear");
+    p4.advance(10);
+    expect(p4.localClear(), "K10b USB maintenance clear (with station proofs) works");
+  }
+
+  /* K11: missing Comms Controller */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.dropAllUp = true;                       /* S3 dead: no station answers */
+    expect(!p4.localClear() && p4.lastTxnResult == SHOWDUINO_TXN_REJECT_UNVERIFIED &&
+           p4.lastDecision != SHOWDUINO_CLEAR_OK,
+           "K11a no relay: even the USB clear is refused while provisioned stations cannot prove RELEASED");
+    p4.revoke("ESTOP-01");
+    showduino_station_model_dismiss(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, "ESTOP-01", 0);
+    p4.persist(); p4.advance(10);
+    expect(p4.localClear(), "K11b documented maintenance (inspect, revoke, dismiss) then USB clear");
+  }
+
+  /* K12: Director replacement */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director oldD("DIR-01", KD); oldD.p4 = &p4; p4.director = &oldD;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.enrollDirector("DIR-01", KD2);            /* replacement enrolled during the emergency */
+    Director newD("DIR-01", KD2); newD.p4 = &p4; p4.director = &newD;
+    p4.publishEpisode(); newD.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_RESTRICTED && p4.globalLatched,
+           "K12a a Director enrolled during an active emergency cannot clear it");
+    oldD.s.episode = p4.episode; oldD.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_TAG, "K12b the replaced Director's key no longer works");
+    p4.advance(10);
+    expect(p4.localClear() && p4.dirRec.restricted == 0,
+           "K12c USB maintenance clear ends the episode and lifts the restriction");
+    a.pressed = true; p4.advance(100); p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); newD.tapClear(); p4.advance(10); newD.tapConfirm();
+    expect(!p4.globalLatched, "K12d the new Director clears the next emergency normally");
+  }
+
+  /* K13: wrong or corrupted Director key on either side */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    Key bad = KD; bad.b[3] ^= 0x10;
+    p4.enrollDirector("DIR-01", bad);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_TAG && p4.globalLatched,
+           "K13 corrupted key: no request accepted, latch kept");
+  }
+
+  /* K14: stale station proof — answered before the confirm, then the relay hides it */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.challengeRound();                                   /* RELEASED proof before the request */
+    p4.publishEpisode(); d.tapClear(); p4.challengeRound(); /* and after the request */
+    p4.dropAllUp = true;
+    p4.advance(10); d.tapConfirm();
+    expect(p4.globalLatched && p4.lastTxnResult == SHOWDUINO_TXN_REJECT_UNVERIFIED,
+           "K14 proofs from before the confirm never count; no fresh answer -> refused");
+  }
+
+  /* K15: station press between request and confirm */
+  {
+    C3 a("ESTOP-01", &KA, false), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear();
+    b.pressed = true; p4.advance(50); p4.pump(b);         /* operator sees nothing yet */
+    d.tapConfirm();
+    expect(p4.globalLatched && p4.lastDirResult == SHOWDUINO_DIR_REJECT_TXN,
+           "K15 an ASSERT between request and confirm voids the transaction");
+  }
+
+  /* K16a: press after a valid proof, honest relay */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear();
+    p4.holdUp = true;                  /* answers delayed in the relay */
+    p4.advance(10); d.tapConfirm();
+    expect(p4.globalLatched || p4.lastTxnResult != SHOWDUINO_TXN_ACCEPT,
+           "K16a setup: verification pending while answers are in flight");
+  }
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    /* Press during verification with an honest relay: the ASSERT reaches the P4. */
+    p4.holdUp = true;
+    std::string cfm;
+    {
+      char buf[128];
+      showduino_dir_sign_cfm(&d.s, hmacSha256, Director::persistCb, &d, buf, sizeof(buf));
+      cfm = buf;
+    }
+    p4.holdUp = true;
+    /* Start verification by hand so the press can land in the middle. */
+    p4.lastDirResult = showduino_dir_accept(&p4.dirRec, cfm.c_str(), p4.episode,
+                                            showduino_clear_txn_open_nonce(&p4.txn), hmacSha256,
+                                            P4::dirPersistCb, &p4, nullptr);
+    showduino_clear_txn_begin_verify(&p4.txn, p4.episode, p4.now, showduino_auth_chal_next_seq(&p4.chal));
+    p4.challengeRound();                                   /* RELEASED answers held */
+    /* Station is between heartbeats with its assert burst finished: only a new
+     * press edge can make it ASSERT now. */
+    a.m.pending_assert = 0; a.m.burst_left = 0; a.m.next_tx_ms = p4.now + 1500;
+    const int assertsBefore = a.assertsSent;
+    a.pressed = true; p4.pump(a);                          /* ASSERT delivered */
+    expect(a.assertsSent == assertsBefore + 1,
+           "K16b0 a re-press while still latched asserts at once (not at the next heartbeat)");
+    p4.holdUp = false; p4.releaseHeld();
+    const int r = showduino_clear_txn_evaluate(&p4.txn, p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p4.ids,
+                                               p4.keyCount, p4.episode, p4.now, 0, 0, 0, 0, 1);
+    expect(p4.txnSuperseded && r != SHOWDUINO_TXN_ACCEPT,
+           "K16b press after a valid RELEASED proof, before the clear: ASSERT aborts verification");
+  }
+
+  /* K16c BOUNDARY: hostile S3 suppresses the ASSERT and delays the earlier RELEASED answer */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    char buf[128];
+    showduino_dir_sign_cfm(&d.s, hmacSha256, Director::persistCb, &d, buf, sizeof(buf));
+    p4.lastDirResult = showduino_dir_accept(&p4.dirRec, buf, p4.episode,
+                                            showduino_clear_txn_open_nonce(&p4.txn), hmacSha256,
+                                            P4::dirPersistCb, &p4, nullptr);
+    showduino_clear_txn_begin_verify(&p4.txn, p4.episode, p4.now, showduino_auth_chal_next_seq(&p4.chal));
+    p4.holdUp = true;
+    p4.challengeRound();                                   /* genuine post-confirm RELEASED, held */
+    p4.dropAssertUp = true; p4.dropUp.insert("ESTOP-01");  /* hostile relay hides the press */
+    a.pressed = true; p4.pump(a);
+    p4.dropUp.clear(); p4.holdUp = false;
+    p4.advance(300); p4.releaseHeld();                     /* still inside the 1000 ms window */
+    const int r = showduino_clear_txn_evaluate(&p4.txn, p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p4.ids,
+                                               p4.keyCount, p4.episode, p4.now, 0, 0, 0, 0, 1);
+    expect(r == SHOWDUINO_TXN_ACCEPT && a.m.input_open == 1,
+           "K16c BOUNDARY: a hostile S3 that hides a press made after the station's post-confirm "
+           "RELEASED answer can still get a clear accepted (single wireless path; J-14 residual)");
+    p4.advance(SHOWDUINO_CLEAR_VERIFY_WINDOW_MS + 1);
+    p4.holdUp = true; p4.dropAssertUp = false;
+    expect(SHOWDUINO_CLEAR_VERIFY_WINDOW_MS <= 1000u,
+           "K16d BOUNDARY: that exposure is limited to the verification window (<= 1000 ms)");
+  }
+
+  /* K17: lost then delayed station messages */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    p4.dropDownMatch = "CHAL:";                   /* first challenge lost */
+    char buf[128];
+    showduino_dir_sign_cfm(&d.s, hmacSha256, Director::persistCb, &d, buf, sizeof(buf));
+    p4.lastDirResult = showduino_dir_accept(&p4.dirRec, buf, p4.episode,
+                                            showduino_clear_txn_open_nonce(&p4.txn), hmacSha256,
+                                            P4::dirPersistCb, &p4, nullptr);
+    showduino_clear_txn_begin_verify(&p4.txn, p4.episode, p4.now, showduino_auth_chal_next_seq(&p4.chal));
+    p4.challengeRound();
+    p4.dropDownMatch.clear();
+    p4.advance(SHOWDUINO_CLEAR_VERIFY_RECHAL_MS);
+    if (showduino_clear_txn_want_rechallenge(&p4.txn, p4.now)) p4.challengeRound();
+    const int r = showduino_clear_txn_evaluate(&p4.txn, p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p4.ids,
+                                               p4.keyCount, p4.episode, p4.now, 0, 0, 0, 0, 1);
+    expect(r == SHOWDUINO_TXN_ACCEPT, "K17a a lost challenge is recovered by the re-challenge inside the window");
+  }
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    p4.holdUp = true;            /* every answer delayed past the window */
+    d.tapConfirm();
+    expect(p4.globalLatched && p4.lastTxnResult == SHOWDUINO_TXN_REJECT_UNVERIFIED,
+           "K17b answers delayed beyond the window: refused (fail closed)");
+  }
+
+  /* K18: multiple stations, one pressed */
+  {
+    C3 a("ESTOP-01", &KA, false), b("ESTOP-02", &KB, false), c("ESTOP-03", &KC, false);
+    P4 p4; p4.stations = {&a, &b, &c};
+    p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB); p4.provision("ESTOP-03", KC);
+    p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = b.pressed = true; p4.pumpAll(); a.pressed = false; p4.pumpAll();
+    p4.publishEpisode(); d.tapClear(); p4.advance(10); d.tapConfirm();
+    expect(p4.globalLatched && p4.lastTxnResult == SHOWDUINO_TXN_REJECT_PRESSED &&
+           std::string(p4.txn.blockId) == "ESTOP-02",
+           "K18 one of three stations still pressed: refused and the station is named");
+  }
+
+  /* K19: physical P4 emergency input active */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear(); p4.advance(10);
+    p4.physicalPressed = true;
+    d.tapConfirm();
+    expect(p4.globalLatched && p4.lastReply == "BUTTON_ACTIVE",
+           "K19a GPIO25 loop open: signed confirm refused");
+    p4.physicalPressed = false;
+    p4.advance(10);
+    expect(p4.localClear() && !p4.globalLatched, "K19b loop closed again: the USB clear proceeds");
+  }
+
+  /* K20: interrupted credential persistence */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode();
+    p4.failDirWrites = 1;
+    d.tapClear();
+    expect(p4.lastDirResult == SHOWDUINO_DIR_REJECT_PERSIST && p4.txn.state == SHOWDUINO_TXN_IDLE &&
+           p4.dirRec.lastCounter == 0, "K20a P4 cannot store the Director counter: REQ refused");
+    d.failWrites = 1000;
+    d.s.ctr.limit = d.s.ctr.next;  /* force a block write */
+    expect(!d.tapClear() && d.signFailures == 1,
+           "K20b Director cannot store its counter block: it signs nothing");
+  }
+
+  /* K21: invalid or unexpected command source */
+  {
+    expect(showduino_clear_entry(1, "DCLR:REQ:DIR-01:00000001:0000000000000000:00000001:x") ==
+               SHOWDUINO_CLEAR_ENTRY_REFUSE_SOURCE,
+           "K21 a Director message on the P4 USB console is refused (wrong source)");
+  }
+
+  /* K24: Director reboot or disconnect never releases */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pump(a); a.pressed = false; p4.pump(a);
+    p4.publishEpisode(); d.tapClear();
+    d.reboot(); p4.director = nullptr;
+    p4.advance(SHOWDUINO_CLEAR_TXN_OPEN_MS + 1);
+    const int r = showduino_clear_txn_evaluate(&p4.txn, p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p4.ids,
+                                               p4.keyCount, p4.episode, p4.now, 0, 0, 0, 0, 1);
+    expect(p4.globalLatched && r == SHOWDUINO_TXN_REJECT_EXPIRED,
+           "K24 Director gone mid-request: the request expires, the latch stays");
   }
 
   /* ===== S24 (J): proof window arithmetic ===== */

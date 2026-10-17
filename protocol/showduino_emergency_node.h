@@ -324,7 +324,16 @@ static inline void showduino_emergency_machine_set_radio(ShowduinoEmergencyMachi
 static inline void showduino_emergency_machine_input(ShowduinoEmergencyMachine *m,
                                                      int button_pressed) {
   if (!m) return;
+  const uint8_t wasPressed = m->input_open;
   m->input_open = button_pressed ? 1 : 0;
+  /* MISSION 001K: a new press while still latched (released, waiting for the P4's
+   * global clear) asserts again at once instead of at the next heartbeat, so a
+   * pending P4 clear verification sees it within the radio latency. */
+  if (button_pressed && !wasPressed && m->latched) {
+    m->pending_assert = 1;
+    m->burst_left = (uint8_t)SHOWDUINO_EMERGENCY_BURST_COUNT;
+    m->next_tx_ms = 0;
+  }
   if (button_pressed && !m->latched) {
     m->latched = 1;
     m->acked = 0;
