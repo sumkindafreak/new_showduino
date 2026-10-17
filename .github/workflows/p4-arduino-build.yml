@@ -228,10 +228,11 @@ jobs:
           errs=$(grep -cE ': (fatal )?error:' compile.log || true)
           warns=$(grep -cE ': warning:' compile.log || true)
           echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} diagnostics::errors=${errs} warnings=${warns}"
-          grep -E ': (fatal )?error:|: warning:' compile.log | head -30 | while read -r l; do
+          # grep exits 1 when nothing matches; with pipefail that must not fail the step.
+          { grep -E ': (fatal )?error:|: warning:' compile.log || true; } | head -30 | while read -r l; do
             echo "::warning title=${{ matrix.target }} diagnostic::${l}"
           done
-          grep -E 'Sketch uses|Global variables use' compile.log | while read -r l; do
+          { grep -E 'Sketch uses|Global variables use' compile.log || true; } | while read -r l; do
             echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} size::${l}"
           done
       - name: Upload build log

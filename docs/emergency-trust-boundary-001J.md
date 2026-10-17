@@ -129,3 +129,32 @@ The P4 accepts Director clear commands that arrive over the Comms UART. A compro
 4. Replace a station board with a new key. Confirm the old key is rejected.
 5. Measure challenge round-trip and the time to the first output change (scope).
 6. Confirm that a PROVISION attempt while latched is refused on both sides.
+
+## 10. Implementation status (after 001J commits b2b5d00, f787589 and later)
+
+Sections 1–9 above are the pre-change inventory and are kept as written. Status:
+
+| ID | Finding | Status |
+|---|---|---|
+| J-01 | Forged ANNOUNCE could release | **Fixed.** ANNOUNCE/STATUS display only; only a verified AUTH sets RELEASED/ONLINE. Tests S2, S3. |
+| J-02 | S3 fan-out reset station latches | **Fixed.** S3 `fanoutEmergency()` sends nothing to stations; stations reject plain clear tokens. S16. |
+| J-03 | Radio could rename / rearm a station | **Fixed.** ID/NAME/REARM local USB only; ID locked once provisioned; SoftAP limited to PIXEL. |
+| J-04 | Unauthenticated ACK / GLOBAL:OBSERVED | **Fixed.** Authenticated CMD with persisted counters and episode binding. S5d, S6, S16, S17f. |
+| J-05 | S3 can drive Director clear over UART | **Open blocker.** Mitigated (all provisioned stations must prove RELEASED), not closed. Needs an authenticated operator channel. |
+| J-06 | Legacy stations could satisfy clear | **Fixed.** Legacy ASSERT blocks; legacy ANNOUNCE cannot release. S12. |
+| J-07 | No replay protection across restarts | **Fixed.** Per-boot nonces, persisted counters, episode ids from a persisted counter. S4–S6, S8. |
+| J-08 | Keys in plaintext flash | **Open, disclosed.** Recommend eFuse flash encryption + secure boot for deployments that need it. |
+
+Found during implementation:
+
+| ID | Finding | Status |
+|---|---|---|
+| J-09 | (pre-existing) A full station table made a real ASSERT return without latching | **Fixed.** ASSERT always latches; overflow blocks clear. S18, mutant M10. |
+| J-10 | C3 SoftAP: published default password; `/api/pixel` passed any command to the station; `/api/identity` changed the ID | **Mitigated.** Web is PIXEL-only and cannot change a provisioned ID. Default password remains (open, Medium). |
+| J-11 | S3 per-station MAC table learned from unauthenticated frames (downlink diversion) | **Mitigated.** CHAL broadcast; every CMD also sent as a broadcast copy. Remains an availability limit. |
+| J-12 | ESP32-P4 has no radio: `esp_random()` is pseudo-random unless the SAR ADC entropy source is on | **Addressed in design.** Nonces = HMAC(boot seed, counter); seed drawn with `bootloader_random_enable()`. Needs hardware check H-12. |
+| J-13 | Proof freshness by millisecond timestamp accepted a same-millisecond older challenge | **Fixed** before firmware: per-boot challenge sequence. Mutants M08, M12. |
+| J-14 | ~1 s between last accepted proof and confirm in which a press hidden by a compromised S3 (ASSERT and AUTH dropped) is not seen | **Open, disclosed.** |
+| J-15 | Forged ASSERT with an invented ID becomes a permanent blocker | **By design (fail closed).** Local USB `EMERGENCY:STATION:DISMISS`. |
+
+Design, protocol and provisioning: `docs/emergency-station-auth-001J.md`.

@@ -14,6 +14,21 @@ Status: **software implemented on branch `fix/emergency-persistent-latch`. Not c
 - A failed or unverified write blocks clear until a verified write succeeds. Retries run at most every 5 s.
 - A clear is refused until the station table has been restored and applied at boot.
 
+## MISSION 001J update
+
+Station release now needs an authenticated `AUTH` answer (not a matching MAC), and a
+Director confirm needs a fresh RELEASED proof from **every provisioned station**.
+Known limitation 1 (replacement changes the MAC) is resolved by re-keying: provision
+the replacement with the same ID and enter its key on the P4 USB console
+(`EMERGENCY:KEY:SET:...`). A lost or retired station: `EMERGENCY:KEY:REVOKE:<id>`,
+inspect it physically, then `EMERGENCY:STATION:DISMISS:<id>` (USB only, logged,
+refused for provisioned IDs). See `docs/emergency-station-auth-001J.md` §4.
+
+Additional reply codes:
+- `EMERGENCY:CLEAR:REJECTED:STATION_UNVERIFIED` — a provisioned station has no fresh RELEASED proof (silent, offline, relay dropping it, or not yet answered after the request).
+- `EMERGENCY:CLEAR:REJECTED:STATION_STORAGE` — blocker set, key record, counter or episode not durable.
+- `EMERGENCY:CLEAR:REJECTED:STATION_OVERFLOW` — more station IDs than slots this episode (often forged ASSERTs); dismiss on USB.
+
 ## Clear reply codes
 - `EMERGENCY:CLEAR:REJECTED:WIRELESS_ASSERTED` (any blocker, unknown boot state, unverified blocker write, or clear before boot restore completes).
 - `EMERGENCY:CLEAR:REJECTED:PERSIST_FAILED` (latch CLEAR write unverified).
