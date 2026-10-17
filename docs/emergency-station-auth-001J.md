@@ -146,8 +146,9 @@ new key (no silent recovery). Never reuse a retired key.
   `PROVISION NEW` or `PROVISION SET` again and re-enter the key on the P4.
 * P4 with an unreadable key record: clear is refused. `EMERGENCY:KEY:RESET` (only
   accepted when the record is unreadable) wipes it; re-enter every station key.
-* P4 counter record unreadable: clear refused, station commands held. This needs a
-  service fix (NVS erase + re-provision); there is deliberately no shortcut.
+* P4 counter record unreadable: clear refused, station commands held. MISSION 001L adds
+  `EMERGENCY:RECOVER:COUNTER:COUNTER-LOST` (USB only); see
+  `docs/emergency-maintenance-recovery-001L.md` §3.5.
 
 ## 5. Compatibility and rollout
 

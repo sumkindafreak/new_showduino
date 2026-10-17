@@ -1,5 +1,10 @@
 # Wireless Emergency Node — persistent blocker and service recovery
 
+> **MISSION 001L update:** limitations 2 and 4 below now have a USB-only maintenance
+> path that never clears the latch and never shrinks the blocker set:
+> `EMERGENCY:RECOVER:BLOCKERS:INSPECTED-ALL-STATIONS`. Use
+> `docs/emergency-maintenance-recovery-001L.md`. The text below is kept as history.
+
 Status: **software implemented on branch `fix/emergency-persistent-latch`. Not compiled for target, not hardware-tested.**
 
 ## What persists

@@ -59,7 +59,7 @@ tag = HMAC-SHA256(directorKey, "DIRCLR|v1|<dirId>|<op>|<episode8>|<txn16>|<count
 | Unique Director credential | 32-byte key per Director (`DIR-<n>`), generated on the Director (true RNG while its Wi-Fi radio runs), entered on the P4 USB console. Stored in a record separate from station keys. |
 | Established primitives | HMAC-SHA256 truncated to 128 bits (mbedtls on the boards, OpenSSL in tests; same 001J helpers). Constant-time compare. |
 | Forged / modified | Tag over every field; any change fails (tests D2a–D2e, K2, K3, K13). |
-| Domain separation | `DIRCLR|v1` canonical prefix vs station `AUTH|v1` / `CMD|v1`; separate key record; the P4 firmware refuses a Director key equal to any station key and vice versa (firmware check, not host-tested). D2h shows a station-format tag does not verify as a Director message. |
+| Domain separation | `DIRCLR|v1` canonical prefix vs station `AUTH|v1` / `CMD|v1`; separate key record; the P4 firmware refuses a Director key equal to any station key and vice versa (001L: shared `showduino_auth_key_conflicts`, host tests L2a–L2f). D2h shows a station-format tag does not verify as a Director message. |
 | Replay / duplicates / reordering | Director counter strictly increasing, block-persisted on the Director before use; P4 persists the last accepted counter **before** acting (D3, K5, K6, K9, K23). |
 | Cross-reboot replay | Both counters survive restarts; transaction nonces are per boot (K6, K7). |
 | Episode binding | Every message names the P4 episode (from the persisted counter); messages for another episode, or while no durable episode exists, are rejected (D4a/b, K4, K5). |
@@ -279,7 +279,7 @@ can clear (with station proofs). The web-UI clear flag no longer exists.
 | Clearance transaction with post-confirm proofs (J-14 reduction) | yes | yes (K14–K19, K25) | P4 | **no** |
 | Station re-press / heartbeat changes | yes (C3) | yes (K16b0, K25, mutants K18, K20) | C3 | **no** |
 | Director enrolment / restriction / revocation | yes | policy yes; NVS code no | P4, Director | **no** |
-| Equal-key refusal between station and Director keys | yes | **no** | P4 | **no** |
+| Equal-key refusal between station and Director keys | yes (001L: one shared function) | yes (001L L2a–L2f, mutants L02–L04) | P4 | **no** |
 | J-14 guarantee against a hostile S3 | **not achievable** on the single path | boundary tests K16c/d | — | — |
 
 Remaining blockers: J-14 residual (§6), keys without flash encryption on P4, Director

@@ -286,3 +286,26 @@ Full design, evidence and limitations: `docs/emergency-director-auth-001K.md`.
 - **Build (CI run 39029079990, cf8e43b):** 0 errors, 1 core warning; 1,210,260 B flash
   (92%), 84,700 B RAM (25%); +8,800 B / +384 B vs 001J. About 100 KB headroom left.
 - **Not hardware tested.** J-14 residual remains (see 001K §6).
+
+## MISSION 001L — hardware acceptance preparation, recovery, timing aids
+
+Procedure, recovery and results sheet: `docs/emergency-hardware-acceptance-001L.md`,
+`docs/emergency-maintenance-recovery-001L.md`, `docs/emergency-commissioning-results-001L.md`.
+
+- **Lost latch record:** a marker key (`estop_init`) is written after the first verified
+  latch write. Latch key missing with the marker present now boots fail-safe LATCHED
+  (was CLEAR). Existing boards get the marker on their first 001L boot.
+- **Maintenance recovery (USB only, never clears):** `EMERGENCY:RECOVER:STATUS`,
+  `EMERGENCY:RECOVER:BLOCKERS:INSPECTED-ALL-STATIONS` (unknown boot state → required set =
+  readable stored blockers ∪ all provisioned stations; refused when GPIO25 is open, when
+  not needed, or on overflow), `EMERGENCY:RECOVER:COUNTER:COUNTER-LOST` (unreadable
+  counter → restart at 0xC0000000). Policy in `protocol/showduino_maintenance_recovery.h`.
+- **Key separation:** station/Director equal-key refusal uses one shared function,
+  host-tested (L2).
+- **Actuation order:** the boot-restore path and the engage path drive local outputs
+  before any print; the wireless ASSERT log moved after actuation; the C3 sends ASSERT
+  before logging it.
+- **Measurement aids (no behaviour change):** `LOOP:STATS` / `LOOP:RESET`, `BUILD:INFO`
+  (also printed at boot on the P4 and Director), `[ESTOP-TIMING] clear decision=...
+  elapsed_ms=...`, optional timing probe `SHOWDUINO_TIMING_PROBE_PIN` (default -1).
+- **Not hardware tested.**
