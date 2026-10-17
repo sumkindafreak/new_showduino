@@ -1,62 +1,147 @@
 /*
- * MISSION 001H integration tests: wireless Emergency Node <-> P4 report interpretation.
+ * Emergency station integration tests (MISSION 001H, 001I, 001J).
  *
  * Exercised, using the REAL protocol code:
- *   C3 side  : ShowduinoEmergencyMachine and its transition, transmit and
- *              command-observation functions; format/parse of ANNOUNCE, ASSERT
- *              and commands (protocol/showduino_emergency_node.h).
- *   P4 side  : showduino_station_interpret_line() (protocol/showduino_station_model.h),
- *              the same function the Stage Engine calls; blocker encode/decode
- *              and the clear gate (protocol/showduino_station_blockers.h).
+ *   C3 side : ShowduinoEmergencyMachine (protocol/showduino_emergency_node.h) and the
+ *             station authentication policy (protocol/showduino_station_responder.h).
+ *   P4 side : showduino_station_interpret_line() and showduino_station_clear_decision()
+ *             (protocol/showduino_station_model.h), the challenge table and command
+ *             counter (protocol/showduino_station_auth.h), blocker encode/decode
+ *             (protocol/showduino_station_blockers.h).
+ *   Crypto  : HMAC-SHA256 from OpenSSL (mbedtls on the ESP32), 128-bit tags.
  *
- * Simulated: radio delivery (messages passed in-process, in order, no loss unless
- * a test drops them), the P4 global latch and Director CLEAR, time (ms counter),
- * and station disconnection (timeout is driven explicitly).
+ * Simulated: the S3 Comms relay (in-order delivery, with test-controlled drop,
+ * record, replay and forgery; it holds no keys), NVS / Preferences, time, and the
+ * P4 global latch and Director confirm.
  *
- * NOT covered: the C3 Arduino wrapper (EmergencyProtocol.cpp, ESP-NOW, GPIO
- * debounce), the P4 Arduino wrapper (EmergencyNodeLink.cpp, NVS, Serial). Those
- * need hardware acceptance. This is protocol behaviour only.
+ * NOT covered: the Arduino wrappers (EmergencyProtocol.cpp, EmergencyNodeLink.cpp,
+ * ProtocolBridge.cpp), ESP-NOW, UART, GPIO, real flash. Those need bench tests.
+ *
+ * Build: g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol test_station_integration.cpp -lcrypto
  */
 #include "showduino_emergency_node.h"
 #include "showduino_station_blockers.h"
 #include "showduino_station_model.h"
+#include "showduino_station_responder.h"
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
 static int gFails = 0;
+static int gPass = 0;
 static void expect(bool ok, const char *msg) {
-  if (ok) std::printf("PASS  %s\n", msg);
+  if (ok) { std::printf("PASS  %s\n", msg); gPass++; }
   else { std::printf("FAIL  %s\n", msg); gFails++; }
 }
 
-/* ---------------- C3 Emergency Node (real machine) ---------------- */
+/* ---- HMAC-SHA256 (OpenSSL), same function type the firmware wraps mbedtls in ---- */
+static int hmacSha256(const uint8_t *k, size_t kl, const uint8_t *m, size_t ml, uint8_t out[32]) {
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+  EVP_MAC *mac = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
+  if (!mac) return -1;
+  EVP_MAC_CTX *ctx = EVP_MAC_CTX_new(mac);
+  OSSL_PARAM params[2];
+  char digest[] = "SHA256";
+  params[0] = OSSL_PARAM_construct_utf8_string("digest", digest, 0);
+  params[1] = OSSL_PARAM_construct_end();
+  size_t len = 0;
+  int rc = -1;
+  if (ctx && EVP_MAC_init(ctx, k, kl, params) && EVP_MAC_update(ctx, m, ml) &&
+      EVP_MAC_final(ctx, out, &len, 32) && len == 32) {
+    rc = 0;
+  }
+  EVP_MAC_CTX_free(ctx);
+  EVP_MAC_free(mac);
+  return rc;
+#else
+  unsigned int len = 0;
+  return HMAC(EVP_sha256(), k, (int)kl, m, ml, out, &len) && len == 32 ? 0 : -1;
+#endif
+}
+
+/* Deterministic test RNG. Never used on hardware (the P4 uses esp_fill_random). */
+static uint64_t gRng = 0x0123456789ABCDEFull;
+static int testRand(uint8_t *out, size_t n) {
+  for (size_t i = 0; i < n; ++i) {
+    gRng = gRng * 6364136223846793005ull + 1442695040888963407ull;
+    out[i] = (uint8_t)(gRng >> 33);
+  }
+  return 0;
+}
+
+struct Key { uint8_t b[SHOWDUINO_AUTH_KEY_BYTES]; };
+static Key makeKey(uint8_t seed) {
+  Key k;
+  for (int i = 0; i < SHOWDUINO_AUTH_KEY_BYTES; ++i) k.b[i] = (uint8_t)(seed * 31 + i * 7 + 1);
+  return k;
+}
+
+/* ================= C3 Emergency Node: real machine + real responder ================= */
 struct C3 {
   ShowduinoEmergencyMachine m{};
+  ShowduinoStationAuthState st{};
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1];
   char name[SHOWDUINO_EMERGENCY_NAME_MAX + 1];
-  char mac[18];
   bool pressed = false;
-  bool announced = false;
-  uint32_t lastAnnounceMs = 0;
-  uint32_t lastNow = 0;
+  bool legacy = false;        /* pre-001J firmware: no key, honours unauthenticated commands */
+  Key key{};
+  bool keyValid = false;
+  uint32_t nvsCounter = 0;    /* persisted last accepted command counter */
+  int failCounterWrites = 0;
   int assertsSent = 0;
-  int announcesSent = 0;
-  bool connected = true;
+  int rejectedUnauth = 0;
+  int rejectedCmd = 0;
+  int lastCmdResult = 0;
+  uint32_t lastNow = 0;
 
-  C3(const char *idIn, const char *macIn, bool startPressed) {
+  C3(const char *idIn, const Key *k, bool startPressed, bool isLegacy = false) {
     std::snprintf(id, sizeof(id), "%s", idIn);
     std::snprintf(name, sizeof(name), "%s", "TEST");
-    std::snprintf(mac, sizeof(mac), "%s", macIn);
+    legacy = isLegacy;
+    if (k) { key = *k; keyValid = true; }
     pressed = startPressed;
-    showduino_emergency_machine_init(&m, pressed ? 1 : 0);
-    showduino_emergency_machine_set_radio(&m, 1);
+    boot();
   }
 
-  std::string announce(uint32_t now) {
+  /* Power-up. RAM state is lost; the key and the command counter come from NVS. */
+  void boot() {
+    showduino_emergency_machine_init(&m, pressed ? 1 : 0);
+    showduino_emergency_machine_set_radio(&m, 1);
+    showduino_responder_boot(&st, key.b, (keyValid && !legacy) ? 1 : 0, nvsCounter, m.latched);
+  }
+
+  static int persistCb(void *ctx, uint32_t v) {
+    C3 *c = static_cast<C3 *>(ctx);
+    if (c->failCounterWrites > 0) { c->failCounterWrites--; return 0; }
+    c->nvsCounter = v;
+    return 1;
+  }
+
+  /* One service pass, mirroring EmergencyProtocol.cpp emergencyProtocolService(). */
+  std::vector<std::string> tick(uint32_t now) {
+    lastNow = now;
+    std::vector<std::string> out;
+    showduino_emergency_machine_input(&m, pressed ? 1 : 0);
+    showduino_emergency_machine_set_radio(&m, 1);
+    showduino_responder_track_latch(&st, m.latched);
+    if (showduino_emergency_machine_want_tx(&m, now)) {
+      char cmd[48];
+      showduino_emergency_format_assert(id, name, cmd, sizeof(cmd));
+      out.push_back(cmd);
+      assertsSent++;
+      showduino_emergency_machine_sent(&m, now);
+    }
+    return out;
+  }
+
+  /* ANNOUNCE as the station formats it (display only on a 001J P4). */
+  std::string announce() const {
     ShowduinoEmergencyAnnounce an{};
-    std::snprintf(an.mac, sizeof(an.mac), "%s", mac);
+    std::snprintf(an.mac, sizeof(an.mac), "%s", "AA:BB:CC:DD:EE:01");
     std::snprintf(an.firmware, sizeof(an.firmware), "%s", "1.0.0");
     std::snprintf(an.state, sizeof(an.state), "%s", showduino_emergency_state_name(m.state));
     std::snprintf(an.id, sizeof(an.id), "%s", id);
@@ -66,61 +151,55 @@ struct C3 {
     an.acked = m.acked;
     char buf[160];
     showduino_emergency_format_announce(&an, buf, sizeof(buf));
-    lastAnnounceMs = now;
-    announced = true;
-    announcesSent++;
-    return std::string(buf);
+    return buf;
   }
 
-  /* One service pass: mirrors EmergencyProtocol.cpp emergencyProtocolService(). */
-  std::vector<std::string> tick(uint32_t now) {
-    lastNow = now;
+  /* Downlink line from the relay, mirroring EmergencyProtocol.cpp emergencyProtocolApply(). */
+  std::vector<std::string> receive(const std::string &line) {
     std::vector<std::string> out;
-    if (!connected) return out;
-    showduino_emergency_machine_input(&m, pressed ? 1 : 0);
-    showduino_emergency_machine_set_radio(&m, 1);
-    if (showduino_emergency_machine_want_tx(&m, now)) {
-      char cmd[48];
-      showduino_emergency_format_assert(id, name, cmd, sizeof(cmd));
-      out.push_back(cmd);
-      assertsSent++;
-      showduino_emergency_machine_sent(&m, now);
+    showduino_responder_track_latch(&st, m.latched);
+    if (!std::strncmp(line.c_str(), "CHAL:", 5)) {
+      char buf[SHOWDUINO_NODE_COMMAND_MAX];
+      if (showduino_responder_answer_chal(&st, id, m.input_open, m.latched, line.c_str(),
+                                          hmacSha256, buf, sizeof(buf))) {
+        out.push_back(buf);
+      }
+      return out;
     }
-    if (!announced || (now - lastAnnounceMs) >= SHOWDUINO_EMERGENCY_HEARTBEAT_MS) {
-      out.push_back(announce(now));
+    if (!std::strncmp(line.c_str(), "CMD:", 4)) {
+      uint32_t ep = 0;
+      lastCmdResult = showduino_responder_accept_cmd(&st, id, m.latched, line.c_str(), hmacSha256,
+                                                     persistCb, this, &ep);
+      if (lastCmdResult == SHOWDUINO_RESP_ACK) {
+        showduino_emergency_machine_ack(&m);
+      } else if (lastCmdResult == SHOWDUINO_RESP_GCL) {
+        showduino_emergency_machine_global_observed(&m);
+        showduino_responder_track_latch(&st, m.latched);
+      } else {
+        rejectedCmd++;
+      }
+      return out;
+    }
+    /* Unauthenticated ACK / GLOBAL:OBSERVED / EMERGENCY:CLEAR. */
+    const ShowduinoEmergencyNodeCmd c = showduino_emergency_parse_command(line.c_str());
+    if (c == SHOWDUINO_ESTOP_CMD_ACK_LATCHED || c == SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED) {
+      if (legacy) {
+        /* Pre-001J behaviour, kept only to model mixed installations. */
+        if (c == SHOWDUINO_ESTOP_CMD_ACK_LATCHED) showduino_emergency_machine_ack(&m);
+        else showduino_emergency_machine_global_observed(&m);
+      } else {
+        rejectedUnauth++;
+      }
     }
     return out;
   }
-
-  /* P4 -> C3 command. Mirrors the C3 command handling for the commands this test uses. */
-  std::vector<std::string> receive(const std::string &cmd) {
-    std::vector<std::string> out;
-    if (!connected) return out;
-    const ShowduinoEmergencyNodeCmd c = showduino_emergency_parse_command(cmd.c_str());
-    if (c == SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED) {
-      showduino_emergency_machine_global_observed(&m);
-      out.push_back(announce(lastNow));
-    } else if (c == SHOWDUINO_ESTOP_CMD_ACK_LATCHED) {
-      showduino_emergency_machine_ack(&m);
-    }
-    return out;
-  }
-
-  void setPressed(bool p) { pressed = p; }
 };
 
-/* A bare ASSERT line as sent by a C3 (no button state). */
-static std::string bareAssert(const C3 &c) {
-  char buf[64];
-  showduino_emergency_format_assert(c.id, c.name, buf, sizeof(buf));
-  return std::string(buf);
-}
-
-/* ---------------- Stored blocker record (simulated NVS / SD) ---------------- */
+/* ---------------- Stored blocker record (simulated NVS) ---------------- */
 struct StoreSim {
   std::string value;
   bool valid = false;
-  int failWrites = 0; /* next N writes fail */
+  int failWrites = 0;
   bool save(const std::string &enc) {
     if (failWrites > 0) { failWrites--; return false; }
     value = enc;
@@ -129,87 +208,237 @@ struct StoreSim {
   }
 };
 
-/* ---------------- P4 Stage Engine (real interpretation) ---------------- */
+/* ================= P4 Stage Engine + untrusted S3 relay ================= */
 struct P4 {
   ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES]{};
+  char ids[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1]{};
+  Key keys[SHOWDUINO_EMERGENCY_NODE_MAX_NODES]{};
+  int keyCount = 0;
+
+  ShowduinoAuthChalTable chal{};
+  ShowduinoAuthCounter ctr{};
+  uint32_t nvsCounterLimit = 1;   /* persisted counter-block limit (shared by commands and episodes) */
+  int failCounterWrites = 0;
+  bool counterFault = false;      /* an episode or command counter could not be made durable */
+  uint32_t episode = 0;
+  uint32_t now = 10000;
+
   bool globalLatched = false;
   int globalTriggers = 0;
   int clearsAccepted = 0;
   int clearsRefused = 0;
-  std::vector<C3 *> stations;
+  int lastDecision = -1;
+  bool tableOverflow = false;
+
   StoreSim store;
-  bool persistDirty = false;   /* a write failed or was not verified: clear blocked */
+  bool persistDirty = false;
   bool persistValid = false;
-  bool bootUnknown = false;    /* stored record unreadable after a latched restart */
+  bool bootUnknown = false;
   std::string persistedEnc;
+
+  /* The S3 relay. It forwards in order unless a test tells it otherwise. */
+  std::vector<C3 *> stations;
+  std::set<std::string> dropUp, dropDown;   /* by station ID */
+  std::string dropDownMatch;                /* drop downlink lines containing this */
+  bool dropAllUp = false;
+  std::vector<std::string> upLog, downLog;
+  std::vector<std::string> extraDown;       /* lines the relay injects (forgery) */
+
+  P4() { showduino_auth_counter_boot(&ctr, nvsCounterLimit); }
+
+  /* -- key table (provisioning is local to the P4; the relay never sees keys) -- */
+  void provision(const char *id, const Key &k) {
+    for (int i = 0; i < keyCount; ++i) {
+      if (!std::strcmp(ids[i], id)) { keys[i] = k; return; }
+    }
+    std::snprintf(ids[keyCount], sizeof(ids[keyCount]), "%s", id);
+    keys[keyCount++] = k;
+  }
+  void revoke(const char *id) {
+    for (int i = 0; i < keyCount; ++i) {
+      if (!std::strcmp(ids[i], id)) {
+        for (int j = i; j + 1 < keyCount; ++j) {
+          std::memcpy(ids[j], ids[j + 1], sizeof(ids[j]));
+          keys[j] = keys[j + 1];
+        }
+        keyCount--;
+        std::memset(ids[keyCount], 0, sizeof(ids[keyCount]));
+        return;
+      }
+    }
+  }
+  bool isProvisioned(const char *id) const {
+    for (int i = 0; i < keyCount; ++i) if (!std::strcmp(ids[i], id)) return true;
+    return false;
+  }
+  static int keyFor(void *ctx, const char *id, uint8_t out[SHOWDUINO_AUTH_KEY_BYTES]) {
+    P4 *p = static_cast<P4 *>(ctx);
+    for (int i = 0; i < p->keyCount; ++i) {
+      if (showduino_emergency_id_equal(p->ids[i], id)) {
+        std::memcpy(out, p->keys[i].b, SHOWDUINO_AUTH_KEY_BYTES);
+        return i;
+      }
+    }
+    return -1;
+  }
+  static int persistCtr(void *ctx, uint32_t v) {
+    P4 *p = static_cast<P4 *>(ctx);
+    if (p->failCounterWrites > 0) { p->failCounterWrites--; return 0; }
+    p->nvsCounterLimit = v;
+    return 1;
+  }
+  /* Mirrors EmergencyNodeLink nextCounter(): a failed block write sets the fault,
+   * a later successful one clears it. */
+  bool nextCounter(uint32_t *out) {
+    if (!showduino_auth_counter_next(&ctr, persistCtr, this, out)) {
+      counterFault = true;
+      return false;
+    }
+    counterFault = false;
+    return true;
+  }
+  /* Mirrors emergencyNodeLinkLoop(): while latched without a durable episode, retry. */
+  void ensureEpisode() {
+    if (!globalLatched || episode != 0) return;
+    uint32_t e = 0;
+    if (nextCounter(&e)) { episode = e; showduino_auth_chal_reset(&chal); }
+  }
 
   C3 *byId(const char *id) {
     for (C3 *s : stations) if (!std::strcmp(s->id, id)) return s;
     return nullptr;
   }
 
-  /* Applies one wireless line exactly as the P4 does. Returns the interpreted result. */
+  /* ---- relay ---- */
+  void up(C3 *from, const std::string &line) {
+    upLog.push_back(line);
+    if (dropAllUp) return;
+    if (from && dropUp.count(from->id)) return;
+    deliver(line);
+  }
+  void down(C3 *to, const std::string &line) {
+    downLog.push_back(line);
+    if (dropDown.count(to->id)) return;
+    if (!dropDownMatch.empty() && line.find(dropDownMatch) != std::string::npos) return;
+    for (const std::string &r : to->receive(line)) up(to, r);
+  }
+
+  /* ---- P4 behaviour ---- */
+  /* MISSION 001F ordering: the RAM latch first; episode allocation (storage) after. */
+  void engage() {
+    globalLatched = true;
+    globalTriggers++;
+    uint32_t e = 0;
+    episode = nextCounter(&e) ? e : 0;
+    showduino_auth_chal_reset(&chal);
+  }
+
+  bool sendCmd(const char *id, const char *op, uint32_t ep) {
+    const int ki = [&] { for (int i = 0; i < keyCount; ++i) if (!std::strcmp(ids[i], id)) return i; return -1; }();
+    C3 *s = byId(id);
+    if (ki < 0 || !s || ep == 0) return false;
+    uint32_t c = 0;
+    if (!nextCounter(&c)) return false;
+    char line[SHOWDUINO_NODE_COMMAND_MAX];
+    if (!showduino_auth_format_cmd(id, c, op, ep, keys[ki].b, SHOWDUINO_AUTH_KEY_BYTES, hmacSha256,
+                                   line, sizeof(line))) {
+      return false;
+    }
+    down(s, line);
+    return true;
+  }
+
   ShowduinoStationResult deliver(const std::string &line, bool *handled = nullptr) {
+    ShowduinoStationAuthPolicy pol{hmacSha256, &chal, episode, now, keyFor, this};
     ShowduinoStationResult res{};
     const int h = showduino_station_interpret_line(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES,
-                                                   line.c_str(), &res);
+                                                   line.c_str(), &pol, &res);
     if (handled) *handled = h != 0;
     if (!h) return res;
-    /* P4 storage runs after every handled station line; it writes only on change. */
+    if (res.tableFull) tableOverflow = true;
+    if (res.globalLatch && !globalLatched) engage();
+    ensureEpisode();
     persist();
-    if (res.globalLatch && !globalLatched) {
-      globalLatched = true;
-      globalTriggers++;
-    }
-    if (res.accepted && res.globalLatch && res.ackId[0]) {
-      C3 *s = byId(res.ackId);
-      if (s) {
-        for (const std::string &r : s->receive("ESTOP:ACK:LATCHED")) deliver(r);
-      }
+    /* Authenticated ACK so the station learns the episode. Sent for an ASSERT, and
+     * for a verified AUTH that shows the station latched but not holding this episode. */
+    if (globalLatched && res.ackId[0] && isProvisioned(res.ackId)) {
+      const bool needAck = res.kind == SHOWDUINO_STATION_LINE_ASSERT ||
+                           (res.verified && t[res.slot].announcedLatched && !t[res.slot].ackedReport);
+      if (needAck) sendCmd(res.ackId, "ACK", episode);
     }
     return res;
   }
 
-  /* Deliver every line a station produces. */
-  void pump(C3 &s, uint32_t now) {
-    for (const std::string &line : s.tick(now)) deliver(line);
+  /* One challenge round to every station through the relay. */
+  void challengeRound() {
+    char nonce[SHOWDUINO_AUTH_NONCE_HEX + 1];
+    if (!showduino_auth_chal_issue(&chal, now, episode, testRand, nonce)) return;
+    char line[SHOWDUINO_NODE_COMMAND_MAX];
+    showduino_auth_format_chal(episode, nonce, line, sizeof(line));
+    for (C3 *s : stations) down(s, line);
   }
 
-  /* Director CLEAR. Refused while any station blocks clear. */
+  void pump(C3 &s) { for (const std::string &l : s.tick(now)) up(&s, l); }
+  void pumpAll() { for (C3 *s : stations) pump(*s); }
+  void advance(uint32_t ms) { now += ms; }
+
+  /* Director CLEAR_REQUEST then CLEAR_CONFIRM, with one challenge period between
+   * them (the P4 challenges every SHOWDUINO_STATION_CHAL_LATCHED_MS while latched).
+   * Mirrors EmergencyNodeLink: the confirm accepts proofs from one of the two most
+   * recent challenges issued after the request. */
   bool directorClear() {
-    const int blocking = showduino_station_model_count_blocking(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-    if (showduino_station_clear_blocked_full((unsigned)blocking, bootUnknown ? 1 : 0,
-                                             persistDirty ? 1 : 0, 1)) {
-      clearsRefused++;
-      return false;
+    const uint32_t requestSeq = showduino_auth_chal_next_seq(&chal);
+    challengeRound();
+    advance(SHOWDUINO_STATION_CHAL_LATCHED_MS);
+    challengeRound();
+    const uint32_t proofSince = showduino_station_proof_since(requestSeq, chal.lastSeq);
+    lastDecision = showduino_station_clear_decision(
+        t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, keyCount, proofSince, bootUnknown ? 1 : 0,
+        persistDirty ? 1 : 0, counterFault ? 1 : 0, tableOverflow ? 1 : 0, 1);
+    if (lastDecision != SHOWDUINO_CLEAR_OK) { clearsRefused++; return false; }
+    /* Reserve one GCL counter per station before anything changes. */
+    std::vector<uint32_t> reserved;
+    for (int i = 0; i < keyCount; ++i) {
+      uint32_t c = 0;
+      if (!nextCounter(&c)) { lastDecision = SHOWDUINO_CLEAR_BLOCK_STORAGE; clearsRefused++; return false; }
+      reserved.push_back(c);
     }
     globalLatched = false;
     clearsAccepted++;
-    /* P4 applyEmergencyClear: the episode ends, then the empty set is stored. */
+    const uint32_t ended = episode;
     showduino_station_model_end_episode(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
     persist();
-    for (C3 *s : stations) {
-      for (const std::string &r : s->receive("EMERGENCY:CLEAR")) deliver(r);
+    episode = 0;
+    showduino_auth_chal_reset(&chal);
+    for (int i = 0; i < keyCount; ++i) {
+      C3 *s = byId(ids[i]);
+      if (!s) continue;
+      char line[SHOWDUINO_NODE_COMMAND_MAX];
+      if (showduino_auth_format_cmd(ids[i], reserved[i], "GCL", ended, keys[i].b,
+                                    SHOWDUINO_AUTH_KEY_BYTES, hmacSha256, line, sizeof(line))) {
+        down(s, line);
+      }
     }
     return true;
   }
 
   void timeout(const char *id) {
-    const int slot = showduino_station_model_find_id(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, id);
+    const int slot = slotOf(id);
     if (slot >= 0) showduino_station_model_on_timeout(&t[slot]);
   }
-
   int slotOf(const char *id) const {
     return showduino_station_model_find_id(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, id);
   }
+  int blocking() const {
+    return showduino_station_model_count_blocking(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
+  }
 
-  /* Mirrors emergencyNodeLinkPersistBlockers(): the required set is written on
-   * change only. A failed or unbuildable write leaves persistDirty set. */
+  /* Mirrors emergencyNodeLinkPersistBlockers(). */
   bool persist() {
     ShowduinoBlocker list[SHOWDUINO_BLOCKER_MAX];
     int n = 0;
-    if (!showduino_station_model_collect_required(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES,
-                                                  list, SHOWDUINO_BLOCKER_MAX, &n)) {
+    if (!showduino_station_model_collect_required(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, list,
+                                                  SHOWDUINO_BLOCKER_MAX, &n)) {
       persistDirty = true;
       return false;
     }
@@ -220,25 +449,40 @@ struct P4 {
     }
     const std::string enc(buf);
     if (persistValid && !persistDirty && enc == persistedEnc) return true;
-    if (!store.save(enc)) {
-      persistDirty = true;
-      return false;
-    }
+    if (!store.save(enc)) { persistDirty = true; return false; }
     persistedEnc = enc;
     persistValid = true;
     persistDirty = false;
     return true;
   }
+
+  /* After a P4 reboot while latched: a new episode is allocated and every provisioned
+   * station is sent an ACK so it learns it (mirrors emergencyNodeLinkBegin()). */
+  void ackSweep() {
+    if (!globalLatched) return;
+    for (int i = 0; i < keyCount; ++i) {
+      C3 *s = byId(ids[i]);
+      if (s && s->m.latched) sendCmd(ids[i], "ACK", episode);
+    }
+  }
 };
 
-/* Reboot: a new P4 that restores only the stored blockers. */
-static void rebootFromStore(P4 &fresh, const std::string &stored, bool latched = true) {
+/* Reboot: a new P4 with the same NVS (keys, counter limit, blocker record). */
+static void rebootP4(const P4 &old, P4 &fresh, bool latched = true) {
+  for (int i = 0; i < old.keyCount; ++i) fresh.provision(old.ids[i], old.keys[i]);
+  fresh.nvsCounterLimit = old.nvsCounterLimit;
+  showduino_auth_counter_boot(&fresh.ctr, fresh.nvsCounterLimit);
+  fresh.stations = old.stations;
+  fresh.now = old.now + 3000;
+  fresh.store = old.store;
   fresh.globalLatched = latched;
+  if (latched) {
+    uint32_t e = 0;
+    fresh.episode = fresh.nextCounter(&e) ? e : 0;
+  }
   ShowduinoBlocker list[SHOWDUINO_BLOCKER_MAX];
   uint8_t n = 0;
-  const ShowduinoBlockerStatus st = showduino_blocker_decode(stored.c_str(), list, &n);
-  if (st != SHOWDUINO_BLOCKER_OK) {
-    /* Latched with an unreadable record: clear stays refused (fail closed). */
+  if (showduino_blocker_decode(old.store.value.c_str(), list, &n) != SHOWDUINO_BLOCKER_OK) {
     fresh.bootUnknown = latched;
     return;
   }
@@ -246,454 +490,536 @@ static void rebootFromStore(P4 &fresh, const std::string &stored, bool latched =
     const int slot = showduino_station_model_alloc(fresh.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
     if (slot >= 0) showduino_station_model_restore(&fresh.t[slot], list[i].id, list[i].mac);
   }
+  fresh.persistedEnc = old.store.value;
+  fresh.persistValid = old.store.valid;
+}
+
+/* A valid-looking AUTH forged without the key (random tag). */
+static std::string forgedAuth(const char *id, uint32_t episode, const char *nonce) {
+  Key wrong = makeKey(250);
+  char buf[SHOWDUINO_NODE_COMMAND_MAX];
+  showduino_auth_format_auth(id, episode, nonce, 0, 0, 0, wrong.b, SHOWDUINO_AUTH_KEY_BYTES,
+                             hmacSha256, buf, sizeof(buf));
+  return buf;
+}
+
+/* Last CHAL nonce the relay carried. */
+static std::string lastNonce(const P4 &p) {
+  for (auto it = p.downLog.rbegin(); it != p.downLog.rend(); ++it) {
+    ShowduinoAuthChalMsg ch;
+    if (showduino_auth_parse_chal(it->c_str(), &ch)) return ch.nonceHex;
+  }
+  return std::string(16, '0');
+}
+static std::string lastUp(const P4 &p, const char *prefix) {
+  for (auto it = p.upLog.rbegin(); it != p.upLog.rend(); ++it) {
+    if (!std::strncmp(it->c_str(), prefix, std::strlen(prefix))) return *it;
+  }
+  return "";
+}
+static std::string lastDown(const P4 &p, const char *prefix) {
+  for (auto it = p.downLog.rbegin(); it != p.downLog.rend(); ++it) {
+    if (it->find(prefix) != std::string::npos) return *it;
+  }
+  return "";
 }
 
 int main() {
-  const char *MAC_A = "AA:BB:CC:DD:EE:01";
-  const char *MAC_B = "AA:BB:CC:DD:EE:02";
-  const char *MAC_C = "AA:BB:CC:DD:EE:03";
-  const char *FORGED = "66:55:44:33:22:11";
+  const Key KA = makeKey(1), KB = makeKey(2), KC = makeKey(3), KA2 = makeKey(9);
 
-  /* ============ Scenario 1-6: the legitimate press -> release -> confirm -> clear ============ */
+  /* ===== S1: legitimate press -> latch -> ACK -> release -> proof -> clear -> GCL ===== */
   {
-    C3 a("ESTOP-01", MAC_A, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    uint32_t now = 0;
-
-    /* 1. Press and emergency assertion. */
-    a.setPressed(true);
-    p4.pump(a, now);
-    {
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(p4.globalLatched && p4.globalTriggers == 1,
-             "S1a press: ASSERT latches the P4 globally");
-      expect(slot >= 0 && p4.t[slot].inputOpen == 1 && p4.t[slot].reportKnown == 1,
-             "S1b press: station recorded PRESSED from a verified ANNOUNCE");
-      expect(!p4.directorClear() && p4.clearsRefused == 1,
-             "S1c clear refused while the button is pressed");
-    }
-
-    /* 2. Release while the C3 stays locally latched. The C3 keeps asserting. */
-    a.setPressed(false);
-    now = 2000;
-    p4.pump(a, now);
-    now = 4000;
-    p4.pump(a, now);
-    {
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(a.m.latched == 1 && a.m.input_open == 0,
-             "S2a C3 after release: still locally latched, input released");
-      expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.t[slot].announcedLatched == 1,
-             "S2b released-but-latched ANNOUNCE: P4 records RELEASED, not PRESSED");
-    }
-
-    /* 3. Released-input ANNOUNCE while latched: the P4 must not mark it pressed. */
-    const int trigBefore = p4.globalTriggers;
-    now = 6000;
-    {
-      const std::string an = a.announce(now);
-      p4.deliver(an);
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(slot >= 0 && p4.t[slot].inputOpen == 0,
-             "S3a released-input ANNOUNCE keeps RELEASED");
-      expect(p4.globalTriggers == trigBefore,
-             "S3b released-but-latched ANNOUNCE does not re-trigger the global latch");
-    }
-
-    /* 4. Further periodic ASSERT messages (the C3 keeps sending while latched).
-     * Each ASSERT is delivered ON ITS OWN and the state checked immediately, so a
-     * following ANNOUNCE cannot mask an ASSERT that wrongly set PRESSED. */
-    const int assertsBefore = a.assertsSent;
-    for (uint32_t t = 8000; t <= 16000; t += 2000) {
-      for (const std::string &line : a.tick(t)) {
-        if (showduino_emergency_is_assert(line.c_str())) {
-          p4.deliver(line);
-          const int slot = p4.slotOf("ESTOP-01");
-          expect(slot >= 0 && p4.t[slot].inputOpen == 0,
-                 "S4b periodic ASSERT alone does not override a confirmed release");
-        } else {
-          p4.deliver(line);
-        }
-      }
-    }
-    expect(a.assertsSent > assertsBefore,
-           "S4a periodic ASSERT messages were actually sent by the C3");
-
-    /* 5. Additional released-input ANNOUNCE messages. */
-    now = 16000;
-    for (int k = 0; k < 3; ++k) { now += 2000; p4.deliver(a.announce(now)); }
-    {
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.directorClear() == true,
-             "S5 repeated released ANNOUNCE keeps the release; clear allowed");
-    }
-
-    /* 6. Deliberate Director clear was accepted above. Global clear observed by C3. */
-    expect(p4.clearsAccepted == 1 && !p4.globalLatched,
-           "S6 Director clear accepted and P4 global latch released");
-
-    /* 7. Global clear acknowledgement: the C3 resets to NORMAL when released. */
-    expect(a.m.latched == 0 && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL && a.m.acked == 0,
-           "S7 C3 observes global clear: latched 0, state NORMAL, acked cleared");
-
-    /* 8. Repeated reports after normal recovery: no re-latch, no false pressed. */
-    const int trigAfterRecovery = p4.globalTriggers;
-    const int assertsAfterRecovery = a.assertsSent;
-    for (uint32_t t = 18000; t <= 26000; t += 2000) p4.pump(a, t);
-    {
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(p4.globalTriggers == trigAfterRecovery && !p4.globalLatched,
-             "S8a repeated reports after recovery do not re-latch the P4");
-      expect(a.assertsSent == assertsAfterRecovery,
-             "S8b a recovered C3 (NORMAL) sends no ASSERT");
-      expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.t[slot].announcedLatched == 0,
-             "S8c recovered station stays RELEASED and NORMAL");
-    }
-    /* 8d. Conservative: a late ASSERT from a NORMAL station is treated as PRESSED
-     * until a released ANNOUNCE confirms otherwise, so clear is not allowed on it. */
-    {
-      bool handled = false;
-      ShowduinoStationResult r = p4.deliver("ESTOP:ASSERT:ESTOP-01:TEST", &handled);
-      const int slot = p4.slotOf("ESTOP-01");
-      expect(handled && r.accepted && slot >= 0 && p4.t[slot].inputOpen == 1 && !p4.directorClear(),
-             "S8d late ASSERT from a NORMAL station is conservative: clear refused");
-      p4.deliver(a.announce(30000));
-      expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.directorClear(),
-             "S8e next released ANNOUNCE confirms release; clear then allowed");
-    }
-  }
-
-  /* ============ Scenario 9: disconnection before a verified release ============ */
-  {
-    C3 b("ESTOP-02", MAC_B, false);
-    P4 p4;
-    p4.stations.push_back(&b);
-    b.setPressed(true);
-    p4.pump(b, 0);
-    b.connected = false;                /* the station drops off before any release */
-    p4.timeout("ESTOP-02");
-    expect(!p4.directorClear(),
-           "S9a pressed station that disconnects keeps blocking clear");
-
-    b.connected = true;
-    b.setPressed(false);                /* released, but no verified report yet */
-    p4.timeout("ESTOP-02");
-    expect(!p4.directorClear(),
-           "S9b offline station with no verified release keeps blocking clear");
-
-    p4.pump(b, 1000);                   /* reconnects and reports released */
-    p4.pump(b, 3000);
-    expect(p4.directorClear(),
-           "S9c reconnect with a verified release allows clear");
-  }
-
-  /* ============ Scenario 9b: released station goes offline before clear ============ */
-  {
-    C3 b("ESTOP-05", MAC_B, false);
-    P4 p4;
-    p4.stations.push_back(&b);
-    b.setPressed(true);  p4.pump(b, 0);
-    b.setPressed(false); p4.pump(b, 2000); p4.pump(b, 4000);
-    p4.timeout("ESTOP-05");
-    expect(!p4.directorClear(),
-           "S9d station released then offline (not re-verified) keeps blocking clear");
-    b.connected = true;
-    p4.pump(b, 6000);
-    expect(p4.directorClear(),
-           "S9e re-verified release after reconnect allows clear");
-  }
-
-  /* ============ Scenario 10: multiple stations, different physical states ============ */
-  {
-    C3 a("ESTOP-10", MAC_A, false);
-    C3 b("ESTOP-11", MAC_B, false);
-    C3 c("ESTOP-12", MAC_C, false);
-    P4 p4;
-    p4.stations = {&a, &b, &c};
-    a.setPressed(true);  p4.pump(a, 0);       /* A: pressed, verified */
-    b.setPressed(true);  p4.pump(b, 0);       /* B: pressed, verified */
-    /* C: bare ASSERT only, no verified report at all: unknown -> conservative. */
-    p4.deliver("ESTOP:ASSERT:ESTOP-12:TEST");
-    {
-      const int blocking = showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-      expect(blocking == 3, "S10a pressed A, pressed B and unverified C all block clear");
-    }
-    /* A releases and confirms. C is still unverified. */
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    {
-      const int blocking = showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-      expect(blocking == 2, "S10b A confirmed released: B and unverified C still block");
-    }
-    /* B releases and confirms. C reports its real state (released). */
-    b.setPressed(false); p4.pump(b, 2000); p4.pump(b, 4000);
-    p4.deliver(c.announce(4000));
-    {
-      const int blocking = showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
-      expect(blocking == 0, "S10c all confirmed released: nothing blocks clear");
-      expect(p4.directorClear(), "S10d multi-station press/release/confirm sequence clears");
-    }
-  }
-
-  /* ============ Scenario 11: P4 reboot with stored wireless blockers ============ */
-  {
-    C3 a("ESTOP-20", MAC_A, false);
-    C3 b("ESTOP-21", MAC_B, false);
-    P4 before;
-    before.stations = {&a, &b};
-    a.setPressed(true);  before.pump(a, 0);
-    b.setPressed(true);  before.pump(b, 0);
-    before.persist();
-    const std::string stored = before.store.value;
-
-    /* P4 reboots. Only the stored set survives. */
-    P4 after;
-    after.stations = {&a, &b};
-    rebootFromStore(after, stored);
-    {
-      const int slotA = after.slotOf("ESTOP-20");
-      const int slotB = after.slotOf("ESTOP-21");
-      expect(slotA >= 0 && slotB >= 0 && after.t[slotA].inputOpen && after.t[slotB].inputOpen,
-             "S11a restored blockers come back PRESSED");
-      expect(slotA >= 0 && after.t[slotA].reportKnown == 0,
-             "S11b restored blocker has no verified report yet");
-      expect(!after.directorClear(), "S11c clear refused after reboot with stored blockers");
-    }
-    /* Bare ASSERT after reboot must not release. */
-    after.deliver("ESTOP:ASSERT:ESTOP-20:TEST");
-    expect(!after.directorClear(), "S11d bare ASSERT after reboot does not release");
-
-    /* Forged released report with the stored ID and another MAC: rejected. */
-    ShowduinoEmergencyAnnounce forged{};
-    std::snprintf(forged.mac, sizeof(forged.mac), "%s", FORGED);
-    std::snprintf(forged.id, sizeof(forged.id), "%s", "ESTOP-20");
-    std::snprintf(forged.name, sizeof(forged.name), "%s", "X");
-    std::snprintf(forged.state, sizeof(forged.state), "%s", "NORMAL");
-    forged.input_open = 0; forged.latched = 0;
-    char fbuf[160];
-    showduino_emergency_format_announce(&forged, fbuf, sizeof(fbuf));
-    after.deliver(fbuf);
-    {
-      const int slotA = after.slotOf("ESTOP-20");
-      expect(slotA >= 0 && after.t[slotA].inputOpen == 1 && !after.directorClear(),
-             "S11e forged released ANNOUNCE after reboot is rejected");
-    }
-
-    /* Different ID presenting the stored MAC (the MAC is public): rejected. */
-    ShowduinoEmergencyAnnounce idForge{};
-    std::snprintf(idForge.mac, sizeof(idForge.mac), "%s", MAC_A);
-    std::snprintf(idForge.id, sizeof(idForge.id), "%s", "ESTOP-99");
-    std::snprintf(idForge.name, sizeof(idForge.name), "%s", "X");
-    std::snprintf(idForge.state, sizeof(idForge.state), "%s", "NORMAL");
-    idForge.input_open = 0; idForge.latched = 0;
-    char ibuf[160];
-    showduino_emergency_format_announce(&idForge, ibuf, sizeof(ibuf));
-    after.deliver(ibuf);
-    {
-      const int slotA = after.slotOf("ESTOP-20");
-      expect(slotA >= 0 && after.t[slotA].inputOpen == 1 && after.slotOf("ESTOP-99") < 0 &&
-             !after.directorClear(),
-             "S11g different ID with the stored MAC: rejected, no release, no rename");
-    }
-
-    /* The original stations report their real state. A releases, B releases. */
-    a.setPressed(false); after.pump(a, 2000); after.pump(a, 4000);
-    b.setPressed(false); after.pump(b, 2000); after.pump(b, 4000);
-    expect(after.directorClear(), "S11f verified releases after reboot allow clear");
-  }
-
-  /* ============ Scenario 12: press re-engages a released station after clear ============ */
-  {
-    C3 a("ESTOP-30", MAC_A, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    a.setPressed(true);  p4.pump(a, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    expect(p4.directorClear(), "S12a clear after release succeeds");
-    a.setPressed(true);  p4.pump(a, 6000);
-    expect(p4.globalLatched && !p4.directorClear(),
-           "S12b a new press after clear re-latches the P4 and blocks clear again");
-  }
-
-  /* ============ Scenario 13 (MISSION 001I): bare ASSERT never restores freshness ============ */
-  {
-    C3 a("ESTOP-40", MAC_A, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    a.setPressed(true);  p4.pump(a, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    const int slot = p4.slotOf("ESTOP-40");
-    expect(slot >= 0 && p4.t[slot].inputOpen == 0 && p4.t[slot].online == 1,
-           "S13a release confirmed by a verified ANNOUNCE while online");
-
-    /* 1. Disconnection before the clear. */
-    a.connected = false;
-    p4.timeout("ESTOP-40");
-    expect(slot >= 0 && p4.t[slot].online == 0 &&
-           showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1,
-           "S13b disconnected station blocks clear, even though its last report was released");
-
-    /* 2. A bare ASSERT arrives. It must not restore online or establish release. */
-    bool handled = false;
-    p4.deliver(bareAssert(a), &handled);
-    expect(handled && p4.globalLatched && p4.t[slot].online == 0,
-           "S13c bare ASSERT keeps the global latch and does NOT restore ONLINE");
-    expect(!p4.directorClear() && p4.clearsRefused >= 1,
-           "S13d attempted clear refused after a bare ASSERT from an offline station");
-
-    /* 3. Fresh, identity-validated released ANNOUNCE after reconnection. */
-    a.connected = true;
-    p4.deliver(a.announce(8000));
-    expect(p4.t[slot].online == 1 && p4.t[slot].inputOpen == 0 && p4.t[slot].reportKnown == 1,
-           "S13e fresh released ANNOUNCE restores ONLINE and RELEASED");
-
-    /* 4. Authorised clear. */
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.challengeRound();
+    const int s = p4.slotOf("ESTOP-01");
+    expect(s >= 0 && p4.t[s].reportKnown && !p4.t[s].inputOpen && !p4.globalLatched,
+           "S1a idle station proves RELEASED with a verified AUTH; no latch");
+    a.pressed = true; p4.pump(a);
+    expect(p4.globalLatched && p4.globalTriggers == 1 && p4.episode != 0,
+           "S1b press: bare ASSERT latches the P4 immediately and opens an episode");
+    expect(a.m.acked == 1 && a.st.latchedEpisode == p4.episode,
+           "S1c station accepts the authenticated ACK and learns the episode");
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S1d clear refused while the station is PRESSED");
+    a.pressed = false; p4.pump(a); p4.advance(500);
     expect(p4.directorClear() && !p4.globalLatched && p4.clearsAccepted == 1,
-           "S13f authorised clear accepted after the fresh released ANNOUNCE");
+           "S1e released + fresh proof: Director clear accepted");
+    expect(a.m.latched == 0 && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "S1f station returns to NORMAL only after the authenticated GCL");
+    p4.advance(3000); p4.pump(a);
+    expect(!p4.globalLatched && a.assertsSent > 0, "S1g no re-latch after a completed clear");
   }
 
-  /* ============ Scenario 14 (MISSION 001I): reboot after release-then-disconnect ============ */
+  /* ===== S2 (J): forged RELEASE ===== */
   {
-    C3 a("ESTOP-50", MAC_A, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    a.setPressed(true);  p4.pump(a, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    a.connected = false;
-    p4.timeout("ESTOP-50");
-    expect(p4.persist() && p4.store.value.find("ESTOP-50") != std::string::npos,
-           "S14a released-then-disconnected station stays in the stored blocker set");
-
-    P4 after;
-    after.stations.push_back(&a);
-    rebootFromStore(after, p4.store.value, true);
-    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1
-           && !after.bootUnknown,
-           "S14b reboot restores the station as a clear blocker");
-    expect(!after.directorClear(),
-           "S14c clear refused after reboot while no announcement has been received");
-
-    after.deliver(bareAssert(a));
-    expect(!after.directorClear(),
-           "S14d bare ASSERT after reboot does not satisfy the clear requirement");
-
-    a.connected = true;
-    after.deliver(a.announce(6000));
-    expect(after.directorClear(),
-           "S14e fresh released ANNOUNCE after reboot allows the authorised clear");
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    p4.dropUp.insert("ESTOP-01");      /* real answers withheld */
+    p4.challengeRound();
+    const std::string nonce = lastNonce(p4);
+    p4.deliver(forgedAuth("ESTOP-01", p4.episode, nonce.c_str()));
+    const int s = p4.slotOf("ESTOP-01");
+    expect(s >= 0 && p4.t[s].inputOpen && !p4.t[s].reportKnown,
+           "S2a AUTH RELEASED tagged with the wrong key is rejected");
+    std::string tampered = forgedAuth("ESTOP-01", p4.episode, nonce.c_str());
+    tampered[tampered.size() - 1] = tampered.back() == '0' ? '1' : '0';
+    p4.deliver(tampered);
+    expect(p4.t[s].inputOpen && !p4.directorClear(), "S2b tampered tag rejected; clear refused");
+    p4.deliver("ESTOP:RELEASE:ESTOP-01");
+    p4.deliver("STATUS:NORMAL:IN=RELEASED:L=0:A=0:ESTOP-01");
+    expect(p4.t[s].inputOpen && !p4.directorClear(),
+           "S2c unauthenticated RELEASE / STATUS lines change nothing");
   }
 
-  /* ============ Scenario 15 (MISSION 001I): reboot with several stations in different states ============ */
+  /* ===== S3 (J): forged ANNOUNCE ===== */
   {
-    C3 a("ESTOP-60", MAC_A, false);
-    C3 b("ESTOP-61", MAC_B, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    p4.stations.push_back(&b);
-    a.setPressed(true);  p4.pump(a, 0);
-    b.setPressed(true);  p4.pump(b, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    a.connected = false;
-    p4.timeout("ESTOP-60");            /* A: released, then offline. B: still pressed. */
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    C3 fake("ESTOP-01", nullptr, false);
+    fake.m.latched = 0; fake.m.input_open = 0;
+    bool handled = false;
+    const ShowduinoStationResult r = p4.deliver(fake.announce(), &handled);
+    const int s = p4.slotOf("ESTOP-01");
+    expect(handled && !r.accepted && r.slot < 0 && p4.t[s].inputOpen && !p4.t[s].online,
+           "S3a forged ANNOUNCE IN=RELEASED L=0 is display-only: no state change");
+    p4.dropUp.insert("ESTOP-01");
+    expect(!p4.directorClear(), "S3b forged ANNOUNCE cannot satisfy clear");
+    C3 stranger("ESTOP-77", nullptr, false);
+    p4.deliver(stranger.announce());
+    expect(p4.slotOf("ESTOP-77") < 0, "S3c ANNOUNCE never creates a station entry");
+  }
+
+  /* ===== S4 (J): replayed valid RELEASE ===== */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.challengeRound();
+    const std::string captured = lastUp(p4, "AUTH:");
+    a.pressed = true; p4.pump(a);
+    const int s = p4.slotOf("ESTOP-01");
+    p4.dropUp.insert("ESTOP-01");
+    expect(s >= 0 && p4.t[s].inputOpen == 1, "S4 setup: press recorded");
+    expect(!p4.deliver(captured).verified, "S4a replayed AUTH RELEASED (same nonce, old episode) rejected");
+    expect(!p4.directorClear(), "S4b replay cannot satisfy clear");
+    /* Replay within the same episode: the nonce is single use per station. */
+    p4.dropUp.clear();
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    const std::string fresh = lastUp(p4, "AUTH:");
+    a.pressed = true; p4.pump(a);
+    p4.dropUp.insert("ESTOP-01");
+    expect(!p4.deliver(fresh).verified, "S4c replayed AUTH from the same episode rejected (nonce used)");
+    p4.advance(SHOWDUINO_AUTH_WINDOW_MS + 1);
+    expect(!p4.deliver(fresh).verified && !p4.directorClear(), "S4d replay after the window rejected");
+  }
+
+  /* ===== S5 (J): replay following P4 reboot ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    const std::string capturedAuth = lastUp(p4, "AUTH:");
+    const std::string capturedAck = lastDown(p4, ":ACK:");
+    a.pressed = true; p4.pump(a);
+    P4 after; rebootP4(p4, after);
+    after.dropUp.insert("ESTOP-01");
+    after.deliver(capturedAuth);
+    const int s = after.slotOf("ESTOP-01");
+    expect(s >= 0 && after.t[s].inputOpen && !after.t[s].reportKnown,
+           "S5a pre-reboot AUTH RELEASED rejected after P4 restart (new challenges, new episode)");
+    expect(after.episode > p4.episode, "S5b post-reboot episode id is above every pre-reboot value");
+    expect(!after.directorClear(), "S5c clear refused after reboot without fresh proof");
+    const uint32_t before = a.nvsCounter;
+    after.down(&a, capturedAck);
+    expect(a.lastCmdResult == SHOWDUINO_RESP_REJECT_REPLAY && a.nvsCounter == before,
+           "S5d pre-reboot CMD replayed to the station is rejected by its counter");
+  }
+
+  /* ===== S6 (J): replay following C3 reboot ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    expect(p4.directorClear(), "S6a setup: clear accepted");
+    const std::string gcl = lastDown(p4, ":GCL:");
+    a.pressed = true; p4.pump(a);                 /* new episode */
+    a.boot();                                     /* C3 power cycle: RAM lost, NVS kept */
+    expect(a.st.lastCmdCounter == a.nvsCounter && a.nvsCounter > 0,
+           "S6b C3 restores its last accepted counter from NVS");
+    p4.dropDown.clear();
+    p4.down(&a, gcl);
+    expect(a.lastCmdResult == SHOWDUINO_RESP_REJECT_REPLAY && a.m.latched == 1,
+           "S6c old GCL replayed after C3 reboot is rejected; station stays latched");
+    p4.advance(300); p4.pump(a);
+    expect(a.st.latchedEpisode == p4.episode, "S6d rebooted station relearns the episode from a fresh ACK");
+  }
+
+  /* ===== S7 (J): incorrect station identity ===== */
+  {
+    C3 a("ESTOP-01", &KA, true), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.pump(a);
+    p4.dropUp.insert("ESTOP-01");
+    p4.challengeRound();
+    const std::string nonce = lastNonce(p4);
+    char buf[SHOWDUINO_NODE_COMMAND_MAX];
+    showduino_auth_format_auth("ESTOP-01", p4.episode, nonce.c_str(), 0, 0, 0, KB.b,
+                               SHOWDUINO_AUTH_KEY_BYTES, hmacSha256, buf, sizeof(buf));
+    p4.deliver(buf);
+    const int s = p4.slotOf("ESTOP-01");
+    expect(p4.t[s].inputOpen && !p4.t[s].reportKnown,
+           "S7a station B cannot report RELEASED for station A (A's key required)");
+    p4.dropUp.clear();
+    a.pressed = false; p4.pump(a);
+    const std::string ackForA = lastDown(p4, "CMD:ESTOP-01:");
+    b.m.latched = 1;
+    p4.down(&b, ackForA);
+    expect(b.lastCmdResult == SHOWDUINO_RESP_REJECT_IDENTITY, "S7b command for A is rejected by B");
+    expect(p4.directorClear(), "S7c genuine proofs from both stations allow clear");
+  }
+
+  /* ===== S8 (J): expired freshness and episode mismatch ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.dropUp.insert("ESTOP-01");
+    p4.challengeRound();
+    const std::string held = lastUp(p4, "AUTH:");
+    p4.advance(SHOWDUINO_AUTH_WINDOW_MS + 50);
+    const int s = p4.slotOf("ESTOP-01");
+    expect(!p4.deliver(held).verified && p4.t[s].reportKnown == 0, "S8a AUTH delivered after the freshness window is rejected");
+    p4.dropUp.clear();
+    p4.challengeRound();
+    expect(p4.t[s].inputOpen == 0 && p4.t[s].online == 1, "S8b a fresh answer is accepted");
+    p4.timeout("ESTOP-01");
+    expect(p4.t[s].online == 0, "S8c timeout sets OFFLINE");
+    /* Episode binding: an AUTH for the old episode is useless after clear. */
+    expect(p4.directorClear(), "S8d clear accepted with fresh proof");
+    a.pressed = true; p4.pump(a);
+    p4.dropUp.insert("ESTOP-01");
+    p4.challengeRound();
+    p4.dropUp.clear();
+    const std::string latchedAuth = lastUp(p4, "AUTH:");
+    p4.advance(10);
+    a.pressed = false; p4.pump(a);
+    const bool first = p4.deliver(latchedAuth).verified;
+    const bool second = p4.deliver(latchedAuth).verified;
+    expect(!latchedAuth.empty() && first && !second,
+           "S8e a withheld AUTH is accepted once inside the window, never twice");
+  }
+
+  /* ===== S9 (J): missing or corrupted credentials ===== */
+  {
+    C3 a("ESTOP-01", nullptr, true);          /* station never provisioned */
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    p4.challengeRound();
+    expect(lastUp(p4, "AUTH:").empty(), "S9a unprovisioned station does not answer challenges");
+    a.pressed = false; p4.pump(a);
+    expect(!p4.directorClear() && p4.lastDecision != SHOWDUINO_CLEAR_OK,
+           "S9b without a key the station cannot prove RELEASED: clear refused");
+    C3 b("ESTOP-02", &KB, false);
+    Key corrupt = KB; corrupt.b[5] ^= 0x40;
+    P4 q; q.stations = {&b}; q.provision("ESTOP-02", corrupt);
+    q.challengeRound();
+    const int s = q.slotOf("ESTOP-02");
+    expect(s < 0, "S9c corrupted P4 key: AUTH fails, nothing recorded");
+    b.pressed = true; q.pump(b);
+    b.pressed = false; q.pump(b);
+    expect(!q.directorClear() && q.lastDecision != SHOWDUINO_CLEAR_OK,
+           "S9d corrupted key keeps the emergency latched (fail closed)");
+    P4 r; r.stations = {&b};             /* P4 has no key at all for a station that asserted */
+    b.m.latched = 0; b.pressed = true; r.pump(b);
+    b.pressed = false; r.pump(b);
+    expect(r.globalLatched && !r.directorClear() && r.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S9e station unknown to the P4 key table: ASSERT latches and blocks clear");
+  }
+
+  /* ===== S10 (J): replaced station hardware ===== */
+  {
+    C3 oldBoard("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&oldBoard}; p4.provision("ESTOP-01", KA);
+    p4.pump(oldBoard);
+    const std::string oldAuth = (p4.challengeRound(), lastUp(p4, "AUTH:"));
+    /* Board destroyed while latched. New board provisioned locally with a new key. */
+    C3 newBoard("ESTOP-01", &KA2, false);
+    p4.stations = {&newBoard};
+    p4.provision("ESTOP-01", KA2);
+    const int s = p4.slotOf("ESTOP-01");
+    expect(p4.t[s].inputOpen == 1 && p4.globalLatched,
+           "S10a re-keying while latched keeps the station blocking (no silent release)");
+    p4.deliver(oldAuth);
+    C3 oldAgain("ESTOP-01", &KA, false);
+    p4.stations = {&oldAgain};
+    p4.challengeRound();
+    expect(p4.t[s].inputOpen == 1, "S10b the old board's key is no longer accepted");
+    p4.stations = {&newBoard};
+    p4.advance(10);
+    expect(p4.directorClear() && newBoard.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "S10c the replacement proves RELEASED with its own key; clear accepted");
+  }
+
+  /* ===== S11 (J): interrupted persistence ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.failCounterWrites = 1000;
+    p4.pump(a);
+    expect(p4.globalLatched && p4.counterFault && p4.episode == 0 && a.m.acked == 0,
+           "S11a counter block not durable: latch still engages, no command issued");
+    a.pressed = false; p4.pump(a);
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STORAGE,
+           "S11b counter fault blocks clear (fail closed)");
+    p4.failCounterWrites = 0;
+    p4.advance(SHOWDUINO_EMERGENCY_HEARTBEAT_MS + 1); p4.pump(a);
+    expect(!p4.counterFault && p4.episode != 0 && a.m.acked == 1,
+           "S11b2 storage recovers: episode allocated, station ACKed");
+    p4.advance(10);
+    expect(p4.directorClear(), "S11b3 after recovery and fresh proof, clear accepted");
+    C3 b("ESTOP-02", &KB, true);
+    P4 q; q.stations = {&b}; q.provision("ESTOP-02", KB);
+    b.failCounterWrites = 1;
+    q.pump(b);
+    expect(b.lastCmdResult == SHOWDUINO_RESP_REJECT_PERSIST && b.m.acked == 0 && b.nvsCounter == 0,
+           "S11c station counter not durable: ACK refused, station keeps asserting");
+    q.advance(SHOWDUINO_EMERGENCY_HEARTBEAT_MS + 1); q.pump(b);
+    expect(b.m.acked == 1, "S11d next ACK after storage recovers is accepted");
+    b.pressed = false; q.pump(b);
+    q.store.failWrites = 1;
+    q.deliver("ESTOP:ASSERT:ESTOP-03:X");
+    expect(q.persistDirty && !q.directorClear(), "S11e blocker-set write failure blocks clear");
+  }
+
+  /* ===== S12 (J): mixed authenticated and legacy stations ===== */
+  {
+    C3 a("ESTOP-01", &KA, false), legacy("ESTOP-09", nullptr, true, true);
+    P4 p4; p4.stations = {&a, &legacy}; p4.provision("ESTOP-01", KA);
+    legacy.pressed = true; p4.pump(legacy);
+    expect(p4.globalLatched, "S12a legacy ASSERT still latches immediately");
+    legacy.pressed = false; p4.pump(legacy);
+    p4.deliver(legacy.announce());
+    const int s = p4.slotOf("ESTOP-09");
+    expect(s >= 0 && p4.t[s].inputOpen && !p4.t[s].reportKnown,
+           "S12b legacy ANNOUNCE RELEASED does not verify the legacy station");
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S12c an asserted legacy station blocks clear (no insecure fallback)");
+    expect(showduino_station_model_dismiss(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, "ESTOP-09", 0) == 1,
+           "S12d local maintenance dismiss removes the unprovisioned entry");
+    expect(showduino_station_model_dismiss(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, "ESTOP-01", 1) == 0,
+           "S12e dismiss refuses a provisioned station");
     p4.persist();
-
-    P4 after;
-    after.stations.push_back(&a);
-    after.stations.push_back(&b);
-    rebootFromStore(after, p4.store.value, true);
-    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 2,
-           "S15a after reboot both the released-then-offline A and the pressed B block clear");
-
-    b.setPressed(false); after.pump(b, 6000); after.pump(b, 8000);
-    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 1
-           && !after.directorClear(),
-           "S15b B confirmed released; A still required, clear refused");
-
-    a.connected = true;
-    after.deliver(a.announce(10000));
-    expect(after.directorClear(),
-           "S15c A fresh released ANNOUNCE and B released: authorised clear accepted");
+    expect(p4.directorClear(), "S12f after maintenance, the provisioned station's proof allows clear");
+    expect(legacy.m.latched == 1 && legacy.rejectedUnauth == 0,
+           "S12g P4 sends no unauthenticated clear to the legacy station");
   }
 
-  /* ============ Scenario 16 (MISSION 001I): storage faults stay fail-closed ============ */
+  /* ===== S13 (J): multiple simultaneous stations, one silenced by the relay ===== */
   {
-    C3 a("ESTOP-70", MAC_A, false);
-    C3 b("ESTOP-71", MAC_B, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    p4.stations.push_back(&b);
-    a.setPressed(true);  p4.pump(a, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-
-    /* Storage becomes unavailable, then B asserts. The required set changes and
-     * the write fails. */
-    p4.store.failWrites = 1000;
-    b.setPressed(true);  p4.pump(b, 6000);
-    b.setPressed(false); p4.pump(b, 8000); p4.pump(b, 10000);
-    expect(p4.persistDirty && showduino_station_model_count_blocking(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
-           "S16a failed write: every station is released, yet the unverified record blocks clear");
-    expect(!p4.directorClear(),
-           "S16b clear refused while the blocker record is unverified");
-
-    /* Storage recovers. The next station line retries and verifies the write. */
-    p4.store.failWrites = 0;
-    p4.deliver(b.announce(12000));
-    expect(!p4.persistDirty && p4.store.valid,
-           "S16c retry after recovery verifies the blocker record");
-    expect(p4.directorClear(),
-           "S16d clear allowed once the record is verified and all stations are released");
+    C3 a("ESTOP-01", &KA, false), b("ESTOP-02", &KB, false), c("ESTOP-03", &KC, false);
+    P4 p4; p4.stations = {&a, &b, &c};
+    p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB); p4.provision("ESTOP-03", KC);
+    a.pressed = b.pressed = true; p4.pumpAll();
+    expect(p4.globalTriggers == 1 && a.m.acked && b.m.acked, "S13a two presses, one episode, both ACKed");
+    expect(!p4.directorClear(), "S13b both pressed: refused");
+    a.pressed = false; p4.pumpAll();
+    expect(!p4.directorClear(), "S13c one still pressed: refused");
+    b.pressed = false; p4.pumpAll();
+    p4.dropUp.insert("ESTOP-03");
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_PROOF,
+           "S13d relay drops station C (never asserted): its missing proof blocks clear");
+    p4.dropUp.clear();
+    p4.advance(10);
+    expect(p4.directorClear() && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL &&
+           b.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "S13e all three prove RELEASED: clear accepted and both pressed stations normalise");
   }
+
+  /* ===== S14 (J): legitimate clearance following authenticated recovery after P4 reboot ===== */
   {
-    /* Unreadable record after a latched restart: fail closed, even with no stations. */
-    C3 a("ESTOP-80", MAC_A, false);
-    P4 corrupt;
-    corrupt.stations.push_back(&a);
-    rebootFromStore(corrupt, "B1;corrupted;#0000", true);
-    expect(corrupt.bootUnknown && showduino_station_model_count_blocking(corrupt.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
-           "S16e unreadable record after latched reboot: no stations, yet boot state is unknown");
-    a.connected = true;
-    corrupt.deliver(a.announce(2000));
-    expect(!corrupt.directorClear(),
-           "S16f unknown boot state stays fail-closed, even after a released ANNOUNCE");
+    C3 a("ESTOP-01", &KA, true), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.pump(a);
+    expect(p4.store.value.find("ESTOP-01") != std::string::npos, "S14a asserted station stored");
+    P4 after; rebootP4(p4, after);
+    const int s = after.slotOf("ESTOP-01");
+    expect(s >= 0 && after.t[s].inputOpen && after.t[s].asserted, "S14b reboot restores the blocker");
+    after.ackSweep();
+    expect(a.st.latchedEpisode == after.episode, "S14c ACK sweep teaches the station the new episode");
+    expect(!after.directorClear(), "S14d still PRESSED after reboot: refused");
+    a.pressed = false; after.pump(a);
+    after.advance(10);
+    expect(after.directorClear() && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "S14e authenticated recovery: clear accepted and GCL for the new episode applies");
   }
 
-  /* ============ Scenario 17 (MISSION 001I): an accepted clear ends the episode ============ */
+  /* ===== S15 (J): press after a verified release, ASSERT dropped by the relay ===== */
   {
-    C3 a("ESTOP-90", MAC_A, false);
-    P4 p4;
-    p4.stations.push_back(&a);
-    a.setPressed(true);  p4.pump(a, 0);
-    a.setPressed(false); p4.pump(a, 2000); p4.pump(a, 4000);
-    expect(p4.store.value.find("ESTOP-90") != std::string::npos,
-           "S17a before clear the released station is still a stored blocker");
-    expect(p4.directorClear(), "S17b authorised clear accepted");
-    expect(p4.store.value.find("ESTOP-90") == std::string::npos,
-           "S17c after the accepted clear the stored record holds no stale blocker");
-
-    P4 after;
-    after.stations.push_back(&a);
-    rebootFromStore(after, p4.store.value, false);
-    expect(showduino_station_model_count_blocking(after.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES) == 0,
-           "S17d reboot after a completed clear restores no blockers");
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    const int s = p4.slotOf("ESTOP-01");
+    expect(p4.t[s].inputOpen == 0 && p4.t[s].online, "S15a station verified RELEASED and online");
+    p4.dropUp.insert("ESTOP-01");
+    a.pressed = true; p4.pump(a);
+    p4.dropUp.clear();
+    p4.advance(100);
+    expect(!p4.directorClear() && p4.t[s].inputOpen == 1,
+           "S15b the confirm-time proof shows PRESSED even though the ASSERT was dropped");
+    p4.dropUp.insert("ESTOP-01");
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S15c relay withholding the proof: clear refused");
   }
 
-  /* ============ Scenario 18 (MISSION 001I): the stored set is never dropped silently ============ */
+  /* ===== S16 (J): unauthenticated ACK / GLOBAL:OBSERVED / EMERGENCY:CLEAR to the station ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    a.pressed = false;
+    showduino_emergency_machine_input(&a.m, 0);
+    p4.down(&a, "ESTOP:GLOBAL:OBSERVED");
+    p4.down(&a, "EMERGENCY:CLEAR");
+    p4.down(&a, "ESTOP:ACK:LATCHED");
+    expect(a.m.latched == 1 && a.m.acked == 0 && a.rejectedUnauth == 3,
+           "S16a station ignores unauthenticated ACK, GLOBAL:OBSERVED and EMERGENCY:CLEAR");
+    char gcl[SHOWDUINO_NODE_COMMAND_MAX];
+    showduino_auth_format_cmd("ESTOP-01", 999, "GCL", 5, KB.b, SHOWDUINO_AUTH_KEY_BYTES,
+                              hmacSha256, gcl, sizeof(gcl));
+    p4.down(&a, gcl);
+    expect(a.lastCmdResult == SHOWDUINO_RESP_REJECT_TAG && a.m.latched == 1,
+           "S16b GCL forged with another key is rejected");
+  }
+
+  /* ===== S17 (J): GCL held back by the relay, delivered in a later episode ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.dropDownMatch = ":GCL:";
+    p4.advance(10);
+    expect(p4.directorClear(), "S17a clear accepted; relay withholds the GCL");
+    const std::string held = lastDown(p4, ":GCL:");
+    p4.dropDownMatch.clear();
+    /* Station is still latched locally; its next verified AUTH shows L=1 and re-latches. */
+    p4.advance(1000); p4.challengeRound();
+    expect(p4.globalLatched && p4.globalTriggers == 2,
+           "S17b station that missed the GCL re-latches the P4 (fail safe)");
+    expect(a.st.latchedEpisode == p4.episode, "S17c it learns the new episode from a fresh ACK");
+    p4.down(&a, held);
+    expect(a.m.latched == 1 && a.lastCmdResult < SHOWDUINO_RESP_ACK,
+           "S17d the held GCL from the old episode is rejected");
+    p4.advance(10);
+    expect(p4.directorClear() && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "S17e the new episode clears normally");
+  }
+
+  /* ===== S18 (J): table filled by forged ASSERT IDs ===== */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    for (int i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      char line[48];
+      std::snprintf(line, sizeof(line), "ESTOP:ASSERT:ESTOP-%02d:F", 50 + i);
+      p4.deliver(line);
+    }
+    p4.globalLatched = false;           /* model an operator clear of the first latch */
+    a.pressed = true; p4.pump(a);
+    expect(p4.globalLatched && p4.tableOverflow,
+           "S18a real ASSERT still latches when the table is full of forged IDs");
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_OVERFLOW,
+           "S18b table overflow blocks clear");
+  }
+
+  /* ===== S19 (001I carried): bare ASSERT never restores freshness ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    const int s = p4.slotOf("ESTOP-01");
+    p4.timeout("ESTOP-01");
+    p4.deliver("ESTOP:ASSERT:ESTOP-01:TEST");
+    expect(p4.t[s].online == 0, "S19a ASSERT after timeout does not restore ONLINE");
+    p4.dropUp.insert("ESTOP-01");
+    expect(!p4.directorClear(), "S19b clear refused without a new verified answer");
+  }
+
+  /* ===== S20 (001I carried): reboot with several stations in different states ===== */
+  {
+    C3 a("ESTOP-01", &KA, true), b("ESTOP-02", &KB, true), c("ESTOP-03", &KC, false);
+    P4 p4; p4.stations = {&a, &b, &c};
+    p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB); p4.provision("ESTOP-03", KC);
+    p4.pumpAll();
+    a.pressed = false; p4.pumpAll(); p4.challengeRound();
+    P4 after; rebootP4(p4, after);
+    expect(after.blocking() == 2 && after.slotOf("ESTOP-03") < 0,
+           "S20a both asserted stations restored as blockers; idle C not stored");
+    after.ackSweep(); after.advance(10);
+    expect(!after.directorClear(), "S20b B still pressed: refused");
+    b.pressed = false; after.pumpAll(); after.advance(10);
+    expect(after.directorClear(), "S20c all prove RELEASED: clear accepted");
+  }
+
+  /* ===== S21 (001I carried): unreadable stored record after a latched reboot ===== */
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.store.value = "B1;garbage#0000"; p4.store.valid = true;
+    P4 after; rebootP4(p4, after);
+    after.challengeRound();
+    expect(after.bootUnknown && !after.directorClear() &&
+           after.lastDecision == SHOWDUINO_CLEAR_BLOCK_STORAGE,
+           "S21a corrupt blocker record keeps clear refused even with fresh proofs");
+  }
+
+  /* ===== S22 (001I carried): accepted clear ends the episode in storage ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a); p4.advance(10);
+    expect(p4.directorClear() && p4.store.value.find("ESTOP-01") == std::string::npos,
+           "S22a accepted clear stores an empty blocker set");
+    P4 after; rebootP4(p4, after, false);
+    expect(after.blocking() == 0, "S22b reboot after clear restores nothing");
+  }
+
+  /* ===== S23 (001I carried): stored set is never dropped silently ===== */
   {
     ShowduinoStationModel t[3]{};
-    t[0].used = 1; t[0].asserted = 1; std::snprintf(t[0].id, sizeof(t[0].id), "%s", "ESTOP-A");
-    t[1].used = 1; t[1].asserted = 1; std::snprintf(t[1].id, sizeof(t[1].id), "%s", "ESTOP-B");
+    for (int i = 0; i < 3; ++i) {
+      char id[16]; std::snprintf(id, sizeof(id), "ESTOP-%02d", i + 1);
+      showduino_station_model_restore(&t[i], id, "");
+    }
     ShowduinoBlocker out[SHOWDUINO_BLOCKER_MAX];
-    int n = -1;
+    int n = 0;
     expect(showduino_station_model_collect_required(t, 3, out, 1, &n) == 0,
-           "S18a more required stations than the record can hold: collection fails");
-    ShowduinoStationModel noId[1]{};
-    noId[0].used = 1; noId[0].asserted = 1;
-    expect(showduino_station_model_collect_required(noId, 1, out, SHOWDUINO_BLOCKER_MAX, &n) == 0,
-           "S18b required station without an identity: collection fails");
-    expect(showduino_station_model_collect_required(t, 3, out, SHOWDUINO_BLOCKER_MAX, &n) == 1 && n == 2,
-           "S18c two required stations collect in full");
+           "S23a overflow of the stored set reports failure");
   }
 
-  std::printf(gFails == 0 ? "ALL PASS\n" : "FAILURES: %d\n", gFails);
-  return gFails == 0 ? 0 : 1;
+  /* ===== S24 (J): proof window arithmetic ===== */
+  {
+    expect(showduino_station_proof_since(0, 10) == 9, "S24a no request: one of the two latest challenges");
+    expect(showduino_station_proof_since(10, 12) == 11, "S24b request long ago: still the two latest");
+    expect(showduino_station_proof_since(12, 12) == 12, "S24c only challenges after the request count");
+    expect(showduino_station_proof_since(5, 1) == 5 && showduino_station_proof_since(0, 0) == 1,
+           "S24d before any challenge nothing qualifies");
+    expect(showduino_station_proof_since(0xFFFFFFFFu, 0xFFFFFFFFu) == 0xFFFFFFFFu,
+           "S24e sequence arithmetic is wrap-safe");
+  }
+
+  std::printf("\n%d passed, %d failed\n", gPass, gFails);
+  std::printf(gFails ? "FAILURES\n" : "ALL PASS\n");
+  return gFails ? 1 : 0;
 }

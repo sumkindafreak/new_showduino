@@ -117,7 +117,13 @@ typedef struct ShowduinoEmergencyRoute {
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1];
   uint32_t sequence;
   const char *command;
+  uint8_t broadcast; /* MISSION 001J: id was "ALL"; the relay sends an ESP-NOW broadcast */
 } ShowduinoEmergencyRoute;
+
+/* MISSION 001J: route id for an ESP-NOW broadcast to every Emergency Node. Used for
+ * CHAL and as a second copy of each CMD, so a relay whose MAC table was poisoned by
+ * a forged ANNOUNCE still delivers. Stations ignore CMDs for other IDs. */
+#define SHOWDUINO_EMERGENCY_ROUTE_ALL "ALL"
 
 typedef struct ShowduinoEmergencyMachine {
   uint8_t latched;
@@ -517,7 +523,11 @@ static inline int showduino_emergency_parse_route(const char *line,
   if (n > SHOWDUINO_EMERGENCY_ID_MAX) return 0;
   memcpy(out->id, p, n);
   out->id[n] = '\0';
-  if (!showduino_emergency_id_ok(out->id)) return 0;
+  if (strcmp(out->id, SHOWDUINO_EMERGENCY_ROUTE_ALL) == 0) {
+    out->broadcast = 1;
+  } else if (!showduino_emergency_id_ok(out->id)) {
+    return 0;
+  }
   c2 = strchr(c1 + 1, ':');
   if (!c2) return 0;
   out->sequence = (uint32_t)strtoul(c1 + 1, NULL, 10);
