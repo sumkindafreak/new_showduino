@@ -418,6 +418,17 @@ struct P4 {
   }
 
   void pump(C3 &s) { for (const std::string &l : s.tick(now)) up(&s, l); }
+  /* Continuous time: stations serviced every 50 ms, challenges at the latched or
+   * idle cadence, as the firmware loops do. */
+  void runFor(uint32_t ms) {
+    uint32_t lastChal = now;
+    for (uint32_t t0 = 0; t0 < ms; t0 += 50) {
+      advance(50);
+      pumpAll();
+      const uint32_t period = globalLatched ? SHOWDUINO_STATION_CHAL_LATCHED_MS : SHOWDUINO_STATION_CHAL_IDLE_MS;
+      if (now - lastChal >= period) { challengeRound(); lastChal = now; }
+    }
+  }
   void pumpAll() { for (C3 *s : stations) pump(*s); }
   void advance(uint32_t ms) { now += ms; }
 
@@ -1679,6 +1690,36 @@ int main() {
     expect(showduino_clear_entry(1, "DCLR:REQ:DIR-01:00000001:0000000000000000:00000001:x") ==
                SHOWDUINO_CLEAR_ENTRY_REFUSE_SOURCE,
            "K21 a Director message on the P4 USB console is refused (wrong source)");
+  }
+
+  /* K25: realistic operator timing — stations keep running between request and confirm */
+  {
+    C3 a("ESTOP-01", &KA, false), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pumpAll(); a.pressed = false;
+    p4.runFor(2000);                               /* press burst (6 x 250 ms) completes */
+    p4.publishEpisode(); d.tapClear();
+    p4.runFor(6000);                               /* operator reads the dialog for ~6 s */
+    expect(p4.txn.state == SHOWDUINO_TXN_OPEN,
+           "K25a a latched, ACKed, released station's heartbeat does not cancel the open request");
+    d.tapConfirm();
+    expect(!p4.globalLatched && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
+           "K25b confirm after a realistic delay clears and normalises the station");
+  }
+  {
+    C3 a("ESTOP-01", &KA, false);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA); p4.enrollDirector("DIR-01", KD);
+    Director d("DIR-01", KD); d.p4 = &p4; p4.director = &d;
+    a.pressed = true; p4.pumpAll(); a.pressed = false;
+    p4.runFor(2000);
+    p4.publishEpisode(); d.tapClear();
+    p4.runFor(1000);
+    a.pressed = true;
+    p4.runFor(100);                                /* pressed again while the dialog is open */
+    expect(p4.txn.state == SHOWDUINO_TXN_IDLE,
+           "K25c a new press while the request is open cancels it within one service tick");
   }
 
   /* K24: Director reboot or disconnect never releases */

@@ -132,6 +132,8 @@ MUTANTS += [
     ("K18 re-press while latched waits for the heartbeat", "showduino_emergency_node.h",
      "  if (button_pressed && !wasPressed && m->latched) {\n    m->pending_assert = 1;\n    m->burst_left = (uint8_t)SHOWDUINO_EMERGENCY_BURST_COUNT;\n    m->next_tx_ms = 0;\n  }",
      "  if (button_pressed && !wasPressed && m->latched) {\n    (void)0;\n  }", None),
+    ("K20 ACKed released station keeps heartbeating", "showduino_emergency_node.h",
+     "  if (m->acked && !m->input_open && m->burst_left == 0) return 0;", "", None),
     ("K19 storage/overflow faults wait for the window", "showduino_clear_txn.h",
      "  if (d == SHOWDUINO_CLEAR_BLOCK_STORAGE || d == SHOWDUINO_CLEAR_BLOCK_OVERFLOW) {",
      "  if (0) {", None),

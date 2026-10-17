@@ -404,6 +404,13 @@ static inline int showduino_emergency_machine_want_tx(const ShowduinoEmergencyMa
   if (!m || !m->latched || !m->radio_up) return 0;
   if (m->global_clear_seen) return 0;
   if (m->pending_assert) return 1;
+  /* MISSION 001K: once the P4 has ACKed this episode and the button is released, the
+   * repeating heartbeat ASSERT carries no new information (the P4 tracks this
+   * station through authenticated AUTH answers, which also re-latch it after a P4
+   * restart). Stopping it keeps an open clear request from being cancelled by
+   * repeats. A new press always asserts at once (pending_assert above), and the
+   * initial burst still completes. */
+  if (m->acked && !m->input_open && m->burst_left == 0) return 0;
   return now_ms >= m->next_tx_ms;
 }
 
