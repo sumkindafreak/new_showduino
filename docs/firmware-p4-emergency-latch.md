@@ -261,3 +261,28 @@ is fitted). The C3 and S3 were compiled in CI for the first time in this mission
 
 **Not hardware-tested.** Compile success does not show the firmware behaves correctly
 on the bench. See the acceptance checklist in `docs/emergency-station-auth-001J.md` §7.
+
+
+## MISSION 001K — authenticated Director clear and clearance transaction
+
+Full design, evidence and limitations: `docs/emergency-director-auth-001K.md`.
+
+- **Clear authority.** Every clear-related line passes `showduino_clear_entry()`. Plain
+  `EMERGENCY:CLEAR`, `CLEAR_REQUEST` and `CLEAR_CONFIRM` from the UART (Director, Comms S3,
+  S3/P4 web, show cues) are refused `AUTH_REQUIRED`. A Director clear arrives only as
+  `DCLR:REQ` / `DCLR:CFM`, HMAC-signed by the enrolled Director, bound to the episode and
+  (confirm) to a P4 transaction nonce, with persisted counters. The P4 USB console remains
+  the maintenance authority. The web clear opt-in flag is gone (P4 and S3).
+- **Clearance transaction.** A confirm starts verification: the P4 challenges every
+  station and applies the clear from the loop only when every provisioned station answers
+  a post-confirm challenge RELEASED. Any ASSERT, fresh PRESSED, new trigger (incl. GPIO25)
+  or storage fault refuses it; missing answers refuse it after 1000 ms. The USB clear uses
+  the same transaction. New reply `EMERGENCY:CLEAR:VERIFYING`; rejections carry a reason
+  and station ID.
+- **Director credential.** `estop_dkey` / `estop_dctr` in NVS; USB-only
+  `EMERGENCY:DIRKEY:SET|REVOKE|STATUS|RESET`. Enrolled while latched → restricted until an
+  accepted maintenance clear.
+- **Activation unchanged.** Outputs still engage first; authentication never delays it.
+- **Build (CI run 39029079990, cf8e43b):** 0 errors, 1 core warning; 1,210,260 B flash
+  (92%), 84,700 B RAM (25%); +8,800 B / +384 B vs 001J. About 100 KB headroom left.
+- **Not hardware tested.** J-14 residual remains (see 001K §6).

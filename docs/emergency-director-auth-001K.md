@@ -198,3 +198,90 @@ still run the 001F engage sequence first. `triggerEmergency()` only additionally
 a pending clear transaction. Persisted latch, blocker set, emergency pixels, local
 outputs, audio and reboot recovery are unchanged; the 001E–001J suites still pass. No
 clear decision depends on S3 state: the S3 only relays signed or challenge-bound data.
+
+## 10. Test evidence (host, policy only)
+
+| Suite | Result |
+|---|---|
+| `tools/emergency-director-tests/test_director_auth.cpp` (new) | 51 pass, 0 fail |
+| `tools/emergency-station-integration-tests/test_station_integration.cpp` (K1–K25 added) | 149 pass, 0 fail |
+| `tools/emergency-auth-tests/test_station_auth.cpp` | 56 pass, 0 fail |
+| Emergency Node protocol suite | 104 pass, 0 fail |
+| Latch / button / Director sheet | 114 / 43 / 12 pass, 0 fail |
+| Mutation check `tools/emergency-auth-tests/run_mutations.py` | 42 mutants (22 from 001J, 20 new), 42 killed |
+
+All with `-Wall -Wextra -Werror` except the Director sheet suite (pre-existing warning).
+Every suite and the mutation check run in CI on every push.
+
+The integration harness uses the real station state machine, responder, P4 model,
+clear decision, transaction, Director signer and Director acceptance policy, with real
+HMAC. Simulated: radio, the S3 relay (which tests can make drop, hold, replay or forge
+traffic), NVS, time. It does not run the Arduino wrappers.
+
+Boundary tests (the guarantee does **not** hold): K16c (hostile S3 hides a press made
+after a post-confirm RELEASED proof: clear accepted), K16d (that exposure is bounded by
+the 1000 ms window).
+
+## 11. Firmware build results (CI run 39029079990, commit cf8e43b)
+
+| Target | Errors | Warnings | Flash | RAM | vs 001J |
+|---|---|---|---|---|---|
+| P4 Stage Engine | 0 | 1 (ESP32 core, pre-existing) | 1,210,260 B (92% of 1,310,720) | 84,700 B (25%) | +8,800 B flash, +384 B RAM |
+| Director (S3) | 0 | 55, all seen in pre-existing code (`ShowduinoOsUi.h` enum deprecation, LVGL redefinitions); see note | 1,578,374 B (50% of 3,145,728) | 139,284 B (42%) | first CI build |
+| C3 Emergency Node | 0 | 0 | 1,133,049 B (86%) | 39,840 B (12%) | +40 B |
+| S3 Comms | 0 | 2 (`neopixelWrite` deprecated, pre-existing) | 1,396,087 B (41%) | 58,644 B (17%) | identical binary size |
+
+* **P4 headroom is now about 100 KB (7.7%)** of the 1.25 MB app partition. No partition
+  change was made (OTA and deployment implications not validated). The next large
+  feature needs a planned partition change.
+* **Director CI assumptions:** LVGL 9.2.2, current "GFX Library for Arduino", TAMC_GT911,
+  Adafruit NeoPixel, `PartitionScheme=app3M_fat9M_16MB`. The repository does not record
+  the library versions or partition actually used on the bench; the reported size depends
+  on this assumption.
+* **Director baseline (b3b3f95) does not build with LVGL 9.2.2**: its `lv_conf.h`
+  included `<stdint.h>` in LVGL's assembly pass. Commit cf8e43b guards it (no effect on
+  C/C++). There is therefore no like-for-like pre-001K Director size.
+* Director warning attribution: GitHub keeps only ~10 annotations per level per step, so
+  not all 55 warnings are visible; a CI notice now counts warnings in files changed by
+  001J/001K (see the final run in the PR).
+
+## 12. Hardware acceptance checklist (required before live use)
+
+| # | Test | Pass criterion |
+|---|---|---|
+| D-01 | Enrol Director (§7) | Fingerprints match on both consoles; `DIRKEY:STATUS` shows enrolled, not restricted. |
+| D-02 | Press and release a station; E-CLEAR, wait ≥ 5 s, Confirm | `CLEAR:VERIFYING` then `CLEAR_OK`; station returns to NORMAL. |
+| D-03 | Same, but keep the station pressed | Refused `STATION_PRESSED:<id>`; Director names the station. |
+| D-04 | Power off a provisioned station; E-CLEAR, Confirm | Refused `STATION_UNVERIFIED:<id>` within ~1 s. |
+| D-05 | From the S3 USB/UART inject `EMERGENCY:CLEAR`, `EMERGENCY:CLEAR_CONFIRM` | Refused `AUTH_REQUIRED`; latch kept. |
+| D-06 | Capture a DCLR pair with a sniffer, replay it (same and next emergency, after each reboot) | Refused (`REPLAY` / `WRONG_EPISODE` / `STALE_TRANSACTION`). |
+| D-07 | Unenrolled Director presses E-CLEAR | "not enrolled" on screen; nothing sent. |
+| D-08 | Enrol a new Director while latched | `RESTRICTED`; its clear refused; USB clear works and lifts it. |
+| D-09 | Reboot the Director between E-CLEAR and Confirm | Nothing released; request expires. |
+| D-10 | Pull the S3 during verification | Refused within ~1 s; latch kept. |
+| D-11 | Press GPIO25 during verification | Refused / superseded; outputs unchanged. |
+| D-12 | Re-press a latched station while the clear dialog is open | Request cancelled within radio latency. |
+| D-13 | Time from Confirm to `CLEAR_OK` with 8 stations over the real relay | Well inside 1000 ms; record the value. |
+| D-14 | Director USB `PROVISION DIRECTOR NEW` | Key shown only on USB; not in the Director UI log, not sent to the Stage. |
+
+## 13. Rollout
+
+All four boards must run 001K firmware: P4, Director, Comms S3, **and every C3**. A 001J
+C3 keeps its heartbeat ASSERT while latched and would cancel every Director clear (fail
+closed). Then enrol the Director. Until a Director is enrolled, only the P4 USB console
+can clear (with station proofs). The web-UI clear flag no longer exists.
+
+## 14. Status
+
+| Item | Implemented in firmware | Automated tests | Compiled in CI | Hardware tested |
+|---|---|---|---|---|
+| Signed Director REQ/CFM, P4 enforcement, no plain-text clear (J-05) | yes | yes (D*, K1–K13, K23, P*) | P4, Director | **no** |
+| Clearance transaction with post-confirm proofs (J-14 reduction) | yes | yes (K14–K19, K25) | P4 | **no** |
+| Station re-press / heartbeat changes | yes (C3) | yes (K16b0, K25, mutants K18, K20) | C3 | **no** |
+| Director enrolment / restriction / revocation | yes | policy yes; NVS code no | P4, Director | **no** |
+| Equal-key refusal between station and Director keys | yes | **no** | P4 | **no** |
+| J-14 guarantee against a hostile S3 | **not achievable** on the single path | boundary tests K16c/d | — | — |
+
+Remaining blockers: J-14 residual (§6), keys without flash encryption on P4, Director
+and C3, C3 SoftAP default password (001J J-10), no hardware validation, no safety
+certification.

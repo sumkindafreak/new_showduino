@@ -203,12 +203,11 @@ simulated. It does not run the Arduino wrappers.
 
 ## 8. Known limitations and open items
 
-* **J-05 (blocker for unattended use):** Director clear commands over the S3 UART are
-  not authenticated. Station proofs limit the damage but do not close it.
+* **J-05:** closed in MISSION 001K (signed Director clear; `docs/emergency-director-auth-001K.md`).
 * **J-08:** keys stored without flash encryption on both boards.
 * **J-10:** C3 SoftAP uses a published default password.
-* **J-14:** about one second between the last accepted proof and the confirm in which
-  a press whose ASSERT and AUTH are both dropped by a compromised S3 is not seen.
+* **J-14:** reduced in 001K (proofs collected after the confirm); a hostile S3 can still
+  hide a press made after a post-confirm proof. See 001K §6.
 * **Availability:** a compromised S3 can always hide traffic. Fail-closed behaviour
   only guarantees that hidden traffic cannot *release* anything.
 * Optional policy not implemented: treat a provisioned station going offline while

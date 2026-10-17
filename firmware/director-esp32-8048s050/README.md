@@ -89,6 +89,21 @@ firmware/director-esp32-8048s050/ShowduinoSdTouchTest/
 
 Logical device IDs are the application-level target. MAC values remain transport-layer configuration until end-to-end ID resolution is complete.
 
+## Emergency clear credential (MISSION 001K)
+
+The Director signs every emergency clear request and confirm. The Stage Engine refuses
+unsigned clear text. Enrol once per Director, on this board's USB console (115200):
+
+```text
+PROVISION DIRECTOR NEW DIR-01
+```
+
+Paste the printed `EMERGENCY:DIRKEY:SET:DIR-01:<hex>` line into the **P4 USB console** and
+check both fingerprints match. Other commands: `PROVISION DIRECTOR STATUS`,
+`PROVISION DIRECTOR SET DIR-01 <hex64>`, `PROVISION DIRECTOR CLEAR`. A Director enrolled
+while an emergency is latched cannot clear that emergency (use the P4 USB clear). The key
+is stored without flash encryption. Details: `docs/emergency-director-auth-001K.md`.
+
 ## Arduino IDE
 
 - Board: ESP32S3 Dev Module
@@ -101,6 +116,9 @@ Logical device IDs are the application-level target. MAC values remain transport
 This panel’s USB-C serial chip is CH340 on UART0 (GPIO43/44). Native USB CDC uses GPIO19/20, which overlap the GT911 I²C pins, so CDC-on-boot must remain disabled for this panel baseline.
 
 Libraries include LVGL 9.x, Arduino_GFX_Library, TAMC_GT911 and Adafruit NeoPixel for Director-local ambient LEDs.
+CI builds with LVGL 9.2.2, the current "GFX Library for Arduino" and
+`PartitionScheme=app3M_fat9M_16MB`. The bench versions are not recorded here; please
+record the exact library versions and partition scheme used on the real Director.
 
 ## Active stack / roadmap
 

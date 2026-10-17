@@ -261,6 +261,13 @@ jobs:
             echo "::error title=${{ matrix.target }} ${{ matrix.ref_name }}::${l}"
           done
           echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} log::$(wc -l < compile.log) lines; $(grep -c -i 'Error during build' compile.log || true) build failures"
+          # Warnings in files written or changed for the emergency missions (001J/001K).
+          mine='DirectorClearAuth|ShowduinoDirector8048S050\.ino|EmergencyAuth|EmergencyProtocol|EmergencyWeb|ShowduinoC3EmergencyNode\.ino|ProtocolBridge|EspNowTransport\.cpp|CommsWebServerBase|showduino_station_|showduino_director_auth|showduino_clear_txn|showduino_emergency_node'
+          n=$( { grep -E ': warning:' compile.log || true; } | { grep -c -E "$mine" || true; } )
+          echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} emergency-code warnings::${n}"
+          { grep -E ': warning:' compile.log || true; } | { grep -E "$mine" || true; } | head -5 | while read -r l; do
+            echo "::error title=${{ matrix.target }} emergency-code warning::${l}"
+          done
           { grep -E ': warning:' compile.log || true; } | { grep -v -E 'ShowduinoOsUi.h|deprecated-enum-enum' || true; } | head -5 | while read -r l; do
             echo "::warning title=${{ matrix.target }} diagnostic::${l}"
           done

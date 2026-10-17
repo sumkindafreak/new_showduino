@@ -140,7 +140,7 @@ Sections 1–9 above are the pre-change inventory and are kept as written. Statu
 | J-02 | S3 fan-out reset station latches | **Fixed.** S3 `fanoutEmergency()` sends nothing to stations; stations reject plain clear tokens. S16. |
 | J-03 | Radio could rename / rearm a station | **Fixed.** ID/NAME/REARM local USB only; ID locked once provisioned; SoftAP limited to PIXEL. |
 | J-04 | Unauthenticated ACK / GLOBAL:OBSERVED | **Fixed.** Authenticated CMD with persisted counters and episode binding. S5d, S6, S16, S17f. |
-| J-05 | S3 can drive Director clear over UART | **Open blocker.** Mitigated (all provisioned stations must prove RELEASED), not closed. Needs an authenticated operator channel. |
+| J-05 | S3 can drive Director clear over UART | **Closed in MISSION 001K (host-tested, compiled; not hardware tested).** Only a Director-signed DCLR (or the P4 USB console) can clear; plain clear text from the UART is refused. See `docs/emergency-director-auth-001K.md` §5. |
 | J-06 | Legacy stations could satisfy clear | **Fixed.** Legacy ASSERT blocks; legacy ANNOUNCE cannot release. S12. |
 | J-07 | No replay protection across restarts | **Fixed.** Per-boot nonces, persisted counters, episode ids from a persisted counter. S4–S6, S8. |
 | J-08 | Keys in plaintext flash | **Open, disclosed.** Recommend eFuse flash encryption + secure boot for deployments that need it. |
@@ -154,7 +154,7 @@ Found during implementation:
 | J-11 | S3 per-station MAC table learned from unauthenticated frames (downlink diversion) | **Mitigated.** CHAL broadcast; every CMD also sent as a broadcast copy. Remains an availability limit. |
 | J-12 | ESP32-P4 has no radio: `esp_random()` is pseudo-random unless the SAR ADC entropy source is on | **Addressed in design.** Nonces = HMAC(boot seed, counter); seed drawn with `bootloader_random_enable()`. Needs hardware check H-12. |
 | J-13 | Proof freshness by millisecond timestamp accepted a same-millisecond older challenge | **Fixed** before firmware: per-boot challenge sequence. Mutants M08, M12. |
-| J-14 | ~1 s between last accepted proof and confirm in which a press hidden by a compromised S3 (ASSERT and AUTH dropped) is not seen | **Open, disclosed.** |
+| J-14 | ~1 s between last accepted proof and confirm in which a press hidden by a compromised S3 (ASSERT and AUTH dropped) is not seen | **Reduced in 001K, still open.** Proofs must now follow the authenticated confirm; any ASSERT or fresh PRESSED aborts. A hostile S3 can still hide a press made after a post-confirm proof (≤ 1000 ms window). Not solvable on the single wireless path; see 001K §6. |
 | J-15 | Forged ASSERT with an invented ID becomes a permanent blocker | **By design (fail closed).** Local USB `EMERGENCY:STATION:DISMISS`. |
 
 Design, protocol and provisioning: `docs/emergency-station-auth-001J.md`.
