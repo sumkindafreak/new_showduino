@@ -115,9 +115,13 @@ Wireless Emergency Nodes (logical IDs `ESTOP-01` …) may assert the same global
 
 ```text
 ESTOP:ASSERT:<ESTOP-xx>:<friendly>
-ESTOP:ACK:LATCHED
-ESTOP:GLOBAL:OBSERVED
+CHAL:<episode8>:<nonce16>
+AUTH:<ESTOP-xx>:<episode8>:<nonce16>:IN=n:L=n:A=n:<tag32>
+CMD:<ESTOP-xx>:<counter8>:ACK|GCL:<episode8>:<tag32>
 ```
+
+MISSION 001J: plain `ESTOP:ACK:LATCHED` and `ESTOP:GLOBAL:OBSERVED` are no longer sent
+to stations and are rejected from the radio. See `docs/emergency-station-auth-001J.md`.
 
 There is no wireless `ESTOP:CLEAR`. An Emergency Node must never clear P4 emergency.
 Update/commission stations one at a time: ESTOP-01 update → reboot → healthy+linked → ESTOP-02.

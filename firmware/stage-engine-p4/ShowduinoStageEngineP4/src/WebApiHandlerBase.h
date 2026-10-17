@@ -286,11 +286,8 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "EMERGENCY:STOP" || cmd == "STATUS:REQUEST") {
     return true;
   }
-#if defined(SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR) && SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
-  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
-    return true;
-  }
-#endif
+  /* MISSION 001K: no web clear path. A web request arrives as Comms text and could
+   * never satisfy the signed Director clear; the former opt-in flag is removed. */
   if (cmd.startsWith("PRODUCTION:LOAD:")) {
     String id = cmd.substring(16);
     id.trim();

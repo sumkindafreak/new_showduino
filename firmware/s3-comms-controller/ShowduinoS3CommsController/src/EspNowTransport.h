@@ -17,6 +17,10 @@ bool espNowTransportSendToPixelNode(const char *id, const char *command, uint32_
 void espNowTransportSendToAllPixelNodes(const char *command, uint32_t sequence);
 bool espNowTransportSendToEmergencyNode(const char *id, const char *command, uint32_t sequence);
 void espNowTransportSendToAllEmergencyNodes(const char *command, uint32_t sequence);
+/* MISSION 001J: ESP-NOW broadcast to every Emergency Node (ROUTE:EMERGENCY:ALL).
+ * Used for CHAL and for the second copy of each authenticated CMD. The relay adds
+ * no authority: stations verify every CMD and the P4 verifies every AUTH. */
+bool espNowTransportBroadcastEmergency(const char *command, uint32_t sequence);
 bool espNowTransportSendToMosfetNode(const char *id, const char *command, uint32_t sequence);
 void espNowTransportSendToAllMosfetNodes(const char *command, uint32_t sequence);
 bool espNowTransportHaveDirector();
