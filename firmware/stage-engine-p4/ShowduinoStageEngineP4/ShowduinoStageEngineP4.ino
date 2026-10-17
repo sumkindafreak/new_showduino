@@ -1675,6 +1675,7 @@ void readUsbSerial() {
       }
       sUsbLine[out] = '\0';
       handleCommand(String(sUsbLine), CommandSource::LocalUsb);
+      memset(sUsbLine, 0, sizeof(sUsbLine)); /* MISSION 001J: may have held a station key */
       sUsbLen = 0;
     } else {
       if (sUsbOverflow) continue;

@@ -231,6 +231,7 @@ struct P4 {
 
   bool globalLatched = false;
   int globalTriggers = 0;
+  int acksSent = 0;
   int clearsAccepted = 0;
   int clearsRefused = 0;
   int lastDecision = -1;
@@ -307,7 +308,11 @@ struct P4 {
   void ensureEpisode() {
     if (!globalLatched || episode != 0) return;
     uint32_t e = 0;
-    if (nextCounter(&e)) { episode = e; showduino_auth_chal_reset(&chal); }
+    if (nextCounter(&e)) {
+      episode = e;
+      showduino_auth_chal_reset(&chal);
+      for (auto &m : t) m.ackedReport = 0;
+    }
   }
 
   C3 *byId(const char *id) {
@@ -337,6 +342,7 @@ struct P4 {
     uint32_t e = 0;
     episode = nextCounter(&e) ? e : 0;
     showduino_auth_chal_reset(&chal);
+    for (auto &m : t) m.ackedReport = 0;
   }
 
   bool sendCmd(const char *id, const char *op, uint32_t ep) {
@@ -367,10 +373,14 @@ struct P4 {
     persist();
     /* Authenticated ACK so the station learns the episode. Sent for an ASSERT, and
      * for a verified AUTH that shows the station latched but not holding this episode. */
-    if (globalLatched && res.ackId[0] && isProvisioned(res.ackId)) {
-      const bool needAck = res.kind == SHOWDUINO_STATION_LINE_ASSERT ||
-                           (res.verified && t[res.slot].announcedLatched && !t[res.slot].ackedReport);
-      if (needAck) sendCmd(res.ackId, "ACK", episode);
+    /* Mirrors EmergencyNodeLink ackIfDue(): not when the station's verified report
+     * already shows it holding this episode. */
+    if (globalLatched && res.ackId[0] && isProvisioned(res.ackId) && res.slot >= 0) {
+      const ShowduinoStationModel &m = t[res.slot];
+      const bool holds = m.reportKnown && m.ackedReport;
+      const bool needAck = !holds && (res.kind == SHOWDUINO_STATION_LINE_ASSERT ||
+                                      (res.verified && m.announcedLatched));
+      if (needAck) { sendCmd(res.ackId, "ACK", episode); acksSent++; }
     }
     return res;
   }
@@ -546,6 +556,14 @@ int main() {
            "S1b press: bare ASSERT latches the P4 immediately and opens an episode");
     expect(a.m.acked == 1 && a.st.latchedEpisode == p4.episode,
            "S1c station accepts the authenticated ACK and learns the episode");
+    {
+      p4.challengeRound();                       /* verified report now shows A=1 */
+      const int before = p4.acksSent;
+      const uint32_t flashBefore = a.nvsCounter;
+      for (int i = 0; i < 5; ++i) { p4.advance(SHOWDUINO_EMERGENCY_HEARTBEAT_MS + 1); p4.pump(a); }
+      expect(a.assertsSent >= 5 && p4.acksSent == before && a.nvsCounter == flashBefore,
+             "S1c2 heartbeat ASSERTs from an ACKed station cost no command and no flash write");
+    }
     expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
            "S1d clear refused while the station is PRESSED");
     a.pressed = false; p4.pump(a); p4.advance(500);

@@ -142,6 +142,11 @@ static void ensureEpisode() {
   sEpisodeRetryMs = 0;
   sEpisode = e;
   showduino_auth_chal_reset(&sChal);
+  /* No station holds the new episode yet. */
+  for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    sNodes[i].ackedReport = false;
+    sNodes[i].ackMs = 0;
+  }
   SD_LOGI("ESTOP", "EMERGENCY EPISODE %lu", (unsigned long)sEpisode);
 }
 
@@ -556,8 +561,13 @@ void emergencyNodeLinkPrimarySource(char *kind, size_t kindn,
 
 /* MISSION 001H: the P4 global latch request. Never changes the button state.
  * Button state is decided by showduino_station_model (ANNOUNCE or ASSERT rules). */
+/* Authenticated ACK, at most once a second per station, and only while its last
+ * verified report does not show it holding this episode. A latched station repeats
+ * ASSERT every heartbeat; without this check every repeat would cost a station
+ * flash write. */
 static void ackIfDue(EmergencyNodeStatus *st) {
   if (!st || !st->id[0] || !emergencyLocked || !sEpisode) return;
+  if (st->reportKnown && st->ackedReport) return;
   const uint32_t now = millis();
   if (st->ackMs && (now - st->ackMs) < 1000UL) return;
   if (!isProvisioned(st->id)) return;
@@ -950,6 +960,7 @@ void emergencyNodeLinkOnEmergency(bool active) {
       if (!sNodes[i].used || !sNodes[i].id[0]) continue;
       routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:CLEAR"); /* indication only */
       sNodes[i].acked = false;
+      sNodes[i].ackedReport = false;
       sNodes[i].ackMs = 0;
     }
     sLastSource[0] = 0;

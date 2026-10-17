@@ -256,8 +256,10 @@ bool emergencyAuthHandleRadio(const char *line, uint32_t sequence) {
     } else if (r == SHOWDUINO_RESP_GCL) {
       emergencyProtocolOnGlobalClear();
       showduino_responder_track_latch(&sSt, gEmergencyMachine.latched);
-    } else if (r != SHOWDUINO_RESP_REJECT_IDENTITY && r != SHOWDUINO_RESP_REJECT_REPLAY) {
-      /* Other stations' commands and broadcast duplicates are normal; others are not. */
+    } else if (r == SHOWDUINO_RESP_REJECT_TAG || r == SHOWDUINO_RESP_REJECT_PERSIST ||
+               r == SHOWDUINO_RESP_REJECT_FORMAT || r == SHOWDUINO_RESP_REJECT_NOT_PROVISIONED) {
+      /* Other stations' commands, broadcast duplicates and a GCL to a station that
+       * was never latched are normal and not logged. */
       if (showduino_log_rate_ok(&sRejectLogMs, millis(), 5000UL)) {
         SD_LOGW("ESTOP", "CMD rejected (%d)", r);
       }
