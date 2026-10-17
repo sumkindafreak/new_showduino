@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MISSION 001J/001K mutation check for station authentication, Director operator
+"""MISSION 001J/001K/001L mutation check for station authentication, Director operator
 authentication, the clearance transaction and the clear entry-point policy.
 
 Each mutant removes or weakens one check in a temporary copy of protocol/. Both
@@ -23,6 +23,7 @@ SUITES = [
     "tools/emergency-station-integration-tests/test_station_integration.cpp",
     "tools/emergency-director-tests/test_director_auth.cpp",
     "tools/emergency-node-tests/test_emergency_node.cpp",
+    "tools/emergency-recovery-tests/test_recovery_001l.cpp",
 ]
 
 # (id, file, old, new, occurrence index (0-based) or None for "must be unique")
@@ -137,6 +138,43 @@ MUTANTS += [
     ("K19 storage/overflow faults wait for the window", "showduino_clear_txn.h",
      "  if (d == SHOWDUINO_CLEAR_BLOCK_STORAGE || d == SHOWDUINO_CLEAR_BLOCK_OVERFLOW) {",
      "  if (0) {", None),
+]
+
+MUTANTS += [
+    ("L01 lost latch record boots CLEAR (marker ignored)", "showduino_emergency_latch.h",
+     "in.markerPresent ? SHOWDUINO_LATCH_READ_FAULT : SHOWDUINO_LATCH_READ_CLEAR;",
+     "SHOWDUINO_LATCH_READ_CLEAR;", None),
+    ("L02 key conflict check skips the set", "showduino_station_auth.h",
+     "    if (showduino_auth_ct_equal(candidate, existing[k], SHOWDUINO_AUTH_KEY_BYTES)) return 1;",
+     "", None),
+    ("L03 key conflict check skips the last entry", "showduino_station_auth.h",
+     "  for (int k = 0; existing && k < count; ++k) {",
+     "  for (int k = 0; existing && k < count - 1; ++k) {", None),
+    ("L04 all-zero key accepted", "showduino_station_auth.h",
+     "  if (!nonzero) return 1;", "  (void)nonzero;", None),
+    ("L05 recovery accepted from the Comms UART", "showduino_maintenance_recovery.h",
+     "  if (!fromLocalUsb) return SHOWDUINO_RECOVER_REFUSE_SOURCE;", "  (void)fromLocalUsb;", 0),
+    ("L06 blocker recovery without confirmation", "showduino_maintenance_recovery.h",
+     "  if (!token || strcmp(token, SHOWDUINO_RECOVER_BLOCKERS_TOKEN) != 0) return SHOWDUINO_RECOVER_REFUSE_TOKEN;",
+     "  (void)token;", None),
+    ("L07 blocker recovery with GPIO25 open", "showduino_maintenance_recovery.h",
+     "  if (physicalPressed) return SHOWDUINO_RECOVER_REFUSE_BUTTON;", "  (void)physicalPressed;", None),
+    ("L08 blocker recovery when the state is known", "showduino_maintenance_recovery.h",
+     "  if (!bootUnknown) return SHOWDUINO_RECOVER_REFUSE_NOT_NEEDED;", "  (void)bootUnknown;", None),
+    ("L09 stored blockers dropped from the recovered set", "showduino_maintenance_recovery.h",
+     "  for (int i = 0; stored && i < storedCount; ++i) {",
+     "  for (int i = 0; stored && i < 0 && storedCount; ++i) {", None),
+    ("L10 provisioned stations dropped from the recovered set", "showduino_maintenance_recovery.h",
+     "  for (int i = 0; provIds && i < provCount; ++i) {",
+     "  for (int i = 0; provIds && i < 0 && provCount; ++i) {", None),
+    ("L11 overflow truncates instead of refusing", "showduino_maintenance_recovery.h",
+     "    if (*count >= cap) { *count = 0; return SHOWDUINO_RECOVER_REFUSE_OVERFLOW; }\n    memset",
+     "    if (*count >= cap) { return SHOWDUINO_RECOVER_OK; }\n    memset", None),
+    ("L12 counter recovery without confirmation", "showduino_maintenance_recovery.h",
+     "  if (!token || strcmp(token, SHOWDUINO_RECOVER_COUNTER_TOKEN) != 0) return SHOWDUINO_RECOVER_REFUSE_TOKEN;",
+     "  (void)token;", None),
+    ("L13 counter recovery from the Comms UART", "showduino_maintenance_recovery.h",
+     "  if (!fromLocalUsb) return SHOWDUINO_RECOVER_REFUSE_SOURCE;", "  (void)fromLocalUsb;", 1),
 ]
 
 # Mutants shown to be equivalent, with the reason. Must stay empty unless argued.

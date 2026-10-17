@@ -113,6 +113,22 @@ static inline int showduino_auth_ct_equal(const uint8_t *a, const uint8_t *b, si
   return acc == 0;
 }
 
+/* MISSION 001L: a candidate key must not be all zero and must differ from every
+ * existing key of the other authority (station keys vs the Director key), so the
+ * two authorities never share a secret. Returns 1 when the candidate is refused. */
+static inline int showduino_auth_key_conflicts(const uint8_t *candidate,
+                                               const uint8_t (*existing)[SHOWDUINO_AUTH_KEY_BYTES],
+                                               int count) {
+  if (!candidate) return 1;
+  uint8_t nonzero = 0;
+  for (int i = 0; i < SHOWDUINO_AUTH_KEY_BYTES; ++i) nonzero |= candidate[i];
+  if (!nonzero) return 1;
+  for (int k = 0; existing && k < count; ++k) {
+    if (showduino_auth_ct_equal(candidate, existing[k], SHOWDUINO_AUTH_KEY_BYTES)) return 1;
+  }
+  return 0;
+}
+
 /* ---------- canonical messages and tags ---------- */
 
 static inline int showduino_auth_canon_auth(char *out, size_t n, const char *id,

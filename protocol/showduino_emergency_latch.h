@@ -30,6 +30,7 @@
 
 #define SHOWDUINO_LATCH_NVS_NAMESPACE "showduino"
 #define SHOWDUINO_LATCH_NVS_KEY       "estop_latch"
+#define SHOWDUINO_LATCH_NVS_MARKER_KEY "estop_init" /* MISSION 001L */
 #define SHOWDUINO_LATCH_VALUE_ACTIVE  0xA5u
 #define SHOWDUINO_LATCH_VALUE_CLEAR   0x5Au
 /* Latched, but the wireless blocker record was NOT verified when this value
@@ -48,6 +49,10 @@ struct ShowduinoLatchReadInput {
   bool    readOk;      /* read call completed without error */
   bool    keyPresent;  /* key exists in the namespace */
   uint8_t value;       /* stored byte (valid only when keyPresent) */
+  /* MISSION 001L: the "initialised" marker (SHOWDUINO_LATCH_NVS_MARKER_KEY) is
+   * written with every latch write. Marker present but latch key missing means the
+   * latch record was lost (for example a damaged NVS entry), not a fresh device. */
+  bool    markerPresent;
 };
 
 struct ShowduinoLatchTrack {
@@ -58,7 +63,7 @@ struct ShowduinoLatchTrack {
 
 inline ShowduinoLatchRead showduino_latch_decode(const ShowduinoLatchReadInput &in) {
   if (!in.storeOpened || !in.readOk) return SHOWDUINO_LATCH_READ_FAULT;
-  if (!in.keyPresent) return SHOWDUINO_LATCH_READ_CLEAR;
+  if (!in.keyPresent) return in.markerPresent ? SHOWDUINO_LATCH_READ_FAULT : SHOWDUINO_LATCH_READ_CLEAR;
   if (in.value == SHOWDUINO_LATCH_VALUE_ACTIVE) return SHOWDUINO_LATCH_READ_ACTIVE;
   if (in.value == SHOWDUINO_LATCH_VALUE_ACTIVE_UNVERIFIED) return SHOWDUINO_LATCH_READ_ACTIVE_UNVERIFIED;
   if (in.value == SHOWDUINO_LATCH_VALUE_CLEAR)  return SHOWDUINO_LATCH_READ_CLEAR;

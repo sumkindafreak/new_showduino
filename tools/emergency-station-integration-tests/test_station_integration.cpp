@@ -25,6 +25,7 @@
 #include "showduino_station_responder.h"
 #include "showduino_director_auth.h"
 #include "showduino_clear_txn.h"
+#include "showduino_maintenance_recovery.h"
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <cstdio>
@@ -568,6 +569,29 @@ struct P4 {
     }
     confirmAndVerify();
     return e;
+  }
+
+  /* MISSION 001L: EMERGENCY:RECOVER:BLOCKERS:<token> on the P4 USB console. Mirrors
+   * emergencyNodeLinkRecoverBlockers(). The latch is never touched. */
+  int recoverBlockers(bool fromUsb, const char *token, const ShowduinoBlocker *readable, int readableCount) {
+    const int r = showduino_recover_blockers_allowed(fromUsb ? 1 : 0, globalLatched ? 1 : 0,
+                                                     bootUnknown ? 1 : 0, physicalPressed ? 1 : 0, token);
+    if (r != SHOWDUINO_RECOVER_OK) return r;
+    ShowduinoBlocker set[SHOWDUINO_BLOCKER_MAX];
+    int n = 0;
+    const int b = showduino_recover_build_blockers(readable, readableCount, ids, keyCount, set,
+                                                   SHOWDUINO_BLOCKER_MAX, &n);
+    if (b != SHOWDUINO_RECOVER_OK) return b;
+    for (int i = 0; i < n; ++i) {
+      if (slotOf(set[i].id) >= 0) continue;
+      const int slot = showduino_station_model_alloc(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES);
+      if (slot < 0) return SHOWDUINO_RECOVER_REFUSE_OVERFLOW;
+      showduino_station_model_restore(&t[slot], set[i].id, set[i].mac);
+    }
+    bootUnknown = false;
+    persistValid = false;   /* force a verified write of the conservative set */
+    persist();
+    return SHOWDUINO_RECOVER_OK;
   }
 
   /* Relay holding station answers (models a delaying S3). */
@@ -1720,6 +1744,38 @@ int main() {
     p4.runFor(100);                                /* pressed again while the dialog is open */
     expect(p4.txn.state == SHOWDUINO_TXN_IDLE,
            "K25c a new press while the request is open cancels it within one service tick");
+  }
+
+  /* L7 (001L): unknown boot state -> local maintenance recovery -> normal verified clear */
+  {
+    C3 a("ESTOP-01", &KA, true), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.pump(a);
+    p4.store.value = "B1;damaged#0000"; p4.store.valid = true;     /* record lost to corruption */
+    P4 after; rebootP4(p4, after);
+    after.ackSweep();
+    expect(after.bootUnknown && after.globalLatched && !after.localClear(),
+           "L7a after the reboot the state is unknown: latched and every clear refused");
+    expect(after.recoverBlockers(false, SHOWDUINO_RECOVER_BLOCKERS_TOKEN, nullptr, 0) ==
+               SHOWDUINO_RECOVER_REFUSE_SOURCE && after.bootUnknown,
+           "L7b recovery from the Comms UART is refused");
+    expect(after.recoverBlockers(true, "yes", nullptr, 0) == SHOWDUINO_RECOVER_REFUSE_TOKEN && after.bootUnknown,
+           "L7c recovery without the inspection confirmation is refused");
+    after.physicalPressed = true;
+    expect(after.recoverBlockers(true, SHOWDUINO_RECOVER_BLOCKERS_TOKEN, nullptr, 0) ==
+               SHOWDUINO_RECOVER_REFUSE_BUTTON, "L7d recovery refused while GPIO25 is open");
+    after.physicalPressed = false;
+    expect(after.recoverBlockers(true, SHOWDUINO_RECOVER_BLOCKERS_TOKEN, nullptr, 0) == SHOWDUINO_RECOVER_OK &&
+           !after.bootUnknown && after.globalLatched &&
+           after.slotOf("ESTOP-01") >= 0 && after.slotOf("ESTOP-02") >= 0,
+           "L7e recovery keeps the latch and makes every provisioned station a blocker");
+    after.dropUp.insert("ESTOP-02");
+    a.pressed = false; after.pump(a); after.advance(10);
+    expect(!after.localClear() && after.globalLatched,
+           "L7f a silent provisioned station still blocks the clear after recovery");
+    after.dropUp.clear(); after.advance(10);
+    expect(after.localClear() && !after.globalLatched,
+           "L7g every station proves RELEASED: the normal verified clear succeeds");
   }
 
   /* K24: Director reboot or disconnect never releases */

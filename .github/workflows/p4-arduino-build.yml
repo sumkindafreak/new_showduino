@@ -90,7 +90,12 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
             tools/emergency-node-tests/test_emergency_node.cpp -o /tmp/estop_node
           /tmp/estop_node
-      - name: Station / Director auth mutation check (MISSION 001J/001K)
+      - name: Maintenance recovery, key separation and loop-stats suite (-Werror; MISSION 001L)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-recovery-tests/test_recovery_001l.cpp -o /tmp/recovery_001l
+          /tmp/recovery_001l
+      - name: Station / Director / recovery mutation check (MISSION 001J/001K/001L)
         run: bash tools/emergency-auth-tests/run_mutations.sh
 
   build-current:
