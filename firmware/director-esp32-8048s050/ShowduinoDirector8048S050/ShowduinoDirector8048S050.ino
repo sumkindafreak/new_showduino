@@ -673,7 +673,7 @@ void handleStageLine(String line) {
         human = "Clear authorisation was stale - press E-CLEAR again";
       else if (code == "AUTH_STORAGE") human = "Stage could not store the authorisation - clear refused";
       ui.appendLog("CLEAR rejected - " + reason);
-      ui.pushOperatorEvent(human);
+      ui.pushOperatorEvent(human.c_str());
       gDirectorEmergencyClearDialog.hide();
       ui.noteEmergencyClearCancelled();
     }
@@ -1259,7 +1259,7 @@ void handleUiCommand(const String &command) {
     String signedReq, why;
     if (!directorClearAuthSignRequest(signedReq, why)) {
       ui.appendLog("E-CLEAR not sent - " + why);
-      ui.pushOperatorEvent(why);
+      ui.pushOperatorEvent(why.c_str());
       ui.noteEmergencyClearRejected();
       return;
     }
@@ -1276,7 +1276,7 @@ void handleUiCommand(const String &command) {
     String signedCfm, why;
     if (!directorClearAuthSignConfirm(signedCfm, why)) {
       ui.appendLog("E-CLEAR confirm not sent - " + why);
-      ui.pushOperatorEvent(why);
+      ui.pushOperatorEvent(why.c_str());
       gDirectorEmergencyClearDialog.hide();
       ui.noteEmergencyClearCancelled();
       return;
