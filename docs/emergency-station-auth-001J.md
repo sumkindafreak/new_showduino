@@ -168,11 +168,15 @@ registered station has been provisioned.
 | Suite | Checks | Result |
 |---|---|---|
 | `tools/emergency-auth-tests/test_station_auth.cpp` | 56 | pass |
-| `tools/emergency-station-integration-tests/test_station_integration.cpp` | 102 | pass |
+| `tools/emergency-station-integration-tests/test_station_integration.cpp` | 103 | pass |
 | `tools/emergency-auth-tests/run_mutations.py` | 22 mutants | 22 killed |
 | latch / button / director sheet / emergency node suites | unchanged | pass |
 
 All built with `-Wall -Wextra -Werror` (the Director sheet suite excepted, as before).
+CI run 39021270035 (commit d072eed): host tests, P4, C3 and S3 compiles all succeed.
+P4 0 errors / 1 pre-existing core warning, 1,201,460 B flash (91%), 84,316 B RAM;
+C3 0 / 0, 1,133,009 B (86%), 39,840 B; S3 0 / 2 pre-existing, 1,396,087 B (41%),
+58,644 B. Details in `docs/firmware-p4-emergency-latch.md`.
 The integration harness uses the real C3 state machine, the real responder, the real
 P4 model and clear decision, and real HMAC; the radio, relay, NVS and time are
 simulated. It does not run the Arduino wrappers.

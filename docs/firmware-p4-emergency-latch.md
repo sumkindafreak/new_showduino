@@ -194,3 +194,70 @@ CI run 38949071891 on commit `1689919` (GitHub Actions, real compile):
 Sketch growth from 001G (1182942 to 1184792 bytes, +1850) reflects the station-freshness and episode code. Globals are unchanged.
 
 **Not hardware-tested.** Compile success does not show the P4 behaves correctly.
+
+## MISSION 001J — station authentication and replay protection
+
+Full design, threat model, provisioning and acceptance checklist:
+`docs/emergency-station-auth-001J.md`. Trust-boundary inventory and finding status:
+`docs/emergency-trust-boundary-001J.md`.
+
+### What changes on the P4
+- **Only an authenticated `AUTH` changes a station.** The P4 challenges stations
+  (`CHAL`, broadcast through the S3 every 500 ms latched / 1 s idle). A station answers
+  with HMAC-SHA256 (128-bit tag, per-station 32-byte key). Only a verified answer to a
+  challenge of this boot, for this episode, at most 1500 ms old, used once, can set
+  RELEASED/PRESSED, ONLINE or "verified". `ANNOUNCE` and `STATUS` are display only.
+  This closes the 001I limitation "ESP-NOW is unauthenticated" for release messages.
+- **ASSERT is unchanged in effect:** unauthenticated, latches at once (now also with a
+  full station table), never satisfies clearance.
+- **Clear.** CLEAR_REQUEST checks station and storage blockers as before. CONFIRM (and
+  the USB clear) additionally needs every provisioned station to have proved RELEASED
+  against one of the two most recent challenges issued after the request. A silent or
+  dropped provisioned station blocks. GCL command counters are reserved and stored
+  before the clear is applied.
+- **Station commands.** The P4 no longer sends plain `ESTOP:ACK:LATCHED`,
+  `ESTOP:GLOBAL:OBSERVED` or `EMERGENCY:CLEAR` to stations. ACK and GCL are
+  authenticated `CMD` lines with a persisted counter and the episode id.
+- **Storage.** Keys and the counter-block limit live in NVS (`estop_keys`,
+  `estop_ctr`), written with read-back verification. An unreadable record, a counter
+  that cannot be stored, or no durable episode while latched blocks clear.
+- **Nonces.** The P4 has no radio, so `esp_random()` is pseudo-random unless the SAR
+  ADC entropy source is on. A 32-byte seed is drawn in `setup()` with
+  `bootloader_random_enable()`, then nonces are HMAC(seed, counter).
+- **USB-only maintenance:** `EMERGENCY:KEY:SET|REVOKE|LIST|RESET`,
+  `EMERGENCY:STATION:DISMISS`, `EMERGENCY:AUTH:STATUS`. Refused from the Comms UART
+  and web API, and handled before the command log line so keys are never printed.
+- **New reject codes:** `STATION_UNVERIFIED`, `STATION_STORAGE`, `STATION_OVERFLOW`.
+
+### Still open
+- **J-05:** Director clear commands arriving over the S3 UART are not authenticated.
+  Station proofs limit what a compromised S3 can clear, but do not close it.
+- Keys are not protected by flash encryption (P4 or C3).
+- A compromised S3 can delay, drop or flood traffic. Authentication protects integrity,
+  not delivery; hidden traffic can block a clear but cannot release anything.
+- About one second between the last accepted proof and the confirm (J-14).
+
+### Host tests (commit d072eed)
+- Latch 114, button 43, Director sheet 12, Emergency Node protocol suite: all pass.
+- Station integration suite: **103** checks, all pass (`-Wall -Wextra -Werror`, OpenSSL HMAC).
+- Station auth suite: **56** checks, all pass (incl. RFC 4231 HMAC vectors).
+- Mutation check `tools/emergency-auth-tests/run_mutations.py`: **22 mutants, 22 killed**
+  (runs in CI on every push).
+
+### Compile result (CI run 39021270035, commit d072eed)
+| Target | Errors | Warnings | Flash | RAM (globals) |
+|---|---|---|---|---|
+| P4 Stage Engine | 0 | 1 (ESP32 core `esp32-hal-spi.c`, pre-existing) | 1,201,460 B (91% of 1,310,720) | 84,316 B (25%) |
+| P4 at 001I (1689919, run 38949071891) | 0 | 1 (same) | 1,184,792 B (90%) | 81,636 B (24%) |
+| C3 Emergency Node | 0 | 0 | 1,133,009 B (86% of 1,310,720) | 39,840 B (12%) |
+| C3 pre-001J (c7261c1) | 0 | 0 | 1,125,009 B (85%) | 39,784 B (12%) |
+| S3 Comms Controller | 0 | 2 (`neopixelWrite` deprecated, pre-existing) | 1,396,087 B (41% of 3,342,336) | 58,644 B (17%) |
+| S3 pre-001J (c7261c1) | 0 | 2 (same) | 1,395,971 B (41%) | 58,644 B (17%) |
+
+001J adds 16,668 B flash / 2,680 B RAM on the P4, 8,000 B / 56 B on the C3 and
+116 B / 0 B on the S3. **P4 headroom is now about 109 KB (8%) of the default 1.25 MB
+app partition**; the next large feature will need a larger app partition (16 MB flash
+is fitted). The C3 and S3 were compiled in CI for the first time in this mission.
+
+**Not hardware-tested.** Compile success does not show the firmware behaves correctly
+on the bench. See the acceptance checklist in `docs/emergency-station-auth-001J.md` §7.
