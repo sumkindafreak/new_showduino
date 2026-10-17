@@ -13,6 +13,10 @@ on:
     branches: ["fix/**", "main"]
     paths:
       - "firmware/stage-engine-p4/**"
+      - "firmware/c3-emergency-node/**"
+      - "firmware/s3-comms-controller/**"
+      - "firmware/shared-node/**"
+      - "firmware/shared-pixel/**"
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
@@ -20,6 +24,10 @@ on:
   pull_request:
     paths:
       - "firmware/stage-engine-p4/**"
+      - "firmware/c3-emergency-node/**"
+      - "firmware/s3-comms-controller/**"
+      - "firmware/shared-node/**"
+      - "firmware/shared-pixel/**"
       - "protocol/**"
       - "tools/**"
       - ".github/workflows/p4-arduino-build.yml"
@@ -54,11 +62,29 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Iprotocol \
             tools/director-tests/test_emergency_sheet.cpp -o /tmp/sheet
           /tmp/sheet
-      - name: Wireless station integration suite (-Werror; MISSION 001H/001I)
+      - name: OpenSSL headers for the HMAC reference (host tests only)
+        run: |
+          if ! echo '#include <openssl/evp.h>' | g++ -x c++ -fsyntax-only - 2>/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev
+          fi
+          openssl version
+      - name: Wireless station integration suite (-Werror; MISSION 001H/001I/001J)
         run: |
           g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
-            tools/emergency-station-integration-tests/test_station_integration.cpp -o /tmp/station_it
+            tools/emergency-station-integration-tests/test_station_integration.cpp -lcrypto -o /tmp/station_it
           /tmp/station_it
+      - name: Station authentication and replay suite (-Werror; MISSION 001J)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-auth-tests/test_station_auth.cpp -lcrypto -o /tmp/station_auth
+          /tmp/station_auth
+      - name: Emergency Node protocol suite (-Werror)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Iprotocol \
+            tools/emergency-node-tests/test_emergency_node.cpp -o /tmp/estop_node
+          /tmp/estop_node
+      - name: Station auth mutation check (MISSION 001J)
+        run: bash tools/emergency-auth-tests/run_mutations.sh
 
   build-current:
     name: Compile P4 Stage Engine (this commit)
@@ -142,5 +168,76 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: p4-arduino-baseline
+          path: compile.log
+          if-no-files-found: warn
+
+  # MISSION 001J: the C3 Emergency Node and the S3 Comms relay are part of the
+  # station trust chain, so both are compiled. "pre-001J" compiles the same sketch
+  # at c7261c1 to separate pre-existing build problems from new ones.
+  build-stations:
+    name: Compile ${{ matrix.target }} (${{ matrix.ref_name }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.ref_name == 'pre-001J' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [c3-emergency-node, s3-comms-controller]
+        ref_name: [this-commit, pre-001J]
+        include:
+          - target: c3-emergency-node
+            sketch: firmware/c3-emergency-node/ShowduinoC3EmergencyNode
+            fqbn: "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashMode=dio"
+            libs: "Adafruit NeoPixel;Adafruit SSD1306;Adafruit GFX Library"
+          - target: s3-comms-controller
+            sketch: firmware/s3-comms-controller/ShowduinoS3CommsController
+            fqbn: "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB"
+            libs: ""
+          - ref_name: this-commit
+            ref: ""
+          - ref_name: pre-001J
+            ref: c7261c1aa12652691d3b2770d73985990702f3cd
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.1.1"
+      - name: Install ESP32 core ${{ env.ESP32_CORE }} and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls "$BOARD_INDEX"
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@${ESP32_CORE}"
+          if [ -n "${{ matrix.libs }}" ]; then
+            arduino-cli lib update-index
+            IFS=';' read -ra LIBS <<< "${{ matrix.libs }}"
+            arduino-cli lib install "${LIBS[@]}"
+            arduino-cli lib list
+          fi
+      - name: Compile ${{ matrix.target }}
+        run: |
+          echo "::add-matcher::.github/problem-matchers/gcc.json" || true
+          arduino-cli compile --fqbn "${{ matrix.fqbn }}" --warnings default \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol" \
+            --build-property "compiler.c.extra_flags=-I$GITHUB_WORKSPACE/protocol" \
+            --build-path build "${{ matrix.sketch }}" 2>&1 | tee compile.log
+      - name: Compile diagnostics and size
+        if: always()
+        run: |
+          errs=$(grep -cE ': (fatal )?error:' compile.log || true)
+          warns=$(grep -cE ': warning:' compile.log || true)
+          echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} diagnostics::errors=${errs} warnings=${warns}"
+          grep -E ': (fatal )?error:|: warning:' compile.log | head -30 | while read -r l; do
+            echo "::warning title=${{ matrix.target }} diagnostic::${l}"
+          done
+          grep -E 'Sketch uses|Global variables use' compile.log | while read -r l; do
+            echo "::notice title=${{ matrix.target }} ${{ matrix.ref_name }} size::${l}"
+          done
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-${{ matrix.ref_name }}
           path: compile.log
           if-no-files-found: warn

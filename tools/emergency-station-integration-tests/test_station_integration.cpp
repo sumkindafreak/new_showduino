@@ -154,6 +154,12 @@ struct C3 {
     return buf;
   }
 
+  /* Local USB maintenance GLOBAL:OBSERVED (physical access): station only. */
+  void localUsbObserve() {
+    showduino_emergency_machine_global_observed(&m);
+    showduino_responder_track_latch(&st, m.latched);
+  }
+
   /* Downlink line from the relay, mirroring EmergencyProtocol.cpp emergencyProtocolApply(). */
   std::vector<std::string> receive(const std::string &line) {
     std::vector<std::string> out;
@@ -897,6 +903,14 @@ int main() {
     p4.down(&a, gcl);
     expect(a.lastCmdResult == SHOWDUINO_RESP_REJECT_TAG && a.m.latched == 1,
            "S16b GCL forged with another key is rejected");
+    C3 idle("ESTOP-03", &KC, false);
+    char ack[SHOWDUINO_NODE_COMMAND_MAX];
+    showduino_auth_format_cmd("ESTOP-03", 40, "ACK", 7, KC.b, SHOWDUINO_AUTH_KEY_BYTES,
+                              hmacSha256, ack, sizeof(ack));
+    idle.receive(ack);
+    expect(idle.lastCmdResult == SHOWDUINO_RESP_REJECT_STATE && idle.nvsCounter == 0 &&
+           idle.m.acked == 0 && idle.st.latchedEpisode == 0,
+           "S16c a valid ACK to a NORMAL station is refused: no flash write, no state");
   }
 
   /* ===== S17 (J): GCL held back by the relay, delivered in a later episode ===== */
@@ -921,6 +935,74 @@ int main() {
     p4.advance(10);
     expect(p4.directorClear() && a.m.state == SHOWDUINO_ESTOP_ST_NORMAL,
            "S17e the new episode clears normally");
+  }
+
+  /* ===== S17f (J): held GCL meets a station that latched afresh ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.dropDownMatch = ":GCL:";
+    p4.advance(10);
+    expect(p4.directorClear(), "S17f-a clear accepted; relay withholds the GCL");
+    const std::string held = lastDown(p4, ":GCL:");
+    a.localUsbObserve();                       /* technician resets the station locally */
+    expect(a.m.latched == 0, "S17f-b station NORMAL by local USB maintenance");
+    p4.dropDownMatch = ":ACK:";                /* relay now withholds the new ACK */
+    a.pressed = true; p4.advance(10); p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    expect(p4.globalLatched && a.m.latched == 1 && a.st.latchedEpisode == 0,
+           "S17f-c fresh latch in a new episode; station has not learned it");
+    p4.dropDownMatch.clear();
+    p4.down(&a, held);
+    expect(a.lastCmdResult == SHOWDUINO_RESP_REJECT_STATE && a.m.latched == 1,
+           "S17f-d GCL from the old episode cannot normalise a freshly latched station");
+  }
+
+  /* ===== S25 (J): request-time gate and an offline verified station ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a}; p4.provision("ESTOP-01", KA);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    p4.timeout("ESTOP-01");
+    const int d = showduino_station_clear_decision(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p4.ids,
+                                                   0, 0, 0, 0, 0, 0, 1);
+    expect(d == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S25a CLEAR_REQUEST gate: a verified RELEASED station that went OFFLINE blocks");
+  }
+
+  /* ===== S26 (J): revoked station that asserted keeps blocking until dismissed ===== */
+  {
+    C3 a("ESTOP-01", &KA, true), b("ESTOP-02", &KB, false);
+    P4 p4; p4.stations = {&a, &b}; p4.provision("ESTOP-01", KA); p4.provision("ESTOP-02", KB);
+    p4.pump(a);
+    a.pressed = false; p4.pump(a);
+    p4.challengeRound();
+    p4.revoke("ESTOP-01");                    /* key withdrawn on the P4 */
+    p4.timeout("ESTOP-01");                   /* its answers no longer verify */
+    p4.advance(10);
+    expect(!p4.directorClear() && p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_STATION,
+           "S26a revoking a key does not release an asserted station (it is now unverifiable)");
+    expect(showduino_station_model_dismiss(p4.t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, "ESTOP-01",
+                                           p4.isProvisioned("ESTOP-01") ? 1 : 0) == 1,
+           "S26b after revoke, local maintenance can dismiss it explicitly");
+    p4.persist(); p4.advance(10);
+    expect(p4.directorClear(), "S26c remaining provisioned station proves RELEASED: clear accepted");
+  }
+
+  /* ===== S27 (J): a provisioned station that never communicates ===== */
+  {
+    C3 a("ESTOP-01", &KA, true);
+    P4 p4; p4.stations = {&a};
+    p4.provision("ESTOP-01", KA); p4.provision("ESTOP-05", KC);   /* ESTOP-05 is silent */
+    p4.pump(a);
+    a.pressed = false; p4.pump(a); p4.advance(10);
+    expect(p4.slotOf("ESTOP-05") < 0 && !p4.directorClear() &&
+           p4.lastDecision == SHOWDUINO_CLEAR_BLOCK_PROOF,
+           "S27a a registered station that is absent or silenced blocks clear (fail closed)");
   }
 
   /* ===== S18 (J): table filled by forged ASSERT IDs ===== */

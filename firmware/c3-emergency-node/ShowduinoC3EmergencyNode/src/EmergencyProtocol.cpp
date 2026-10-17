@@ -1,4 +1,5 @@
 #include "EmergencyProtocol.h"
+#include "EmergencyAuth.h"
 #include "EmergencyIdentity.h"
 #include "EmergencyInput.h"
 #include "EmergencyWeb.h"
@@ -101,8 +102,36 @@ void emergencyProtocolTryLocalRearm() {
   }
 }
 
-void emergencyProtocolApply(const char *command, uint32_t sequence) {
+void emergencyProtocolOnGlobalClear() {
+  showduino_emergency_machine_global_observed(&gEmergencyMachine);
+  if (showduino_emergency_button_pressed(&gEmergencyMachine)) {
+    SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button still PRESSED, re-asserting");
+    estopPixelProtocolOnEmergencyLatch(true);
+  } else {
+    SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button RELEASED, local NORMAL");
+    estopPixelProtocolOnGlobalClearNormal();
+  }
+  emergencyProtocolAnnounce();
+}
+
+static bool isPixelCommand(const char *c) {
+  return !strncmp(c, "ESTOP:NODE:PIXEL:", 17) || !strncmp(c, "EMERGENCY:NODE:PIXEL:", 21) ||
+         !strncmp(c, "PIXEL:", 6);
+}
+
+void emergencyProtocolApply(const char *command, uint32_t sequence, EmergencyCmdSource source) {
   if (!command || !command[0]) return;
+
+  /* MISSION 001J: the SoftAP page may only drive the Pixel capability. */
+  if (source == EmergencyCmdSource::Web && !isPixelCommand(command)) {
+    SD_LOGW("ESTOP", "REJECTED web command (pixel only)");
+    return;
+  }
+  /* Authenticated station protocol. Only from the radio. */
+  if (source == EmergencyCmdSource::Radio && emergencyAuthHandleRadio(command, sequence)) {
+    if (emergencyEspNowLinkFresh()) showduino_emergency_machine_set_radio(&gEmergencyMachine, 1);
+    return;
+  }
 
   const ShowduinoEmergencyWire systemEmergency = showduino_parse_state_emergency(command);
   if (systemEmergency == SHOWDUINO_EMERGENCY_WIRE_ACTIVE) {
@@ -167,21 +196,24 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
     sendLine("ESTOP:REJECTED:NO_CLEAR", sequence);
     return;
   }
-  if (cmd == SHOWDUINO_ESTOP_CMD_ACK_LATCHED) {
-    showduino_emergency_machine_ack(&gEmergencyMachine);
-    SD_LOGI("ESTOP", "P4 ACK LATCHED — not a clear");
-    return;
-  }
-  if (cmd == SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED) {
-    showduino_emergency_machine_global_observed(&gEmergencyMachine);
-    if (showduino_emergency_button_pressed(&gEmergencyMachine)) {
-      SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button still PRESSED, re-asserting");
-      estopPixelProtocolOnEmergencyLatch(true);
-    } else {
-      SD_LOGI("ESTOP", "GLOBAL CLEAR OBSERVED — button RELEASED, local NORMAL");
-      estopPixelProtocolOnGlobalClearNormal();
+  /* MISSION 001J: an unauthenticated ACK could silence this station's ASSERT
+   * bursts, and an unauthenticated GLOBAL:OBSERVED / EMERGENCY:CLEAR could return
+   * it to NORMAL. From the radio they arrive through an untrusted relay, so only
+   * the authenticated CMD path (EmergencyAuth) may do either. The USB console keeps
+   * them as local maintenance (physical access). */
+  if (cmd == SHOWDUINO_ESTOP_CMD_ACK_LATCHED || cmd == SHOWDUINO_ESTOP_CMD_GLOBAL_OBSERVED) {
+    if (source != EmergencyCmdSource::LocalUsb) {
+      SD_LOGW("ESTOP", "REJECTED unauthenticated %s",
+              cmd == SHOWDUINO_ESTOP_CMD_ACK_LATCHED ? "ACK" : "GLOBAL CLEAR");
+      return;
     }
-    emergencyProtocolAnnounce();
+    if (cmd == SHOWDUINO_ESTOP_CMD_ACK_LATCHED) {
+      showduino_emergency_machine_ack(&gEmergencyMachine);
+      SD_LOGI("ESTOP", "LOCAL USB ACK — not a clear");
+    } else {
+      SD_LOGW("ESTOP", "LOCAL USB GLOBAL CLEAR OBSERVE — station only, P4 unchanged");
+      emergencyProtocolOnGlobalClear();
+    }
     return;
   }
   if (cmd == SHOWDUINO_ESTOP_CMD_OWN_GRANT) {
@@ -195,12 +227,22 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
     emergencyProtocolAnnounce();
     return;
   }
+  if ((cmd == SHOWDUINO_ESTOP_CMD_REARM || cmd == SHOWDUINO_ESTOP_CMD_ID ||
+       cmd == SHOWDUINO_ESTOP_CMD_NAME) && source != EmergencyCmdSource::LocalUsb) {
+    SD_LOGW("ESTOP", "REJECTED remote REARM/ID/NAME (local USB only)");
+    return;
+  }
   if (cmd == SHOWDUINO_ESTOP_CMD_REARM) {
     emergencyProtocolTryLocalRearm();
     sendStatus(sequence);
     return;
   }
   if (cmd == SHOWDUINO_ESTOP_CMD_ID) {
+    if (emergencyAuthProvisioned()) {
+      /* The key is bound to the ID. Change both together with PROVISION. */
+      sendLine("ESTOP:ERROR:ID_PROVISIONED", sequence);
+      return;
+    }
     const char *v = strstr(work, "ID:");
     if (!v || !emergencyIdentitySetId(v + 3)) {
       sendLine("ESTOP:ERROR:ID", sequence);
@@ -225,6 +267,7 @@ void emergencyProtocolApply(const char *command, uint32_t sequence) {
 void emergencyProtocolService() {
   emergencyInputService();
   showduino_emergency_machine_input(&gEmergencyMachine, emergencyInputPressed());
+  emergencyAuthService();
 
   const int radio = emergencyEspNowLinkFresh() && emergencyEspNowReady() ? 1 : 0;
   if ((uint8_t)radio != sLastRadio) {

@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include "EmergencyIdentity.h"
+#include "EmergencyAuth.h"
 #include "EmergencyProtocol.h"
 #include "EmergencyInput.h"
 #include "EmergencyDisplay.h"
@@ -195,8 +196,12 @@ static void addRoutes() {
     char name[24] = "";
     take("\"id\"", id, sizeof(id));
     take("\"name\"", name, sizeof(name));
-    if (id[0]) emergencyIdentitySetId(id);
-    if (name[0]) emergencyIdentitySetName(name);
+    /* MISSION 001J: the ID is bound to the station key; change it with PROVISION on
+     * USB. The display name may still be edited here, but not while latched. */
+    if (id[0] && !emergencyAuthProvisioned() && !gEmergencyMachine.latched) {
+      emergencyIdentitySetId(id);
+    }
+    if (name[0] && !gEmergencyMachine.latched) emergencyIdentitySetName(name);
     emergencyProtocolAnnounce();
     sendStatus();
   });
@@ -211,7 +216,7 @@ static void addRoutes() {
       sServer.send(400, "application/json", "{\"error\":\"EMPTY\"}\n");
       return;
     }
-    emergencyProtocolApply(body.c_str(), 0);
+    emergencyProtocolApply(body.c_str(), 0, EmergencyCmdSource::Web);
     sendStatus();
   });
   sServer.on("/api/clear", HTTP_ANY, []() {

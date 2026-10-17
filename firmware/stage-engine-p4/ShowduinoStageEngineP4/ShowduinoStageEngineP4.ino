@@ -20,6 +20,8 @@
 */
 
 #include <Arduino.h>
+#include <esp_random.h>
+#include "bootloader_random.h" /* MISSION 001J: SAR ADC entropy for the station-nonce seed */
 #include "BoardConfig.h"
 #include "ShowEngineState.h"
 #include "ShowRuntimeOwner.h"
@@ -554,7 +556,7 @@ static bool applyEmergencyClear() {
   return true;
 }
 
-static bool rejectClearIfStationPressed();
+static bool rejectClearIfStationPressed(bool confirm);
 
 void clearEmergencyStop() {
   /* USB / diagnostics maintenance path. Still refuses a physically open loop. */
@@ -581,17 +583,19 @@ void clearEmergencyStop() {
     return;
   }
 
-  if (rejectClearIfStationPressed()) return;
+  if (rejectClearIfStationPressed(true)) return;
   if (!applyEmergencyClear()) {
     rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
   }
 }
 
-/* A wireless Emergency Node whose button is still pressed blocks clear. The
- * P4 cannot see that node's release, so it refuses instead of guessing. */
-static bool rejectClearIfStationPressed() {
-  if (!emergencyNodeLinkClearBlocked()) return false;
-  rejectEmergencyClear("WIRELESS_ASSERTED", "wireless station blocks clear");
+/* A wireless Emergency Node that is pressed, unverified, offline or (at confirm)
+ * without a fresh authenticated RELEASED proof blocks clear (MISSION 001H-001J).
+ * The P4 cannot see a station's button itself, so it refuses instead of guessing. */
+static bool rejectClearIfStationPressed(bool confirm) {
+  const int decision = emergencyNodeLinkClearBlocked(confirm);
+  if (!decision) return false;
+  rejectEmergencyClear(emergencyNodeLinkClearReason(decision), "wireless station blocks clear");
   if (sCmdSource != CommandSource::LocalUsb) {
     sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
     sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
@@ -602,7 +606,7 @@ static bool rejectClearIfStationPressed() {
 static void handleEmergencyClearRequest() {
   const uint32_t now = millis();
   Serial.println("[ESTOP] Clear requested by Director");
-  if (rejectClearIfStationPressed()) return;
+  if (rejectClearIfStationPressed(false)) return;
   const int rc = emergencyInputBeginDirectorClear(now);
   if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
     rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
@@ -621,6 +625,8 @@ static void handleEmergencyClearRequest() {
     return;
   }
 
+  /* MISSION 001J: proofs for the confirm must answer challenges issued from now. */
+  emergencyNodeLinkOnClearRequest();
   Serial.println("[ESTOP] Clear confirmation pending");
   stageLogEmergency("CLEAR_REQUEST", "director");
   sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST);
@@ -660,7 +666,7 @@ static void handleEmergencyClearConfirm() {
     return;
   }
 
-  if (rejectClearIfStationPressed()) return;
+  if (rejectClearIfStationPressed(true)) return;
   Serial.println("[ESTOP] Clear confirmed");
   if (!applyEmergencyClear()) {
     rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
@@ -1044,6 +1050,9 @@ static void printUsbHelp() {
   Serial.println("  EMERGENCY:STOP");
   Serial.println("  EMERGENCY:CLEAR            (USB maintenance clear / Director request)");
   Serial.println("  EMERGENCY:CLEAR_CONFIRM    (Director confirm; requires pending request)");
+  Serial.println("  EMERGENCY:KEY:SET:ESTOP-nn:<64 hex>   (USB only; station key from the C3)");
+  Serial.println("  EMERGENCY:KEY:REVOKE:ESTOP-nn | EMERGENCY:KEY:LIST | EMERGENCY:AUTH:STATUS");
+  Serial.println("  EMERGENCY:STATION:DISMISS:ESTOP-nn   (USB only; unprovisioned stations only)");
   Serial.println("  EMERGENCY:CLEAR_CANCEL");
   Serial.println("  PIXEL:STATUS");
   Serial.println("  PIXEL:COUNT:<1-1024>   (set length, do not init)");
@@ -1445,6 +1454,13 @@ void handleCommand(String command, CommandSource source) {
   command.trim();
   if (command.length() == 0) return;
 
+  /* MISSION 001J: station key and maintenance commands are handled before any
+   * logging, so key material is never echoed, and only from the USB console. */
+  if (emergencyNodeLinkIsMaintenanceCommand(command.c_str())) {
+    emergencyNodeLinkHandleMaintenance(command.c_str(), source == CommandSource::LocalUsb);
+    return;
+  }
+
   const CommandSource prevSource = sCmdSource;
   const ShowRuntimeSendFn prevSend = gRuntime.sendFn;
   sCmdSource = source;
@@ -1781,6 +1797,18 @@ void setup() {
     const ShowduinoBlockerStatus bs = emergencyStationStoreLoad(blockers, &blockerCount);
     emergencyNodeLinkStageRestore(blockers, blockerCount, bs, sRestoredEmergencyAtBoot,
                                   emergencyLatchBootUnknown());
+  }
+
+  /* MISSION 001J: the P4 has no radio, so esp_random() is only a true RNG while
+   * the SAR ADC entropy source is on. Draw the station-nonce seed now, before any
+   * subsystem can use the ADC, then switch the source off again. */
+  {
+    uint8_t seed[32];
+    bootloader_random_enable();
+    esp_fill_random(seed, sizeof(seed));
+    bootloader_random_disable();
+    emergencyNodeLinkSeedNonce(seed);
+    memset(seed, 0, sizeof(seed));
   }
 
   /* Generic I/O enters explicit high-impedance safe state before SD mount. */

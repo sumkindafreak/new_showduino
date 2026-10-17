@@ -6,6 +6,9 @@
 #include "../../../protocol/showduino_emergency_latch.h"
 #include "../EmergencyStationStore.h"
 #include "../../../protocol/showduino_node_packet.h"
+#include "../../../protocol/showduino_station_auth.h"
+#include "../../../protocol/showduino_station_auth_esp32.h"
+#include "EmergencyStationKeys.h"
 
 extern bool emergencyLocked;
 extern uint8_t gEmergencySourceId;
@@ -29,6 +32,58 @@ static char sLastDetail[96] = "";
 static char sLastSafety[32] = "";
 static char sLastSource[64] = "";
 
+/* ---- MISSION 001J: station authentication state (P4 only; the S3 holds none) ---- */
+static ShowduinoAuthChalTable sChal;
+static ShowduinoAuthCounter sCtr;
+static bool sCounterLoaded = false;
+static bool sCounterFault = false;
+static uint32_t sEpisode = 0;           /* current episode; 0 when idle */
+static uint32_t sEpisodeRetryMs = 0;
+static ShowduinoNonceGen sNonce;
+static uint32_t sChalMs = 0;
+static uint32_t sClearRequestSeq = 0;
+static bool sTableOverflow = false;
+static uint32_t sAuthRejectLogMs = 0;
+/* GCL commands reserved by a successful confirm, sent by emergencyNodeLinkOnEmergency(false). */
+static char sGclIds[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_EMERGENCY_ID_MAX + 1];
+static uint32_t sGclCounters[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+static uint8_t sGclCount = 0;
+static uint32_t sGclEpisode = 0;
+static bool sGclReady = false;
+
+static int persistCounterCb(void *ctx, uint32_t value) {
+  (void)ctx;
+  return stationCounterSave(value) ? 1 : 0;
+}
+
+/* Hands out a counter value. A failed block write sets sCounterFault; a later
+ * successful one clears it. Nothing is ever issued with an unpersisted counter. */
+static bool nextCounter(uint32_t *out) {
+  if (!sCounterLoaded ||
+      !showduino_auth_counter_next(&sCtr, persistCounterCb, nullptr, out)) {
+    sCounterFault = true;
+    return false;
+  }
+  sCounterFault = false;
+  return true;
+}
+
+static int keyForCb(void *ctx, const char *id, uint8_t key[SHOWDUINO_AUTH_KEY_BYTES]) {
+  (void)ctx;
+  return stationKeysLookup(id, key);
+}
+
+static int nonceRandCb(uint8_t *out, size_t n) {
+  return showduino_nonce_gen_next(&sNonce, out, n);
+}
+
+static bool isProvisioned(const char *id) {
+  uint8_t key[SHOWDUINO_AUTH_KEY_BYTES];
+  const bool ok = stationKeysLookup(id, key) >= 0;
+  memset(key, 0, sizeof(key));
+  return ok;
+}
+
 static void routeTo(const char *id, uint32_t seq, const char *cmd) {
   char line[180];
   snprintf(line, sizeof(line), "ROUTE:EMERGENCY:%s:%lu:%s",
@@ -36,6 +91,58 @@ static void routeTo(const char *id, uint32_t seq, const char *cmd) {
            (unsigned long)seq,
            cmd ? cmd : "");
   stageCommsSendLine(line);
+}
+
+/* Sends an authenticated command to one station: unicast through the relay's MAC
+ * table and a broadcast copy (a poisoned MAC table cannot divert it; the station
+ * rejects the duplicate by its counter). */
+static bool sendCmd(const char *id, const char *op, uint32_t episode, const uint32_t *fixedCounter) {
+  if (!id || !id[0] || episode == 0) return false;
+  uint8_t key[SHOWDUINO_AUTH_KEY_BYTES];
+  if (stationKeysLookup(id, key) < 0) return false;
+  uint32_t counter = 0;
+  if (fixedCounter) {
+    counter = *fixedCounter;
+  } else if (!nextCounter(&counter)) {
+    memset(key, 0, sizeof(key));
+    return false;
+  }
+  char line[SHOWDUINO_NODE_COMMAND_MAX];
+  const int ok = showduino_auth_format_cmd(id, counter, op, episode, key, sizeof(key),
+                                           showduino_auth_hmac_sha256_mbedtls, line, sizeof(line));
+  memset(key, 0, sizeof(key));
+  if (!ok) return false;
+  routeTo(id, sSeq++, line);
+  routeTo(SHOWDUINO_EMERGENCY_ROUTE_ALL, sSeq++, line);
+  return true;
+}
+
+static bool issueChallenge() {
+  if (!sNonce.seeded) return false;
+  char nonce[SHOWDUINO_AUTH_NONCE_HEX + 1];
+  if (!showduino_auth_chal_issue(&sChal, millis(), sEpisode, nonceRandCb, nonce)) return false;
+  char line[SHOWDUINO_NODE_COMMAND_MAX];
+  if (!showduino_auth_format_chal(sEpisode, nonce, line, sizeof(line))) return false;
+  routeTo(SHOWDUINO_EMERGENCY_ROUTE_ALL, sSeq++, line);
+  sChalMs = millis();
+  return true;
+}
+
+/* While latched, the episode id must be durable before any ACK/GCL can name it.
+ * Storage runs after actuation (MISSION 001F) and is retried once a second. */
+static void ensureEpisode() {
+  if (!emergencyLocked || sEpisode) return;
+  if (sEpisodeRetryMs && (millis() - sEpisodeRetryMs) < 1000UL) return;
+  uint32_t e = 0;
+  if (!nextCounter(&e)) {
+    sEpisodeRetryMs = millis();
+    SD_LOGW("ESTOP", "episode id not stored — station commands held, clear blocked");
+    return;
+  }
+  sEpisodeRetryMs = 0;
+  sEpisode = e;
+  showduino_auth_chal_reset(&sChal);
+  SD_LOGI("ESTOP", "EMERGENCY EPISODE %lu", (unsigned long)sEpisode);
 }
 
 static EmergencyNodeStatus *findById(const char *id) {
@@ -133,11 +240,56 @@ void emergencyNodeLinkRetryBlockers() {
 
 bool emergencyNodeLinkBlockerStorageFault() { return sPersistDirty || sUnknownBootState; }
 
-int emergencyNodeLinkClearBlocked() {
-  return showduino_station_clear_blocked_full(emergencyNodeLinkPressedCount(),
-                                              sUnknownBootState ? 1 : 0,
-                                              sPersistDirty ? 1 : 0,
-                                              sBooted ? 1 : 0);
+int emergencyNodeLinkClearBlocked(bool confirm) {
+  ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+  loadStationModel(t, nullptr, nullptr);
+  char ids[SHOWDUINO_EMERGENCY_NODE_MAX_NODES][SHOWDUINO_BLOCKER_ID_CHARS + 1];
+  memset(ids, 0, sizeof(ids));
+  const uint8_t keyCount = stationKeysCount();
+  for (uint8_t i = 0; i < keyCount && i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+    showduino_station_copy(ids[i], sizeof(ids[i]), stationKeysId(i));
+  }
+  /* No durable episode while provisioned stations exist: no GCL can be issued. */
+  const bool counterBad = sCounterFault || !sCounterLoaded || stationKeysFault() ||
+                          (emergencyLocked && keyCount > 0 && sEpisode == 0);
+  const uint32_t since = confirm ? showduino_station_proof_since(sClearRequestSeq, sChal.lastSeq) : 0;
+  const int decision = showduino_station_clear_decision(
+      t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, ids, confirm ? keyCount : 0, since,
+      sUnknownBootState ? 1 : 0, sPersistDirty ? 1 : 0, counterBad ? 1 : 0,
+      sTableOverflow ? 1 : 0, sBooted ? 1 : 0);
+  if (decision != SHOWDUINO_CLEAR_OK || !confirm) return decision;
+  /* Reserve one GCL counter per provisioned station before anything changes. */
+  sGclReady = false;
+  for (uint8_t i = 0; i < keyCount; ++i) {
+    if (!nextCounter(&sGclCounters[i])) return SHOWDUINO_CLEAR_BLOCK_STORAGE;
+    showduino_station_copy(sGclIds[i], sizeof(sGclIds[i]), ids[i]);
+  }
+  sGclCount = keyCount;
+  sGclEpisode = sEpisode;
+  sGclReady = keyCount > 0;
+  return SHOWDUINO_CLEAR_OK;
+}
+
+const char *emergencyNodeLinkClearReason(int decision) {
+  switch (decision) {
+    case SHOWDUINO_CLEAR_OK: return "OK";
+    case SHOWDUINO_CLEAR_BLOCK_STATION: return "WIRELESS_ASSERTED";
+    case SHOWDUINO_CLEAR_BLOCK_STORAGE: return "STATION_STORAGE";
+    case SHOWDUINO_CLEAR_BLOCK_PROOF: return "STATION_UNVERIFIED";
+    case SHOWDUINO_CLEAR_BLOCK_OVERFLOW: return "STATION_OVERFLOW";
+    default: return "WIRELESS_BLOCKED";
+  }
+}
+
+void emergencyNodeLinkOnClearRequest() {
+  sClearRequestSeq = showduino_auth_chal_next_seq(&sChal);
+  (void)issueChallenge();
+}
+
+void emergencyNodeLinkSeedNonce(const uint8_t seed[32]) {
+  if (!showduino_nonce_gen_seed(&sNonce, seed, showduino_auth_hmac_sha256_mbedtls)) {
+    SD_LOGE("ESTOP", "station nonce seed rejected — stations cannot be verified, clear blocked");
+  }
 }
 
 bool emergencyNodeLinkBlockersVerified() { return !sPersistDirty && !sUnknownBootState; }
@@ -233,6 +385,8 @@ static void loadStationModel(ShowduinoStationModel *t, bool *prevOnline, bool *p
     t[i].inputOpen = sNodes[i].inputOpen ? 1 : 0;
     t[i].announcedLatched = sNodes[i].announcedLatched ? 1 : 0;
     t[i].asserted = sNodes[i].asserted ? 1 : 0;
+    t[i].ackedReport = sNodes[i].ackedReport ? 1 : 0;
+    t[i].proofChalSeq = sNodes[i].proofChalSeq;
     showduino_station_copy(t[i].id, sizeof(t[i].id), sNodes[i].id);
     showduino_station_copy(t[i].mac, sizeof(t[i].mac), sNodes[i].mac);
     if (prevOnline) prevOnline[i] = sNodes[i].online;
@@ -248,6 +402,8 @@ static void storeStationModel(const ShowduinoStationModel *t) {
     sNodes[i].inputOpen = t[i].inputOpen ? true : false;
     sNodes[i].announcedLatched = t[i].announcedLatched ? true : false;
     sNodes[i].asserted = t[i].asserted ? true : false;
+    sNodes[i].ackedReport = t[i].ackedReport ? true : false;
+    sNodes[i].proofChalSeq = t[i].proofChalSeq;
     showduino_station_copy(sNodes[i].id, sizeof(sNodes[i].id), t[i].id);
     showduino_station_copy(sNodes[i].mac, sizeof(sNodes[i].mac), t[i].mac);
   }
@@ -400,8 +556,20 @@ void emergencyNodeLinkPrimarySource(char *kind, size_t kindn,
 
 /* MISSION 001H: the P4 global latch request. Never changes the button state.
  * Button state is decided by showduino_station_model (ANNOUNCE or ASSERT rules). */
+static void ackIfDue(EmergencyNodeStatus *st) {
+  if (!st || !st->id[0] || !emergencyLocked || !sEpisode) return;
+  const uint32_t now = millis();
+  if (st->ackMs && (now - st->ackMs) < 1000UL) return;
+  if (!isProvisioned(st->id)) return;
+  if (sendCmd(st->id, "ACK", sEpisode, nullptr)) st->ackMs = now;
+}
+
 static void applyStationLatch(const char *id, const char *name) {
-  if (!showduino_emergency_id_ok(id)) return;
+  if (!showduino_emergency_id_ok(id)) {
+    /* No recordable identity (for example a full table). Still latch. */
+    if (!emergencyLocked) triggerEmergencyWireless();
+    return;
+  }
   EmergencyNodeStatus *st = allocSlot(id, nullptr);
   if (st) {
     /* MISSION 001I: a bare ASSERT never sets online or lastRxMs. Only an accepted,
@@ -422,10 +590,10 @@ static void applyStationLatch(const char *id, const char *name) {
       SD_LOGI("ESTOP", "EMERGENCY DUPLICATE SOURCE=%s", id);
     }
   }
-  if (st && st->id[0]) {
-    routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
-    st->acked = true;
-  }
+  /* MISSION 001J: the episode id is stored after actuation, then an authenticated
+   * ACK teaches the station the episode. No unauthenticated ACK is sent. */
+  ensureEpisode();
+  ackIfDue(st);
 }
 
 void emergencyNodeLinkBegin() {
@@ -447,6 +615,23 @@ void emergencyNodeLinkBegin() {
     }
   }
   sBooted = true;
+  /* MISSION 001J: keys and the counter-block limit. A failure blocks clear. */
+  stationKeysBegin();
+  if (stationKeysFault()) {
+    SD_LOGE("ESTOP", "station key record unreadable — clear blocked; EMERGENCY:KEY:RESET on USB");
+  }
+  uint32_t limit = 0;
+  sCounterLoaded = stationCounterLoad(&limit);
+  if (sCounterLoaded) {
+    showduino_auth_counter_boot(&sCtr, limit);
+  } else {
+    sCounterFault = true;
+    SD_LOGE("ESTOP", "station counter unreadable — station commands held, clear blocked");
+  }
+  showduino_auth_chal_reset(&sChal);
+  sEpisode = 0;
+  sTableOverflow = false;
+  sGclReady = false;
   showduino_emergency_authority_init(&sAuth);
   sLastWire[0] = 0;
   sLastDetail[0] = 0;
@@ -457,22 +642,21 @@ void emergencyNodeLinkBegin() {
 void emergencyNodeLinkLoop() {
   /* Keep each station's own latch consistent with the P4. Throttled to once per
    * second per station, and each case stops when that station's announce agrees. */
+  /* MISSION 001J: no unauthenticated ACK or GLOBAL:OBSERVED is ever sent. The
+   * episode is made durable, stations are challenged, and a station whose verified
+   * report shows it latched without this episode gets an authenticated ACK. */
+  ensureEpisode();
   const uint32_t nowMs = millis();
+  const uint32_t period = emergencyLocked ? SHOWDUINO_STATION_CHAL_LATCHED_MS
+                                          : SHOWDUINO_STATION_CHAL_IDLE_MS;
+  if (stationKeysCount() > 0 && (!emergencyLocked || sEpisode) &&
+      (!sChalMs || (nowMs - sChalMs) >= period)) {
+    (void)issueChallenge();
+  }
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
     EmergencyNodeStatus &st = sNodes[i];
     if (!st.used || !st.online || !st.id[0]) continue;
-    if (st.syncMs && (nowMs - st.syncMs) < 1000UL) continue;
-    if (showduino_station_needs_ack(emergencyLocked ? 1 : 0, st.online ? 1 : 0,
-                                    st.latched ? 1 : 0, st.acked ? 1 : 0)) {
-      st.syncMs = nowMs;
-      routeTo(st.id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
-      st.acked = true;
-    } else if (showduino_station_needs_global_clear(emergencyLocked ? 1 : 0,
-                                                    st.online ? 1 : 0,
-                                                    st.latched ? 1 : 0)) {
-      st.syncMs = nowMs;
-      routeTo(st.id, sSeq++, SHOWDUINO_ESTOP_GLOBAL_OBSERVED);
-    }
+    if (st.announcedLatched && !st.ackedReport) ackIfDue(&st);
   }
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
     EmergencyNodeStatus &st = sNodes[i];
@@ -512,68 +696,74 @@ bool emergencyNodeLinkHandleReport(const char *line) {
     return true;
   }
 
-  /* MISSION 001H: one interpretation for ASSERT, ANNOUNCE and STATUS. The shared
-   * model (protocol/showduino_station_model.h) decides identity and button state.
-   * This code performs the effects only. */
-  if (!strncmp(p, "ANNOUNCE:", 9) || showduino_emergency_is_assert(p) || !strncmp(p, "STATUS:", 7)) {
+  /* MISSION 001J: one interpretation for AUTH, ASSERT, ANNOUNCE and STATUS. The
+   * shared model (protocol/showduino_station_model.h) decides; only a verified AUTH
+   * changes station state. This code performs the effects only. */
+  if (!strncmp(p, "AUTH:", 5) || !strncmp(p, "ANNOUNCE:", 9) ||
+      showduino_emergency_is_assert(p) || !strncmp(p, "STATUS:", 7)) {
     ShowduinoStationModel table[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
     bool prevOnline[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
     bool prevOpen[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
     loadStationModel(table, prevOnline, prevOpen);
+    ShowduinoStationAuthPolicy pol{showduino_auth_hmac_sha256_mbedtls, &sChal, sEpisode,
+                                   millis(), keyForCb, nullptr};
     ShowduinoStationResult res{};
-    const int handled = showduino_station_interpret_line(table, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, p, &res);
+    const int handled = showduino_station_interpret_line(table, SHOWDUINO_EMERGENCY_NODE_MAX_NODES,
+                                                         p, &pol, &res);
     if (!handled) return true;
-    if (res.kind == SHOWDUINO_STATION_LINE_ANNOUNCE && !res.accepted) {
-      /* Identity conflict or table full: nothing was applied. */
-      storeStationModel(table);
-      SD_LOGW("ESTOP", "Rejected announce %s: identity conflicts with pinned station or no slot",
-              res.name[0] ? res.name : "-");
-      return true;
-    }
     storeStationModel(table);
+    if (res.tableFull && !sTableOverflow) {
+      sTableOverflow = true;
+      SD_LOGW("ESTOP", "station table full — clear blocked until EMERGENCY:STATION:DISMISS on USB");
+    }
 
     if (res.kind == SHOWDUINO_STATION_LINE_ASSERT) {
-      if (res.accepted) applyStationLatch(res.ackId, res.name);
+      if (res.globalLatch) applyStationLatch(res.ackId, res.name);
       emergencyNodeLinkPersistBlockers(); /* after actuation (MISSION 001F) */
       publishState(true);
       return true;
     }
 
-    if (res.kind == SHOWDUINO_STATION_LINE_STATUS) {
-      if (res.slot >= 0) sNodes[res.slot].lastRxMs = millis();
-      if (res.globalLatch) applyStationLatch(res.ackId, sNodes[res.slot].name);
+    if (res.kind == SHOWDUINO_STATION_LINE_AUTH) {
+      if (!res.verified) {
+        if (showduino_log_rate_ok(&sAuthRejectLogMs, millis(), 5000UL)) {
+          SD_LOGW("ESTOP", "station AUTH rejected (key, nonce, episode or freshness)");
+        }
+        if (res.globalLatch) applyStationLatch(res.ackId, res.name);
+        return true;
+      }
+      EmergencyNodeStatus *st = &sNodes[res.slot];
+      st->seen = true;
+      st->lastRxMs = millis();
+      st->latched = st->announcedLatched;
+      st->acked = st->ackedReport;
+      strncpy(st->state, st->inputOpen ? "PRESSED" : (st->latched ? "LATCHED" : "NORMAL"),
+              sizeof(st->state) - 1);
+      if (!prevOnline[res.slot]) {
+        SD_LOGI("ESTOP", "EMERGENCY NODE VERIFIED %s %s", st->id[0] ? st->id : "-",
+                st->name[0] ? st->name : "-");
+      }
+      (void)prevOpen;
+      if (res.globalLatch) applyStationLatch(res.ackId, st->name);
+      if (emergencyLocked && st->announcedLatched && !st->ackedReport) ackIfDue(st);
+      emergencyNodeLinkPersistBlockers();
       publishState();
       return true;
     }
 
-    /* ANNOUNCE, accepted. */
-    ShowduinoEmergencyAnnounce an{};
-    if (!showduino_emergency_parse_announce(p, &an)) return true;
-    const int slot = res.slot;
-    EmergencyNodeStatus *st = &sNodes[slot];
-    st->seen = true;
-    st->lastRxMs = millis();
-    if (an.name[0]) strncpy(st->name, an.name, sizeof(st->name) - 1);
-    if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
-    if (an.state[0]) strncpy(st->state, an.state, sizeof(st->state) - 1);
-    st->latched = an.latched != 0;
-    st->acked = an.acked != 0;
-    if (!prevOnline[slot]) {
-      SD_LOGI("ESTOP", "EMERGENCY NODE ONLINE %s %s",
-              st->id[0] ? st->id : "-",
-              st->name[0] ? st->name : "-");
+    if (res.kind == SHOWDUINO_STATION_LINE_ANNOUNCE) {
+      /* Display only: name and firmware labels for a station already in the table. */
+      ShowduinoEmergencyAnnounce an{};
+      if (showduino_emergency_parse_announce(p, &an)) {
+        EmergencyNodeStatus *st = findById(an.id);
+        if (st) {
+          if (an.name[0]) strncpy(st->name, an.name, sizeof(st->name) - 1);
+          if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
+        }
+      }
+      return true;
     }
-    const bool openChanged = (st->inputOpen ? true : false) != prevOpen[slot];
-    if (res.globalLatch) {
-      applyStationLatch(res.ackId, res.name);
-    } else if (st->id[0]) {
-      routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_OWN_GRANT);
-      routeTo(st->id, sSeq++, SHOWDUINO_ESTOP_STATUS);
-    }
-    /* After actuation (MISSION 001F). Writes only when the stored set changes. */
-    emergencyNodeLinkPersistBlockers();
-    publishState();
-    return true;
+    return true; /* STATUS: display only */
   }
 
   if (!strncmp(p, "ESTOP:CAPS:", 11) || !strncmp(p, "EMERGENCY:CAPS:", 15)) {
@@ -745,25 +935,158 @@ bool emergencyNodeLinkHandleCommand(const char *command, char *reply, size_t rep
 void emergencyNodeLinkOnEmergency(bool active) {
   if (!active) {
     showduino_emergency_authority_legitimate_clear(&sAuth);
+    /* MISSION 001J: stations return to NORMAL only on an authenticated GCL for the
+     * episode they latched under. Counters were reserved by the confirm. */
+    if (sGclReady && sGclEpisode) {
+      for (uint8_t i = 0; i < sGclCount; ++i) {
+        (void)sendCmd(sGclIds[i], "GCL", sGclEpisode, &sGclCounters[i]);
+      }
+    }
+    sGclReady = false;
+    sEpisode = 0;
+    sClearRequestSeq = 0;
+    showduino_auth_chal_reset(&sChal);
     for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
       if (!sNodes[i].used || !sNodes[i].id[0]) continue;
-      routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_GLOBAL_OBSERVED);
-      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:CLEAR");
-      routeTo(sNodes[i].id, sSeq++, "EMERGENCY:CLEAR");
+      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:CLEAR"); /* indication only */
       sNodes[i].acked = false;
+      sNodes[i].ackMs = 0;
     }
     sLastSource[0] = 0;
   } else {
+    ensureEpisode();
     for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
       if (!sNodes[i].used || !sNodes[i].online || !sNodes[i].id[0]) continue;
-      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:ACTIVE");
-      if (sNodes[i].latched) {
-        routeTo(sNodes[i].id, sSeq++, SHOWDUINO_ESTOP_ACK_LATCHED);
-        sNodes[i].acked = true;
-      }
+      routeTo(sNodes[i].id, sSeq++, "STATE:EMERGENCY:ACTIVE"); /* indication only */
     }
   }
   publishState(true);
+}
+
+/* ---------- MISSION 001J: local USB maintenance ---------- */
+
+bool emergencyNodeLinkIsMaintenanceCommand(const char *c) {
+  return c && (!strncmp(c, "EMERGENCY:KEY:", 14) || !strncmp(c, "EMERGENCY:STATION:", 18) ||
+               !strncmp(c, "EMERGENCY:AUTH:", 15));
+}
+
+static bool takeId(const char *src, char *out, size_t n, const char **rest) {
+  const char *c = strchr(src, ':');
+  const size_t len = c ? (size_t)(c - src) : strlen(src);
+  if (len == 0 || len >= n) return false;
+  memcpy(out, src, len);
+  out[len] = 0;
+  if (rest) *rest = c ? c + 1 : nullptr;
+  return showduino_emergency_id_ok(out) != 0;
+}
+
+bool emergencyNodeLinkHandleMaintenance(const char *command, bool localUsb) {
+  if (!emergencyNodeLinkIsMaintenanceCommand(command)) return false;
+  if (!localUsb) {
+    /* Never echo the command: it may carry key material. */
+    Serial.println("[ESTOP] REJECTED station maintenance command — local USB console only");
+    SD_LOGW("ESTOP", "station maintenance command refused from Comms/Web");
+    return true;
+  }
+  char id[SHOWDUINO_EMERGENCY_ID_MAX + 1] = "";
+  const char *rest = nullptr;
+
+  if (!strncmp(command, "EMERGENCY:KEY:SET:", 18)) {
+    if (!takeId(command + 18, id, sizeof(id), &rest) || !rest ||
+        strlen(rest) != SHOWDUINO_AUTH_KEY_HEX) {
+      Serial.println("[ESTOP] KEY:SET usage: EMERGENCY:KEY:SET:ESTOP-nn:<64 hex chars>");
+      return true;
+    }
+    uint8_t key[SHOWDUINO_AUTH_KEY_BYTES];
+    const bool parsed = showduino_auth_hex_decode(rest, sizeof(key), key) != 0;
+    const bool ok = parsed && stationKeysSet(id, key);
+    memset(key, 0, sizeof(key));
+    char fp[9];
+    stationKeysFingerprint(id, fp);
+    Serial.printf("[ESTOP] KEY:SET %s %s fp=%s\n", id, ok ? "OK" : "FAILED", ok ? fp : "-");
+    SD_LOGW("ESTOP", "MAINTENANCE station key %s for %s (fp=%s)", ok ? "set" : "set FAILED", id,
+            ok ? fp : "-");
+    if (ok && emergencyLocked) {
+      Serial.println("[ESTOP] latched: the station still blocks clear until it proves RELEASED with this key");
+    }
+    return true;
+  }
+  if (!strncmp(command, "EMERGENCY:KEY:REVOKE:", 21)) {
+    if (!takeId(command + 21, id, sizeof(id), nullptr)) {
+      Serial.println("[ESTOP] KEY:REVOKE usage: EMERGENCY:KEY:REVOKE:ESTOP-nn");
+      return true;
+    }
+    const bool ok = stationKeysRevoke(id);
+    Serial.printf("[ESTOP] KEY:REVOKE %s %s\n", id, ok ? "OK" : "FAILED");
+    SD_LOGW("ESTOP", "MAINTENANCE station key revoke %s %s", id, ok ? "OK" : "FAILED");
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:KEY:LIST")) {
+    Serial.printf("[ESTOP] KEYS count=%u fault=%u\n", (unsigned)stationKeysCount(),
+                  stationKeysFault() ? 1U : 0U);
+    for (uint8_t i = 0; i < stationKeysCount(); ++i) {
+      char fp[9];
+      stationKeysFingerprint(stationKeysId(i), fp);
+      Serial.printf("[ESTOP]   %s fp=%s\n", stationKeysId(i), fp);
+    }
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:KEY:RESET")) {
+    if (!stationKeysFault()) {
+      Serial.println("[ESTOP] KEY:RESET refused — record is readable (use REVOKE per station)");
+      return true;
+    }
+    const bool ok = stationKeysReset();
+    Serial.printf("[ESTOP] KEY:RESET %s — re-enter every station key\n", ok ? "OK" : "FAILED");
+    SD_LOGW("ESTOP", "MAINTENANCE station key record reset %s", ok ? "OK" : "FAILED");
+    return true;
+  }
+  if (!strncmp(command, "EMERGENCY:STATION:DISMISS:", 26)) {
+    if (!takeId(command + 26, id, sizeof(id), nullptr)) {
+      Serial.println("[ESTOP] DISMISS usage: EMERGENCY:STATION:DISMISS:ESTOP-nn");
+      return true;
+    }
+    ShowduinoStationModel t[SHOWDUINO_EMERGENCY_NODE_MAX_NODES];
+    loadStationModel(t, nullptr, nullptr);
+    const int ok = showduino_station_model_dismiss(t, SHOWDUINO_EMERGENCY_NODE_MAX_NODES, id,
+                                                   isProvisioned(id) ? 1 : 0);
+    if (ok) {
+      storeStationModel(t);
+      for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+        if (!sNodes[i].used) sNodes[i] = EmergencyNodeStatus();
+      }
+      sTableOverflow = false;
+      emergencyNodeLinkPersistBlockers();
+      publishState(true);
+    }
+    Serial.printf("[ESTOP] DISMISS %s %s\n", id,
+                  ok ? "OK — check that physical station by hand"
+                     : "REFUSED (provisioned: it must prove RELEASED or be revoked first; or unknown)");
+    SD_LOGW("ESTOP", "MAINTENANCE station dismiss %s %s", id, ok ? "OK" : "REFUSED");
+    return true;
+  }
+  if (!strcmp(command, "EMERGENCY:AUTH:STATUS")) {
+    Serial.printf("[ESTOP] AUTH keys=%u keyFault=%u counterFault=%u loaded=%u episode=%lu "
+                  "nonce=%s chalSeq=%lu overflow=%u\n",
+                  (unsigned)stationKeysCount(), stationKeysFault() ? 1U : 0U,
+                  sCounterFault ? 1U : 0U, sCounterLoaded ? 1U : 0U, (unsigned long)sEpisode,
+                  sNonce.seeded ? "seeded" : "NOT SEEDED", (unsigned long)sChal.lastSeq,
+                  sTableOverflow ? 1U : 0U);
+    for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
+      const EmergencyNodeStatus &st = sNodes[i];
+      if (!st.used) continue;
+      Serial.printf("[ESTOP]   %s prov=%u verified=%u online=%u pressed=%u latched=%u acked=%u "
+                    "asserted=%u proofSeq=%lu\n",
+                    st.id[0] ? st.id : "-", isProvisioned(st.id) ? 1U : 0U,
+                    st.reportKnown ? 1U : 0U, st.online ? 1U : 0U, st.inputOpen ? 1U : 0U,
+                    st.announcedLatched ? 1U : 0U, st.ackedReport ? 1U : 0U,
+                    st.asserted ? 1U : 0U, (unsigned long)st.proofChalSeq);
+    }
+    return true;
+  }
+  Serial.println("[ESTOP] station maintenance: KEY:SET|KEY:REVOKE|KEY:LIST|KEY:RESET|"
+                 "STATION:DISMISS|AUTH:STATUS");
+  return true;
 }
 
 void emergencyNodeLinkAppendJsonArray(String &json) {

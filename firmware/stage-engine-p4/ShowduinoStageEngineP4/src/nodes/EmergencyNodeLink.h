@@ -20,6 +20,11 @@ struct EmergencyNodeStatus {
   bool asserted = false;
   bool latched = false;
   bool acked = false;
+  /* MISSION 001J: from the last verified AUTH. ackedReport = the station holds the
+   * current episode; proofChalSeq = challenge sequence that AUTH answered. */
+  bool ackedReport = false;
+  uint32_t proofChalSeq = 0;
+  uint32_t ackMs = 0;
   uint32_t syncMs = 0;
   bool pixelCapable = false;
   bool pixelReady = false;
@@ -58,7 +63,21 @@ bool emergencyNodeLinkPersistBlockers();
 void emergencyNodeLinkEndEpisode();
 void emergencyNodeLinkRetryBlockers();
 bool emergencyNodeLinkBlockerStorageFault();
-int emergencyNodeLinkClearBlocked();
+/* MISSION 001J: returns a ShowduinoClearDecision (0 = clear permitted).
+ *   confirm=false (CLEAR_REQUEST): station and storage blockers only.
+ *   confirm=true  (CLEAR_CONFIRM, USB clear): also every provisioned station must
+ *   have a fresh verified RELEASED proof, and the GCL command counters are reserved
+ *   (persisted) before this returns 0. */
+int emergencyNodeLinkClearBlocked(bool confirm);
+const char *emergencyNodeLinkClearReason(int decision);
+/* CLEAR_REQUEST accepted: proofs must answer challenges issued from now on. */
+void emergencyNodeLinkOnClearRequest();
+/* Once at boot, before any challenge. Seed from the SAR ADC entropy source. */
+void emergencyNodeLinkSeedNonce(const uint8_t seed[32]);
+/* EMERGENCY:KEY:* / EMERGENCY:STATION:* / EMERGENCY:AUTH:*. Returns true when the
+ * command belongs to this module. Refused unless localUsb. Never logs key bytes. */
+bool emergencyNodeLinkHandleMaintenance(const char *command, bool localUsb);
+bool emergencyNodeLinkIsMaintenanceCommand(const char *command);
 bool emergencyNodeLinkSafetyFault();
 const EmergencyNodeStatus *emergencyNodeLinkFind(const char *id);
 const EmergencyNodeStatus *emergencyNodeLinkSlot(uint8_t i);
