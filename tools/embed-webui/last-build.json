@@ -1,11 +1,11 @@
 {
-  "buildHash": "f71b594e3c78",
-  "buildUtc": "2026-10-17T20:35:31Z",
+  "buildHash": "0f6e0190411c",
+  "buildUtc": "2026-10-18T04:31:10Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 851297,
-  "embeddedBytes": 210149,
+  "rawBytes": 855613,
+  "embeddedBytes": 211615,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "d7b3b93e6da8451d750bb7f87ef85ab7c1d038a4",
+    "commit": "15db888db0a5b5ed863ddc69244701d66ae37c05",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 684595,
-    "embeddedBytes": 171149,
+    "rawBytes": 688911,
+    "embeddedBytes": 172614,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -97,7 +97,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10661,
-      "embedded": 3464,
+      "embedded": 3465,
       "gzip": true
     },
     {
@@ -236,8 +236,8 @@
     {
       "path": "/studio/js/timeline-fx-daw.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 14845,
-      "embedded": 4358,
+      "raw": 15157,
+      "embedded": 4459,
       "gzip": true
     },
     {
@@ -271,8 +271,8 @@
     {
       "path": "/studio/js/audio_browser.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 8759,
-      "embedded": 2518,
+      "raw": 9101,
+      "embedded": 2593,
       "gzip": true
     },
     {
@@ -292,15 +292,15 @@
     {
       "path": "/studio/js/panels.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 49775,
-      "embedded": 10652,
+      "raw": 50572,
+      "embedded": 10952,
       "gzip": true
     },
     {
       "path": "/studio/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 49572,
-      "embedded": 9949,
+      "raw": 49986,
+      "embedded": 10117,
       "gzip": true
     },
     {
@@ -320,8 +320,8 @@
     {
       "path": "/studio/js/studio-projects.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 15695,
-      "embedded": 4109,
+      "raw": 18146,
+      "embedded": 4930,
       "gzip": true
     },
     {
