@@ -1,11 +1,11 @@
 {
-  "buildHash": "0f6e0190411c",
-  "buildUtc": "2026-10-18T04:31:10Z",
+  "buildHash": "e24323aabd5a",
+  "buildUtc": "2026-10-18T11:02:28Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 855613,
-  "embeddedBytes": 211615,
+  "rawBytes": 854120,
+  "embeddedBytes": 211872,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "15db888db0a5b5ed863ddc69244701d66ae37c05",
+    "commit": "f3b726387779fb54979bfc428145d1016ccbdbb3",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 688911,
-    "embeddedBytes": 172614,
+    "rawBytes": 687418,
+    "embeddedBytes": 172872,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -97,7 +97,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10661,
-      "embedded": 3465,
+      "embedded": 3464,
       "gzip": true
     },
     {
@@ -166,8 +166,8 @@
     {
       "path": "/studio/css/studio-inspector-drawer.css",
       "mime": "text/css; charset=utf-8",
-      "raw": 3722,
-      "embedded": 1202,
+      "raw": 5922,
+      "embedded": 1637,
       "gzip": true
     },
     {
@@ -257,8 +257,8 @@
     {
       "path": "/studio/js/studio-inspector-drawer.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 5193,
-      "embedded": 1562,
+      "raw": 6929,
+      "embedded": 2072,
       "gzip": true
     },
     {
@@ -292,15 +292,15 @@
     {
       "path": "/studio/js/panels.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 50572,
-      "embedded": 10952,
+      "raw": 46235,
+      "embedded": 10327,
       "gzip": true
     },
     {
       "path": "/studio/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 49986,
-      "embedded": 10117,
+      "raw": 48894,
+      "embedded": 10055,
       "gzip": true
     },
     {
