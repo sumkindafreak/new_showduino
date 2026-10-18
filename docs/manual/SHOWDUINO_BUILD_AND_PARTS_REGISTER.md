@@ -8,6 +8,8 @@ This register is for the *physical Showduino build*, rather than an idealised sh
 
 The current physical main Showduino enclosure contains **three central boards**: the tilting Director touchscreen ESP32-S3, the dedicated Communications ESP32-S3, and the Waveshare ESP32-P4 Show Engine in its base. The separate dark enclosure used for the Audio Node contains the ESP32-A1S; it is **not** a second P4 enclosure.
 
+> **Firmware-specific wiring warning (18 October):** This register reflects the older `main` firmware (Audio 0.4.3: GPIO22 status indication). Draft integration PR #29 changes the Audio Node to **GPIO5 single status pixel + GPIO22 ten-pixel show output** (Audio 0.4.7 source). These layouts are not interchangeable. Verify the **actual flashed** version and matching `BoardConfig.h` before wiring or using the PR #29 acceptance scenario. See [dated finish-line status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-18.md).
+
 ## 1. Main control enclosure — confirmed architecture
 
 | Item / searchable model | Role and physical installation | Key electrical / software identity | Source and confidence |
