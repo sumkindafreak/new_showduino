@@ -4,6 +4,8 @@ Product: 1.0.0-rc.1 / SHDO v2. Status: documentation work in progress.
 
 This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md), [User Manual](SHOWDUINO_USER_MANUAL.md), [Quick Start](SHOWDUINO_QUICK_START.md), [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md), and [Manual Gaps](SHOWDUINO_MANUAL_GAPS.md).
 
+**Current finish-line exception (18 October):** For the first *all-node acceptance* run, do **not** substitute the simple new scene in the generic first-show workflow below. Use the fixed 22-second scenario and record both a complete run and an Emergency interruption as described in [the dated finish-line status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-18.md). The acceptance file and integrated fixes are on draft PR #29, not yet on `main`.
+
 ## Capture your installed build
 
 1. Photograph the three main boards in the central enclosure: Director S3 touchscreen, dedicated Comms S3, and P4 Show Engine.
