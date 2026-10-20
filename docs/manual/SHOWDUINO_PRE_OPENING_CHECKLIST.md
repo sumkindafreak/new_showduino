@@ -1,12 +1,16 @@
 # SHOWDUINO — Pre-Opening Checklist
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 **Use:** before admitting guests / beginning public operation  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
 **Date:** ____________________  **Attraction/production:** ____________________  **Operator:** ____________________
 
 > **People first. Show second. Hardware third.** If any check reveals a safety concern, keep the attraction closed until the physical issue and Showduino state are understood.
 
 ---
+
+- [ ] Record the installed firmware/component versions and manual revision. Website membership, saved IP and S3 reachability are not P4 readiness or Node acceptance.
 
 ## 1. Physical inspection
 

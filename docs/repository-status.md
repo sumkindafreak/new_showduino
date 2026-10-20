@@ -13,7 +13,7 @@ Related:
 - [Wireless Emergency + Pixel Node](emergency-node.md)
 - [System updates](system-updates.md)
 
-**Roadmap note:** the active P4 now owns authoritative runtime/safety, persistent TEST/LOG production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Persistent production `AUDIO`/`PIXEL` cue types and broader logical target routing remain follow-up work.
+**Roadmap note:** the active P4 now owns authoritative runtime/safety, bounded persistent PIXEL/AUDIO/LAMP/MOSFET/TEST/LOG production loading, onboard system audio, and the local GPIO23 segmented Show Pixel Engine. Those cue types are implemented in the persistent parser; broader cue coverage and physical acceptance remain open. See [production storage](production-storage.md).
 
 ---
 
@@ -106,7 +106,7 @@ The S3 Communications Engine now hosts the bench/browser SoftAP WebUI and proxie
 - GPIO23 local segmented Show Pixel Engine;
 - storage and local services as implemented.
 
-The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent production format v1 still accepts only TEST/LOG cues, so production-file PIXEL cue parsing remains future work.
+The GPIO23 engine currently supports direct/bench `PIXEL:` commands and the shared 25-effect vocabulary. Persistent production format v1 accepts bounded PIXEL, AUDIO, LAMP, MOSFET, TEST and LOG cues. ESTOP-prefixed pixel persistence remains unsupported. See [production storage](production-storage.md).
 
 ### Emergency/signage pixels — GPIO24
 

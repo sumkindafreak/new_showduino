@@ -1,7 +1,9 @@
 # SHOWDUINO — Quick Start
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 **For:** operators, attraction owners and first-time users  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e` · 26 September 2026  
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · 20 October 2026  
 **Status:** Release-candidate quick start. Read the full User Manual before putting a new installation into public operation.
 
 ---
@@ -87,6 +89,25 @@ The current local **system console** provides:
 The fuller Studio/SHDO authoring experience is substantially more capable than earlier RC wording, but persistent mixed-device production storage on the P4 is still limited. At this baseline, do **not** assume every authored timeline cue is already a finished persistent on-device show.
 
 For a first practical RC test, use an already installed production or the documented commissioning/deploy path rather than inventing files manually.
+
+---
+
+## Website Studio → installed production
+
+1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
+2. In **Deploy**, save the **Communications S3** LAN address (not the P4 address). Use the same local network. A saved IP, a creator/cloud label or a lit screen does not verify the P4 or any Node.
+3. On the public HTTPS website, **Prepare for P4** prepares a file. Use **Open Local Console** for the S3-hosted interface. Browser private-network/mixed-content restrictions may prevent website verification even when the local console works.
+4. In that console, open **Productions → Persist SHDO v2 to P4 SD**, choose the exported file and select **Persist to SD**. Wait for the P4 result. Persistence compiles only supported cues; a rejected file is not installed. Copying an editable SHDO onto SD is not this deployment process.
+5. Persisting does **not** load or start the production. Select the intended production and **Load**, verify P4-confirmed loaded state, then use the Director **LIVE → START** when the test area is ready.
+6. Confirm actual Node outputs, stop behaviour and Emergency/recovery on isolated test loads. Save the firmware identifiers and physical test results before guest operation.
+
+Public Studio, the embedded `/studio/` snapshot and the S3 system console can be different builds. The local console's **Persist to SD** workflow writes SD; `/api/studio-timeline` is a separate temporary RAM commissioning path and does not persist a production.
+
+### Accounts, membership and indicators
+
+A free Showduino ID provides community/account access; optional Starter, Pro and Studio memberships are proposed, with no published feature/price promise or payment activation. Hardware-owner entitlements are separate and require confirmed terms; registering a browser inventory entry does not activate access or prove a device is connected. Existing Studio authoring tools remain available without paid membership.
+
+Website hardware status starts **HARDWARE NOT VERIFIED**. **S3 CONNECTED** requires a ready Showduino capability response at the configured/local address; it establishes S3 reachability only. **P4 · NOT VERIFIED** does not establish runtime health. Check authoritative P4 and required Node states in the Director/local console. **LOCAL** describes saving, and **CREATOR · TESTING** describes browser mode.
 
 ---
 

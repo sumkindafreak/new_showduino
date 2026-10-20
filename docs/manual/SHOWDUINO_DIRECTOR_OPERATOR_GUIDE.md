@@ -1,8 +1,10 @@
 # Showduino | The Operator's Guide
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 **The Director touchscreen, sound, lighting and everyday attraction operation**  
 **Audience:** first-time owners, attraction operators and non-technical staff  
-**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.1 / 21 September 2026  
+**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.3-RC / 20 October 2026  
 **Source reviewed:** [Showduino repository](../../README.md), current active Director firmware, specialist-node documents and RC physical-test checklist.
 
 > **This is the easy-to-use companion to the complete [Showduino User Manual](SHOWDUINO_USER_MANUAL.md).** It explains what to touch and what to expect, not how to write ESP32 firmware. The product is still a release candidate; functions noted as awaiting physical acceptance are not promises of a fully commissioned public-venue installation.
@@ -111,7 +113,7 @@ The Director can display an Audio Node's input-level/noise-floor/trigger diagnos
 
 Ask the installer/show designer to place an approved file on the **Audio Node's microSD card**. The firmware expects files beneath:
 
-\`\`\`text
+```text
 /showduino/audio/
     ambience/
     effects/
@@ -119,9 +121,9 @@ Ask the installer/show designer to place an approved file on the **Audio Node's 
     music/
     stingers/
     test/
-\`\`\`
+```
 
-For example, a supported 16-bit PCM file stored at \`/showduino/audio/effects/thunder.wav\` is referenced as \`effects/thunder.wav\` by the Audio Node. It must be a genuine WAV file: **renaming \`thunder.mp3\` to \`thunder.wav\` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
+For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
 
 **No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
 
@@ -172,7 +174,7 @@ The Director is **not intended to be a full timeline/lighting editor**. A show d
 
 **Sensors and switches:** an installer can connect supported inputs so the Show Engine receives trigger signals. What a specific door switch or motion detector *does* depends on the prepared show and the supported cue/runtime path; seeing a sensor in the system does not mean every possible reaction is already configured.
 
-**MOSFET Node:** the Director may show a MOSFET tile, but the repository still classifies its specialist firmware as **planned**, not a completed, commissioned output product. Do not promise customers that mains or motor equipment can be connected directly to this tile.
+**MOSFET Node:** software supports four low-voltage DC switched/PWM outputs, pulses and fades. Physical GPIO mapping and load acceptance remain unverified for the installed board. Emergency, authority loss and show-stop paths require outputs OFF; recovery must not restore a previous powered state. A Director tile is not electrical acceptance or a mains/motor rating.
 
 **DMX:** the Director may also contain a DMX tile. Professional DMX/E1.31 production-lighting control remains **parked**; a visible tile is not evidence that a DMX expansion has been supplied.
 
@@ -212,10 +214,10 @@ Only after the real-world incident has been resolved and the area is safe:
 
 You can also use the **local browser console** for more detailed configuration, checking nodes, commissioning lighting and managing shows. On the current RC bench configuration, connect to the supplied **Showduino** Wi-Fi access point, then open:
 
-\`\`\`text
+```text
 http://192.168.4.1/          local system console
 http://192.168.4.1/studio/   embedded Studio authoring snapshot
-\`\`\`
+```
 
 Your installer must confirm the actual network name, address and credentials used by your finished unit. The documented default password is a **bench credential, not a public venue password**.
 
@@ -224,6 +226,8 @@ Your installer must confirm the actual network name, address and credentials use
 The local Show Engine does not need venue Internet to run an already loaded show. Internet access is relevant to optional functions such as checking for a Comms firmware update; **system-wide OTA is not currently available**.
 
 ---
+
+For the current website export → local-console persist → load → start steps, see [Quick Start: installed production](SHOWDUINO_QUICK_START.md#website-studio--installed-production). Website **S3 CONNECTED** verifies the communications endpoint only; confirm P4 and Nodes separately. Accounts and planned memberships do not determine live hardware health.
 
 ## 8. Quick troubleshooting
 

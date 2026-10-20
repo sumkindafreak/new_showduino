@@ -1,5 +1,7 @@
 # Showduino: Weekend Build and First-Show Guide
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 Product: 1.0.0-rc.1 / SHDO v2. Status: documentation work in progress.
 
 This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md), [User Manual](SHOWDUINO_USER_MANUAL.md), [Quick Start](SHOWDUINO_QUICK_START.md), [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md), and [Manual Gaps](SHOWDUINO_MANUAL_GAPS.md).
@@ -20,7 +22,7 @@ Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working s
 3. Create one simple scene and one timed Pixel or Audio clip inside Studio.
 4. Validate and export SHDO v2. Refer to [show format](../show-file-format.md) and [Studio documentation](../studio/README.md).
 5. Verify which authored cue types the installed P4 firmware can deploy and execute; Studio preview alone is not physical proof.
-6. Load the production without automatically starting it. Start and stop it explicitly and record actual hardware responses.
+6. From Website Studio, export the `.shdo`, open the saved Communications S3 address, then use **Productions → Persist SHDO v2 to P4 SD → Persist to SD**. Wait for the P4 confirmation, separately **Load** the production, then explicitly **START** and **STOP**. Record actual hardware responses. See the [Quick Start workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
 7. Test Emergency assertion, operator-authorised clear, blackout or override, and no automatic show restart.
 
 Showduino Emergency is a theatrical show-control function and is not a certified life-safety system. Isolate risky loads during bench tests.

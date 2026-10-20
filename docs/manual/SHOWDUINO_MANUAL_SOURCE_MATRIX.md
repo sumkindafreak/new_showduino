@@ -1,11 +1,13 @@
 # Showduino Commercial Manual — Source Matrix
 
-**Manual baseline date:** 26 September 2026  
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
+**Manual baseline date:** 20 October 2026  
 **Repository:** `sumkindafreak/new_showduino`  
 **Baseline branch:** `main`  
 **Starting SHA (original commercial pass):** `9f304cdc65786c0e8d306987010a97eb5a3ad587`  
-**Current documentation baseline SHA:** `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
-**Manual revision:** 0.2-RC  
+**Current documentation baseline SHA:** `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
+**Manual revision:** 0.3-RC  
 **Product:** Showduino `1.0.0-rc.1`
 
 This matrix traces customer-facing manual claims back to the repository snapshot used for this documentation pass.
@@ -66,10 +68,10 @@ This matrix traces customer-facing manual claims back to the repository snapshot
 | Authoring | SHDO v2 is active portable authoring/interchange contract | `protocol/showduino_version.h` | `docs/studio/production-format.md` | protocol SHDO headers/compiler | YES — CONTRACT | HARDWARE REQUIRED | P4 runtime store is a compiled/subset representation, not direct arbitrary authoring JSON execution. |
 | Production deployment | Deploy commit does not auto-load or auto-start | `docs/production-storage.md` | deployment protocol | P4 ProductionDeploy/Store | YES — CODE | HARDWARE REQUIRED | Emergency aborts commit. |
 | Production storage | P4 SD path `/showduino/productions/<id>/manifest.json + timeline.json` | `docs/production-storage.md` | `docs/p4-sd-storage.md` | ProductionStore | YES — CODE | HARDWARE REQUIRED | Current runtime format v1. |
-| Production storage | Persistent v1 accepts PIXEL / AUDIO / LAMP / TEST / LOG (not ESTOP cue type); full theatrical set still incomplete | `ProductionFormat.cpp` | `docs/production-storage.md` | production parser + SHDO deploy | PARTIAL | HARDWARE REQUIRED | Gap 007 partially resolved. Older TEST/LOG-only prose was stale. |
+| Production storage | Persistent v1 accepts PIXEL / AUDIO / LAMP / MOSFET / TEST / LOG (not ESTOP cue type); full theatrical set still incomplete | `ProductionFormat.cpp` | `docs/production-storage.md` | production parser + SHDO deploy | PARTIAL | HARDWARE REQUIRED | Gap 007 partially resolved. Older TEST/LOG-only prose was stale. |
 | RAM Studio deploy | `/api/studio-timeline` supports commissioning timeline with PIXEL + AUDIO:NODE, no autoStart | `web/showduino-studio/README.md` | `docs/studio/README.md` | S3 API → P4 | YES — CODE | HARDWARE REQUIRED | Separate from persistent production storage. |
 | Pixels | P4 GPIO23 segmented engine supports up to 16 segment slots and shared FX vocabulary | `docs/audio-pixel-engine.md` | `docs/command-protocol.md` | `src/ShowPixels.*`, `protocol/showduino_pixel_fx.h` | YES — CODE | HARDWARE REQUIRED | Current default count 100; configured max capacity differs from installed line. |
-| Pixels | Production-file PIXEL cues are not complete in persistent v1 | `docs/audio-pixel-engine.md` | `docs/production-storage.md` | parser/runtime integration | NO — PLANNED | NO | Do not present commissioning controls as complete show authoring. |
+| Pixels | Persistent format v1 accepts PIXEL commands with the PIXEL: prefix | `firmware/stage-engine-p4/ShowduinoStageEngineP4/src/ProductionFormat.cpp` | `docs/production-storage.md` | parser/runtime integration | YES — CODE, bounded subset | HARDWARE REQUIRED | ESTOP-prefixed pixel cues remain unsupported on persistent load. |
 | Audio Node | Attraction/programme WAV playback is specialist Audio Node | `docs/audio-node.md` | `docs/audio-pixel-engine.md` | `firmware/audio-node-esp32-a1s/` | YES — CODE | HARDWARE REQUIRED | WAV current; MP3/Ogg/FLAC planned. |
 | Audio Node | Same peer exposes full Showduino Pixel Line on GPIO22 (shared FX / segments / max 512 software target) | `docs/audio-pixel-engine.md` | Audio Pixel engine source | `AudioPixelEngine.*`, Studio `audio-node-pixels` | YES — CODE | HARDWARE REQUIRED | Not a fake LED identity. Emergency white override + clear-to-black. |
 | Audio Node | Emergency stops/mutes attraction audio; clear returns safe idle/no resume | `docs/audio-node.md` | Audio Node protocol/tests | Audio Node firmware | YES — CODE | HARDWARE REQUIRED | P4 reconciles Node Emergency state. |
@@ -127,4 +129,8 @@ At minimum, this manual pass inspected or searched the active versions of:
 
 ## Baseline acquisition note
 
-This synchronisation pass was performed against a local clone of `sumkindafreak/new_showduino` on branch `main` at SHA `8c49ebd21dff2123527e3aa5a7360a9e4527025e`, updating the commercial manuals from the original 16 September 2026 baseline (`9f304cdc…`). No firmware files were modified.
+This synchronisation pass was performed against a local clone of `sumkindafreak/new_showduino` on branch `main` at SHA `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`, updating the commercial manuals from the original 16 September 2026 baseline (`9f304cdc…`). No firmware files were modified.
+
+## October 2026 review evidence
+
+See [documentation review](SHOWDUINO_DOCUMENTATION_REVIEW.md) for the scope and primary files checked this time. The earlier source inventory above is retained as the manual lineage; it does not claim every historical source was freshly revalidated. Persistent MOSFET acceptance follows `ProductionFormat.cpp` and the passing production-format host test. Website indicators/membership follow website merge `41d3c753491a60212b855019712d342e1eed030c`.
