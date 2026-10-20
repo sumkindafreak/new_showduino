@@ -1,13 +1,15 @@
 # SHOWDUINO
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 ## Commercial Show Control System
 
 # User Manual
 
-**Manual revision:** 0.2-RC — synchronised to current `main` architecture  
+**Manual revision:** 0.3-RC — synchronised to current `main` architecture  
 **Applicable product:** Showduino `1.0.0-rc.1`  
-**Repository baseline:** `main` at `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
-**Baseline date:** 26 September 2026  
+**Repository baseline:** `main` at `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
+**Baseline date:** 20 October 2026  
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
 
 ---
@@ -651,6 +653,25 @@ That gap is explicitly tracked for completion rather than hidden behind develope
 
 ---
 
+## Website Studio → installed production
+
+1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
+2. In **Deploy**, save the **Communications S3** LAN address (not the P4 address). Use the same local network. A saved IP, a creator/cloud label or a lit screen does not verify the P4 or any Node.
+3. On the public HTTPS website, **Prepare for P4** prepares a file. Use **Open Local Console** for the S3-hosted interface. Browser private-network/mixed-content restrictions may prevent website verification even when the local console works.
+4. In that console, open **Productions → Persist SHDO v2 to P4 SD**, choose the exported file and select **Persist to SD**. Wait for the P4 result. Persistence compiles only supported cues; a rejected file is not installed. Copying an editable SHDO onto SD is not this deployment process.
+5. Persisting does **not** load or start the production. Select the intended production and **Load**, verify P4-confirmed loaded state, then use the Director **LIVE → START** when the test area is ready.
+6. Confirm actual Node outputs, stop behaviour and Emergency/recovery on isolated test loads. Save the firmware identifiers and physical test results before guest operation.
+
+Public Studio, the embedded `/studio/` snapshot and the S3 system console can be different builds. The local console's **Persist to SD** workflow writes SD; `/api/studio-timeline` is a separate temporary RAM commissioning path and does not persist a production.
+
+### Accounts, membership and indicators
+
+A free Showduino ID provides community/account access; optional Starter, Pro and Studio memberships are proposed, with no published feature/price promise or payment activation. Hardware-owner entitlements are separate and require confirmed terms; registering a browser inventory entry does not activate access or prove a device is connected. Existing Studio authoring tools remain available without paid membership.
+
+Website hardware status starts **HARDWARE NOT VERIFIED**. **S3 CONNECTED** requires a ready Showduino capability response at the configured/local address; it establishes S3 reachability only. **P4 · NOT VERIFIED** does not establish runtime health. Check authoritative P4 and required Node states in the Director/local console. **LOCAL** describes saving, and **CREATOR · TESTING** describes browser mode.
+
+---
+
 # 12. Productions and scenes
 
 ## 12.1 Production
@@ -679,7 +700,7 @@ Current product/device concepts include:
 - specialist **Pixel Node** foundation (standalone C3);
 - **Wireless Emergency + Pixel Node** (`ESTOP-xx`: assert-only Emergency plus optional GPIO2 Pixel Line on the same peer);
 - P4 Plug-in Bus devices;
-- future **MOSFET Node**.
+- software-implemented **MOSFET Node**, pending physical pin/load validation.
 
 The old Relay Node product direction is retired/legacy and must not be used as the basis of a new commercial workflow.
 
@@ -713,6 +734,7 @@ The current persistent P4 production format v1 is intentionally strict. At this 
 - `PIXEL` (commands must begin with `PIXEL:`)
 - `AUDIO` (commands must begin with `AUDIO:NODE:`)
 - `LAMP` (commands must begin with `LAMP:`)
+- `MOSFET` (commands must begin with `MOSFET:NODE:`)
 - internal `TEST` / `LOG`
 
 SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
@@ -885,7 +907,7 @@ The shared current FX vocabulary includes:
 
 That is **25** current Showduino FX entries shared across the Pixel-capable peers listed above.
 
-These are current engine/commissioning capabilities. Persistent production-file PIXEL cue support is not yet complete.
+These are current engine/commissioning capabilities. Persistent format v1 accepts bounded PIXEL commands; unsupported routes and physical acceptance remain limited (Section 14.2).
 
 ## 17.2 Outputs browser page
 
@@ -1048,7 +1070,7 @@ Current persistent productions are stored under:
 
 Current production format v1 is bounded and validates file size, cue count, duplicate IDs, time order, path traversal and supported cue types.
 
-At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
+At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
 
 ## 21.3 SHDO v2
 
@@ -1344,11 +1366,11 @@ For this manual revision the source baseline is:
 
 ```text
 Showduino platform: 1.0.0-rc.1
-P4 source:           0.6.5 at baseline HEAD
-Comms source:        0.5.2 at baseline HEAD
+P4 source:           0.6.8 at baseline HEAD
+Comms source:        0.5.4 at baseline HEAD
 Director manifest:   0.9.7-director (release manifest; current source lacks an equivalent clear BoardConfig version constant)
-Repository SHA:      8c49ebd21dff2123527e3aa5a7360a9e4527025e
-Date:                26 September 2026
+Repository SHA:      f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2
+Date:                20 October 2026
 ```
 
 The committed release manifest still lists older P4/Comms component numbers than live `BoardConfig.h` values on this SHA, so the exact repository SHA is intentionally retained as the documentation baseline until release inventory is refreshed.

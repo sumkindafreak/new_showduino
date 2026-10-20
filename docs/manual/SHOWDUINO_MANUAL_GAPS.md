@@ -1,12 +1,14 @@
 # Showduino Commercial Manual — Verification Gaps
 
-**Manual baseline date:** 26 September 2026  
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
+**Manual baseline date:** 20 October 2026  
 **Repository:** `sumkindafreak/new_showduino`  
 **Baseline branch:** `main`  
-**Baseline commit:** `8c49ebd21dff2123527e3aa5a7360a9e4527025e`  
+**Baseline commit:** `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
 **Previous commercial-manual baseline:** `9f304cdc65786c0e8d306987010a97eb5a3ad587` (16 September 2026)  
 **Product baseline:** Showduino `1.0.0-rc.1`  
-**Manual revision:** 0.2-RC
+**Manual revision:** 0.3-RC
 
 This document records anything that could not honestly be presented as finished commercial product behaviour during the repository-verified manual pass. It is deliberately conservative: uncertainty belongs here, not disguised as customer-facing fact.
 
@@ -174,7 +176,7 @@ Complete and freeze the customer-facing authoring/deployment workflow, then capt
 **Category:** IMPLEMENTATION GAP  
 **Primary evidence:** `ProductionFormat.cpp`, `docs/production-storage.md`, `docs/audio-pixel-engine.md`
 
-P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
+P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
 
 Still incomplete relative to the full commercial theatrical set:
 
@@ -183,7 +185,7 @@ Still incomplete relative to the full commercial theatrical set:
 - Studio inventory/authoring for every pixel-capable peer is not equally complete (see GAP-021);
 - physical acceptance of mixed-device persisted shows remains open.
 
-Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.2-RC follow-up.
+Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.3-RC follow-up.
 
 ### Required resolution
 
@@ -199,7 +201,7 @@ Complete ESTOP/other missing persist routes, widen the theatrical cue model wher
 
 “Studio” currently refers both to the S3-hosted system/commissioning console and to the richer SHDO v2 authoring experience/blueprint. This can confuse owners reading a commercial manual.
 
-Manual 0.2-RC uses **System Console** vs **Studio** wording where practical, but product naming is not frozen in firmware/UI chrome.
+Manual 0.3-RC uses **System Console** vs **Studio** wording where practical, but product naming is not frozen in firmware/UI chrome.
 
 ### Required resolution
 
@@ -270,8 +272,8 @@ Physically prove normal Comms OTA and failed-health rollback on the current hard
 
 The committed RC release manifest still lags live source. At this documentation SHA:
 
-- P4 `BoardConfig.h` reports `0.6.5`;
-- Comms `BoardConfig.h` reports `0.5.2`;
+- P4 `BoardConfig.h` reports `0.6.8`;
+- Comms `BoardConfig.h` reports `0.5.4`;
 - Director remains primarily identified via the release-manifest label `0.9.7-director` without an equally clear active BoardConfig constant.
 
 ### Required resolution
@@ -300,7 +302,7 @@ When the OS 2.0 shell becomes the shipping UI, revise the Director chapter and s
 **Category:** DOCUMENTATION GAP / HARDWARE VALIDATION REQUIRED  
 **Sources:** Director `DisplayPages.h`, `ShowduinoUi.h`, recent Git history
 
-Active titles now include dedicated **AUDIO NODE** and **LAMP NODE** pages in addition to HOME / PRODUCTIONS / SHOW DETAILS / LIVE / NODES / DIAGNOSTICS / SETTINGS / AUDIO / SYSTEM LOGS. Manual 0.2-RC was updated to match those titles. A commercial screenshot set would still become stale quickly and remains outstanding.
+Active titles now include dedicated **AUDIO NODE** and **LAMP NODE** pages in addition to HOME / PRODUCTIONS / SHOW DETAILS / LIVE / NODES / DIAGNOSTICS / SETTINGS / AUDIO / SYSTEM LOGS. Manual 0.3-RC was updated to match those titles. A commercial screenshot set would still become stale quickly and remains outstanding.
 
 ### Required resolution
 
@@ -334,7 +336,7 @@ At this baseline:
 - S3 Lamp Node — active; Adafruit Audio FX UART WAV library; physical pins confirmed; some sensor details remain unconfirmed; Director Lamp page exists;
 - C3 Pixel Node — active, hardware test required;
 - C3 Emergency + Pixel Node — software implemented (momentary GPIO4, OLED, GPIO2 full Pixel); GPIO/physical acceptance incomplete;
-- MOSFET Node — planned/not implemented;
+- MOSFET Node — software implemented; physical GPIO/load and integrated fail-safe acceptance remain open;
 - Relay Node — legacy/retired.
 
 ### Required resolution

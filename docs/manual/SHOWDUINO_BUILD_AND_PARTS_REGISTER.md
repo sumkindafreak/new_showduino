@@ -1,5 +1,7 @@
 # Showduino — Hardware, Software & Replacement Parts Register
 
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
 **Working inventory · 16 October 2026**  
 **Product:** 1.0.0-rc.1 · **Status:** working documentation; hardware acceptance remains separate  
 **Primary sources:** [hardware pinout](../hardware-pinout.md), [repository status](../repository-status.md), each active firmware `README.md` and board `BoardConfig.h`.

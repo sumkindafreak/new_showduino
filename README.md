@@ -63,10 +63,10 @@ The Comms S3 serves the browser frontend and forwards commands; it **does not** 
 | Node | Intended capability | Repository status |
 | --- | --- | --- |
 | **Audio Node** (ESP32-A1S / ES8388) | SD-based WAV attraction audio; play, loop, stop, pause, volume, fade/duck, local sound-level/trigger diagnostics and standalone/managed ownership | Active firmware; physical audio, radio and end-to-end cue tests required |
-| **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Fermion audio, motion provision and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
+| **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Adafruit Audio FX WAV audio, motion provision and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
 | **C3 Pixel Node** | One remote WS2812/NeoPixel line on GPIO2, segmented effects, OLED and node commissioning; configured limit 1–512 pixels | Active firmware; physical output and radio testing required |
 | **C3 Emergency Node** | Additional wireless station that can **assert**, but never clear, the P4 emergency latch | Active firmware; station-specific hardware/input commissioning and safety acceptance required |
-| **MOSFET Node** | Future digital switching and PWM/dimming specialist | **Planned; not a completed production node** |
+| **MOSFET Node** | Future digital switching and PWM/dimming specialist | **Software implemented; GPIO mapping, loads and integrated operation require physical acceptance** |
 | **DMX / E1.31 production control** | Possible future stage-lighting integration | **Parked expansion; not included as a supported production-control feature** |
 
 The retired Relay Node and historical C3 Lamp implementation remain in the repository for reference; do not confuse them with current specialist products. See the [repository status](docs/repository-status.md) and [node roadmap](docs/node-roadmap.md). Older per-component README files may lag the active source and should not override current BoardConfig or implementation.

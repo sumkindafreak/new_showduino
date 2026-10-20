@@ -49,7 +49,7 @@ It is hosted by the Communications S3. It is **not** a complete SHDO authoring S
 | Claim | Reality in this repo |
 |-------|----------------------|
 | Create / edit full `.shdo` on device | **Not implemented** in this WebUI. SHDO v2 is the authoring contract in `docs/studio/production-format.md` |
-| Upload `.shdo` to P4 SD as native format | **Not implemented.** P4 persistent store is format v1 TEST/LOG only |
+| Upload `.shdo` to P4 SD as native format | **Implemented as compile-and-store**, not native authoring JSON execution. Productions → Persist SHDO v2 to P4 SD compiles supported cues into format v1; it does not auto-load or auto-start |
 | RAM timeline deploy | **Implemented** as `/api/studio-timeline` — PIXEL and AUDIO:NODE cues only; P4 remains authority; `autoStart` is false |
 | Commission GPIO23 segments + Audio Node | **Implemented** on the Outputs page |
 | C3 Lamp Node | **Status/diagnostics exposed**; full FX editor is not in this UI yet |
