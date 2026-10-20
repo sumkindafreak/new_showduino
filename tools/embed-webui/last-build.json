@@ -1,11 +1,11 @@
 {
-  "buildHash": "94dc3967089b",
-  "buildUtc": "2026-10-20T17:01:48Z",
+  "buildHash": "c90b120acc44",
+  "buildUtc": "2026-10-20T20:10:01Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 854447,
-  "embeddedBytes": 212012,
+  "rawBytes": 853759,
+  "embeddedBytes": 211996,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "d453ae304a18851345683c956b6f458d212f26de",
+    "commit": "6c785fb3b2176a8f661d5325bd719f6366b43bee",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 687745,
-    "embeddedBytes": 173011,
+    "rawBytes": 687057,
+    "embeddedBytes": 172996,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -97,7 +97,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10661,
-      "embedded": 3465,
+      "embedded": 3464,
       "gzip": true
     },
     {
@@ -292,15 +292,15 @@
     {
       "path": "/studio/js/panels.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 46235,
-      "embedded": 10327,
+      "raw": 45456,
+      "embedded": 10291,
       "gzip": true
     },
     {
       "path": "/studio/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 48894,
-      "embedded": 10055,
+      "raw": 48985,
+      "embedded": 10076,
       "gzip": true
     },
     {
