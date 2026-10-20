@@ -1,11 +1,11 @@
 {
-  "buildHash": "c90b120acc44",
-  "buildUtc": "2026-10-20T20:10:01Z",
+  "buildHash": "54ff2039e159",
+  "buildUtc": "2026-10-20T21:36:03Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 853759,
-  "embeddedBytes": 211996,
+  "rawBytes": 854281,
+  "embeddedBytes": 212259,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "6c785fb3b2176a8f661d5325bd719f6366b43bee",
+    "commit": "da6ff24e861492c8b5f95c5a08bee7fdc5bfb513",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 687057,
-    "embeddedBytes": 172996,
+    "rawBytes": 687579,
+    "embeddedBytes": 173259,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -187,8 +187,8 @@
     {
       "path": "/studio/js/cloud/supabase-service.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19064,
-      "embedded": 4842,
+      "raw": 19586,
+      "embedded": 5105,
       "gzip": true
     },
     {
