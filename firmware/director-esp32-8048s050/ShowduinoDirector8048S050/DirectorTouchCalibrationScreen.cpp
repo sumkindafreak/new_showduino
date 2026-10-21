@@ -260,6 +260,7 @@ void DirectorTouchCalibrationScreen::enterCapture(uint32_t nowMs) {
   acceptedThisPress_ = false;
   waitingRelease_ = true;
   ignoreSample_ = false;
+  lastSampleStampMs_ = 0;
   showduino_touch_cal_sample_reset(&samples_);
   memset(points_, 0, sizeof(points_));
   setPhase(Phase::Capture);
@@ -336,6 +337,38 @@ void DirectorTouchCalibrationScreen::onPointAccepted(int32_t rawX, int32_t rawY)
   if (ack_) lv_obj_clear_flag(ack_, LV_OBJ_FLAG_HIDDEN);
 }
 
+void DirectorTouchCalibrationScreen::onFingerUp() {
+  if (!waitingRelease_) return;
+  waitingRelease_ = false;
+  lastSampleStampMs_ = 0;
+  if (!acceptedThisPress_) return;
+  acceptedThisPress_ = false;
+  if (phase_ != Phase::Capture) return;
+  if (pointIndex_ + 1 >= SHOWDUINO_TOUCH_CAL_POINT_N) {
+    finishFit();
+    return;
+  }
+  pointIndex_++;
+  showduino_touch_cal_sample_reset(&samples_);
+  refreshCopy();
+  layoutTarget();
+}
+
+void DirectorTouchCalibrationScreen::captureWhileDown(int32_t rawX, int32_t rawY) {
+  if (phase_ != Phase::Capture) return;
+  if (waitingRelease_ || ignoreSample_ || actionDown_ != 0) return;
+  const uint32_t stamp = touchLvglRawStampMs();
+  if (stamp == lastSampleStampMs_) return;
+  lastSampleStampMs_ = stamp;
+  showduino_touch_cal_sample_add(&samples_, rawX, rawY);
+  if (samples_.n >= SHOWDUINO_TOUCH_CAL_SAMPLES) {
+    int32_t mx = 0, my = 0;
+    showduino_touch_cal_sample_median(&samples_, &mx, &my);
+    onPointAccepted(mx, my);
+    showduino_touch_cal_sample_reset(&samples_);
+  }
+}
+
 void DirectorTouchCalibrationScreen::finishFit() {
   const int rc = showduino_touch_cal_fit(points_, SHOWDUINO_TOUCH_CAL_POINT_N,
                                          SCREEN_WIDTH, SCREEN_HEIGHT, &pending_);
@@ -379,13 +412,45 @@ bool DirectorTouchCalibrationScreen::onTouch(int32_t x, int32_t y, bool pressed)
     const int up = hitAction(x, y);
     const int act = (up != 0 && up == actionDown_) ? up : 0;
     actionDown_ = 0;
-    if (act == kActCancel) doCancel();
-    else if (act == kActRetry) start(millis());
-    else if (act == kActSave) doSave();
-    else if (act == kActReset) doReset();
+    pressed_ = false;
+    if (act == kActCancel) {
+      doCancel();
+      return true;
+    }
+    if (act == kActRetry) {
+      start(millis());
+      return true;
+    }
+    if (act == kActSave) {
+      doSave();
+      return true;
+    }
+    if (act == kActReset) {
+      doReset();
+      return true;
+    }
   }
+
+  TouchRawPoint raw;
+  const bool down = touchLvglReadRaw(raw);
+  if (phase_ == Phase::Test && down) {
+    int32_t sx = 0, sy = 0;
+    touchLvglMapWith(&pending_, raw.x, raw.y, &sx, &sy);
+    if (marker_) {
+      lv_obj_set_pos(marker_, sx - 8, sy - 8);
+      lv_obj_clear_flag(marker_, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (pressed && down) {
+    captureWhileDown(raw.x, raw.y);
+  }
+  if (!pressed) {
+    showduino_touch_cal_sample_reset(&samples_);
+    onFingerUp();
+    ignoreSample_ = false;
+  }
+
   pressed_ = pressed;
-  if (!pressed) ignoreSample_ = false;
   return true;
 }
 
@@ -407,9 +472,10 @@ void DirectorTouchCalibrationScreen::tick(uint32_t nowMs) {
     ackUntilMs_ = 0;
   }
 
+  /* Cache only — never a second GT911 read. Clears the post-CALIBRATE wait
+   * even if LVGL has not delivered another hook sample yet. */
   TouchRawPoint raw;
   const bool down = touchLvglReadRaw(raw);
-
   if (phase_ == Phase::Test && down) {
     int32_t sx = 0, sy = 0;
     touchLvglMapWith(&pending_, raw.x, raw.y, &sx, &sy);
@@ -418,42 +484,7 @@ void DirectorTouchCalibrationScreen::tick(uint32_t nowMs) {
       lv_obj_clear_flag(marker_, LV_OBJ_FLAG_HIDDEN);
     }
   }
-
-  if (phase_ != Phase::Capture) {
-    if (!down) waitingRelease_ = false;
-    return;
-  }
-
-  if (waitingRelease_) {
-    if (!down) {
-      waitingRelease_ = false;
-      if (acceptedThisPress_) {
-        acceptedThisPress_ = false;
-        if (pointIndex_ + 1 >= SHOWDUINO_TOUCH_CAL_POINT_N) finishFit();
-        else {
-          pointIndex_++;
-          showduino_touch_cal_sample_reset(&samples_);
-          refreshCopy();
-          layoutTarget();
-        }
-      }
-    }
-    return;
-  }
-
-  if (!down) {
-    showduino_touch_cal_sample_reset(&samples_);
-    return;
-  }
-  if (ignoreSample_) return;
-
-  showduino_touch_cal_sample_add(&samples_, raw.x, raw.y);
-  if (samples_.n >= SHOWDUINO_TOUCH_CAL_SAMPLES) {
-    int32_t mx = 0, my = 0;
-    showduino_touch_cal_sample_median(&samples_, &mx, &my);
-    onPointAccepted(mx, my);
-    showduino_touch_cal_sample_reset(&samples_);
-  }
+  if (!down) onFingerUp();
 }
 
 void directorTouchCalStart() {
