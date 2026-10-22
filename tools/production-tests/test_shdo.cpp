@@ -89,6 +89,25 @@ int main() {
   expect(std::strstr(manJson, "\"formatVersion\": 1") != nullptr, "manifest format v1");
   expect(std::strstr(tlJson, "INTERNAL:") != nullptr, "timeline has INTERNAL command");
 
+  // Regression: Studio writes action.value before action.params and may put
+  // the clip-level params after action. Previously parsing skipped a second
+  // token after consuming action.value and returned "invalid clip object".
+  std::string studioExport(kMinimal);
+  const std::string marker = "\\\"name\\\": \\\"hello\\\"";
+  const std::string studioAction =
+      "\\\"name\\\": \\\"hello\\\", \\\"action\\\": { \\\"type\\\": \\\"test\\\", "
+      "\\\"value\\\": \\\"intro.wav\\\", \\\"params\\\": { \\\"volume\\\": 77 } }, "
+      "\\\"params\\\": { \\\"file\\\": \\\"intro.wav\\\" }";
+  const std::size_t markerPos = studioExport.find(marker);
+  expect(markerPos != std::string::npos, "Studio-style clip fixture created");
+  if (markerPos != std::string::npos) {
+    studioExport.replace(markerPos, marker.size(), studioAction);
+    const ShdoStatus studioStatus = shdoCompile(studioExport.c_str(), studioExport.size(),
+                                                &manifest, cues, 8, &count, err, sizeof(err));
+    expect(studioStatus == SHDO_OK, "Studio-style action.value parses successfully");
+    expect(count == 1, "Studio-style action yields a cue");
+  }
+
   const ShdoStatus weak = shdoCompile(kWeakSafety, std::strlen(kWeakSafety), &manifest, cues, 8,
                                       &count, err, sizeof(err));
   expect(weak == SHDO_SAFETY_WEAKENED, "rejects autoResume");
