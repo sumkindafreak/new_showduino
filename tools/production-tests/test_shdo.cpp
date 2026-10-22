@@ -29,6 +29,15 @@ static bool loadFirstAudioExample(std::string *out, std::string *usedPath) {
   return false;
 }
 
+static bool loadFixture(const char *name, std::string *out) {
+  static const char *kDirs[] = {"tools/production-tests/fixtures/", "fixtures/",
+                                "../../tools/production-tests/fixtures/", nullptr};
+  for (int i = 0; kDirs[i]; ++i) {
+    if (loadFile((std::string(kDirs[i]) + name).c_str(), out)) return true;
+  }
+  return false;
+}
+
 static int failures = 0;
 
 static void expect(bool condition, const char *name) {
@@ -475,6 +484,48 @@ int main() {
                example.find("\"type\": \"pixel\"") == std::string::npos &&
                example.find("\"type\": \"lamp\"") == std::string::npos,
            "first-audio-test authoring binds only the Audio Node");
+  }
+
+  // W005: genuine files exported by the website Studio (Export .shdo button, website
+  // main at 1f4986a). They put action.value before action.params and carry no
+  // clip-level params, which is what the old parser rejected.
+  {
+    std::string web;
+    expect(loadFixture("website-studio-export.shdo", &web), "website Studio export fixture loads");
+    if (!web.empty()) {
+      ShdoManifest webManifest{};
+      ShdoCue webCues[64]{};
+      uint16_t webCount = 0;
+      const ShdoStatus webStatus = shdoCompile(web.c_str(), web.size(), &webManifest, webCues, 64,
+                                               &webCount, err, sizeof(err));
+      expect(webStatus == SHDO_OK, "website Studio export compiles");
+      expect(webCount == 28, "website Studio export yields 28 cues");
+      bool p4Fx = false, nodeFx = false, thunder = false, scream = false;
+      for (uint16_t i = 0; i < webCount; ++i) {
+        const char *c = webCues[i].command;
+        if (webCues[i].timeMs == 0 && std::strcmp(c, "PIXEL:SEGMENT:0:FX:LIGHTNING") == 0) p4Fx = true;
+        if (webCues[i].timeMs == 500 && std::strcmp(c, "PIXEL:NODE:LED-01:SEGMENT:0:FX:FIRE") == 0) nodeFx = true;
+        if (webCues[i].timeMs == 1000 && std::strcmp(c, "AUDIO:NODE:PLAY:thunder.wav") == 0) thunder = true;
+        if (webCues[i].timeMs == 6000 && std::strcmp(c, "AUDIO:NODE:PLAY:scream.wav") == 0) scream = true;
+      }
+      expect(p4Fx, "website export: P4 pixel lightning at 0 ms");
+      expect(nodeFx, "website export: Pixel Node fire at 500 ms");
+      expect(thunder && scream, "website export: both Audio Node plays at the authored times");
+      expect(std::strcmp(webManifest.name, "W005 website Studio export") == 0,
+             "website export keeps production name");
+    }
+    std::string slots;
+    expect(loadFixture("website-17-pixel-clips.shdo", &slots), "17-pixel-clip website export loads");
+    if (!slots.empty()) {
+      ShdoManifest slotsManifest{};
+      ShdoCue slotsCues[SHOWDUINO_SHDO_MAX_CUES]{};
+      uint16_t slotsCount = 0;
+      const ShdoStatus slotsStatus = shdoCompile(slots.c_str(), slots.size(), &slotsManifest,
+                                                 slotsCues, SHOWDUINO_SHDO_MAX_CUES, &slotsCount,
+                                                 err, sizeof(err));
+      expect(slotsStatus == SHDO_TOO_MANY_CUES,
+             "17 pixel clips on one device are refused (16 segment slots); Studio must warn");
+    }
   }
 
   return failures ? 1 : 0;
