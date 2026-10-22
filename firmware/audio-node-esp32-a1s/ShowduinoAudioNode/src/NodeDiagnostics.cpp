@@ -7,6 +7,7 @@
 #include "AudioWeb.h"
 #include "AudioPixelProtocol.h"
 #include "AudioPixelEngine.h"
+#include "AudioStatusPixel.h"
 #include "EspNowNodeTransport.h"
 #include "LocalButtons.h"
 #include "input/AudioInput.h"
@@ -47,6 +48,8 @@ void nodeDiagPrintBootBanner() {
   Serial.printf("[AUDIO NODE] SD: %s\n", audioStorageLastError());
   Serial.printf("[AUDIO NODE] MAC: %s\n", mac);
   Serial.printf("[AUDIO NODE] Firmware: %s\n", SHOWDUINO_AUDIO_NODE_FW);
+  Serial.printf("[AUDIO NODE] Status NeoPixel: GPIO%d count=%u\n",
+                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT);
   Serial.printf("[AUDIO NODE] Show pixel line: WS2812 configured=%u GPIO%d\n",
                 (unsigned)audioPixelEngineConfiguredCount(),
                 audioPixelEnginePin());
@@ -84,7 +87,7 @@ void nodeDiagPrintHelp() {
   Serial.println("  AUDIO:RESUME");
   Serial.println("  AUDIO:VOLUME:<0-100>");
   Serial.println("  KEYS:STATUS");
-  Serial.println("  PIXEL:TEST  (LED:TEST legacy alias)");
+  Serial.println("  PIXEL:TEST  (show strip); STATUS:LED:TEST  (GPIO5 status)");
   Serial.println("  CODEC:STATUS");
   Serial.println("  RUN:TEST");
   Serial.println("  SOUND:STATUS | ENABLE | DISABLE | CALIBRATE | LEVEL");
@@ -178,7 +181,7 @@ void nodeDiagPrintSd() {
 }
 
 void nodeDiagPrintAssets() {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  char names[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   Serial.printf("ASSETS %u (page size %u)\n",
                 (unsigned)n, (unsigned)SHOWDUINO_AUDIO_INV_PER_PAGE);
@@ -225,6 +228,7 @@ void nodeDiagLedTest() {
 }
 
 void nodeDiagServiceLed() {
+  audioStatusPixelService();
 }
 
 bool nodeDiagHandleLine(const char *line) {
@@ -259,6 +263,11 @@ bool nodeDiagHandleLine(const char *line) {
   }
   if (!strcmp(line, "KEYS:STATUS") || !strcmp(line, "BUTTONS:STATUS")) {
     localButtonsPrintStatus();
+    return true;
+  }
+  if (!strcmp(line, "STATUS:LED:TEST")) {
+    audioStatusPixelTest();
+    Serial.println("STATUS:LED:TEST:STARTED");
     return true;
   }
   if (!strcmp(line, "PIXEL:TEST") || !strcmp(line, "LED:TEST")) {

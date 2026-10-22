@@ -42,7 +42,7 @@
  * build, never replace that same version string with a different binary.
  * 0.5.2 remains the prior embedded-Studio build; browser-control hardening
  * is 0.5.3. */
-#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.4"
+#define SHOWDUINO_COMMS_FIRMWARE_VERSION "0.5.5"
 
 #ifndef SHOWDUINO_OTA_TEST_FAIL_HEALTH
 #define SHOWDUINO_OTA_TEST_FAIL_HEALTH 0
