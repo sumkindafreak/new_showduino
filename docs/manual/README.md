@@ -11,5 +11,6 @@ Revision 0.3-RC · reviewed 20 October 2026. Start here and match the documented
 - [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md) — unfinished implementation and physical acceptance.
 - [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) — claim lineage.
 - [October documentation review](SHOWDUINO_DOCUMENTATION_REVIEW.md) — exact baseline, corrections, checks and remaining limits.
+- [22 October finish-line status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-22.md) — main vs draft integration, bench acceptance and outstanding physical checks.
 
 Old Word/PDF/downloaded copies do not update themselves. Use this maintained set; source review is not physical acceptance or a final product release.
