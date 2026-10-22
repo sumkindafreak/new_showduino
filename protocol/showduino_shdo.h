@@ -507,10 +507,12 @@ static bool shdoParseAction(ShdoJson &r, ShdoClip *clip) {
     } else if (strcmp(key, "targetDeviceId") == 0) {
       if (!r.string(clip->targetDeviceId, sizeof(clip->targetDeviceId))) return false;
     } else if (strcmp(key, "value") == 0) {
-      if (!clip->params.file[0] &&
-          !r.string(clip->params.file, sizeof(clip->params.file))) {
-        return false;
-      } else if (clip->params.file[0] && !r.skipValue()) {
+      // The JSON reader must consume exactly one value. Studio exports
+      // commonly put action.value before action.params, so do not skip a
+      // second token after r.string() has already consumed the string.
+      if (clip->params.file[0]) {
+        if (!r.skipValue()) return false;
+      } else if (!r.string(clip->params.file, sizeof(clip->params.file))) {
         return false;
       }
     } else if (strcmp(key, "params") == 0) {
