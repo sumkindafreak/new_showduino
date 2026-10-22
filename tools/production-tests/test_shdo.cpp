@@ -93,11 +93,9 @@ int main() {
   // the clip-level params after action. Previously parsing skipped a second
   // token after consuming action.value and returned "invalid clip object".
   std::string studioExport(kMinimal);
-  const std::string marker = "\\\"name\\\": \\\"hello\\\"";
+  const std::string marker = R"shdo("name": "hello")shdo";
   const std::string studioAction =
-      "\\\"name\\\": \\\"hello\\\", \\\"action\\\": { \\\"type\\\": \\\"test\\\", "
-      "\\\"value\\\": \\\"intro.wav\\\", \\\"params\\\": { \\\"volume\\\": 77 } }, "
-      "\\\"params\\\": { \\\"file\\\": \\\"intro.wav\\\" }";
+      R"shdo("name": "hello", "action": { "type": "test", "value": "intro.wav", "params": { "volume": 77 } }, "params": { "file": "intro.wav" })shdo";
   const std::size_t markerPos = studioExport.find(marker);
   expect(markerPos != std::string::npos, "Studio-style clip fixture created");
   if (markerPos != std::string::npos) {
