@@ -29,7 +29,13 @@ int main() {
   expect(showduino_audio_resolve_path("", path, sizeof(path)) ==
              SHOWDUINO_AUDIO_PATH_EMPTY, "empty path");
   expect(showduino_audio_resolve_path("effects/thunder.mp3", path, sizeof(path)) ==
-             SHOWDUINO_AUDIO_PATH_BAD_EXT, "mp3 rejected");
+             SHOWDUINO_AUDIO_PATH_OK, "mp3 accepted");
+  expect(showduino_audio_resolve_path("music/track.MP3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "uppercase mp3 accepted");
+  expect(showduino_audio_resolve_path("effects/thunder.aac", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_BAD_EXT, "aac rejected");
+  expect(showduino_audio_resolve_path("../secret.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_TRAVERSAL, "mp3 traversal rejected");
   expect(showduino_audio_resolve_path("/etc/passwd.wav", path, sizeof(path)) ==
              SHOWDUINO_AUDIO_PATH_OUTSIDE_ROOT, "outside root");
   expect(showduino_audio_resolve_path("/showduino/audio/music/a.wav", path, sizeof(path)) ==
