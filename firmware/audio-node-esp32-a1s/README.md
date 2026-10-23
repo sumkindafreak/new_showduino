@@ -3,7 +3,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.3
+Firmware: 0.4.4
 ```
 
 ```text
@@ -81,6 +81,31 @@ Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ES
 ## Test WAV
 
 Create `/showduino/audio/system-test.wav` as **16-bit PCM WAV**, mono or stereo, **44.1 kHz or 48 kHz**. Also accepted: 8 / 16 / 22.05 / 32 kHz PCM.
+
+## First-pass stuttering repair (0.4.4)
+
+The previous audio task slept 2 ms after every tiny 512-byte read/write.
+That consumed most of the deadline for 44.1/48 kHz stereo PCM.
+This release uses a 4 KiB PCM staging block, no forced per-block delay,
+retries short I2S writes without dropping samples, and defers SD configuration
+writes and card-size polling until audio is idle. No PSRAM is required;
+Director protocol, Showduino ownership and Emergency paths are unchanged.
+
+### Bench comparison before accepting this patch
+
+1. Put the same 16-bit 44.1 or 48 kHz test WAV on the Audio Node SD card.
+2. On 115200-baud serial, run `AUDIO:TEST` or `AUDIO:PLAY:<path>`.
+3. During playback run `AUDIO:STATUS` and record `SD_READ_MAX_US`,
+   `I2S_WRITE_MAX_US`, `short_writes`, `underruns` and `ERR`.
+   Note: the existing `underruns` counter actually measures failed I2S writes,
+   not hardware DMA underflows.
+4. Listen with ESP-NOW, the configured pixel line and SoftAP in operation.
+5. Re-test PAUSE/RESUME, STOP, LOOP, track end, bad WAV, card removal,
+   standalone use, P4 ownership transitions and Emergency STOP/CLEAR.
+
+Not hardware-verified. If audio still stutters, the next step is a
+prefilled ring buffer with independent SD-reader and I2S-writer tasks,
+including measurements of genuine starvation.
 
 ## Bench
 
