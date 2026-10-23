@@ -1,0 +1,22 @@
+name: Showduino production-format host tests
+
+on:
+  push:
+    paths:
+      - "protocol/**"
+      - "tools/production-tests/**"
+      - ".github/workflows/shdo-host-tests.yml"
+  pull_request:
+    paths:
+      - "protocol/**"
+      - "tools/production-tests/**"
+      - ".github/workflows/shdo-host-tests.yml"
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Showduino firmware
+        uses: actions/checkout@v4
+      - name: Build and run production-format parser and runtime tests
+        run: bash tools/production-tests/run_tests.sh
