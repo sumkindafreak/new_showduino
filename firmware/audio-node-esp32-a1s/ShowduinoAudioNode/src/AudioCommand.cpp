@@ -638,7 +638,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     char caps[SHOWDUINO_NODE_COMMAND_MAX];
     /* Wire-safe CAPS (NODE_COMMAND_MAX=96). Full vocabulary remains in protocol header. */
     snprintf(caps, sizeof(caps),
-             "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+             "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
     report(caps, sequence);
     char meta[SHOWDUINO_NODE_COMMAND_MAX];
     snprintf(meta, sizeof(meta), "AUDIO:META:%s:%s:%s",
@@ -713,7 +713,7 @@ void audioCommandAnnounce() {
                               audioNodeStateName());
   audioEspNowSend(line, 0);
   snprintf(line, sizeof(line),
-           "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+           "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
   audioEspNowSend(line, 0);
 }
 
