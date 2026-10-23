@@ -209,6 +209,9 @@
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_ENABLED
 #define SHOWDUINO_SHOW_PIXEL_ENABLED         1
+/* Do not enable P4 FastLED until PARLIO/SPI and GPIO24 RMT coexistence is
+ * verified on physical hardware. Other nodes use FastLED in this branch. */
+#define SHOWDUINO_SHOW_PIXEL_USE_FASTLED     0
 #endif
 #ifndef SHOWDUINO_SHOW_PIXEL_MAX
 #define SHOWDUINO_SHOW_PIXEL_MAX             1024

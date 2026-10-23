@@ -6,7 +6,8 @@
 #include "../../../protocol/showduino_mosfet_identifier.h"
 #include "../../shared-node/NodeSoftAp.h"
 
-#include <Adafruit_NeoPixel.h>
+#define SHOWDUINO_LED_GPIO SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 #include <WiFi.h>
 
 /*
@@ -20,7 +21,7 @@
  * GREEN is reserved exclusively for energised MOSFET outputs.
  */
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static ShowduinoLedStrip *sStrip = nullptr;
 static bool sReady = false;
 static bool sForcedOff = false;
 
@@ -121,7 +122,7 @@ void mosfetIdentifierPixelsBegin() {
   sSearchDir = 1;
   invalidateCache();
   mosfetIdentifierPixelsSafeGpio();
-  sStrip = new Adafruit_NeoPixel(
+  sStrip = new ShowduinoLedStrip(
       SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_COUNT,
       SHOWDUINO_MOSFET_IDENTIFIER_PIXEL_GPIO,
       NEO_GRB + NEO_KHZ800);
@@ -130,6 +131,14 @@ void mosfetIdentifierPixelsBegin() {
     return;
   }
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[MOSFET] FastLED identifier failed to initialise");
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#endif
   sStrip->setBrightness(255);
   sStrip->clear();
   sStrip->show();

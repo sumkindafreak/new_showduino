@@ -41,6 +41,7 @@ uint8_t pixelEngineActiveSegments();
 int pixelEnginePin();
 void pixelEngineSetConfiguredCount(uint16_t count);
 void pixelEngineRelease();
+const char *pixelEngineBackendName();
 void pixelEnginePrintStatus();
 bool pixelEngineHandleCommand(const char *command, char *reply, size_t replyLen);
 

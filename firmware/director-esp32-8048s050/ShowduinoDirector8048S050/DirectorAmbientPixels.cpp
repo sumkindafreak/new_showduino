@@ -4,7 +4,8 @@
 
 #if SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
 
-#include <Adafruit_NeoPixel.h>
+#define SHOWDUINO_LED_GPIO SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN
+#include "../../shared-pixel/ShowduinoLedStrip.h"
 
 static const uint32_t kColAccent   = ShowduinoPalette::Accent;
 static const uint32_t kColAccentLo = ShowduinoPalette::AccentDark;
@@ -17,7 +18,7 @@ static const uint32_t kColGreen    = 0x00FF28;
 static const uint32_t kColWhite    = 0xFFFFFF;
 static const uint32_t kColMagenta  = 0xDC00B4;
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static ShowduinoLedStrip *sStrip = nullptr;
 static bool sReady = false;
 static bool sUserEnabled = true;
 static bool sHoldPresentation = true;
@@ -40,7 +41,7 @@ static uint8_t sTgtB = 0;
 static uint32_t sFadeMs = DIRECTOR_AMBIENT_BOOT_FADE_MS;
 static uint32_t sBootStartMs = 0;
 
-static uint8_t scale8(uint8_t v, uint8_t scale) {
+static uint8_t ambientScale8(uint8_t v, uint8_t scale) {
   return (uint8_t)((uint16_t)v * scale / 255);
 }
 
@@ -136,9 +137,9 @@ static void targetsForMode(DirectorAmbientMode m, uint8_t *r, uint8_t *g, uint8_
   }
   uint8_t rr, gg, bb;
   unpackRgb(rgb, &rr, &gg, &bb);
-  *r = scale8(rr, lvl);
-  *g = scale8(gg, lvl);
-  *b = scale8(bb, lvl);
+  *r = ambientScale8(rr, lvl);
+  *g = ambientScale8(gg, lvl);
+  *b = ambientScale8(bb, lvl);
   *level = lvl;
 }
 
@@ -176,9 +177,9 @@ static void showSolid(uint32_t rgb) {
   if (!sStrip) return;
   uint8_t r, g, b;
   unpackRgb(rgb, &r, &g, &b);
-  r = scale8(r, sBrightness);
-  g = scale8(g, sBrightness);
-  b = scale8(b, sBrightness);
+  r = ambientScale8(r, sBrightness);
+  g = ambientScale8(g, sBrightness);
+  b = ambientScale8(b, sBrightness);
   const uint32_t c = packRgb(r, g, b);
   for (uint16_t i = 0; i < sStrip->numPixels(); i++) {
     sStrip->setPixelColor(i, c);
@@ -227,25 +228,25 @@ static void renderFrame(uint32_t nowMs) {
     uint8_t r, g, b, lvl;
     targetsForMode(sMode, &r, &g, &b, &lvl);
     (void)lvl;
-    sTgtR = scale8(r, pulse);
-    sTgtG = scale8(g, pulse);
-    sTgtB = scale8(b, pulse);
+    sTgtR = ambientScale8(r, pulse);
+    sTgtG = ambientScale8(g, pulse);
+    sTgtB = ambientScale8(b, pulse);
   } else if (sMode == DIRECTOR_AMBIENT_RUNNING) {
     const uint8_t breath = (uint8_t)(160 + ((sPhase / 2) % 70));
     uint8_t r, g, b, lvl;
     targetsForMode(sMode, &r, &g, &b, &lvl);
     (void)lvl;
-    sTgtR = scale8(r, breath);
-    sTgtG = scale8(g, breath);
-    sTgtB = scale8(b, breath);
+    sTgtR = ambientScale8(r, breath);
+    sTgtG = ambientScale8(g, breath);
+    sTgtB = ambientScale8(b, breath);
   } else if (sMode == DIRECTOR_AMBIENT_WARNING || sMode == DIRECTOR_AMBIENT_PAUSED) {
     const uint8_t pulse = (uint8_t)(80 + ((sPhase % 40) < 20 ? 70 : 0));
     uint8_t r, g, b, lvl;
     targetsForMode(sMode, &r, &g, &b, &lvl);
     (void)lvl;
-    sTgtR = scale8(r, pulse);
-    sTgtG = scale8(g, pulse);
-    sTgtB = scale8(b, pulse);
+    sTgtR = ambientScale8(r, pulse);
+    sTgtG = ambientScale8(g, pulse);
+    sTgtB = ambientScale8(b, pulse);
   } else if (sMode == DIRECTOR_AMBIENT_EMERGENCY) {
     sCurR = sCurG = sCurB = 255;
     sTgtR = sTgtG = sTgtB = 255;
@@ -306,7 +307,7 @@ void directorAmbientBegin() {
                 (unsigned)SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                 (unsigned)sBrightness);
 
-  sStrip = new Adafruit_NeoPixel(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
+  sStrip = new ShowduinoLedStrip(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                                  SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   if (!sStrip) {
@@ -315,6 +316,14 @@ void directorAmbientBegin() {
   }
 
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[Ambient] FastLED GPIO17 failed to initialise");
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#endif
   sStrip->setBrightness(255);
   sStrip->clear();
   sStrip->show();
