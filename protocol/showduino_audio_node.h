@@ -25,7 +25,7 @@ extern "C" {
 #define SHOWDUINO_AUDIO_COMMS_TIMEOUT_MS   5000u
 #define SHOWDUINO_AUDIO_TEST_FILE          "system-test.wav"
 #define SHOWDUINO_AUDIO_CAPS \
-  "WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD,STANDALONE,OWN"
+  "WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,SPK,HP,LINE,INV,MIC,RECORD,STANDALONE,OWN"
 #define SHOWDUINO_AUDIO_INV_PER_PAGE       6
 #define SHOWDUINO_AUDIO_INV_MAX            48
 #define SHOWDUINO_AUDIO_LIBRARY_PER_PAGE   1
@@ -197,6 +197,19 @@ static inline int showduino_audio_has_wav_ext(const char *path) {
          (path[n - 1] == 'v' || path[n - 1] == 'V');
 }
 
+/* Case-insensitive MP3 detection. Audio asset paths stay inside the
+ * same validated Showduino SD root as WAV. */
+static inline int showduino_audio_has_mp3_ext(const char *path) {
+  size_t n;
+  if (!path) return 0;
+  n = strlen(path);
+  if (n < 4) return 0;
+  return path[n - 4] == '.' &&
+         (path[n - 3] == 'm' || path[n - 3] == 'M') &&
+         (path[n - 2] == 'p' || path[n - 2] == 'P') &&
+         path[n - 1] == '3';
+}
+
 static inline ShowduinoAudioPathStatus showduino_audio_path_check(const char *rel) {
   size_t i, n;
   if (!rel || !rel[0]) return SHOWDUINO_AUDIO_PATH_EMPTY;
@@ -212,7 +225,9 @@ static inline ShowduinoAudioPathStatus showduino_audio_path_check(const char *re
                    c == '.' || c == '/';
     if (!ok) return SHOWDUINO_AUDIO_PATH_BAD_CHAR;
   }
-  if (!showduino_audio_has_wav_ext(rel)) return SHOWDUINO_AUDIO_PATH_BAD_EXT;
+  if (!showduino_audio_has_wav_ext(rel) && !showduino_audio_has_mp3_ext(rel)) {
+    return SHOWDUINO_AUDIO_PATH_BAD_EXT;
+  }
   return SHOWDUINO_AUDIO_PATH_OK;
 }
 
