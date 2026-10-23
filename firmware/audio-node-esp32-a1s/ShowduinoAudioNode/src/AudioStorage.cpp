@@ -1,4 +1,5 @@
 #include "AudioStorage.h"
+#include "AudioPlayback.h"
 #include "input/AudioInputConfig.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_storage.h"
@@ -154,6 +155,9 @@ void audioStorageSetVolume(uint8_t percent) {
 }
 
 void audioStorageLoop() {
+  /* Defer configuration writes and card-size polling: both contend with
+   * deadline-sensitive WAV reads on the same SD/SPI bus during playback. */
+  if (audioPlaybackActive() || audioPlaybackPaused()) return;
   if (sVolDirty && sWritable && (int32_t)(millis() - sVolSaveAt) >= 0) {
     sVolDirty = false;
     writeConfig();
