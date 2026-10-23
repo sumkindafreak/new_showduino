@@ -3,7 +3,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.4
+Firmware: 0.5.0-mp3-rc1
 ```
 
 ```text
@@ -76,7 +76,70 @@ Arduino-ESP32 3.3.11 has no `dout` option — use `dio`:
 esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
 ```
 
-Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, plus **Adafruit NeoPixel**. WAV only. MP3 is PLANNED. SoftAP SSID `Showduino-Audio-XXXX` stays on ESP-NOW channel 1 at **http://192.168.5.1**. ESP-NOW keeps running while the AP is up.
+Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, plus **Adafruit NeoPixel**. **WAV and MP3 (MP3 is experimental in this branch)**. SoftAP SSID `Showduino-Audio-XXXX` stays on ESP-NOW channel 1 at **http://192.168.5.1**. ESP-NOW keeps running while the AP is up.
+
+## Experimental MP3 playback — 0.5.0-mp3-rc1
+
+This feature branch is stacked on top of the draft 0.4.4 WAV stutter repair.
+**Do not merge until the stutter repair and this MP3 decoder both pass hardware tests.**
+
+### Arduino Library Manager dependency
+
+Install **ESP8266Audio**, by Earle F. Philhower III, version **2.4.1**.
+It includes the `AudioGeneratorMP3` software MP3 decoder and
+`AudioFileSourceSD` file source. The library works on ESP32 without PSRAM,
+but decoder heap consumption and decoding performance must be verified on
+our actual 4 MB flash / no-PSRAM ESP32-A1S with ESP-NOW active.
+
+Source: https://github.com/earlephilhower/ESP8266Audio
+Licence: **GPL-3.0**. Review the source-distribution and licence
+compatibility obligations before any Showduino commercial distribution.
+No ESP8266Audio source code has been copied into the Showduino repository.
+
+### SD card
+
+Use standard, non-encrypted MPEG Layer III MP3 tracks (start with
+constant-bitrate 128 kbps, 44.1 kHz stereo). Keep WAV for the most critical,
+low-latency and precisely timed show cues.
+
+Examples:
+
+```text
+/showduino/audio/music/ambience.mp3
+/showduino/audio/dialogue/intro.mp3
+/showduino/audio/effects/thunder.wav
+/The_Chamber/ambience/theme.mp3
+```
+
+Existing `AUDIO:NODE:PLAY:<path>`, `AUDIO:NODE:LOOP:<path>`,
+`AUDIO:NODE:STOP`, `PAUSE`, `RESUME`, `VOLUME`, fades/duck,
+`OWN:GRANT`, emergency STOP/CLEAR, and file inventories apply to both
+formats. The physical A1S codec and I2S GPIOs are unchanged.
+
+The source dispatcher routes WAV into the native 16-bit PCM engine, MP3
+into `AudioGeneratorMP3`, and decoded stereo PCM to a 4096-byte I2S
+staging output. Only one track/output owns I2S at a time. No HTTP MP3
+streaming or two-track mixing is enabled.
+
+The `AUDIO:STATUS` positional numbers for MP3 represent **compressed
+file bytes**, not playback milliseconds. User-interface elapsed time is
+not yet calculated from MP3 frame timestamps.
+
+### Test steps and release blockers
+
+1. First run the 0.4.4 branch and confirm WAV no longer stutters.
+2. Install ESP8266Audio 2.4.1, compile this branch with Arduino-ESP32
+   3.3.11 and the documented A161 build board settings.
+3. Put `music/ambience.mp3` on the SD card and use serial commands
+   `AUDIO:PLAY:music/ambience.mp3` and `AUDIO:STATUS`.
+4. Listen to 128/192/320 kbps CBR and VBR, mono and stereo, at 44.1/48kHz.
+5. Exercise pause/resume, stop, loop, preemption, fades, volume/duck,
+   SD removal, speaker/headphone/line and memory after 30 repeated starts.
+6. With ESP-NOW, pixels and SoftAP enabled, play a complete long file
+   without audible gaps and confirm that emergency interrupts MP3
+   immediately and clears safely.
+7. Compile and hardware tests must pass before merging this draft.
+   Avoid using MP3 as the emergency sound until validated.
 
 ## Test WAV
 
