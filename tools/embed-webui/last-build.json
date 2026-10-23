@@ -1,11 +1,11 @@
 {
-  "buildHash": "54ff2039e159",
-  "buildUtc": "2026-10-23T04:47:13Z",
+  "buildHash": "56677901c6a2",
+  "buildUtc": "2026-10-23T11:36:43Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
-  "rawBytes": 854281,
-  "embeddedBytes": 212259,
+  "rawBytes": 861510,
+  "embeddedBytes": 214954,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -29,11 +29,11 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "1f4986a7bf75f144b6bb4966e56241773ddcf7ab",
+    "commit": "9f5cd7ca2b3b493cc70ce8f9c21187ebf79a745d",
     "route": "/studio/",
     "assetCount": 39,
-    "rawBytes": 687579,
-    "embeddedBytes": 173259,
+    "rawBytes": 694808,
+    "embeddedBytes": 175953,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -97,7 +97,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10661,
-      "embedded": 3464,
+      "embedded": 3465,
       "gzip": true
     },
     {
@@ -187,8 +187,8 @@
     {
       "path": "/studio/js/cloud/supabase-service.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19586,
-      "embedded": 5105,
+      "raw": 21283,
+      "embedded": 5765,
       "gzip": true
     },
     {
@@ -222,8 +222,8 @@
     {
       "path": "/studio/js/connection_detector.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 3506,
-      "embedded": 1208,
+      "raw": 4037,
+      "embedded": 1433,
       "gzip": true
     },
     {
@@ -292,15 +292,15 @@
     {
       "path": "/studio/js/panels.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 45456,
-      "embedded": 10291,
+      "raw": 45202,
+      "embedded": 10244,
       "gzip": true
     },
     {
       "path": "/studio/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 48985,
-      "embedded": 10076,
+      "raw": 49595,
+      "embedded": 10315,
       "gzip": true
     },
     {
@@ -320,8 +320,8 @@
     {
       "path": "/studio/js/studio-projects.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 18146,
-      "embedded": 4930,
+      "raw": 22506,
+      "embedded": 6407,
       "gzip": true
     },
     {
@@ -334,8 +334,8 @@
     {
       "path": "/studio/js/studio-creator-bootstrap.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 15586,
-      "embedded": 4402,
+      "raw": 15843,
+      "embedded": 4525,
       "gzip": true
     },
     {
@@ -348,8 +348,8 @@
     {
       "path": "/studio/js/current-system-ui.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19445,
-      "embedded": 5693,
+      "raw": 19473,
+      "embedded": 5710,
       "gzip": true
     },
     {
