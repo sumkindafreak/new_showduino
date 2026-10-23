@@ -951,6 +951,8 @@ Current Audio Node operations include play, loop, stop, pause, resume, volume, f
 
 The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
 
+**Audio pixel commissioning:** On a new/unconfigured Node the saved pixel count defaults to **zero**, leaving GPIO22 dark. For the fixed 10-pixel bench strip, send `PIXEL:COUNT:10` and then `PIXEL:INIT` to that Audio Node; verify `PIXEL:STATUS` reports READY and count 10 before running the show. The count persists across boots. Do not assume the firmware's count macro automatically configures a new Node, or confuse this theatrical line with an independent status LED. Physical operation remains subject to bench acceptance.
+
 ## 18.3 Audio Node Emergency behaviour
 
 Emergency:
