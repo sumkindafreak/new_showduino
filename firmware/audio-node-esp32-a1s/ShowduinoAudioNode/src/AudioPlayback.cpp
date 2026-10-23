@@ -31,7 +31,12 @@ static uint32_t sFail = 0;
 static char sPath[SHOWDUINO_AUDIO_PATH_MAX + 1] = "";
 static char sRel[SHOWDUINO_AUDIO_REL_MAX + 1] = "";
 static char sErr[40] = "";
-static uint8_t sBuf[512];
+/* A 4 KiB staging block amortises SD/SPI overhead without requiring PSRAM.
+ * Mono expands in place to stereo, avoiding a large temporary task stack. */
+static uint8_t sBuf[4096];
+static uint32_t sMaxSdReadUs = 0;
+static uint32_t sMaxI2sWriteUs = 0;
+static uint32_t sShortWrites = 0;
 
 static void setErr(const char *m) {
   strncpy(sErr, m ? m : "", sizeof(sErr) - 1);
@@ -95,9 +100,25 @@ static bool startI2s() {
 }
 
 static void playbackTask(void *) {
+  uint8_t activeBursts = 0;
   for (;;) {
     audioPlaybackService();
-    vTaskDelay(pdMS_TO_TICKS(2));
+
+    /* The old unconditional 2ms sleep after every 512-byte write consumed
+     * most of the available audio deadline at 44.1/48k stereo. A successful
+     * I2S write already blocks/yields on DMA backpressure; don't add another
+     * fixed delay after each block. Yield periodically for other tasks. */
+    if (audioPlaybackActive()) {
+      if (++activeBursts >= 8) {
+        activeBursts = 0;
+        vTaskDelay(pdMS_TO_TICKS(1));
+      } else {
+        taskYIELD();
+      }
+    } else {
+      activeBursts = 0;
+      vTaskDelay(pdMS_TO_TICKS(2));
+    }
   }
 }
 
@@ -233,37 +254,81 @@ void audioPlaybackService() {
     xSemaphoreGive(sLock);
     return;
   }
+  /* Always transfer complete PCM frames; malformed trailing bytes are an
+   * error rather than a short write that would desynchronise L/R channels. */
+  const size_t inputFrameBytes = sChannels == 1 ? 2u : 4u;
   size_t want = remainNow > sizeof(sBuf) ? sizeof(sBuf) : (size_t)remainNow;
-  if (sChannels == 1 && want > 256) want = 256;
-  const int n = sFile.read(sBuf, want);
-  if (n <= 0) {
-    setErr("read failed");
+  if (sChannels == 1 && want > sizeof(sBuf) / 2u) {
+    want = sizeof(sBuf) / 2u;
+  }
+  want -= want % inputFrameBytes;
+  if (want == 0) {
+    setErr("unaligned WAV payload");
     sFile.close();
     sOpen = false;
-    if (sI2sOn) {
-      sI2s.end();
-      sI2sOn = false;
-    }
+    if (sI2sOn) { sI2s.end(); sI2sOn = false; }
     sFailed = true;
     sFail++;
     xSemaphoreGive(sLock);
     return;
   }
+
+  const uint32_t sdStartUs = micros();
+  const int n = sFile.read(sBuf, want);
+  const uint32_t readUs = micros() - sdStartUs;
+  if (readUs > sMaxSdReadUs) sMaxSdReadUs = readUs;
+  if (n <= 0 || ((size_t)n % inputFrameBytes) != 0u) {
+    setErr("SD read/PCM alignment failed");
+    sFile.close();
+    sOpen = false;
+    if (sI2sOn) { sI2s.end(); sI2sOn = false; }
+    sFailed = true;
+    sFail++;
+    xSemaphoreGive(sLock);
+    return;
+  }
+
   sDataPos += (uint32_t)n;
   sBytes += (uint32_t)n;
+  size_t outputBytes = (size_t)n;
+
   if (sChannels == 1) {
-    int16_t stereo[256];
-    const int samples = n / 2;
-    const int16_t *mono = (const int16_t *)sBuf;
-    for (int i = 0; i < samples && i < 128; i++) {
-      stereo[i * 2] = mono[i];
-      stereo[i * 2 + 1] = mono[i];
+    /* Expand in reverse order so every mono sample is still intact when
+     * written into its doubled, interleaved L/R destination in sBuf. */
+    for (int i = n / 2; i > 0; --i) {
+      const size_t source = (size_t)(i - 1) * 2u;
+      const size_t dest = (size_t)(i - 1) * 4u;
+      const uint8_t lo = sBuf[source];
+      const uint8_t hi = sBuf[source + 1];
+      sBuf[dest] = lo;
+      sBuf[dest + 1] = hi;
+      sBuf[dest + 2] = lo;
+      sBuf[dest + 3] = hi;
     }
-    const size_t out = (size_t)samples * 4;
-    if (sI2s.write((uint8_t *)stereo, out) != out) sUnderrun++;
-  } else if (sI2s.write(sBuf, (size_t)n) != (size_t)n) {
-    sUnderrun++;
+    outputBytes *= 2u;
   }
+
+  /* The old player silently discarded an entire remainder on a short I2S
+   * write. Continue at the correct byte offset to preserve every sample. */
+  const uint32_t writeStartUs = micros();
+  size_t written = 0;
+  while (written < outputBytes) {
+    const size_t part = sI2s.write(sBuf + written, outputBytes - written);
+    if (part == 0 || (part & 1u) != 0u || part > outputBytes - written) {
+      sUnderrun++;  /* I2S transfer failure; not a hardware DMA underflow count. */
+      setErr("I2S write failed");
+      sFile.close();
+      sOpen = false;
+      if (sI2sOn) { sI2s.end(); sI2sOn = false; }
+      sFailed = true;
+      sFail++;
+      break;
+    }
+    if (part < outputBytes - written) sShortWrites++;
+    written += part;
+  }
+  const uint32_t writeUs = micros() - writeStartUs;
+  if (writeUs > sMaxI2sWriteUs) sMaxI2sWriteUs = writeUs;
   xSemaphoreGive(sLock);
 }
 
@@ -290,3 +355,7 @@ uint32_t audioPlaybackFilesPlayed() { return sPlayed; }
 uint32_t audioPlaybackCompleted() { return sDone; }
 uint32_t audioPlaybackFailed() { return sFail; }
 const char *audioPlaybackLastError() { return sErr; }
+
+uint32_t audioPlaybackMaxSdReadUs() { return sMaxSdReadUs; }
+uint32_t audioPlaybackMaxI2sWriteUs() { return sMaxI2sWriteUs; }
+uint32_t audioPlaybackShortWrites() { return sShortWrites; }

@@ -146,6 +146,10 @@ void nodeDiagPrintAudio() {
                 (unsigned long)audioPlaybackBytesRead(),
                 (unsigned long)audioPlaybackUnderruns(),
                 (unsigned long)audioCommandLastStartLatencyMs());
+  Serial.printf("SD_READ_MAX_US %lu I2S_WRITE_MAX_US %lu short_writes=%lu\n",
+                (unsigned long)audioPlaybackMaxSdReadUs(),
+                (unsigned long)audioPlaybackMaxI2sWriteUs(),
+                (unsigned long)audioPlaybackShortWrites());
   Serial.printf("ERR %s\n", audioPlaybackLastError());
 }
 
