@@ -1,6 +1,6 @@
 {
   "buildHash": "56677901c6a2",
-  "buildUtc": "2026-10-23T17:05:24Z",
+  "buildUtc": "2026-10-23T21:23:17Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
@@ -29,7 +29,7 @@
   "authoringStudio": {
     "repo": "sumkindafreak/showduino.com",
     "ref": "main",
-    "commit": "9f5cd7ca2b3b493cc70ce8f9c21187ebf79a745d",
+    "commit": "850dea084320a45fb89b584507eda1514662b8dd",
     "route": "/studio/",
     "assetCount": 39,
     "rawBytes": 694808,
