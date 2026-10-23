@@ -525,6 +525,21 @@ bool espNowTransportSendToEmergencyNode(const char *id, const char *command, uin
   return true;
 }
 
+bool espNowTransportBroadcastEmergency(const char *command, uint32_t sequence) {
+  static const uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  if (!sReady || !command || !command[0]) return false;
+  ShowduinoNodePacket packet = {};
+  showduino_node_packet_init(&packet, SHOWDUINO_LEGACY_NODETYPE_EMERGENCY, sequence);
+  if (showduino_node_set_command(&packet, command) != 0) {
+    sRejected++;
+    return false;
+  }
+  if (!addPeer(kBroadcastMac)) return false;
+  if (esp_now_send(kBroadcastMac, (uint8_t *)&packet, sizeof(packet)) != ESP_OK) return false;
+  sTxCount++;
+  return true;
+}
+
 void espNowTransportSendToAllEmergencyNodes(const char *command, uint32_t sequence) {
   for (uint8_t i = 0; i < SHOWDUINO_EMERGENCY_NODE_MAX_NODES; ++i) {
     if (!sEmergency[i].have) continue;

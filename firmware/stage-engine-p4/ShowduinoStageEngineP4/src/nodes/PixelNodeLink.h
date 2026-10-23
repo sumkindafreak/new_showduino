@@ -9,6 +9,8 @@ struct PixelNodeStatus {
   bool seen = false;
   bool online = false;
   bool initialised = false;
+  bool reportedEmergency = false; /* last announce state == EMERGENCY */
+  uint32_t emSyncMs = 0;
   bool pending = false;
   uint8_t segments = 0;
   uint16_t pixelCount = 0;

@@ -257,6 +257,16 @@
 #ifndef SHOWDUINO_GENERIC_IO_RESERVED_PIN
 #define SHOWDUINO_GENERIC_IO_RESERVED_PIN       48
 #endif
+/*
+ * MISSION 001L: optional emergency timing probe for bench measurement only.
+ * -1 (default) = disabled, nothing is driven. For a timing build set it to the
+ * otherwise unused reserved GPIO48 (3.3 V logic, logic-analyser input only, no
+ * load). The pin goes HIGH at the start of a new emergency activation (before the
+ * local outputs) and LOW when a clear is applied.
+ */
+#ifndef SHOWDUINO_TIMING_PROBE_PIN
+#define SHOWDUINO_TIMING_PROBE_PIN -1
+#endif
 #ifndef SHOWDUINO_GENERIC_IO_DEFAULT_DEBOUNCE_MS
 #define SHOWDUINO_GENERIC_IO_DEFAULT_DEBOUNCE_MS 30U
 #endif

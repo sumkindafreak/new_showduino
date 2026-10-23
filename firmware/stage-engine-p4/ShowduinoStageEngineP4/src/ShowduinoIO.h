@@ -35,6 +35,10 @@ void showduinoIOBegin(ShowduinoIOSendFn sendFn);
 void showduinoIOReloadConfig();
 void showduinoIOService();
 void showduinoIOOnEmergency(bool active);
+/* MISSION 001L: emergency engage step 1. Drives every OUTPUT line inactive and
+ * marks emergency, with no logging, so no serial or SD work can delay it. The
+ * logging call showduinoIOOnEmergency(true) follows later in the same engage. */
+void showduinoIOEmergencyOutputsOffQuiet();
 void showduinoIOAllOff(const char *reason);
 void showduinoIOPublishState();
 

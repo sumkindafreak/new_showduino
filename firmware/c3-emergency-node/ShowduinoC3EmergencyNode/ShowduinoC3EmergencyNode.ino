@@ -22,6 +22,7 @@
 #include "src/EmergencyIndicate.h"
 #include "src/EmergencyIdentity.h"
 #include "src/EmergencyProtocol.h"
+#include "src/EmergencyAuth.h"
 #include "src/EmergencyDisplay.h"
 #include "src/EstopPixelEngine.h"
 #include "src/EspNowEmergencyTransport.h"
@@ -36,7 +37,7 @@ static uint8_t sLastPressed = 0;
 static uint8_t sLastRadio = 0xFF;
 
 static void onEspNowCommand(const char *command, uint32_t sequence) {
-  emergencyProtocolApply(command, sequence);
+  emergencyProtocolApply(command, sequence, EmergencyCmdSource::Radio);
   emergencyDisplayForce();
 }
 
@@ -44,7 +45,8 @@ static void handleUsbLine(const String &line) {
   if (!line.length()) return;
   if (showduino_log_handle_command(line.c_str())) return;
   if (nodeDiagHandleLine(line.c_str())) return;
-  emergencyProtocolApply(line.c_str(), 0);
+  if (emergencyAuthHandleUsb(line.c_str())) return; /* MISSION 001J: never echoed */
+  emergencyProtocolApply(line.c_str(), 0, EmergencyCmdSource::LocalUsb);
   emergencyDisplayForce();
 }
 
@@ -83,6 +85,7 @@ void setup() {
   char mac[24];
   emergencyEspNowMacString(mac, sizeof(mac));
   emergencyIdentityBegin(mac);
+  emergencyAuthBegin();
   emergencyProtocolBegin();
   showduino_emergency_machine_set_radio(&gEmergencyMachine,
                                         radioOk && emergencyEspNowReady());

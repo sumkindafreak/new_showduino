@@ -10,6 +10,8 @@ struct MosfetNodeStatus {
   bool online = false;
   bool owned = false;
   bool emergency = false;
+  bool reportedEmergency = false; /* last announce state == EMERGENCY */
+  uint32_t emSyncMs = 0;
   uint8_t levels[SHOWDUINO_MOSFET_OUT_COUNT] = {0, 0, 0, 0};
   uint32_t lastSeq = 0;
   uint32_t lastRxMs = 0;

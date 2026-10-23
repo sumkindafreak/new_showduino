@@ -169,11 +169,8 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "TIME:REQUEST") {
     return true;
   }
-#if SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
-  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
-    return true;
-  }
-#endif
+  /* MISSION 001K: the S3 web UI cannot clear an emergency. The P4 accepts only a
+   * Director-signed DCLR, which the S3 cannot produce; the opt-in flag is removed. */
   if (cmd.startsWith("TIME:SET:")) {
     String arg = cmd.substring(9);
     arg.trim();

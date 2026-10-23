@@ -72,6 +72,8 @@ void nodeDiagPrintHelp() {
   Serial.println("  ESTOP:ID:ESTOP-01 | ESTOP:NAME:ENTRANCE");
   Serial.println("  PIXEL:COUNT:<n> | PIXEL:INIT | PIXEL:TEST | PIXEL:OFF | PIXEL:LOCATE");
   Serial.println("  ESTOP:NODE:PIXEL:<cmd>  (same peer — no fake LED identity)");
+  Serial.println("  PROVISION STATUS | PROVISION NEW ESTOP-nn | PROVISION SET ESTOP-nn <hex64>");
+  Serial.println("  PROVISION CLEAR  (forget the station key; the P4 then refuses its release)");
   Serial.println("  ESTOP:CLEAR is rejected. This node cannot clear P4 emergency.");
 }
 

@@ -2,6 +2,7 @@
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_log.h"
+#include "../../../protocol/showduino_emergency_latch.h"
 #include "../../../protocol/showduino_node_packet.h"
 
 extern bool emergencyLocked;
@@ -186,7 +187,33 @@ void mosfetNodeLinkAllOff(const char *reason) {
   publishState();
 }
 
+/* MOSFET outputs must reach the emergency-safe state (all OFF). Each mismatched
+ * node gets EMERGENCY:STOP plus MOSFET:ALL:OFF, idempotent, at most once per
+ * second, until its announce reports EMERGENCY. Clear is the reverse. */
+static void reconcileMosfetEmergency(uint32_t nowMs) {
+  for (uint8_t i = 0; i < SHOWDUINO_MOSFET_NODE_MAX_NODES; ++i) {
+    MosfetNodeStatus &st = sNodes[i];
+    if (!st.used || !st.online || !st.id[0]) continue;
+    if (st.emSyncMs && (nowMs - st.emSyncMs) < 1000UL) continue;
+    const char *cmd = showduino_node_emergency_resync_cmd(emergencyLocked ? 1 : 0,
+                                                          st.reportedEmergency ? 1 : 0);
+    if (!cmd) continue;
+    st.emSyncMs = nowMs;
+    SD_LOGI("MOSFET", "emergency resync %s -> %s", st.id, cmd);
+    routeTo(st.id, 0, cmd);
+    if (!strcmp(cmd, "EMERGENCY:STOP")) {
+      zeroCachedLevels(&st);
+      st.emergency = true;
+      strncpy(st.state, "EMERGENCY", sizeof(st.state) - 1);
+      routeTo(st.id, sSeq++, "MOSFET:ALL:OFF");
+    } else {
+      st.emergency = false;
+    }
+  }
+}
+
 void mosfetNodeLinkLoop() {
+  reconcileMosfetEmergency(millis());
   for (uint8_t i = 0; i < SHOWDUINO_MOSFET_NODE_MAX_NODES; ++i) {
     MosfetNodeStatus &st = sNodes[i];
     if (!st.used || !st.online || !st.lastRxMs) continue;
@@ -233,6 +260,7 @@ bool mosfetNodeLinkHandleReport(const char *line) {
     if (an.mac[0]) strncpy(st->mac, an.mac, sizeof(st->mac) - 1);
     if (an.firmware[0]) strncpy(st->firmware, an.firmware, sizeof(st->firmware) - 1);
     if (an.state[0]) strncpy(st->state, an.state, sizeof(st->state) - 1);
+    st->reportedEmergency = strcmp(an.state, "EMERGENCY") == 0;
     if (!wasOnline) {
       SD_LOGI("MOSFET", "MOSFET Node online ID=%s FW=%s MAC=%s",
               st->id[0] ? st->id : "-",

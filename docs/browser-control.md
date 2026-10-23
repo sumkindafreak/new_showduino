@@ -73,7 +73,7 @@ Initially supported actions (when P4 implements them): `STATUS:REQUEST`, `SHOW:S
 
 `PRODUCTION:LOAD:<id>` is allowed only after P4 storage validates the id. Unsupported actions return `403` / `lifecycle: rejected`.
 
-Remote **emergency CLEAR** is **not** exposed on the browser surface by default (`SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR=0`). Assert (`EMERGENCY:STOP`) remains available. Clear stays on the Director physical path.
+Remote **emergency CLEAR** is **not** available on the browser surface (MISSION 001K removed the former `SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR` opt-in). Assert (`EMERGENCY:STOP`) remains available. Clear requires a signed request and confirm from the enrolled Director touchscreen, or the P4 USB maintenance console (`docs/emergency-director-auth-001K.md`).
 
 Optional header when `SHOWDUINO_WEBUI_CONTROL_TOKEN` is defined in `LocalSecrets.h`:
 

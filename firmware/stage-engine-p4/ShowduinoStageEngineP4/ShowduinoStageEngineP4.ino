@@ -20,6 +20,8 @@
 */
 
 #include <Arduino.h>
+#include <esp_random.h>
+#include "bootloader_random.h" /* MISSION 001J: SAR ADC entropy for the station-nonce seed */
 #include "BoardConfig.h"
 #include "ShowEngineState.h"
 #include "ShowRuntimeOwner.h"
@@ -30,6 +32,13 @@
 #include "src/EmergencyPixels.h"
 #include "src/ShowPixels.h"
 #include "src/EmergencyInput.h"
+#include "src/EmergencyLatchStore.h"
+#include "src/EmergencyStationStore.h"
+#include "../../../protocol/showduino_emergency_latch.h"
+#include "showduino_emergency_engage.h"
+#include "../../../protocol/showduino_loop_stats.h"
+#include <esp_ota_ops.h>
+#include <esp_idf_version.h>
 #include "src/ShowduinoIO.h"
 #include "src/WebApiHandler.h"
 #include "src/plugin/PluginBus.h"
@@ -44,10 +53,13 @@
 #include "src/nodes/LampNodeLink.h"
 #include "src/nodes/PixelNodeLink.h"
 #include "src/nodes/EmergencyNodeLink.h"
+#include "src/nodes/EmergencyStationKeys.h"
 #include "src/nodes/MosfetNodeLink.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_emergency_button.h"
 #include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_clear_txn.h"
+#include "../../../protocol/showduino_director_auth.h"
 #include "../../../protocol/showduino_log.h"
 #include "../../../protocol/showduino_deploy.h"
 #include "src/ProductionDeploy.h"
@@ -89,6 +101,7 @@ static bool sProductionStoreReady = false;
 static uint32_t sProductionStoreRetryMs = 0;
 
 bool emergencyLocked = false;
+static bool sRestoredEmergencyAtBoot = false;
 bool gMaintenanceMode = false;
 uint8_t gEmergencySourceId = 0; /* 0 none, 1 director/comms, 2 physical, 3 USB, 4 wireless */
 unsigned long lastHeartbeatMs = 0;
@@ -163,6 +176,7 @@ static bool isKnownCommsCommand(const String &c) {
   if (c.startsWith("PRODUCTION:") || c.startsWith("NODE:") || c.startsWith("ESTOP:")) return true;
   if (c.startsWith("WEB/")) return true;
   if (c.startsWith("DIAG:")) return true;
+  if (c.startsWith("DCLR:")) return true; /* MISSION 001K: signed Director clear */
   if (c.startsWith(SHOWDUINO_LEGACY_ROUTE_PREFIX) || c.startsWith("STATE:") ||
       c.startsWith("SNAPSHOT:") || c.startsWith("BOOT:") || c.startsWith("FW:") ||
       c.startsWith(SHOWDUINO_LEGACY_ACK_PREFIX) || c.startsWith("OK:") ||
@@ -344,8 +358,125 @@ static void sendCommandReply(const String &message) {
   sendToDirector(message);
 }
 
+/* ---- MISSION 001F: actuation order ----
+ * emergencyEngageRam is the RAM latch and every local output. It never waits on
+ * storage. Storage callbacks run afterwards through showduino_emergency_engage. */
+struct EmergencyEngageCtx {
+  EmergencySource source;
+};
+
+static void emergencyEngageRamCb(void *ctx) {
+  const EmergencySource source = static_cast<EmergencyEngageCtx *>(ctx)->source;
+  emergencyLocked = true;
+  if (source == EmergencySource::Physical) {
+    gEmergencySourceId = 2;
+  } else if (source == EmergencySource::LocalUsb) {
+    gEmergencySourceId = 3;
+  } else if (source == EmergencySource::Wireless) {
+    gEmergencySourceId = 4;
+  } else {
+    gEmergencySourceId = 1; /* director / comms */
+  }
+  gEngine.emergency = EmergencyState::Active;
+  gEngine.show = ShowRuntimeState::Emergency;
+  showEngineBump(gEngine);
+
+  /* MISSION 001I/001L: local emergency-safe outputs first, with nothing printed in
+   * between: generic outputs inactive (quiet), emergency/show pixels white, status
+   * LED. Serial, SD, network and audio work follow. */
+  showduinoIOEmergencyOutputsOffQuiet();
+  /* Hard Showduino rule: every pixel-capable local output goes bright white. */
+  emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
+  statusLedWrite(HIGH);
+  showduinoIOOnEmergency(true); /* idempotent; logs the override */
+
+  Serial.println("[ESTOP] EMERGENCY ACTIVE");
+  showduino_log_emergency(true);
+  Serial.printf("[ESTOP] source_id=%u emergency_pixels=%s show_pixels=%s audio_wav=%s\n",
+                (unsigned)gEmergencySourceId,
+                emergencyPixelsReady() ? "ready" : "not-ready",
+                showPixelsReady() ? "ready" : "not-ready",
+                stageAudioStatus().wavPresent ? "present" : "missing");
+
+  stageAudioStopShow();
+  stageAmbienceOnEmergency(true);
+  audioNodeLinkOnEmergency(true);
+  lampNodeLinkOnEmergency(true);
+  pixelNodeLinkOnEmergency(true);
+  mosfetNodeLinkOnEmergency(true);
+  emergencyNodeLinkOnEmergency(true);
+  gRuntime.onEmergencyStop(millis(), &gEngine);
+
+  pluginBusOnEmergency();
+
+  sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + SHOWDUINO_WIRE_SHOW_EMERGENCY);
+  Serial.println("[ESTOP] notified Director STATE:EMERGENCY:ACTIVE");
+
+  if (!stageAudioStartEmergency()) {
+    Serial.println("[ESTOP] Emergency audio failed — latch remains active");
+    Serial.println("[ESTOP] WARNING: Emergency audio unavailable");
+    Serial.println("[ESTOP] Emergency safety state remains operational");
+  } else {
+    Serial.println("[ESTOP] Emergency audio looping");
+  }
+  /* Logged after the outputs: the Emergency log channel flushes synchronously. */
+  stageLogEmergency("ACTIVATE",
+                    source == EmergencySource::Physical ? "source=physical" :
+                    source == EmergencySource::LocalUsb ? "source=usb" :
+                    source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
+
+}
+
+static int emergencyPersistBlockersCb(void *ctx) {
+  (void)ctx;
+  return emergencyNodeLinkPersistBlockers() ? 1 : 0;
+}
+
+static int emergencyPersistLatchCb(void *ctx, int blockersVerified) {
+  (void)ctx;
+  if (emergencyLatchSetActive(blockersVerified != 0)) return 1;
+  Serial.println("[ESTOP] WARNING: latch not stored — RAM latch engaged, will retry");
+  return 0;
+}
+
+/* MISSION 001L: bench timing instrumentation (measurement only). */
+static ShowduinoLoopStats sLoopStats;
+static uint32_t sClearDecisionStartMs = 0;
+
+static inline void timingProbeWrite(int level) {
+#if SHOWDUINO_TIMING_PROBE_PIN >= 0
+  digitalWrite(SHOWDUINO_TIMING_PROBE_PIN, level);
+#else
+  (void)level;
+#endif
+}
+
 void triggerEmergency(EmergencySource source) {
   const bool already = emergencyLocked;
+  if (!already) timingProbeWrite(HIGH); /* first instruction of a new activation */
+  bool superseded = false;
+  if (source != EmergencySource::Physical) {
+    emergencyInputNoteAssertion();
+    superseded = emergencyInputTakeClearSuperseded();
+  }
+  /* MISSION 001K: any new assertion (including GPIO25) voids a clear transaction,
+   * open or verifying. The outputs below are never delayed by this. */
+  if (emergencyNodeLinkTxnSupersede()) superseded = true;
+
+  /* MISSION 001F/001I: the RAM latch and every local emergency-safe output run
+   * first (emergencyEngageRamCb). Storage runs after and never gates actuation.
+   * Serial banners and Director notices are printed after the outputs. */
+  int durable = 1;
+  if (!already) {
+    EmergencyEngageCtx engageCtx{source};
+    ShowduinoEngageOps engageOps{&engageCtx, emergencyEngageRamCb,
+                                 emergencyPersistBlockersCb, emergencyPersistLatchCb};
+    durable = showduino_emergency_engage(&engageOps);
+  }
+
   const int gpioRaw =
 #if SHOWDUINO_ESTOP_GPIO >= 0
       digitalRead(SHOWDUINO_ESTOP_GPIO);
@@ -371,73 +502,16 @@ void triggerEmergency(EmergencySource source) {
                   gpioRaw, already ? "ACTIVE" : "CLEAR");
   }
 
-  if (source != EmergencySource::Physical) {
-    emergencyInputNoteAssertion();
-    if (emergencyInputTakeClearSuperseded()) {
-      notifyPendingClearSuperseded();
-    }
-  }
+  if (superseded) notifyPendingClearSuperseded();
 
   if (already) {
+    emergencyLatchReconcile(true, emergencyNodeLinkBlockersVerified());
     Serial.println("[ESTOP] already latched — extra trigger recorded, outputs unchanged");
     stageLogEmergency("ACTIVATE_IGNORED", "already latched");
     return;
   }
-
-  stageLogEmergency("ACTIVATE",
-                    source == EmergencySource::Physical ? "source=physical" :
-                    source == EmergencySource::LocalUsb ? "source=usb" :
-                    source == EmergencySource::Wireless ? "source=wireless" : "source=remote");
-
-  emergencyLocked = true;
-  if (source == EmergencySource::Physical) {
-    gEmergencySourceId = 2;
-  } else if (source == EmergencySource::LocalUsb) {
-    gEmergencySourceId = 3;
-  } else if (source == EmergencySource::Wireless) {
-    gEmergencySourceId = 4;
-  } else {
-    gEmergencySourceId = 1; /* director / comms */
-  }
-  gEngine.emergency = EmergencyState::Active;
-  gEngine.show = ShowRuntimeState::Emergency;
-  showEngineBump(gEngine);
-
-  Serial.println("[ESTOP] EMERGENCY ACTIVE");
-  showduino_log_emergency(true);
-  Serial.printf("[ESTOP] source_id=%u emergency_pixels=%s show_pixels=%s audio_wav=%s\n",
-                (unsigned)gEmergencySourceId,
-                emergencyPixelsReady() ? "ready" : "not-ready",
-                showPixelsReady() ? "ready" : "not-ready",
-                stageAudioStatus().wavPresent ? "present" : "missing");
-
-  stageAudioStopShow();
-  stageAmbienceOnEmergency(true);
-  audioNodeLinkOnEmergency(true);
-  lampNodeLinkOnEmergency(true);
-  pixelNodeLinkOnEmergency(true);
-  mosfetNodeLinkOnEmergency(true);
-  emergencyNodeLinkOnEmergency(true);
-  gRuntime.onEmergencyStop(millis(), &gEngine);
-
-  /* Hard Showduino rule: every pixel-capable local output goes bright white. */
-  emergencyPixelsSetWhite();
-  showPixelsOnEmergency(true);
-  statusLedWrite(HIGH);
-  pluginBusOnEmergency();
-  showduinoIOOnEmergency(true);
-
-  sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
-  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
-  sendToDirector(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + SHOWDUINO_WIRE_SHOW_EMERGENCY);
-  Serial.println("[ESTOP] notified Director STATE:EMERGENCY:ACTIVE");
-
-  if (!stageAudioStartEmergency()) {
-    Serial.println("[ESTOP] Emergency audio failed — latch remains active");
-    Serial.println("[ESTOP] WARNING: Emergency audio unavailable");
-    Serial.println("[ESTOP] Emergency safety state remains operational");
-  } else {
-    Serial.println("[ESTOP] Emergency audio looping");
+  if (!durable) {
+    stageLogEmergency("PERSIST_FAILED", "assert");
   }
 }
 
@@ -463,11 +537,21 @@ static void rejectEmergencyClear(const char *code, const char *detail) {
   stageLogEmergency("CLEAR_REJECT", code);
 }
 
-static void applyEmergencyClear() {
+static bool applyEmergencyClear() {
+  /* Persist CLEAR before releasing RAM. If storage cannot confirm it, the latch
+   * stays active, so a reboot cannot silently return to normal playback. */
+  if (!emergencyLatchRequest(false)) {
+    Serial.println("[ESTOP] CLEAR refused — latch not stored, emergency remains ACTIVE");
+    stageLogEmergency("CLEAR_REJECT", "PERSIST_FAILED");
+    return false;
+  }
+  /* MISSION 001I: the stored latch is clear, so the episode is over. */
+  emergencyNodeLinkEndEpisode();
   Serial.println("[ESTOP] CLEAR authorised — releasing latch");
   emergencyInputCancelClear();
   stageAudioStopEmergency();
   emergencyLocked = false;
+  timingProbeWrite(LOW);
   gEmergencySourceId = 0;
   gEngine.emergency = EmergencyState::Clear;
   showEngineBump(gEngine);
@@ -494,7 +578,10 @@ static void applyEmergencyClear() {
   showduino_log_emergency(false);
   Serial.println("[SHOW] Returning to safe idle state");
   stageLogEmergency("CLEAR_SUCCESS", "latch released");
+  return true;
 }
+
+static bool rejectClearIfStationPressed();
 
 void clearEmergencyStop() {
   /* USB / diagnostics maintenance path. Still refuses a physically open loop. */
@@ -521,12 +608,42 @@ void clearEmergencyStop() {
     return;
   }
 
-  applyEmergencyClear();
+  sClearDecisionStartMs = millis(); /* MISSION 001L */
+  if (rejectClearIfStationPressed()) return;
+  /* MISSION 001K: the USB maintenance clear runs the same transaction as a Director
+   * clear: fresh station proofs collected after this command, applied from the loop. */
+  if (!emergencyNodeLinkTxnOpen(SHOWDUINO_CLEAR_BY_LOCAL_USB, nullptr, 0)) {
+    rejectEmergencyClear("STATION_STORAGE", "no durable emergency episode");
+    return;
+  }
+  const int v = emergencyNodeLinkTxnBeginVerify();
+  if (v != SHOWDUINO_TXN_PENDING) {
+    rejectEmergencyClear(showduino_clear_txn_result_name(v), "verification did not start");
+    return;
+  }
+  Serial.println("[ESTOP] Maintenance clear: verifying wireless stations");
+  stageLogEmergency("CLEAR_VERIFY", "usb maintenance");
+  sendCommandReply("EMERGENCY:CLEAR:VERIFYING");
+}
+
+/* A wireless Emergency Node that is pressed, unverified, offline or (at confirm)
+ * without a fresh authenticated RELEASED proof blocks clear (MISSION 001H-001J).
+ * The P4 cannot see a station's button itself, so it refuses instead of guessing. */
+static bool rejectClearIfStationPressed() {
+  const int decision = emergencyNodeLinkClearBlocked();
+  if (!decision) return false;
+  rejectEmergencyClear(emergencyNodeLinkClearReason(decision), "wireless station blocks clear");
+  if (sCmdSource != CommandSource::LocalUsb) {
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+    sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  }
+  return true;
 }
 
 static void handleEmergencyClearRequest() {
   const uint32_t now = millis();
-  Serial.println("[ESTOP] Clear requested by Director");
+  Serial.println("[ESTOP] Clear requested by Director (authenticated)");
+  if (rejectClearIfStationPressed()) return;
   const int rc = emergencyInputBeginDirectorClear(now);
   if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
     rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
@@ -545,6 +662,15 @@ static void handleEmergencyClearRequest() {
     return;
   }
 
+  /* MISSION 001K: a fresh transaction nonce, bound to this episode. The Director
+   * must sign it in its confirm. */
+  char txnNotice[64];
+  if (!emergencyNodeLinkTxnOpen(SHOWDUINO_CLEAR_BY_DIRECTOR, txnNotice, sizeof(txnNotice))) {
+    emergencyInputCancelClear();
+    rejectEmergencyClear("STATION_STORAGE", "no durable emergency episode");
+    return;
+  }
+  sendToDirector(String(txnNotice));
   Serial.println("[ESTOP] Clear confirmation pending");
   stageLogEmergency("CLEAR_REQUEST", "director");
   sendToDirector(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST);
@@ -552,6 +678,7 @@ static void handleEmergencyClearRequest() {
 
 static void handleEmergencyClearConfirm() {
   const uint32_t now = millis();
+  sClearDecisionStartMs = now; /* MISSION 001L: confirm received -> decision */
   const int rc = emergencyInputConfirmDirectorClear(now);
   if (rc == SHOWDUINO_ESTOP_CLEAR_ERR_NOT_LATCHED) {
     rejectEmergencyClear("NOT_LATCHED", "emergency not latched");
@@ -584,13 +711,77 @@ static void handleEmergencyClearConfirm() {
     return;
   }
 
-  Serial.println("[ESTOP] Clear confirmed");
-  applyEmergencyClear();
-  sendCommandReply(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK);
+  if (rejectClearIfStationPressed()) return;
+  /* MISSION 001K: verify every station now; the clear is applied from the loop only
+   * when every provisioned station has answered a post-confirm challenge RELEASED. */
+  const int v = emergencyNodeLinkTxnBeginVerify();
+  if (v != SHOWDUINO_TXN_PENDING) {
+    rejectEmergencyClear(showduino_clear_txn_result_name(v), "transaction not open");
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+    return;
+  }
+  Serial.println("[ESTOP] Clear confirmed by Director — verifying wireless stations");
+  stageLogEmergency("CLEAR_VERIFY", "director");
+  sendCommandReply("EMERGENCY:CLEAR:VERIFYING");
+}
+
+/* MISSION 001K: one signed DCLR line from the Comms UART. */
+static void handleDirectorClearLine(const String &command) {
+  int op = SHOWDUINO_DIR_OP_NONE;
+  const int r = emergencyNodeLinkDirectorAccept(command.c_str(), &op);
+  if (r != SHOWDUINO_DIR_OK) {
+    rejectEmergencyClear(showduino_dir_result_name(r), "Director authentication refused");
+    if (emergencyLocked) {
+      sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+      sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+    }
+    return;
+  }
+  if (op == SHOWDUINO_DIR_OP_REQ) handleEmergencyClearRequest();
+  else if (op == SHOWDUINO_DIR_OP_CFM) handleEmergencyClearConfirm();
+}
+
+/* MISSION 001K: finishes a verifying transaction from the loop. Replies go to the
+ * authority that started it. */
+static void serviceClearTransaction() {
+  int authority = SHOWDUINO_CLEAR_BY_NONE;
+  char blockId[16];
+  const int r = emergencyNodeLinkTxnService(&authority, blockId, sizeof(blockId));
+  if (r < 0) return;
+  bool accepted = false;
+  const CommandSource prev = sCmdSource;
+  sCmdSource = authority == SHOWDUINO_CLEAR_BY_LOCAL_USB ? CommandSource::LocalUsb : CommandSource::Comms;
+  if (r == SHOWDUINO_TXN_ACCEPT) {
+    if (physicalEstopAssertedNow()) {
+      rejectEmergencyClear("BUTTON_ACTIVE", "physical emergency input asserted during verification");
+    } else if (emergencyNodeLinkReserveClear() != SHOWDUINO_CLEAR_OK) {
+      rejectEmergencyClear("STATION_STORAGE", "station command counters not stored");
+    } else if (!applyEmergencyClear()) {
+      rejectEmergencyClear("PERSIST_FAILED", "latch storage write not verified");
+    } else {
+      directorKeyClearRestriction(); /* a Director enrolled mid-emergency is now unrestricted */
+      sendCommandReply(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK);
+      accepted = true;
+    }
+  } else {
+    String reason = showduino_clear_txn_result_name(r);
+    if (blockId[0]) reason += String(":") + blockId;
+    rejectEmergencyClear(reason.c_str(), "station verification failed");
+  }
+  /* MISSION 001L: printed after the decision has been applied, never before. */
+  Serial.printf("[ESTOP-TIMING] clear decision=%s elapsed_ms=%lu (from confirm received)\n",
+                accepted ? "ACCEPTED" : "REJECTED",
+                (unsigned long)(millis() - sClearDecisionStartMs));
+  if (emergencyLocked && sCmdSource != CommandSource::LocalUsb) {
+    sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+    sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  }
+  sCmdSource = prev;
 }
 
 static void handleEmergencyClearCancel() {
   emergencyInputCancelClear();
+  emergencyNodeLinkTxnAbort();
   Serial.println("[ESTOP] Clear request cancelled");
   sendCommandReply("EMERGENCY:CLEAR_CANCELLED");
 }
@@ -607,6 +798,30 @@ void sendCapabilities() {
   sendCommandReply(String("SD:") + stageStoreStateName());
   sendCommandReply(stageTimeSynced() ? "TIME:READY" : "TIME:UNSYNCED");
   sendCommandReply("READY");
+}
+
+/* MISSION 001L: what is actually flashed, for the commissioning record. */
+static void printBuildInfo() {
+  const esp_partition_t *run = esp_ota_get_running_partition();
+  Serial.printf("[BUILD] role=P4 fw=%s built=%s %s idf=%s arduino=%d.%d.%d\n",
+                SHOWDUINO_P4_FIRMWARE_VERSION, __DATE__, __TIME__, esp_get_idf_version(),
+                ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
+  Serial.printf("[BUILD] flash=%lu sketch=%lu free_sketch=%lu partition=%s offset=0x%lx size=%lu "
+                "timing_probe=%d\n",
+                (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getSketchSize(),
+                (unsigned long)ESP.getFreeSketchSpace(), run ? run->label : "?",
+                run ? (unsigned long)run->address : 0UL, run ? (unsigned long)run->size : 0UL,
+                (int)SHOWDUINO_TIMING_PROBE_PIN);
+}
+
+static void printLoopStats() {
+  const ShowduinoLoopStats &s = sLoopStats;
+  const unsigned long avg = s.count ? (unsigned long)(s.totalUs / s.count) : 0UL;
+  Serial.printf("[LOOP] count=%lu avg_us=%lu max_us=%lu last_us=%lu\n", (unsigned long)s.count, avg,
+                (unsigned long)s.maxUs, (unsigned long)s.lastUs);
+  Serial.printf("[LOOP] <=1ms=%lu <=5ms=%lu <=20ms=%lu <=50ms=%lu <=100ms=%lu >100ms=%lu\n",
+                (unsigned long)s.bucket[0], (unsigned long)s.bucket[1], (unsigned long)s.bucket[2],
+                (unsigned long)s.bucket[3], (unsigned long)s.bucket[4], (unsigned long)s.bucket[5]);
 }
 
 static void printLocalConsoleStatus() {
@@ -958,9 +1173,17 @@ static void printUsbHelp() {
   Serial.println("  PRODUCTION:STATUS");
   Serial.println("  UPDATE:MAINTENANCE:ON | UPDATE:MAINTENANCE:OFF");
   Serial.println("  EMERGENCY:STOP");
-  Serial.println("  EMERGENCY:CLEAR            (USB maintenance clear / Director request)");
-  Serial.println("  EMERGENCY:CLEAR_CONFIRM    (Director confirm; requires pending request)");
+  Serial.println("  EMERGENCY:CLEAR            (USB maintenance clear: verifies every station first)");
+  Serial.println("  Director clear arrives only as a signed DCLR:REQ / DCLR:CFM (UART)");
+  Serial.println("  EMERGENCY:DIRKEY:SET:DIR-nn:<64 hex> | DIRKEY:REVOKE | DIRKEY:STATUS   (USB only)");
+  Serial.println("  EMERGENCY:KEY:SET:ESTOP-nn:<64 hex>   (USB only; station key from the C3)");
+  Serial.println("  EMERGENCY:KEY:REVOKE:ESTOP-nn | EMERGENCY:KEY:LIST | EMERGENCY:AUTH:STATUS");
+  Serial.println("  EMERGENCY:STATION:DISMISS:ESTOP-nn   (USB only; unprovisioned stations only)");
   Serial.println("  EMERGENCY:CLEAR_CANCEL");
+  Serial.println("  EMERGENCY:RECOVER:STATUS | EMERGENCY:RECOVER:BLOCKERS:<confirm> |");
+  Serial.println("  EMERGENCY:RECOVER:COUNTER:<confirm>   (USB only; never clears; see recovery doc)");
+  Serial.println("  LOOP:STATS | LOOP:RESET   (main-loop timing, USB only)");
+  Serial.println("  BUILD:INFO                (firmware, core, partition, flash)");
   Serial.println("  PIXEL:STATUS");
   Serial.println("  PIXEL:COUNT:<1-1024>   (set length, do not init)");
   Serial.println("  PIXEL:INIT             (initialise GPIO23 with that length)");
@@ -1036,6 +1259,27 @@ static void emitRuntimeToUsbAndDirector(const char *line) {
 }
 
 static void dispatchCommand(const String &command) {
+  /* MISSION 001K: every clear-related line passes the shared entry policy first.
+   * Plain clear text from the UART (Director, S3, S3/P4 web, show cues) never clears;
+   * only a Director-signed DCLR or the P4 USB console can start a clear. */
+  {
+    const int entry = showduino_clear_entry(sCmdSource == CommandSource::LocalUsb ? 1 : 0,
+                                            command.c_str());
+    if (entry != SHOWDUINO_CLEAR_ENTRY_NONE) {
+      Serial.printf("[ESTOP] %s clear entry %d\n",
+                    sCmdSource == CommandSource::LocalUsb ? "USB" : "UART", entry);
+      if (entry == SHOWDUINO_CLEAR_ENTRY_DIRECTOR) handleDirectorClearLine(command);
+      else if (entry == SHOWDUINO_CLEAR_ENTRY_LOCAL) clearEmergencyStop();
+      else if (entry == SHOWDUINO_CLEAR_ENTRY_CANCEL) handleEmergencyClearCancel();
+      else if (entry == SHOWDUINO_CLEAR_ENTRY_REFUSE_AUTH) {
+        rejectEmergencyClear("AUTH_REQUIRED", "unsigned clear from the Comms UART refused");
+        if (emergencyLocked) sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+      } else {
+        rejectEmergencyClear("AUTH_SOURCE", "Director clear messages are not accepted here");
+      }
+      return;
+    }
+  }
   if (command.startsWith("RUN:TEST") || command.startsWith("CONFIRM:")) {
     if (sCmdSource != CommandSource::LocalUsb) return;
     (void)stageDiagHandleCommand(command.c_str());
@@ -1044,6 +1288,19 @@ static void dispatchCommand(const String &command) {
 
   if (sCmdSource == CommandSource::LocalUsb && command == "HELP") {
     printUsbHelp();
+    return;
+  }
+  if (sCmdSource == CommandSource::LocalUsb && command == "LOOP:STATS") {
+    printLoopStats();
+    return;
+  }
+  if (sCmdSource == CommandSource::LocalUsb && command == "LOOP:RESET") {
+    showduino_loop_stats_reset(&sLoopStats);
+    Serial.println("[LOOP] statistics reset");
+    return;
+  }
+  if (sCmdSource == CommandSource::LocalUsb && command == "BUILD:INFO") {
+    printBuildInfo();
     return;
   }
 
@@ -1142,31 +1399,6 @@ static void dispatchCommand(const String &command) {
     triggerEmergency(sCmdSource == CommandSource::LocalUsb
                          ? EmergencySource::LocalUsb
                          : EmergencySource::Remote);
-    return;
-  }
-
-  if (command == "EMERGENCY:CLEAR") {
-    Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR\n",
-                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
-    if (sCmdSource == CommandSource::LocalUsb) {
-      clearEmergencyStop();
-    } else {
-      handleEmergencyClearRequest();
-    }
-    return;
-  }
-
-  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM) {
-    Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR_CONFIRM\n",
-                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
-    handleEmergencyClearConfirm();
-    return;
-  }
-
-  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL) {
-    Serial.printf("[ESTOP] %s cmd EMERGENCY:CLEAR_CANCEL\n",
-                  sCmdSource == CommandSource::LocalUsb ? "USB" : "UART");
-    handleEmergencyClearCancel();
     return;
   }
 
@@ -1361,6 +1593,13 @@ void handleCommand(String command, CommandSource source) {
   command.trim();
   if (command.length() == 0) return;
 
+  /* MISSION 001J: station key and maintenance commands are handled before any
+   * logging, so key material is never echoed, and only from the USB console. */
+  if (emergencyNodeLinkIsMaintenanceCommand(command.c_str())) {
+    emergencyNodeLinkHandleMaintenance(command.c_str(), source == CommandSource::LocalUsb);
+    return;
+  }
+
   const CommandSource prevSource = sCmdSource;
   const ShowRuntimeSendFn prevSend = gRuntime.sendFn;
   sCmdSource = source;
@@ -1372,6 +1611,7 @@ void handleCommand(String command, CommandSource source) {
       return;
     }
     const bool localOnly = (command == "HELP" || command == "STATUS:REQUEST" ||
+                            command.startsWith("LOOP:") || command == "BUILD:INFO" ||
                             command == "HELLO" || command == "HEARTBEAT" ||
                             command.startsWith("LOG:LEVEL") ||
                             command.startsWith("TIME:") ||
@@ -1575,6 +1815,7 @@ void readUsbSerial() {
       }
       sUsbLine[out] = '\0';
       handleCommand(String(sUsbLine), CommandSource::LocalUsb);
+      memset(sUsbLine, 0, sizeof(sUsbLine)); /* MISSION 001J: may have held a station key */
       sUsbLen = 0;
     } else {
       if (sUsbOverflow) continue;
@@ -1585,6 +1826,40 @@ void readUsbSerial() {
       }
       sUsbLine[sUsbLen++] = c;
     }
+  }
+}
+
+/* Outputs of a latch restored from storage are engaged once, after the runtime
+ * is idle. If a verified clear released the latch during boot, this is a no-op. */
+static void engageRestoredEmergencyAtBoot() {
+  if (!sRestoredEmergencyAtBoot || !emergencyLocked) return;
+  sRestoredEmergencyAtBoot = false;
+  /* MISSION 001L: local emergency-safe outputs before any log or SD write. */
+  showduinoIOEmergencyOutputsOffQuiet();
+  emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
+  statusLedWrite(HIGH);
+  Serial.println("[ESTOP] Restoring persisted emergency latch — outputs engaged");
+  stageLogEmergency("RESTORED", "persisted latch at boot");
+  stageAudioStopShow();
+  stageAmbienceOnEmergency(true);
+  audioNodeLinkOnEmergency(true);
+  lampNodeLinkOnEmergency(true);
+  pixelNodeLinkOnEmergency(true);
+  mosfetNodeLinkOnEmergency(true);
+  emergencyNodeLinkOnEmergency(true);
+  gRuntime.onEmergencyStop(millis(), &gEngine);
+  emergencyPixelsSetWhite();
+  showPixelsOnEmergency(true);
+  statusLedWrite(HIGH);
+  pluginBusOnEmergency();
+  showduinoIOOnEmergency(true);
+  showduino_log_emergency(true);
+  sendToDirector(SHOWDUINO_LEGACY_STATUS_ELOCKED);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_EMERGENCY_PREFIX) + SHOWDUINO_WIRE_EMERGENCY_ACTIVE);
+  sendToDirector(String(SHOWDUINO_WIRE_STATE_SHOW_PREFIX) + SHOWDUINO_WIRE_SHOW_EMERGENCY);
+  if (!stageAudioStartEmergency()) {
+    Serial.println("[ESTOP] WARNING: Emergency audio unavailable — latch remains active");
   }
 }
 
@@ -1633,6 +1908,11 @@ void setup() {
 
   Serial.println();
   Serial.println("[BOOT] Showduino P4 starting");
+#if SHOWDUINO_TIMING_PROBE_PIN >= 0
+  pinMode(SHOWDUINO_TIMING_PROBE_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_TIMING_PROBE_PIN, LOW);
+#endif
+  printBuildInfo();
 
   stageTimeBegin();
 
@@ -1649,6 +1929,38 @@ void setup() {
 #else
   Serial.println("[ESTOP] Emergency input initialized (command path only; GPIO not assigned)");
 #endif
+
+  /* Persisted latch is restored before any output, show or node link is touched.
+   * Only RAM state is set here. Outputs engage once the runtime is idle. */
+  if (emergencyLatchRestoreAtBoot()) {
+    emergencyLocked = true;
+    gEmergencySourceId = 0; /* source label is not persisted */
+    gEngine.emergency = EmergencyState::Active;
+    gEngine.show = ShowRuntimeState::Emergency;
+    showEngineBump(gEngine);
+    sRestoredEmergencyAtBoot = true;
+  }
+  /* Station clear-blockers are restored with the latch, before any clear can be
+   * accepted. Unknown or corrupt storage stays blocked (fail closed). */
+  {
+    ShowduinoBlocker blockers[SHOWDUINO_BLOCKER_MAX];
+    uint8_t blockerCount = 0;
+    const ShowduinoBlockerStatus bs = emergencyStationStoreLoad(blockers, &blockerCount);
+    emergencyNodeLinkStageRestore(blockers, blockerCount, bs, sRestoredEmergencyAtBoot,
+                                  emergencyLatchBootUnknown());
+  }
+
+  /* MISSION 001J: the P4 has no radio, so esp_random() is only a true RNG while
+   * the SAR ADC entropy source is on. Draw the station-nonce seed now, before any
+   * subsystem can use the ADC, then switch the source off again. */
+  {
+    uint8_t seed[32];
+    bootloader_random_enable();
+    esp_fill_random(seed, sizeof(seed));
+    bootloader_random_disable();
+    emergencyNodeLinkSeedNonce(seed);
+    memset(seed, 0, sizeof(seed));
+  }
 
   /* Generic I/O enters explicit high-impedance safe state before SD mount. */
   showduinoIOBegin(sendToDirectorC);
@@ -1712,6 +2024,7 @@ void setup() {
   showNetworkBegin();
 
   gRuntime.bootToIdle();
+  engageRestoredEmergencyAtBoot();
   lastHeartbeatMs = millis();
   Serial.println("[SYSTEM] Showduino ready");
   sendToDirector("BOOT:STAGE_ENGINE_READY");
@@ -1719,7 +2032,15 @@ void setup() {
   Serial.println("[CONSOLE] USB command console ready — type HELP");
 }
 
+static void loopBody();
+
 void loop() {
+  const uint32_t loopStartUs = micros();
+  loopBody();
+  showduino_loop_stats_add(&sLoopStats, micros() - loopStartUs);
+}
+
+static void loopBody() {
   readCommsSerial();
   readUsbSerial();
   flushUartNoiseLog();
@@ -1741,12 +2062,23 @@ void loop() {
   lampNodeLinkLoop();
   pixelNodeLinkLoop();
   emergencyNodeLinkLoop();
+  serviceClearTransaction();
   mosfetNodeLinkLoop();
   stageTimeLoop(millis(), sendToDirectorC);
   showNetworkLoop();
   gRuntime.service(millis(), &gEngine);
   showPixelsService();
 
+  {
+    /* Throttled (5 s). Retries unverified writes and converges the latch byte
+     * to the verified state once the blocker record verifies. Writes only on need. */
+    static uint32_t sLatchRetryMs = 0;
+    if ((millis() - sLatchRetryMs) >= 5000UL) {
+      sLatchRetryMs = millis();
+      emergencyNodeLinkRetryBlockers();
+      emergencyLatchReconcile(emergencyLocked, emergencyNodeLinkBlockersVerified());
+    }
+  }
   if (emergencyLocked) {
     statusLedWrite((millis() / 250) % 2 == 0 ? HIGH : LOW);
     emergencyPixelsService();
