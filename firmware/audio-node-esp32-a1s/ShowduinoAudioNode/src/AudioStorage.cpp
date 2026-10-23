@@ -222,7 +222,7 @@ static void collectDir(const char *relDir, char names[][40], uint16_t maxNames, 
       const char *nm = e.name();
       const char *base = strrchr(nm, '/');
       base = base ? base + 1 : nm;
-      if (showduino_audio_has_wav_ext(base)) {
+      if ((showduino_audio_has_wav_ext(base) || showduino_audio_has_mp3_ext(base))) {
         char entry[40];
         if (relDir && relDir[0]) snprintf(entry, sizeof(entry), "%s/%s", relDir, base);
         else strncpy(entry, base, sizeof(entry) - 1);
@@ -251,7 +251,7 @@ static void collectShowDir(const char *absDir) {
     path[sizeof(path) - 1] = '\0';
     if (e.isDirectory()) {
       collectShowDir(path);
-    } else if (showduino_audio_has_wav_ext(path)) {
+    } else if ((showduino_audio_has_wav_ext(path) || showduino_audio_has_mp3_ext(path))) {
       char canonical[SHOWDUINO_AUDIO_PATH_MAX + 1];
       if (showduino_audio_resolve_show_path(path, canonical, sizeof(canonical)) ==
           SHOWDUINO_AUDIO_PATH_OK) {

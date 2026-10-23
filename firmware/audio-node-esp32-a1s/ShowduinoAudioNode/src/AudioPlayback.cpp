@@ -1,5 +1,6 @@
 #include "AudioPlayback.h"
 #include "AudioStorage.h"
+#include "AudioMp3Playback.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_audio_node.h"
 
@@ -16,6 +17,7 @@ static bool sOpen = false;
 static bool sPaused = false;
 static bool sLoop = false;
 static bool sI2sOn = false;
+static bool sMp3 = false;
 static volatile bool sCompleted = false;
 static volatile bool sFailed = false;
 static uint32_t sDataStart = 0;
@@ -140,9 +142,11 @@ static void unlockPlayback() {
 bool audioPlaybackStart(const char *absPath, AudioPlayMode mode) {
   lockPlayback();
   if (sOpen) {
-    sFile.close();
+    if (sMp3) audioMp3Stop();
+    else sFile.close();
     sOpen = false;
   }
+  sMp3 = false;
   if (sI2sOn) {
     sI2s.end();
     sI2sOn = false;
@@ -156,28 +160,45 @@ bool audioPlaybackStart(const char *absPath, AudioPlayMode mode) {
     unlockPlayback();
     return false;
   }
-  sFile = SD.open(absPath, FILE_READ);
-  if (!sFile) {
-    setErr("open failed");
-    sFailed = true;
-    sFail++;
-    unlockPlayback();
-    return false;
-  }
-  if (!parseWav(sFile)) {
-    sFile.close();
-    setErr("unsupported WAV");
-    sFailed = true;
-    sFail++;
-    unlockPlayback();
-    return false;
-  }
-  if (!startI2s()) {
-    sFile.close();
-    sFailed = true;
-    sFail++;
-    unlockPlayback();
-    return false;
+  sMp3 = showduino_audio_has_mp3_ext(absPath);
+  if (sMp3) {
+    /* MP3 uses the same playback lock, command state machine and codec.
+     * It owns the I2S peripheral only while active, just like WAV. */
+    if (!audioMp3Start(absPath)) {
+      setErr(audioMp3LastError());
+      sMp3 = false;
+      sFailed = true;
+      sFail++;
+      unlockPlayback();
+      return false;
+    }
+    sDataStart = 0;
+    sDataBytes = audioMp3Size();
+    sDataPos = 0;
+  } else {
+    sFile = SD.open(absPath, FILE_READ);
+    if (!sFile) {
+      setErr("open failed");
+      sFailed = true;
+      sFail++;
+      unlockPlayback();
+      return false;
+    }
+    if (!parseWav(sFile)) {
+      sFile.close();
+      setErr("unsupported WAV");
+      sFailed = true;
+      sFail++;
+      unlockPlayback();
+      return false;
+    }
+    if (!startI2s()) {
+      sFile.close();
+      sFailed = true;
+      sFail++;
+      unlockPlayback();
+      return false;
+    }
   }
   strncpy(sPath, absPath, sizeof(sPath) - 1);
   const char *rel = absPath;
@@ -196,8 +217,12 @@ bool audioPlaybackStart(const char *absPath, AudioPlayMode mode) {
 
 void audioPlaybackStop() {
   lockPlayback();
-  if (sOpen) sFile.close();
+  if (sOpen) {
+    if (sMp3) audioMp3Stop();
+    else sFile.close();
+  }
   sOpen = false;
+  sMp3 = false;
   sPaused = false;
   sLoop = false;
   if (sI2sOn) {
@@ -229,6 +254,46 @@ void audioPlaybackService() {
     xSemaphoreGive(sLock);
     return;
   }
+
+  if (sMp3) {
+    /* MP3 decoding is scheduled on the same audio task as WAV: it is
+     * never run from the Director, Wi-Fi, WebUI, or emergency callback. */
+    const bool alive = audioMp3Service();
+    const uint32_t nextPos = audioMp3Position();
+    if (nextPos >= sDataPos) sBytes += nextPos - sDataPos;
+    sDataPos = nextPos;
+
+    if (!alive) {
+      /* Decode errors and early EOF are not reported as successful cues. */
+      const bool bad = audioMp3LastError()[0] ||
+                       (sDataPos + 4096u < sDataBytes);
+      if (bad) {
+        setErr(audioMp3LastError()[0] ? audioMp3LastError() : "MP3 decode failed");
+        audioMp3Stop();
+        sOpen = false;
+        sFailed = true;
+        sFail++;
+      } else if (sLoop) {
+        if (!audioMp3Start(sPath)) {
+          setErr(audioMp3LastError());
+          sOpen = false;
+          sFailed = true;
+          sFail++;
+        } else {
+          sDataPos = 0;
+        }
+      } else {
+        audioMp3Stop();
+        sOpen = false;
+        sPaused = false;
+        sCompleted = true;
+        sDone++;
+      }
+    }
+    xSemaphoreGive(sLock);
+    return;
+  }
+
   const uint32_t remain = (sDataPos < sDataBytes) ? (sDataBytes - sDataPos) : 0;
   if (remain == 0) {
     if (sLoop) {
