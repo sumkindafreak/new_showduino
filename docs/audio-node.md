@@ -1,7 +1,7 @@
 # Showduino Audio Node
 
 **Status:** IMPLEMENTED / HARDWARE TEST REQUIRED  
-**Firmware:** `0.4.0` · protocol `1.3`  
+**Current `main` firmware source:** `0.4.3` · protocol `1.3` (earlier bring-up sections originated at 0.4.0; confirm installed version)  
 **Board:** Ai-Thinker ESP32-Audio-Kit **V2.2 A161** · ESP32-A1S · **ES8388**  
 **Not** the AC101 A1S (often silkscreen 2379).
 
@@ -47,7 +47,7 @@ Sources: official V2.2 / ESP32-A1S specification, NuttX and ESP-ADF Audio-Kit ma
 | KEY5 | 18 | Previous test asset |
 | KEY6 | 5 | Next test asset (strapping; used as input after boot) |
 | KEY7 | none | BOOT is GPIO0/MCLK. RST is hardware-only |
-| Status LED | 22 | LED4 only |
+| Theatrical pixel DATA | 22 | Configurable WS2812 Showduino Pixel Line; **not** a dedicated status-only LED in current `main` |
 
 ### Conflicts
 
@@ -234,7 +234,7 @@ Local keys never override emergency. PLAY/PREV/NEXT/VOLUME never hijack a P4-own
 
 ### GPIO22 Showduino Pixel Line
 
-GPIO22 is the Audio Node's Showduino Pixel output on the **same** Audio peer. Configure count, initialise the line, then use the shared Pixel segment/FX commands (also exposed through Studio `audio-node-pixels` / `AUDIO:NODE:PIXEL:`).
+GPIO22 is the Audio Node's Showduino Pixel output on the **same** Audio peer. Configure count, initialise the line, then use the shared Pixel segment/FX commands (also exposed through Studio `audio-node-pixels` / `AUDIO:NODE:PIXEL:`). The saved `pix` count defaults to **0** on a new/unconfigured node, so the line stays dark until commissioned. For the fixed 10-pixel acceptance strip: `PIXEL:COUNT:10`, `PIXEL:INIT`, `PIXEL:STATUS`, then `PIXEL:TEST`. Verify READY/count 10; subsequent boots reuse the saved count. The current `main` line has no separate GPIO5 status pixel. A test is roughly 3.1 seconds at 10 pixels (RGBW plus chase), not the former 1.5-second status test.
 
 Legacy diagnostic colour patterns from earlier status-only firmware are superseded by the full Pixel engine. `PIXEL:TEST` / `LED:TEST` remain commissioning helpers.
 
