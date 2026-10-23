@@ -526,6 +526,51 @@ int main() {
       expect(slotsStatus == SHDO_TOO_MANY_CUES,
              "17 pixel clips on one device are refused (16 segment slots); Studio must warn");
     }
+    // W005: a genuine website export whose audio file name (74 characters) cannot fit
+    // the 63-character command. It used to compile with the PLAY command silently cut
+    // short, so the Audio Node would be told to play a file that does not exist.
+    std::string longName;
+    expect(loadFixture("website-long-audio-name.shdo", &longName), "long audio name website export loads");
+    if (!longName.empty()) {
+      ShdoManifest longManifest{};
+      ShdoCue longCues[16]{};
+      uint16_t longCount = 0;
+      const ShdoStatus longStatus = shdoCompile(longName.c_str(), longName.size(), &longManifest,
+                                                longCues, 16, &longCount, err, sizeof(err));
+      expect(longStatus == SHDO_COMMAND_TOO_LONG,
+             "over-long audio file name is refused, not truncated");
+      expect(longCount == 0, "a refused production yields no cues");
+    }
+  }
+  // Boundary: "AUDIO:NODE:PLAY:" is 16 characters, so a 47-character file name makes a
+  // complete 63-character command and a 48-character name is refused.
+  {
+    std::string base;
+    if (loadFixture("website-long-audio-name.shdo", &base)) {
+      const std::string original(70, 'f');
+      auto withName = [&](size_t stemLength) {
+        std::string doc = base;
+        const std::string replacement = std::string(stemLength - 4, 'g') + ".wav";
+        for (size_t at = doc.find(original + ".wav"); at != std::string::npos;
+             at = doc.find(original + ".wav", at + replacement.size())) {
+          doc.replace(at, original.size() + 4, replacement);
+        }
+        return doc;
+      };
+      ShdoManifest m{};
+      ShdoCue c[16]{};
+      uint16_t n = 0;
+      const std::string fits = withName(47);
+      const ShdoStatus fitStatus = shdoCompile(fits.c_str(), fits.size(), &m, c, 16, &n, err, sizeof(err));
+      bool complete = false;
+      for (uint16_t i = 0; i < n; ++i) {
+        if (std::strcmp(c[i].command, ("AUDIO:NODE:PLAY:" + std::string(43, 'g') + ".wav").c_str()) == 0) complete = true;
+      }
+      expect(fitStatus == SHDO_OK && complete, "47-character audio name compiles to the complete command");
+      const std::string over = withName(48);
+      expect(shdoCompile(over.c_str(), over.size(), &m, c, 16, &n, err, sizeof(err)) == SHDO_COMMAND_TOO_LONG,
+             "48-character audio name is refused");
+    }
   }
 
   return failures ? 1 : 0;
