@@ -87,6 +87,18 @@ class ShowduinoMp3Output final : public AudioOutput {
   }
 
   bool failed() const { return sFailed; }
+
+  /* STOP, P4 preemption and EMERGENCY must NOT drain 23ms of queued
+   * decoded PCM from the previous cue before changing sound. */
+  void abort() {
+    sUsed = 0;
+    if (sI2sOn) {
+      sI2s.end();
+      sI2sOn = false;
+    }
+    sFailed = false;
+  }
+
   void reset() {
     if (sI2sOn) {
       sI2s.end();
@@ -147,12 +159,12 @@ class ShowduinoMp3Output final : public AudioOutput {
 static ShowduinoMp3Output sOutput;
 
 void audioMp3Stop() {
+  sOutput.abort();
   if (sDecoder) {
     sDecoder->stop();
     delete sDecoder;
     sDecoder = nullptr;
   }
-  sOutput.stop();
   sOutput.reset();
   if (sSource) {
     sSource->close();
@@ -190,7 +202,7 @@ bool audioMp3Start(const char *absPath) {
     audioMp3Stop();
     return false;
   }
-  Serial.printf("[AUDIO] MP3 decoder ready, file=%lu bytes heap=%lu\\n",
+  Serial.printf("[AUDIO] MP3 decoder ready, file=%lu bytes heap=%lu\n",
                 (unsigned long)sFileSize, (unsigned long)ESP.getFreeHeap());
   return true;
 }
@@ -199,6 +211,11 @@ bool audioMp3Service() {
   if (!sDecoder || sOutput.failed()) return false;
   if (!sDecoder->isRunning()) return false;
   const bool alive = sDecoder->loop();
+  if (!alive) {
+    /* Drain the last decoded PCM ONLY at natural EOF. Explicit STOP uses
+     * audioMp3Stop(), which discards it instead. */
+    sOutput.flush();
+  }
   return alive && !sOutput.failed() && sDecoder->isRunning();
 }
 
