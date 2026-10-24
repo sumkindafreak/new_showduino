@@ -1,0 +1,40 @@
+# Showduino finish-line audit — 24 October 2026
+
+**Target:** one complete, physically observed, non-DMX show followed by a mid-show Emergency repeat. **Status: NOT YET PASSED.**
+
+## Source of truth and limits
+
+- Checked `sumkindafreak/new_showduino` **`main` at `87963bbd017b4ca930f49db9928a3d39b32fa690`** on 24 October 2026.
+- The maintained manual's reviewed firmware baseline remains `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` (20 October). GitHub comparison shows **20 subsequent commits**, affecting documentation and the generated Comms Studio bundle/manifest; **no active firmware source changed** in that comparison. Do not silently promote draft firmware into `main`.
+- `main` declares P4 `0.6.8`, Comms `0.5.4` and Audio Node `0.4.3` in their BoardConfig files. These are source versions, **not confirmed versions flashed onto the owner's hardware**.
+- Most recent owner-reported physical observation: a wireless Emergency Node triggered audible Audio Node playback from roughly **7 metres** away. This proves only that particular observed path, **not** the full Emergency sequence, audio continuity or a complete show.
+- **No dated physical LOAD → RUN → COMPLETE pass, and no complete Emergency repeat, has been recorded.** Host tests, firmware compilation, a Studio preview and a P4 persist/reload roundtrip are not substitutes.
+
+## Confirmed in source or software tests — not a physical acceptance pass
+
+- `main` contains Director, Comms S3, P4 timeline/runtime and persistent production code; the supported bounded cue types include PIXEL, AUDIO, LAMP, MOSFET, TEST and LOG.
+- The 20 October documentation review records passing host production tests and website static checks. It did not flash or exercise physical hardware.
+- Draft [PR #29](https://github.com/sumkindafreak/new_showduino/pull/29) has **separately** passed full Director/P4/Comms builds, host suites, and a persistent compile/reload of the fixed **22-second** `all-nodes-bench-test.shdo`. Its acceptance show and result sheet are on that **unmerged branch**, not on `main`: [fixture/procedure](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/examples/productions/ALL_NODES_BENCH_TEST.md), [result record](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/docs/manual/SHOWDUINO_BENCH_RESULT_RECORD.md).
+- The smaller `main` fixture [`first-audio-test.shdo`](../../examples/productions/first-audio-test.shdo) is a **30-second** production with **22 seconds of requested WAV playback** (3 s PLAY, 25 s STOP). It is **not** the 22-second all-node acceptance show.
+
+## Blocking observations and draft fixes
+
+| Gate | Evidence / status | Minimum action |
+| --- | --- | --- |
+| Audio Node uninterrupted WAV | Owner reported stuttering; `main` is Audio 0.4.3. [PR #37](https://github.com/sumkindafreak/new_showduino/pull/37) buffers/retries I2S writes but is **uncompiled and untested on the A1S**. | Compile and A/B test existing WAV against the installed firmware; retain only a proven fix. |
+| Actual website Studio export → SD persist | [PR #35](https://github.com/sumkindafreak/new_showduino/pull/35) fixes `action.value` token handling; [PR #36](https://github.com/sumkindafreak/new_showduino/pull/36) rejects truncated commands. Both are **unmerged**. #36 reports host tests only. | Verify a genuine exported file through the P4 persist/load path; apply the narrow parser fix if reproduced. |
+| Matched 22-second multi-node show | [PR #29](https://github.com/sumkindafreak/new_showduino/pull/29) remains **draft/unmerged** and has diverged from `main`; its builds are not evidence of flashed hardware. | Reconcile without discarding current `main` or local edits; build/flash the matched required set; use its **existing** acceptance file. |
+| Pixel and indicator wiring | On `main`, Audio GPIO22 is the configurable show-pixel output and GPIO5 is still KEY6; there is **no separate active GPIO5 status pixel**. [PR #40](https://github.com/sumkindafreak/new_showduino/pull/40) proposes GPIO5 **one indicator pixel**, GPIO22 **10-pixel minimum show line**, and disables KEY6; it is **not merged, compiled or physically verified**. P4/C3 default-ten changes are also draft. | Verify pin map and installed firmware first; test GPIO5 indicator and GPIO22 show line separately before accepting PR #40. |
+| Emergency repeat and other outputs | Emergency white on P4/C3/Audio/Emergency pixels, Lamp emergency sound, MOSFET safe OFF, Director clear/Locate and no auto-resume have **no complete recorded hardware pass**. [PR #33](https://github.com/sumkindafreak/new_showduino/pull/33) latch persistence is also draft, not proven on power-loss hardware. | Repeat the same 22-second show with Emergency during the 10–14 s audio cue; log actual outputs and clear behaviour. |
+
+The draft MP3 decoder and broader lighting-engine work are **not prerequisites** for this acceptance. No extra production features are required to record the existing test.
+
+## Smallest finish-line sequence
+
+1. **Preserve local work:** record local `git status`, installed firmware versions and any unpushed commits before syncing. Reconcile `main` and the minimum required draft fixes; do not merge untested Emergency persistence or other unrelated changes merely to reach a version number.
+2. **Prepare the existing 22-second test:** use the exact [PR #29 acceptance procedure](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/examples/productions/ALL_NODES_BENCH_TEST.md), existing node IDs, saved 10-pixel counts, `system-test.wav`, and a **benign low-voltage** MOSFET OUT1 load. Verify Audio SD and output routing first.
+3. **Prove one normal run:** persist, explicitly LOAD, deliberately START, observe each cue and reach **COMPLETE at 22 seconds**. Record actual Director/P4/Comms and node states, WAV continuity, Lamp Jewel and MOSFET OFF.
+4. **Prove one Emergency run:** restart the **same** show; assert Emergency during Audio playback (10–14 s). Check P4 latch independent of Director, Audio stop, emergency audio as configured, pixel white, MOSFET OFF, authorised Director clear and **no automatic resume**. Check Director Locate separately where installed.
+5. **Freeze only after both passes:** write dated logs, installed commit hashes, observations and failures into the [bench result record](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/docs/manual/SHOWDUINO_BENCH_RESULT_RECORD.md). Repair only a failing path, repeat the same tests, then archive the known-good firmware and production.
+
+**Non-negotiable architecture:** **One Director. One coordinated show. Multiple replaceable nodes.** The Director exclusively chooses/commands shows; the P4 executes and enforces authoritative runtime/Emergency state. Comms transports. Nodes act, and no specialist-node button independently changes scenes. **Emergency STOP must assert and be enforced independently of Director connectivity.** Clearing Emergency never restarts a show. Showduino's theatrical interlock is not a certified life-safety system.
