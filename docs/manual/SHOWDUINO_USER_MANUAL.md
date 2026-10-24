@@ -14,6 +14,10 @@
 
 ---
 
+## Finish-line status update — 24 October 2026
+
+**Read the [24 October main-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) before commissioning the existing non-DMX acceptance show.** The 20 October firmware baseline of this manual is still the active `main` firmware: later `main` commits changed documentation and generated Comms Studio assets, not the active firmware source. The 22-second all-node acceptance production, independent Audio GPIO5 status indicator, default-ten-pixel changes, WAV-stutter repair and SHDO parser fixes are on **separate unmerged PRs**, not on `main` or proven installed hardware. No complete physical normal run plus Emergency repeat is recorded. Do not confuse a passing host test or a proposed firmware version with a passed hardware test.
+
 ## Read this first
 
 Showduino is still at a release-candidate stage. This manual describes the behaviour that could be verified from the repository baseline above. It deliberately does **not** present planned features as finished product functions.
@@ -950,6 +954,10 @@ Current playback support is WAV PCM. MP3, Ogg and FLAC are planned rather than c
 Current Audio Node operations include play, loop, stop, pause, resume, volume, fade and duck/unduck.
 
 The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
+
+**Audio Node pin/firmware caution (24 October):** Current `main` Audio Node 0.4.3 assigns **GPIO22 to the programmable show-pixel line** and **GPIO5 to KEY6**; it does **not** have a separately active GPIO5 indicator. Draft PR #40 reserves **GPIO5 for one status NeoPixel** (KEY6 disabled) and keeps **GPIO22 for the show strip** with a proposed 10-pixel minimum. That is not yet compiled, flashed or bench-accepted. Match the installed firmware to its own BoardConfig and never connect both functions to GPIO5.
+
+**Audio continuity and deploy caution (24 October):** Audio WAV playback has a reported physical stutter; PR #37's buffer/I2S changes are a draft, not a verified cure. Genuine website SHDO exports can encounter action parsing or truncated-command problems addressed in draft PRs #35/#36. Confirm actual P4 persist → LOAD → START and uninterrupted sound on hardware before declaring the first show successful.
 
 **Audio pixel commissioning:** On a new/unconfigured Node the saved pixel count defaults to **zero**, leaving GPIO22 dark. For the fixed 10-pixel bench strip, send `PIXEL:COUNT:10` and then `PIXEL:INIT` to that Audio Node; verify `PIXEL:STATUS` reports READY and count 10 before running the show. The count persists across boots. Do not assume the firmware's count macro automatically configures a new Node, or confuse this theatrical line with an independent status LED. Physical operation remains subject to bench acceptance.
 
