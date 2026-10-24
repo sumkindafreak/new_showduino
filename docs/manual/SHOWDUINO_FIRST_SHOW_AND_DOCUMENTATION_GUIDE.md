@@ -15,6 +15,8 @@ This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.m
 
 Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working source for pinouts and vendor/firmware references. Do not claim a representative product photo is a verified photo of the installed module.
 
+**24 October status:** Use the [finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the distinction between `main` and draft PR #29's fixed 22-second all-node test. The physical normal run and mid-show Emergency repeat are **NOT YET VERIFIED**. Do not start a different production or add new features to close this gate.
+
 ## First show: safe workflow
 
 1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
