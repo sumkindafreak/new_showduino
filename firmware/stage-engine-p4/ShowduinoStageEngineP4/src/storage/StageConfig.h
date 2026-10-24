@@ -23,9 +23,9 @@ struct StageE131Persist {
 
 struct StagePixelsConfig {
   uint8_t formatVersion = 1;
-  bool enabled = false;
+  bool enabled = true;
   int16_t gpio = 23;
-  uint16_t pixelCount = 0;
+  uint16_t pixelCount = 10;
   char colourOrder[8] = "GRB";
   uint8_t brightnessLimit = 128;
   char defaultState[8] = "off";
