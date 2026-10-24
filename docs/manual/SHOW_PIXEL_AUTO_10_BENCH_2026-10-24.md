@@ -5,8 +5,10 @@ This change is proposed for the non-DMX bench-test build. It has **not** been ph
 ## Intended behaviour
 
 - P4 Show Pixel Line (GPIO23): enabled with 10 pixels by default; existing SD settings with 0–9 pixels or disabled output are repaired at boot. Larger saved counts are retained.
+- Audio Node dedicated GPIO5 indicator: one status NeoPixel, independent of the show strip. KEY6 is disabled because GPIO5 is reserved for this indicator.
 - Audio Node GPIO22: auto-initialised to 10 on first boot or when the stored count is less than 10 or invalid; larger valid stored counts are retained.
 - C3 Pixel Node GPIO2 and C3 Emergency Node GPIO2: the shared pixel engine auto-initialises to 10, with the same persisted-count rule.
+- The GPIO5 status indicator retains its operating-state colours and turns white during Emergency.
 - The separate P4 Emergency signage strip (GPIO24, 100 pixels), S3 Lamp Jewel (7 pixels), node identifier LEDs and other dedicated indicators are not changed.
 - Normal idle output stays black/off. An Emergency must override every **show** pixel line to white; clearing it returns to black, without resuming an interrupted effect.
 - LEDs are not certified emergency lighting. Output white requires an operational node, adequate power and receipt of Emergency state. Wireless-link failure must be tested rather than assumed safe.
