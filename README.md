@@ -3,11 +3,13 @@
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
-**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release.
+**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release. For the latest main-vs-draft and physical acceptance status, read the [24 October 2026 finish-line audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
 
 Showduino coordinates attraction audio, addressable lighting, interactive props, trigger inputs and operator controls using a central ESP32-P4 Show Engine and specialist ESP32 nodes. A loaded show runs on the Show Engine: it does not need an open browser, a connected Director touchscreen, home/venue Wi-Fi or internet access.
 
 > **Architectural rule:** The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.
+
+**Operational clarification:** **One Director. One coordinated show. Multiple replaceable nodes.** Only the Director selects/commands the production. The P4 decides whether requests may execute and enforces runtime and Emergency safety; specialist-node buttons do not change scenes. **Emergency STOP must function independently of Director connectivity**, and clearing it never auto-restarts a show.
 
 ## At a glance
 
