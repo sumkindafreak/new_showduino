@@ -14,7 +14,7 @@ Unpublished work includes signed OTA, recovery/rollback gates, Director delivery
 
 ## Candidate composition
 
-Branch `reconcile/local-github-20261024` starts from draft PR #29 head `3d8a8877d6fca4fe5a9dcbb75716ab404dbd57b8` and merges GitHub main `89b89954dcde78769e1506a8ead076b7c7387eb6` locally. This is a review/bench candidate, not an approved production release.
+Branch `reconcile/local-github-20261024` starts from draft PR #29 head `3d8a8877d6fca4fe5a9dcbb75716ab404dbd57b8` and merges GitHub main `89b89954dcde78769e1506a8ead076b7c7387eb6` locally. A subsequent automatic main regeneration, `3ae48a4b6a8e14d2410d1aa1bd85abaa3944e1d9`, changed only two timestamps and was incorporated while retaining the candidate assets/manifest. This is a review/bench candidate, not an approved production release.
 
 Main's newer operator manuals are retained; integration-specific details are corrected by this record and the updated Audio commissioning paragraph. Main's exact Studio source revision `850dea084320a45fb89b584507eda1514662b8dd` is pinned while regenerating the embedded bundle with the integration's Outputs/ambience/I/O controls. All 42 embedded assets decompress to their declared lengths and embedded JavaScript parses. The DMX editor payload is byte-for-byte identical to main.
 
