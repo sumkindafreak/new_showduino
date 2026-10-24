@@ -136,7 +136,7 @@ P4 GPIO23  → one general-purpose theatrical Show Pixel Line
 
 Additional theatrical pixel outputs belong on specialist Pixel Nodes rather than consuming more local P4 GPIOs.
 
-The GPIO23 Show Pixel Engine is now implemented as a non-blocking, segmented FX engine. The direct `PIXEL:` maintenance/bench command path is live. Production format v1 still accepts only TEST/LOG cues, so production-file `PIXEL` cue parsing/routing remains a later integration milestone.
+The GPIO23 Show Pixel Engine is now implemented as a non-blocking, segmented FX engine. The direct `PIXEL:` maintenance/bench command path is live. Production format v1 accepts bounded PIXEL, AUDIO, LAMP, MOSFET, TEST and LOG cues. See [production storage](production-storage.md) for prefix and validation limits; ESTOP-prefixed pixel persistence remains unsupported.
 
 ### Segment model
 
@@ -398,7 +398,7 @@ Specialist Nodes
 ├── Audio Node → attraction/programme audio
 ├── C3 Lamp Node → specialist-node hardware after Audio; firmware present, hardware test required
 ├── C3 Pixel Node → shared Showduino FX vocabulary
-└── MOSFET Node → planned replacement for the old Relay Node concept
+└── MOSFET Node → software implemented; physical pin/load acceptance open
 ```
 
 **Audio Node — IMPLEMENTED / HARDWARE TEST REQUIRED.**  

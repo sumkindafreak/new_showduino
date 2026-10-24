@@ -1,5 +1,7 @@
 # Showduino Audio Node — ESP32-A1S / ES8388
 
+> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](../../docs/LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
+
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)

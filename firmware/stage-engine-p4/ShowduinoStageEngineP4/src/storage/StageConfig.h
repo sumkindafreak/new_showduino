@@ -24,7 +24,7 @@ struct StageE131Persist {
 
 struct StagePixelsConfig {
   uint8_t formatVersion = 1;
-  bool enabled = false;
+  bool enabled = true;
   int16_t gpio = 23;
   uint16_t pixelCount = SHOWDUINO_PIXEL_DEFAULT_COUNT;
   char colourOrder[8] = "GRB";

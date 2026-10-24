@@ -451,7 +451,7 @@ void pixelEngineApplyPersisted() {
 }
 
 void pixelEngineSetConfiguredCount(uint16_t count) {
-  sConfiguredCount = count;
+  sConfiguredCount = showduino_pixel_boot_count(count, SHOWDUINO_PIXEL_NODE_MAX_PIXELS);
 }
 
 void pixelEngineRelease() {
@@ -662,6 +662,7 @@ bool pixelEngineHandleCommand(const char *command, char *reply, size_t replyLen)
       setReply(reply, replyLen, "PIXEL:ERROR:COUNT");
       return true;
     }
+    count = showduino_pixel_boot_count(count, SHOWDUINO_PIXEL_NODE_MAX_PIXELS);
     sConfiguredCount = count;
     nodeConfigSetU16("pix", count);
     char line[80];

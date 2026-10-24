@@ -170,7 +170,7 @@ static bool parsePixels(const String &json, StagePixelsConfig &out) {
   tmp.gpio = (int16_t)SHOWDUINO_SHOW_PIXEL_PIN;
   uint32_t count = 0;
   if (jsonU32(json, "pixelCount", &count) && count > SHOWDUINO_SHOW_PIXEL_MAX) return false;
-  tmp.pixelCount = (uint16_t)count;
+  tmp.pixelCount = showduino_pixel_boot_count((uint16_t)count, SHOWDUINO_SHOW_PIXEL_MAX);
   jsonStr(json, "colourOrder", tmp.colourOrder, sizeof(tmp.colourOrder));
   uint32_t bri = tmp.brightnessLimit;
   if (jsonU32(json, "brightnessLimit", &bri) && bri > 255) return false;
@@ -304,6 +304,12 @@ void stageConfigBegin() {
   }
 
   loadOrDefault(PATH_PIXELS_CONFIG, parsePixelsWrap, &sPixels, pixelsToJson(sPixels), "pixels.json");
+  // Automatically enable the theatrical line for the ten-pixel bench.
+  if (!sPixels.enabled || sPixels.pixelCount < SHOWDUINO_PIXEL_DEFAULT_COUNT) {
+    sPixels.enabled = true;
+    sPixels.pixelCount = showduino_pixel_boot_count(sPixels.pixelCount, SHOWDUINO_SHOW_PIXEL_MAX);
+    (void)stageConfigSavePixels();
+  }
   loadOrDefault(PATH_DIRECTOR_CONFIG, parseDirectorWrap, &sDirector, directorToJson(sDirector),
                 "director.json");
 }
@@ -335,7 +341,7 @@ bool stageConfigSavePixels() {
 }
 
 void stageConfigSetPixelCount(uint16_t count) {
-  sPixels.pixelCount = count;
+  sPixels.pixelCount = showduino_pixel_boot_count(count, SHOWDUINO_SHOW_PIXEL_MAX);
   (void)stageConfigSavePixels();
 }
 

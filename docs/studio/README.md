@@ -20,7 +20,7 @@ Those responsibilities must never overlap.
 | **S3-hosted system console / commissioning WebUI** | `web/showduino-studio/` embedded as `WebAssets.generated.h` | **ACTIVE** — hosted by the Communications S3 SoftAP |
 | **SHDO v2 authoring contract** | [`production-format.md`](production-format.md) | **ACTIVE CONTRACT** — portable `.shdo` interchange spec |
 | **Studio product blueprint** | this folder (vision, cue/asset/validation docs) | **PLANNING** — target product, not a claim that full authoring is finished |
-| **P4 persistent productions** | `docs/production-storage.md` + P4 `ProductionStore` | **ACTIVE RUNTIME** — format v1 `manifest.json` + `timeline.json`, **TEST/LOG cues only** |
+| **P4 persistent productions** | `docs/production-storage.md` + P4 `ProductionStore` | **ACTIVE RUNTIME** — format v1 `manifest.json` + `timeline.json`, **bounded PIXEL / AUDIO / LAMP / MOSFET / TEST / LOG cues** |
 | **Studio RAM timeline deploy** | `/api/studio-timeline` on S3 → P4 | **ACTIVE COMMISSIONING PATH** — PIXEL and AUDIO:NODE cues into P4 RAM; does not persist a `.shdo` |
 
 The hosted WebUI is **not** the Director and **not** the Show Engine. A loaded show continues if the browser disconnects.
@@ -41,7 +41,7 @@ CREATE SHOW → configure devices → cues/actions → audio/pixels/outputs
 Author / commission from the S3 console
   → PIXEL:* and AUDIO:NODE:* live commands
   → optional RAM timeline via /api/studio-timeline (PIXEL + AUDIO:NODE only)
-  → persistent SD productions remain format v1 TEST/LOG
+  → persistent SD productions use format v1 PIXEL / AUDIO / LAMP / MOSFET / TEST / LOG (bounded subset)
   → P4 runs the loaded RAM or SD timeline without the browser
 ```
 

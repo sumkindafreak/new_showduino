@@ -495,7 +495,7 @@ void audioPixelEngineApplyPersisted() {
 
 
 void audioPixelEngineSetConfiguredCount(uint16_t count) {
-  sConfiguredCount = count;
+  sConfiguredCount = showduino_pixel_boot_count(count, SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
 }
 
 void audioPixelEngineRelease() {
@@ -712,6 +712,7 @@ bool audioPixelEngineHandleCommand(const char *command, char *reply, size_t repl
       setReply(reply, replyLen, "PIXEL:ERROR:COUNT");
       return true;
     }
+    count = showduino_pixel_boot_count(count, SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
     sConfiguredCount = count;
     nodeConfigSetU16("pix", count);
     char line[80];

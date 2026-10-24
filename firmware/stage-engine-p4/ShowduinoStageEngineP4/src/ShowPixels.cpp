@@ -654,6 +654,7 @@ bool showPixelsHandleCommand(const char *command, char *reply, size_t replyLen) 
       setReply(reply, replyLen, "PIXEL:ERROR:COUNT");
       return true;
     }
+    count = showduino_pixel_boot_count(count, SHOWDUINO_SHOW_PIXEL_MAX);
     sConfiguredCount = count;
     stageConfigSetPixelCount(count);
     char line[80];

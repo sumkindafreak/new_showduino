@@ -1,5 +1,7 @@
 # Showduino
 
+> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](docs/LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
+
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2\

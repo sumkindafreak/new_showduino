@@ -1,7 +1,7 @@
 # Showduino Audio Node
 
 **Status:** IMPLEMENTED / HARDWARE TEST REQUIRED  
-**Firmware:** `0.4.0` · protocol `1.3`  
+**Current `main` firmware source:** `0.4.3` · protocol `1.3` (earlier bring-up sections originated at 0.4.0; confirm installed version)  
 **Board:** Ai-Thinker ESP32-Audio-Kit **V2.2 A161** · ESP32-A1S · **ES8388**  
 **Not** the AC101 A1S (often silkscreen 2379).
 
@@ -47,7 +47,7 @@ Sources: official V2.2 / ESP32-A1S specification, NuttX and ESP-ADF Audio-Kit ma
 | KEY5 | 18 | Previous test asset |
 | KEY6 | 5 | Next test asset (strapping; used as input after boot) |
 | KEY7 | none | BOOT is GPIO0/MCLK. RST is hardware-only |
-| Status LED | 22 | LED4 only |
+| Theatrical pixel DATA | 22 | Configurable WS2812 Showduino Pixel Line; **not** a dedicated status-only LED in current `main` |
 
 ### Conflicts
 
@@ -234,7 +234,7 @@ Local keys never override emergency. PLAY/PREV/NEXT/VOLUME never hijack a P4-own
 
 ### GPIO22 Showduino Pixel Line
 
-GPIO22 is the Audio Node's Showduino Pixel output on the **same** Audio peer. Configure count, initialise the line, then use the shared Pixel segment/FX commands (also exposed through Studio `audio-node-pixels` / `AUDIO:NODE:PIXEL:`).
+GPIO22 is the programmable Show Pixel Line on the existing Audio peer. In the local 24 October reconciliation it automatically starts at a minimum of ten pixels; larger valid saved counts remain intact. GPIO5 is a separate single status pixel; KEY6 is disabled to avoid that pin. Use PIXEL:STATUS and PIXEL:TEST to verify the show line. This candidate still needs target-build and physical acceptance evidence; current main remains a different firmware baseline.
 
 Legacy diagnostic colour patterns from earlier status-only firmware are superseded by the full Pixel engine. `PIXEL:TEST` / `LED:TEST` remain commissioning helpers.
 

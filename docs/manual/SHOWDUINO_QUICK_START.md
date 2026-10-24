@@ -1,7 +1,11 @@
 # SHOWDUINO — Quick Start
 
-**For:** operators, attraction owners and first-time users\
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `6e73003e6aad573c08ac8f5742d202b80b1ee895` · 7 October 2026\
+> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](../LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
+
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
+**For:** operators, attraction owners and first-time users  
+**Manual baseline:** Showduino `1.0.0-rc.1` · repository `main` SHA `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · 20 October 2026  
 **Status:** Release-candidate quick start. Read the full User Manual before putting a new installation into public operation.
 
 ---
@@ -90,6 +94,25 @@ For a first practical RC test, use an already installed production or the docume
 
 ---
 
+## Website Studio → installed production
+
+1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
+2. In **Deploy**, save the **Communications S3** LAN address (not the P4 address). Use the same local network. A saved IP, a creator/cloud label or a lit screen does not verify the P4 or any Node.
+3. On the public HTTPS website, **Prepare for P4** prepares a file. Use **Open Local Console** for the S3-hosted interface. Browser private-network/mixed-content restrictions may prevent website verification even when the local console works.
+4. In that console, open **Productions → Persist SHDO v2 to P4 SD**, choose the exported file and select **Persist to SD**. Wait for the P4 result. Persistence compiles only supported cues; a rejected file is not installed. Copying an editable SHDO onto SD is not this deployment process.
+5. Persisting does **not** load or start the production. Select the intended production and **Load**, verify P4-confirmed loaded state, then use the Director **LIVE → START** when the test area is ready.
+6. Confirm actual Node outputs, stop behaviour and Emergency/recovery on isolated test loads. Save the firmware identifiers and physical test results before guest operation.
+
+Public Studio, the embedded `/studio/` snapshot and the S3 system console can be different builds. The local console's **Persist to SD** workflow writes SD; `/api/studio-timeline` is a separate temporary RAM commissioning path and does not persist a production.
+
+### Accounts, membership and indicators
+
+A free Showduino ID provides community/account access; optional Starter, Pro and Studio memberships are proposed, with no published feature/price promise or payment activation. Hardware-owner entitlements are separate and require confirmed terms; registering a browser inventory entry does not activate access or prove a device is connected. Existing Studio authoring tools remain available without paid membership.
+
+Website hardware status starts **HARDWARE NOT VERIFIED**. **S3 CONNECTED** requires a ready Showduino capability response at the configured/local address; it establishes S3 reachability only. **P4 · NOT VERIFIED** does not establish runtime health. Check authoritative P4 and required Node states in the Director/local console. **LOCAL** describes saving, and **CREATOR · TESTING** describes browser mode.
+
+---
+
 # 5. Load and run a production
 
 On the Director, the main current pages include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **AUDIO NODE**, **LAMP NODE**, **DIAGNOSTICS**, **SETTINGS** and **SYSTEM LOGS**.
@@ -150,16 +173,6 @@ If the physical input is still asserted, the P4 rejects the clear.
 **CLEAR EMERGENCY DOES NOT RESUME THE SHOW.**
 
 After clear, local show pixels remain black and interrupted attraction audio does not resume. A previously running show may remain paused until the operator deliberately stops/restarts or resumes it according to the venue's recovery procedure.
-
-## Audio Node remains in Emergency after main-unit power loss
-
-1. Restore main Showduino power if needed. Wait until the P4, Comms and Audio Node are online.
-2. Confirm the area is safe and all physical Emergency buttons are released.
-3. Press **E-stop on the Director** to assert a fresh system Emergency.
-4. Choose **CLEAR EMERGENCY**, then **CONFIRM CLEAR**.
-5. Check that the Audio Node leaves Emergency and returns to idle with playback stopped. Restart audio or the show manually when ready.
-
-If clearance is rejected or the node remains offline, restore the connection or release the asserted input before repeating these steps.
 
 This firmware path is implemented and still requires physical hardware acceptance.
 
@@ -245,10 +258,3 @@ At this manual baseline:
 - the product remains `1.0.0-rc.1`, not final `v1.0.0`.
 
 For complete operating and technical information, use `SHOWDUINO_USER_MANUAL.md`.
-
-## Additional checks for the current P4/MOSFET build
-
-- Verify required MOSFET channels start OFF; Emergency must keep powered outputs OFF even when identifier pixels show white.
-- If PCM5102A ambience is commissioned, confirm its separate P4 SD asset and test Emergency shutdown. Emergency must replace ambience with the emergency WAV; clear must leave it silent. Normal show STOP must stop ambience too.
-- If generic I/O is commissioned, verify GPIO46/47 inactive polarity at boot, pulse expiry, and Emergency/show-stop shutdown. Inputs currently report events; automatic scene binding is not implemented.
-- Confirm status indication against the [colour standard](../status-colour-standard.md); a violet/cyan ready/link indicator is not a theatrical output test.

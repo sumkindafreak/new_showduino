@@ -1,6 +1,6 @@
 # Pixel default policy
 
-Programmable lines start at **10 pixels** and initialise during boot. A valid saved count takes precedence; zero, missing or invalid stored values fall back to 10. This applies to Audio Node GPIO22, C3 Pixel Node, C3 Emergency Node's programmable line, P4's show line, and the legacy Mega's programmable lines.
+Programmable lines start at **10 pixels** and initialise during boot. Saved counts from 10 through the device maximum take precedence; missing, zero, smaller or invalid stored values fall back to 10. Explicit show-line requests below 10 are normalised to 10. P4 show output automatically enables at boot. This applies to Audio Node GPIO22, C3 Pixel Node, C3 Emergency Node's programmable line, P4's show line, and the legacy Mega's programmable lines.
 
 Fixed physical indicators retain their fitted counts: Audio status GPIO5 = 1, Director ambient = 2, MOSFET identifier = 4, fitted lamp Jewels = 7, and explicitly sized emergency signage. This rule distinguishes a programmable line's initial default from the number of LEDs physically fitted to an indicator.
 

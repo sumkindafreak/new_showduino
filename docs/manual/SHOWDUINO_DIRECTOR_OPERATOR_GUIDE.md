@@ -1,8 +1,12 @@
 # Showduino | The Operator's Guide
 
-**The Director touchscreen, sound, lighting and everyday attraction operation**\
-**Audience:** first-time owners, attraction operators and non-technical staff\
-**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.2 / 7 October 2026\
+> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](../LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
+
+**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+
+**The Director touchscreen, sound, lighting and everyday attraction operation**  
+**Audience:** first-time owners, attraction operators and non-technical staff  
+**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.3-RC / 20 October 2026  
 **Source reviewed:** [Showduino repository](../../README.md), current active Director firmware, specialist-node documents and RC physical-test checklist.
 
 > **This is the easy-to-use companion to the complete [Showduino User Manual](SHOWDUINO_USER_MANUAL.md).** It explains what to touch and what to expect, not how to write ESP32 firmware. The product is still a release candidate; functions noted as awaiting physical acceptance are not promises of a fully commissioned public-venue installation.
@@ -83,14 +87,13 @@ The Director's configured automatic display-off behaviour turns off its **backli
 
 ## 3. Sounds: what actually plays the audio?
 
-**There are four different sound paths. They are not interchangeable.**
+**There are three different sound paths. They are not interchangeable.**
 
 ![Illustrated Audio Node board and storage](illustrations/audio.svg)
 
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
 | **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
-| **P4 PCM5102A ambience** | Independent background atmosphere from P4 SD assets | Settings → Audio System: Next file, Play/Loop/Stop, volume presets and P4 status. System Console Outputs also provides these controls. Emergency switches it to the emergency WAV; clear stops it without restoring ambience. Normal show STOP also stops ambience. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -106,25 +109,13 @@ For an Audio Node that has been installed and commissioned:
 
 The Director can display an Audio Node's input-level/noise-floor/trigger diagnostics. This does **not** mean a microphone automatically starts a scare: mapping a sound event to a show action is a separate authoring/engine feature.
 
-### Controlling the P4 ambience output
-
-The dedicated **AUDIO NODE** page also exposes **AMBIENCE** for the P4-local PCM5102A output. This is separate from Audio Node programme playback.
-
-1. Put an approved 16-bit PCM WAV on the **P4 SD card** at `/showduino/audio/ambience.wav`.
-2. Open **NODES -> AUDIO NODE -> AMBIENCE** on the Director.
-3. Use **PLAY** for one-shot playback or **LOOP** for continuous ambience.
-4. Use **VOL - / VOL +** to adjust the P4 ambience level and **STATUS** to refresh the authoritative P4 state.
-5. **STOP** is always available. Emergency stops ambience immediately; clearing Emergency does **not** restart it.
-
-This fixed finish-line path is deliberate: it closes the operator-control gap without adding a new P4 asset browser before final acceptance.
-
 **Why are PLAY and LOOP greyed out?** The Director firmware can lock manual play/loop requests while the show is running or the Node is under show control. Do not attempt to bypass that lock from the Node's own webpage; the Show Engine owns live production playback.
 
 ### Putting your own sound onto Showduino
 
 Ask the installer/show designer to place an approved file on the **Audio Node's microSD card**. The firmware expects files beneath:
 
-\`\`\`text
+```text
 /showduino/audio/
     ambience/
     effects/
@@ -132,9 +123,9 @@ Ask the installer/show designer to place an approved file on the **Audio Node's 
     music/
     stingers/
     test/
-\`\`\`
+```
 
-For example, a supported 16-bit PCM file stored at \`/showduino/audio/effects/thunder.wav\` is referenced as \`effects/thunder.wav\` by the Audio Node. It must be a genuine WAV file: **renaming \`thunder.mp3\` to \`thunder.wav\` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
+For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
 
 **No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
 
@@ -185,7 +176,7 @@ The Director is **not intended to be a full timeline/lighting editor**. A show d
 
 **Sensors and switches:** an installer can connect supported inputs so the Show Engine receives trigger signals. What a specific door switch or motion detector *does* depends on the prepared show and the supported cue/runtime path; seeing a sensor in the system does not mean every possible reaction is already configured.
 
-**MOSFET Node:** active RC firmware provides a Page 04 live-control tile for four low-voltage powered outputs, with level, pulse and fade control. Output wiring/pins still require physical acceptance. Emergency/show stop/authority loss force powered outputs OFF; identifier pixels become white during Emergency. Do not connect mains equipment directly to this board.
+**MOSFET Node:** software supports four low-voltage DC switched/PWM outputs, pulses and fades. Physical GPIO mapping and load acceptance remain unverified for the installed board. Emergency, authority loss and show-stop paths require outputs OFF; recovery must not restore a previous powered state. A Director tile is not electrical acceptance or a mains/motor rating.
 
 **DMX:** the Director may also contain a DMX tile. Professional DMX/E1.31 production-lighting control remains **parked**; a visible tile is not evidence that a DMX expansion has been supplied.
 
@@ -215,10 +206,6 @@ Only after the real-world incident has been resolved and the area is safe:
 4. Check that the Show Engine accepts the clear. A held button or a new assertion can prevent clearance.
 5. Treat the show as interrupted. **Clearing Emergency does not restart it.** Follow the attraction's approved recovery/restart procedure.
 
-### Audio Node still in Emergency after main-unit power loss
-
-Restore main Showduino power and wait for P4, Comms and the Audio Node to reconnect. Once the area is safe and physical Emergency buttons are released, press **E-stop on the Director**, then choose **CLEAR EMERGENCY → CONFIRM CLEAR**. Check that the Audio Node returns to idle with playback stopped. Restart audio or the show manually when ready. If clear is rejected, check for an asserted input or an offline link and repeat the normal clear procedure.
-
 **To find a sleeping or misplaced Director:** hold the same main button for eight seconds. Emergency asserts on the initial press; Locate then forces the Director screen on and flashes its ambient lights. The **first touch acknowledges Locate only**. It does **not** clear Emergency.
 
 **Wireless Emergency Nodes** are separate accessories with their own momentary pushbutton, OLED status and assert-only latch design. The same physical station may also provide a Showduino Pixel Line. They can **assert** but cannot **clear** the central Emergency. Do not assume their buttons use the main-unit's eight-second Locate gesture. The full emergency and clear procedure still needs physical sign-off on the actual installed hardware.
@@ -229,10 +216,10 @@ Restore main Showduino power and wait for P4, Comms and the Audio Node to reconn
 
 You can also use the **local browser console** for more detailed configuration, checking nodes, commissioning lighting and managing shows. On the current RC bench configuration, connect to the supplied **Showduino** Wi-Fi access point, then open:
 
-\`\`\`text
+```text
 http://192.168.4.1/          local system console
 http://192.168.4.1/studio/   embedded Studio authoring snapshot
-\`\`\`
+```
 
 Your installer must confirm the actual network name, address and credentials used by your finished unit. The documented default password is a **bench credential, not a public venue password**.
 
@@ -241,6 +228,8 @@ Your installer must confirm the actual network name, address and credentials use
 The local Show Engine does not need venue Internet to run an already loaded show. Internet access is relevant to optional functions such as checking for a Comms firmware update; **system-wide OTA is not currently available**.
 
 ---
+
+For the current website export → local-console persist → load → start steps, see [Quick Start: installed production](SHOWDUINO_QUICK_START.md#website-studio--installed-production). Website **S3 CONNECTED** verifies the communications endpoint only; confirm P4 and Nodes separately. Accounts and planned memberships do not determine live hardware health.
 
 ## 8. Quick troubleshooting
 
@@ -287,9 +276,3 @@ For a public installation use the full [Pre-Opening Checklist](SHOWDUINO_PRE_OPE
 - [Manual verification gaps](SHOWDUINO_MANUAL_GAPS.md)
 
 **Editorial status:** This guide was written from the active repository and its documented RC boundaries. It is not a record of physical tests performed in this documentation session. Before printing a final customer edition, replace the reference illustrations with approved product photographs, capture Director screenshots from the *actual accepted firmware build*, record the supplied firmware versions and confirm the installer-facing network, audio and lighting setup for the shipped hardware.
-
-## Status lights at this review
-
-Status indicators use violet for ready, cyan for a fresh link, turquoise for owned, green for active/running, amber for paused/searching, magenta/amber for fault, and full-white for Emergency. Locate is flashing white; its first touch still acknowledges Locate only. Theatrical colours and normal green signage locators are separate. See [status-colour standard](../status-colour-standard.md).
-
-The two new P4 generic I/O lines are commissioned through System Console Outputs or USB/service commands; there is no dedicated Director I/O page or scene-trigger binding yet. See the [user manual](SHOWDUINO_USER_MANUAL.md#201-generic-p4-digital-io).
