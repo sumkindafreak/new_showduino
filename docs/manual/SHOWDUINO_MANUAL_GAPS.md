@@ -421,3 +421,17 @@ A gap is not closed merely because code has been written. Safety, radio, power, 
 2. `SHOWDUINO_MANUAL_SOURCE_MATRIX.md`;
 3. the affected customer-manual section;
 4. the manual revision/baseline SHA.
+
+---
+
+## 24 October 2026 — finish-line delta since the 20 October manual baseline
+
+**Status:** OPEN — see [dated source-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md). `main` at `87963bbd017b4ca930f49db9928a3d39b32fa690` is 20 commits ahead of the manual's firmware review commit, but those commits modify documentation and the generated Comms Studio bundle/manifest rather than active firmware. The following are **draft implementation gaps or unverified hardware behaviour**, not features delivered on `main`:
+
+- **GAP-FL-A — complete 22-second all-node run:** PR #29's existing acceptance show and bench-result sheet are unmerged; its software compile/reload and target builds passed, but no physical LOAD → RUN → COMPLETE and Emergency-repeat pass is recorded.
+- **GAP-FL-B — audible WAV stutter:** physical stuttering remains reported. PR #37 is an unmerged, uncompiled/unbenchmarked buffering and I2S write repair; don't describe it as a fix until a real A1S A/B test passes.
+- **GAP-FL-C — Studio SHDO export acceptance:** PR #35 repairs action.value token consumption and PR #36 rejects silent truncation of long runtime commands. Neither is merged; test a genuine exported production on the P4 before declaring website → SD persist reliable.
+- **GAP-FL-D — Audio Node status-vs-show pins:** `main` Audio 0.4.3 uses GPIO22 for the configurable pixel line and GPIO5 for KEY6. PR #40 proposes independent **GPIO5 single indicator**, **GPIO22 show line**, KEY6 disabled and a ten-pixel minimum. No physical validation or compilation for this PR is recorded.
+- **GAP-FL-E — Emergency and outputs:** P4/C3/Audio/Emergency pixel-white response, MOSFET safe OFF, Lamp Emergency audio, Director clear/Locate, no auto-resume and full Director/P4/Comms link stability remain physical acceptance items. Emergency latch persistence PR #33 is unmerged and not hardware-qualified.
+
+**Required decision:** Keep the Director as sole creative/operator show controller; P4 is the execution/runtime and Emergency authority, and Emergency assertion must work without Director connectivity. Run the same fixed non-DMX scenario, then its mid-show Emergency repeat; log actual results and close only demonstrated gaps. No expansion work is required.
