@@ -40,3 +40,13 @@ All 16 existing PowerShell host suite groups passed. All discovered Director/Aud
 ESP32 Arduino core 3.3.11, FQBN `esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40`: PASS. Flash 1,163,338 / 1,966,080 bytes (59%); static RAM 60,360 / 327,680 bytes (18%). Built with one compiler job. No hardware was flashed.
 
 Fresh Director compilation was cancelled during dependency processing to focus on the changed P4 target; Comms was not freshly compiled. Their earlier PR #29 build results remain historical evidence only. C3 targets were not freshly built in this session. The shared policy passes host boundary checks, but combined firmware/hardware acceptance is not claimed.
+
+### Fresh P4 target build
+
+ESP32 Arduino core 3.3.11, FQBN `esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3`: PASS. Flash 1,171,564 / 1,310,720 bytes (89%); static RAM 79,780 / 327,680 bytes (24%). Built with one compiler job. No hardware was flashed.
+
+## Handoff
+
+The clean user-facing Git checkout is `outputs/showduino-reconciled`, on branch `reconcile/local-github-20261024`, with GitHub origin configured and current main history incorporated. It is the updated review/bench source copy. Original Desktop and linked working folders remain intact. The separate OTA/UI/MOSFET edits were preserved, not silently folded into the acceptance candidate. Build logs and host-suite result inventory are saved under `outputs/validation`.
+
+Do not treat this candidate as a fully accepted release. Fresh Director/Comms/C3 target builds and physical Emergency/Director-loss acceptance are not established by the passing Audio/P4 builds or host tests. No push, main merge or flashing occurred.
