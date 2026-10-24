@@ -92,6 +92,8 @@ For a first practical RC test, use an already installed production or the docume
 
 ---
 
+> **24 October finish-line check:** The existing [22-second all-node acceptance production](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/examples/productions/ALL_NODES_BENCH_TEST.md) is on unmerged PR #29, **not** current `main`. The `main` [first-audio-test.shdo](../../examples/productions/first-audio-test.shdo) is a smaller 30-second audio-only smoke test (22 seconds of WAV playback), not an all-node pass. Review the [current main/bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md), record installed firmware versions and do not mark either show accepted until a physical run and Emergency repeat pass. Audio Node GPIO5 status/KEY6 disable and default-ten-pixel behaviour are draft PR #40 only; current `main` needs explicit GPIO22 pixel COUNT/INIT commissioning.
+
 ## Website Studio → installed production
 
 1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
