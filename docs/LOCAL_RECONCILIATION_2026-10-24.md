@@ -34,3 +34,9 @@ Use the existing `examples/productions/all-nodes-bench-test.shdo`, ending at 22 
 ## Validation
 
 All 16 existing PowerShell host suite groups passed. All discovered Director/Audio CJS regressions and both Studio JS regressions passed. The actual Director ambience parser, production persistence/SHDO roundtrip and P4 ambience/browser emergency policy passed. Added minimum-count boundary regression passed. Target-build results are recorded below after completion. Physical flashing and combined acceptance remain outstanding. Keep the candidate off main until those results are reviewed.
+
+### Fresh Audio target build
+
+ESP32 Arduino core 3.3.11, FQBN `esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40`: PASS. Flash 1,163,338 / 1,966,080 bytes (59%); static RAM 60,360 / 327,680 bytes (18%). Built with one compiler job. No hardware was flashed.
+
+Fresh Director compilation was cancelled during dependency processing to focus on the changed P4 target; Comms was not freshly compiled. Their earlier PR #29 build results remain historical evidence only. C3 targets were not freshly built in this session. The shared policy passes host boundary checks, but combined firmware/hardware acceptance is not claimed.
