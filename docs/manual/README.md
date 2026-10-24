@@ -13,3 +13,7 @@ Revision 0.3-RC · reviewed 20 October 2026. Start here and match the documented
 - [October documentation review](SHOWDUINO_DOCUMENTATION_REVIEW.md) — exact baseline, corrections, checks and remaining limits.
 
 Old Word/PDF/downloaded copies do not update themselves. Use this maintained set; source review is not physical acceptance or a final product release.
+
+## Latest finish-line status
+
+- [24 October 2026: main versus bench-test audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — unmerged fixes, current manual/firmware differences, and the smallest non-DMX acceptance sequence. No complete physical acceptance pass recorded.
