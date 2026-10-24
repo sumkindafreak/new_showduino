@@ -170,7 +170,7 @@ static bool parsePixels(const String &json, StagePixelsConfig &out) {
   tmp.gpio = (int16_t)SHOWDUINO_SHOW_PIXEL_PIN;
   uint32_t count = 0;
   if (jsonU32(json, "pixelCount", &count) && count > SHOWDUINO_SHOW_PIXEL_MAX) return false;
-  tmp.pixelCount = (uint16_t)count;
+  tmp.pixelCount = (uint16_t)(count < 10 ? 10 : count);
   jsonStr(json, "colourOrder", tmp.colourOrder, sizeof(tmp.colourOrder));
   uint32_t bri = tmp.brightnessLimit;
   if (jsonU32(json, "brightnessLimit", &bri) && bri > 255) return false;
@@ -303,6 +303,12 @@ void stageConfigBegin() {
   }
 
   loadOrDefault(PATH_PIXELS_CONFIG, parsePixelsWrap, &sPixels, pixelsToJson(sPixels), "pixels.json");
+  // Repair older uncommissioned show-line settings without touching larger valid counts.
+  if (!sPixels.enabled || sPixels.pixelCount < 10) {
+    sPixels.enabled = true;
+    if (sPixels.pixelCount < 10) sPixels.pixelCount = 10;
+    (void)stageConfigSavePixels();
+  }
   loadOrDefault(PATH_DIRECTOR_CONFIG, parseDirectorWrap, &sDirector, directorToJson(sDirector),
                 "director.json");
 }
@@ -334,7 +340,7 @@ bool stageConfigSavePixels() {
 }
 
 void stageConfigSetPixelCount(uint16_t count) {
-  sPixels.pixelCount = count;
+  sPixels.pixelCount = count < 10 ? 10 : count;
   (void)stageConfigSavePixels();
 }
 
