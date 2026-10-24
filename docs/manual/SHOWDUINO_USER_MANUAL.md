@@ -39,6 +39,8 @@ The system is designed around a simple responsibility model:
 
 > **The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.**
 
+This describes **runtime acceptance**, not independent scene selection by Nodes or the P4. The **Director alone chooses and commands productions**; the P4 executes accepted requests and enforces Emergency protection independently of Director availability. No Node button may independently select or change a scene. Emergency clear never resumes a production automatically.
+
 In normal use, an operator should not need to understand the embedded electronics behind that model.
 
 ## 1.1 The main parts
