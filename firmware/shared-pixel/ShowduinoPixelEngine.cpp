@@ -438,8 +438,9 @@ bool pixelEngineBegin() {
 
 void pixelEngineApplyPersisted() {
   sGlobalBrightness = nodeConfigGetU8("bri", 255);
-  const uint16_t n = nodeConfigGetU16("pix", 0);
-  if (n > 0 && n <= SHOWDUINO_PIXEL_NODE_MAX_PIXELS) sConfiguredCount = n;
+  const uint16_t n = nodeConfigGetU16("pix", 10);
+  sConfiguredCount = (n >= 10 && n <= SHOWDUINO_PIXEL_NODE_MAX_PIXELS) ? n : 10;
+  Serial.printf("[PIXEL] Auto count=%u (saved=%u)\n", (unsigned)sConfiguredCount, (unsigned)n);
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
                   SHOWDUINO_PIXEL_DATA_PIN,
@@ -450,7 +451,7 @@ void pixelEngineApplyPersisted() {
 }
 
 void pixelEngineSetConfiguredCount(uint16_t count) {
-  sConfiguredCount = count;
+  sConfiguredCount = count < 10 ? 10 : count;
 }
 
 void pixelEngineRelease() {
