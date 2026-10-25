@@ -3,11 +3,12 @@
 #include "LampConfig.h"
 #include "../BoardConfig.h"
 
-#include <Adafruit_NeoPixel.h>
+#define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 #include <math.h>
 #include <string.h>
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static ShowduinoLedStrip *sStrip = nullptr;
 static uint8_t sRgb[SHOWDUINO_LAMP_PIXEL_COUNT][3];
 static float sLevel[SHOWDUINO_LAMP_PIXEL_COUNT];
 static float sTarget[SHOWDUINO_LAMP_PIXEL_COUNT];
@@ -84,10 +85,18 @@ static void ensureStrip() {
   if (sStrip || SHOWDUINO_LAMP_PIXEL_PIN < 0) return;
   pinMode(SHOWDUINO_LAMP_PIXEL_PIN, OUTPUT);
   digitalWrite(SHOWDUINO_LAMP_PIXEL_PIN, LOW);
-  sStrip = new Adafruit_NeoPixel(SHOWDUINO_LAMP_PIXEL_COUNT,
+  sStrip = new ShowduinoLedStrip(SHOWDUINO_LAMP_PIXEL_COUNT,
                                  SHOWDUINO_LAMP_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   sStrip->begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip->ready()) {
+    Serial.println("[LAMP] FastLED jewel failed to initialise");
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#endif
   sStrip->clear();
   sStrip->show();
 }
