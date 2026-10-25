@@ -2,6 +2,14 @@
 
 **Target:** one complete, physically observed, non-DMX show followed by a mid-show Emergency repeat. **Status: NOT YET PASSED.**
 
+## 25 October 2026 follow-up — main advanced, acceptance unchanged
+
+- Latest checked `main`: [`43e0cebd`](https://github.com/sumkindafreak/new_showduino/commit/43e0cebd3107a4d044cbddc53b70b6be6b0cf62c) (25 October, 18:29 UTC), **four commits ahead** of the 24 October audit baseline `87963bb`.
+- Direct GitHub compare `87963bb..main` shows **only two changed paths**: `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. The manifest retains `buildHash: 56677901c6a2`, **42 assets**, **214,954 embedded bytes**, and the same pinned website Studio source commit `850dea084320a45fb89b584507eda1514662b8dd`; its `buildUtc` changed from 24 to 25 October. This is consistent with timestamp-only regeneration, **not evidence of a new Studio feature or tested firmware**. The generated header changed, but its binary payload was not independently decoded during this audit.
+- Compared with the 20 October manual baseline `f4c9aea`, `main` is now **24 commits ahead**; the additional four commits still do not modify active firmware source. The manual's dated firmware baseline remains valid, with this addendum identifying the later repository snapshot.
+- Draft PRs [#29](https://github.com/sumkindafreak/new_showduino/pull/29), [#35](https://github.com/sumkindafreak/new_showduino/pull/35), [#36](https://github.com/sumkindafreak/new_showduino/pull/36), [#37](https://github.com/sumkindafreak/new_showduino/pull/37), and [#40](https://github.com/sumkindafreak/new_showduino/pull/40) remain **open/unmerged**. This documentation reconciliation remains [PR #41](https://github.com/sumkindafreak/new_showduino/pull/41), not yet merged to `main`.
+- No new dated full-hardware 22-second **LOAD → START → COMPLETE** result or mid-show Emergency repeat was found in the reviewed repository evidence. The finish-line gate is still **NOT PASSED**. Keep the exact existing acceptance production and the five-step sequence below; do not widen scope.
+
 ## Source of truth and limits
 
 - Checked `sumkindafreak/new_showduino` **`main` at `87963bbd017b4ca930f49db9928a3d39b32fa690`** on 24 October 2026.
