@@ -106,9 +106,9 @@ Physical acceptance of this handshake is still required. Do not mark commerciall
 
 ## GAP-004 — Emergency latch is not proven to persist through full power loss/reboot
 
-**Status:** OPEN  
-**Category:** SAFETY PROCEDURE TO CONFIRM / PRODUCT DECISION REQUIRED  
-**Current code:** P4 `ShowduinoStageEngineP4.ino`, `EmergencyInput.cpp`
+**Status:** SOFTWARE IMPLEMENTED ON BRANCH `fix/emergency-persistent-latch` — HARDWARE VALIDATION REQUIRED (not compiled, not hardware-tested)  
+**Category:** HARDWARE VALIDATION REQUIRED / persistence behaviour implemented under ENGINEERING MISSION 001  
+**Current code:** P4 `ShowduinoStageEngineP4.ino`, `src/EmergencyLatchStore.{h,cpp}`, `protocol/showduino_emergency_latch.h`. See `docs/firmware-p4-emergency-latch.md` and `docs/hardware-acceptance-emergency-latch.md`.
 
 The authoritative P4 variable `emergencyLocked` is initialised `false` at boot. No persistent restore of that latch was found in the active P4 code during this pass.
 

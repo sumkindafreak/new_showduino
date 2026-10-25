@@ -530,6 +530,18 @@ void showduinoIOService() {
   }
 }
 
+void showduinoIOEmergencyOutputsOffQuiet() {
+  sEmergency = true;
+  for (uint8_t i = 0; i < kLineCount; ++i) {
+    IOChannel &ch = sLines[i];
+    if (ch.mode != ShowduinoIOMode::Output) continue;
+    ch.pulseActive = false;
+    ch.pulseUntilMs = 0;
+    ch.outputActive = false;
+    digitalWrite(ch.pin, inactiveLevel(ch));
+  }
+}
+
 void showduinoIOOnEmergency(bool active) {
   sEmergency = active;
   if (active) {

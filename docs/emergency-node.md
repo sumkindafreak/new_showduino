@@ -49,6 +49,29 @@ Clear remains the existing Showduino emergency-clear policy.
 
 `ESTOP:ACK:LATCHED` means “P4 received and latched your assert.” It does **not** mean emergency cleared.
 
+### MISSION 001J: authenticated station protocol (supersedes the plain ACK / GLOBAL:OBSERVED path)
+
+Since MISSION 001J the P4 no longer sends plain `ESTOP:ACK:LATCHED`,
+`ESTOP:GLOBAL:OBSERVED` or `EMERGENCY:CLEAR` to Emergency Nodes, and stations reject
+them from the radio. The station protocol is:
+
+```text
+ESTOP:ASSERT:<id>:<name>                                   station -> P4, unauthenticated, latches
+CHAL:<episode8>:<nonce16>                                  P4 -> all (ROUTE:EMERGENCY:ALL)
+AUTH:<id>:<episode8>:<nonce16>:IN=n:L=n:A=n:<tag32>        station -> P4, HMAC-SHA256/128
+CMD:<id>:<counter8>:ACK|GCL:<episode8>:<tag32>             P4 -> station, HMAC-SHA256/128
+```
+
+MISSION 001K station behaviour: a latched station stops its 2 s heartbeat ASSERT once
+the P4 has ACKed the episode and the button is released (the P4 tracks it through AUTH);
+a new press while still latched asserts at once. A Director clear is signed end to end
+(`docs/emergency-director-auth-001K.md`).
+
+Only a verified `AUTH` can mark a station RELEASED or ONLINE. `ANNOUNCE` and
+`STATUS` are display only. A Director clear needs a fresh RELEASED proof from every
+provisioned station. Stations must be provisioned (USB console) before use. Details,
+threat model and provisioning: `docs/emergency-station-auth-001J.md`.
+
 ## Identity
 
 - Logical ID (authoritative): `ESTOP-01` … `ESTOP-08`

@@ -117,7 +117,13 @@ typedef struct ShowduinoEmergencyRoute {
   char id[SHOWDUINO_EMERGENCY_ID_MAX + 1];
   uint32_t sequence;
   const char *command;
+  uint8_t broadcast; /* MISSION 001J: id was "ALL"; the relay sends an ESP-NOW broadcast */
 } ShowduinoEmergencyRoute;
+
+/* MISSION 001J: route id for an ESP-NOW broadcast to every Emergency Node. Used for
+ * CHAL and as a second copy of each CMD, so a relay whose MAC table was poisoned by
+ * a forged ANNOUNCE still delivers. Stations ignore CMDs for other IDs. */
+#define SHOWDUINO_EMERGENCY_ROUTE_ALL "ALL"
 
 typedef struct ShowduinoEmergencyMachine {
   uint8_t latched;
@@ -318,7 +324,16 @@ static inline void showduino_emergency_machine_set_radio(ShowduinoEmergencyMachi
 static inline void showduino_emergency_machine_input(ShowduinoEmergencyMachine *m,
                                                      int button_pressed) {
   if (!m) return;
+  const uint8_t wasPressed = m->input_open;
   m->input_open = button_pressed ? 1 : 0;
+  /* MISSION 001K: a new press while still latched (released, waiting for the P4's
+   * global clear) asserts again at once instead of at the next heartbeat, so a
+   * pending P4 clear verification sees it within the radio latency. */
+  if (button_pressed && !wasPressed && m->latched) {
+    m->pending_assert = 1;
+    m->burst_left = (uint8_t)SHOWDUINO_EMERGENCY_BURST_COUNT;
+    m->next_tx_ms = 0;
+  }
   if (button_pressed && !m->latched) {
     m->latched = 1;
     m->acked = 0;
@@ -389,6 +404,13 @@ static inline int showduino_emergency_machine_want_tx(const ShowduinoEmergencyMa
   if (!m || !m->latched || !m->radio_up) return 0;
   if (m->global_clear_seen) return 0;
   if (m->pending_assert) return 1;
+  /* MISSION 001K: once the P4 has ACKed this episode and the button is released, the
+   * repeating heartbeat ASSERT carries no new information (the P4 tracks this
+   * station through authenticated AUTH answers, which also re-latch it after a P4
+   * restart). Stopping it keeps an open clear request from being cancelled by
+   * repeats. A new press always asserts at once (pending_assert above), and the
+   * initial burst still completes. */
+  if (m->acked && !m->input_open && m->burst_left == 0) return 0;
   return now_ms >= m->next_tx_ms;
 }
 
@@ -517,7 +539,11 @@ static inline int showduino_emergency_parse_route(const char *line,
   if (n > SHOWDUINO_EMERGENCY_ID_MAX) return 0;
   memcpy(out->id, p, n);
   out->id[n] = '\0';
-  if (!showduino_emergency_id_ok(out->id)) return 0;
+  if (strcmp(out->id, SHOWDUINO_EMERGENCY_ROUTE_ALL) == 0) {
+    out->broadcast = 1;
+  } else if (!showduino_emergency_id_ok(out->id)) {
+    return 0;
+  }
   c2 = strchr(c1 + 1, ':');
   if (!c2) return 0;
   out->sequence = (uint32_t)strtoul(c1 + 1, NULL, 10);

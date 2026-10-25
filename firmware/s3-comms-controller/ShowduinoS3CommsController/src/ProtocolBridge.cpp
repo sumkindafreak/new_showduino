@@ -336,10 +336,19 @@ static bool handleP4Route(const char *line) {
                strlen(SHOWDUINO_LEGACY_ROUTE_EMERGENCY))) {
     ShowduinoEmergencyRoute rt{};
     if (showduino_emergency_parse_route(line, &rt)) {
-      if (showduino_emergency_is_clear_token(rt.command) &&
-          strcmp(rt.command, "EMERGENCY:CLEAR") != 0 &&
-          strcmp(rt.command, SHOWDUINO_ESTOP_GLOBAL_OBSERVED) != 0) {
-        SD_LOGW("COMMS", "Dropped Emergency Node clear token");
+      /* MISSION 001J: stations accept ACK and GCL only as authenticated CMD lines
+       * from the P4. Plain clear tokens are dropped here as hygiene for legacy
+       * stations; the 001J P4 never sends them. */
+      if (showduino_emergency_is_clear_token(rt.command) ||
+          strcmp(rt.command, SHOWDUINO_ESTOP_GLOBAL_OBSERVED) == 0 ||
+          strcmp(rt.command, SHOWDUINO_ESTOP_ACK_LATCHED) == 0) {
+        SD_LOGW("COMMS", "Dropped unauthenticated Emergency Node clear/ack token");
+        return true;
+      }
+      if (rt.broadcast) {
+        if (!espNowTransportBroadcastEmergency(rt.command, rt.sequence)) {
+          SD_LOGT("COMMS", "Emergency broadcast not sent");
+        }
         return true;
       }
       forwardToEmergencyNode(rt.id, rt.command, rt.sequence);
@@ -367,12 +376,8 @@ static void fanoutEmergency() {
   forwardToLampNode(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   espNowTransportSendToAllPixelNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
   espNowTransportSendToAllMosfetNodes(sEmergencyActive ? "EMERGENCY:STOP" : "EMERGENCY:CLEAR", 0);
-  /* Observe-only for Emergency Nodes. CLEAR here means global clear observed. */
-  espNowTransportSendToAllEmergencyNodes(
-      sEmergencyActive ? SHOWDUINO_ESTOP_ACK_LATCHED : SHOWDUINO_ESTOP_GLOBAL_OBSERVED, 0);
-  if (!sEmergencyActive) {
-    espNowTransportSendToAllEmergencyNodes("EMERGENCY:CLEAR", 0);
-  }
+  /* MISSION 001J: the S3 sends nothing to Emergency Nodes on its own. ACK and the
+   * global-clear observation reach stations only as P4-authenticated CMD lines. */
 }
 
 static void onDirectorCommand(const char *command) {
