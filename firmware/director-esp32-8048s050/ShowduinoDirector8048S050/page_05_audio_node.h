@@ -24,6 +24,7 @@ extern "C" {
 #define PAGE05_CMD_STOP      "PAGE05:STOP"
 #define PAGE05_CMD_VOL_DOWN  "PAGE05:VOL-"
 #define PAGE05_CMD_VOL_UP    "PAGE05:VOL+"
+#define PAGE05_CMD_MIC       "PAGE05:MIC"
 #define PAGE05_CMD_SELECT    "PAGE05:SELECT"
 #define PAGE05_CMD_TEST      "PAGE05:TEST"
 #define PAGE05_CMD_DETAILS   "PAGE05:DETAILS"
@@ -44,6 +45,7 @@ void page_05_audio_node_destroy(void);
 bool page_05_audio_node_is_active(void);
 void page_05_audio_node_apply_theme(void);
 void page_05_audio_node_set_model(const DirectorAudioNodeControl *model);
+void page_05_audio_node_show_mic(bool show);
 void page_05_audio_node_show_details(bool show);
 void page_05_audio_node_show_select(bool show);
 const char *page_05_audio_node_selected_asset(void);

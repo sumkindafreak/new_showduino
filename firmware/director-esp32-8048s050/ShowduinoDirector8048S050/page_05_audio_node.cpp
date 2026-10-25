@@ -7,6 +7,7 @@
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
+#include "../../../protocol/showduino_audio_node.h"
 #include "DirectorUiText.h"
 
 static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
@@ -41,6 +42,9 @@ struct Page05Ui {
   lv_obj_t *btn_test;
   lv_obj_t *btn_details;
   lv_obj_t *mic;
+  lv_obj_t *mic_controls;
+  lv_obj_t *btn_mic_controls;
+  lv_obj_t *mic_close;
   lv_obj_t *mic_title;
   lv_obj_t *mic_ready;
   lv_obj_t *mic_level;
@@ -59,6 +63,7 @@ struct Page05Ui {
   lv_obj_t *details_close;
   lv_obj_t *select;
   lv_obj_t *select_list;
+  lv_obj_t *select_hint;
   lv_obj_t *inv_btns[SHOWDUINO_AUDIO_INV_WIRE_MAX];
   lv_obj_t *btn_inv_next;
   lv_obj_t *select_close;
@@ -177,6 +182,7 @@ static void apply_enable() {
   set_en(s.btn_test, canTest);
   set_en(s.btn_details, s_model.seen || on);
   const bool canSound = on && director_audio_has_cap(&s_model, "MIC");
+  set_en(s.btn_mic_controls, canSound);
   set_en(s.btn_cal, canSound);
   set_en(s.btn_snd, canSound);
   set_en(s.btn_th_dn, canSound);
@@ -341,9 +347,12 @@ static void paint() {
       lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
     }
   }
+  if (s.select_hint) lv_label_set_text(s.select_hint,
+      !s_model.online ? "Audio Node offline" :
+      s_model.inventoryTotal ? "Select an audio asset" : "No assets reported. Refreshing SD inventory...");
   if (s.btn_inv_next) {
     ShowduinoOsTheme::setEnabled(s.btn_inv_next,
-        s_model.inventoryTotal > (uint16_t)((s_model.inventoryPage + 1) * SHOWDUINO_AUDIO_INV_WIRE_MAX));
+        s_model.inventoryTotal > (uint16_t)((s_model.inventoryPage + 1) * SHOWDUINO_AUDIO_INV_PER_PAGE));
   }
 
   apply_enable();
@@ -410,30 +419,36 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.chip_play = make_chip(s.header, 660, 8, &s.chip_play_lab);
 
   const int16_t bodyY = (int16_t)(kHeaderY + kHeaderH + OS_GAP);
+  const int16_t actionRow2H = 44;
+  const int16_t actionRow1H = 48;
+  const int16_t by2 = (int16_t)(OS_DOCK_Y - OS_GAP - actionRow2H);
+  const int16_t by = (int16_t)(by2 - OS_GAP - actionRow1H);
+  const int16_t statusH = 100;
+  const int16_t micY = (int16_t)(bodyY + statusH + OS_GAP);
+  const int16_t micH = (int16_t)(by - OS_GAP - micY);
   s.status = lv_obj_create(parent);
   lv_obj_remove_style_all(s.status);
   lv_obj_set_pos(s.status, 20, bodyY);
-  lv_obj_set_size(s.status, 760, 108);
+  lv_obj_set_size(s.status, 760, statusH);
   ShowduinoOsTheme::styleRaisedCard(s.status, true);
   ShowduinoOsTheme::decorateCard(s.status, true);
   lv_obj_clear_flag(s.status, LV_OBJ_FLAG_SCROLLABLE);
   showduino_theme_register(s.status, SHOWDUINO_THEME_ROLE_BORDER);
 
-  s.name = make_stat(s.status, 16, 16);
-  s.state = make_stat(s.status, 16, 40);
-  s.asset = make_stat(s.status, 16, 64);
-  s.volume = make_stat(s.status, 400, 16);
-  s.storage = make_stat(s.status, 400, 40);
-  s.codec = make_stat(s.status, 400, 64);
-  s.feedback = make_stat(s.status, 16, 80);
+  s.name = make_stat(s.status, 16, 8);
+  s.state = make_stat(s.status, 16, 30);
+  s.asset = make_stat(s.status, 16, 52);
+  s.volume = make_stat(s.status, 400, 8);
+  s.storage = make_stat(s.status, 400, 30);
+  s.codec = make_stat(s.status, 400, 52);
+  s.feedback = make_stat(s.status, 16, 74);
   lv_obj_set_width(s.feedback, 720);
   lv_obj_set_style_text_color(s.feedback, lv_color_hex(ShowduinoPalette::Muted), 0);
 
-  const int16_t micY = (int16_t)(bodyY + 116);
   s.mic = lv_obj_create(parent);
   lv_obj_remove_style_all(s.mic);
   lv_obj_set_pos(s.mic, 20, micY);
-  lv_obj_set_size(s.mic, 760, 92);
+  lv_obj_set_size(s.mic, 760, micH);
   ShowduinoOsTheme::styleRaisedCard(s.mic, true);
   ShowduinoOsTheme::decorateCard(s.mic, true);
   lv_obj_clear_flag(s.mic, LV_OBJ_FLAG_SCROLLABLE);
@@ -457,26 +472,39 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.mic_trig = make_stat(s.mic, 400, 8);
   s.mic_last = make_stat(s.mic, 400, 48);
 
-  const int16_t by = (int16_t)(micY + 100);
   s.btn_play = make_btn(parent, "PLAY", 20, by, 140, 48, PAGE05_CMD_PLAY, false);
   s.btn_loop = make_btn(parent, "LOOP", 172, by, 140, 48, PAGE05_CMD_LOOP, false);
   s.btn_pause = make_btn(parent, "PAUSE", 324, by, 140, 48, PAGE05_CMD_PAUSE, false);
   s.btn_resume = make_btn(parent, "RESUME", 476, by, 140, 48, PAGE05_CMD_RESUME, false);
   s.btn_stop = make_btn(parent, "STOP", 628, by, 132, 48, PAGE05_CMD_STOP, true);
 
-  const int16_t by2 = (int16_t)(by + 56);
   s.btn_vol_dn = make_btn(parent, "VOL -", 20, by2, 100, 44, PAGE05_CMD_VOL_DOWN, false);
   s.btn_vol_up = make_btn(parent, "VOL +", 128, by2, 100, 44, PAGE05_CMD_VOL_UP, false);
   s.btn_select = make_btn(parent, "SELECT ASSET", 236, by2, 180, 44, PAGE05_CMD_SELECT, false);
   s.btn_test = make_btn(parent, "TEST", 424, by2, 120, 44, PAGE05_CMD_TEST, false);
   s.btn_details = make_btn(parent, "DETAILS", 552, by2, 208, 44, PAGE05_CMD_DETAILS, false);
 
-  const int16_t by3 = (int16_t)(by2 + 48);
-  s.btn_cal = make_btn(parent, "CALIBRATE", 20, by3, 140, 40, PAGE05_CMD_CALIBRATE, false);
-  s.btn_snd = make_btn(parent, "ENABLE", 172, by3, 120, 40, PAGE05_CMD_SND_EN, false);
-  s.btn_th_dn = make_btn(parent, "TH -", 304, by3, 80, 40, PAGE05_CMD_TH_DN, false);
-  s.btn_th_up = make_btn(parent, "TH +", 396, by3, 80, 40, PAGE05_CMD_TH_UP, false);
-  s.btn_snd_test = make_btn(parent, "TEST TRIGGER", 488, by3, 272, 40, PAGE05_CMD_SND_TEST, false);
+  lv_obj_set_width(s.mic_trig, 220);
+  s.btn_mic_controls = make_btn(s.mic, "CONTROLS", 636, 8, 108, 40, PAGE05_CMD_MIC, false);
+  s.mic_controls = lv_obj_create(parent);
+  lv_obj_remove_style_all(s.mic_controls);
+  lv_obj_set_pos(s.mic_controls, 80, 80);
+  const int16_t micPopupH = (int16_t)(OS_DOCK_Y - OS_GAP - 80);
+  lv_obj_set_size(s.mic_controls, 640, micPopupH);
+  ShowduinoOsTheme::styleRaisedCard(s.mic_controls, true);
+  lv_obj_clear_flag(s.mic_controls, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t *mt = lv_label_create(s.mic_controls);
+  lv_label_set_text(mt, "MIC / INPUT CONTROLS");
+  lv_obj_set_pos(mt, 16, 16);
+  lv_obj_set_style_text_color(mt, lv_color_hex(ShowduinoPalette::Accent), 0);
+  const int16_t by3 = 64;
+  s.btn_cal = make_btn(s.mic_controls, "CALIBRATE", 20, by3, 280, 48, PAGE05_CMD_CALIBRATE, false);
+  s.btn_snd = make_btn(s.mic_controls, "ENABLE", 320, by3, 300, 48, PAGE05_CMD_SND_EN, false);
+  s.btn_th_dn = make_btn(s.mic_controls, "TH -", 20, by3 + 56, 136, 48, PAGE05_CMD_TH_DN, false);
+  s.btn_th_up = make_btn(s.mic_controls, "TH +", 164, by3 + 56, 136, 48, PAGE05_CMD_TH_UP, false);
+  s.btn_snd_test = make_btn(s.mic_controls, "TEST TRIGGER", 320, by3 + 56, 300, 48, PAGE05_CMD_SND_TEST, false);
+  s.mic_close = make_btn(s.mic_controls, "CLOSE", 240, micPopupH - OS_GAP - 44, 160, 44, PAGE05_CMD_CLOSE, false);
 
   s.details = lv_obj_create(parent);
   lv_obj_remove_style_all(s.details);
@@ -500,7 +528,10 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.select = lv_obj_create(parent);
   lv_obj_remove_style_all(s.select);
   lv_obj_set_pos(s.select, 140, 80);
-  lv_obj_set_size(s.select, 520, 280);
+  const int16_t selectH = (int16_t)(OS_DOCK_Y - OS_GAP - 80);
+  const int16_t selectFooterY = (int16_t)(selectH - OS_GAP - 44);
+  lv_obj_set_size(s.select, 520, selectH);
+  lv_obj_clear_flag(s.select, LV_OBJ_FLAG_SCROLLABLE);
   ShowduinoOsTheme::styleRaisedCard(s.select, true);
   ShowduinoOsTheme::decorateCard(s.select, true);
   lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
@@ -509,6 +540,7 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_obj_set_pos(st, 16, 16);
   lv_obj_set_style_text_color(st, lv_color_hex(ShowduinoPalette::Accent), 0);
   lv_obj_t *hint = lv_label_create(s.select);
+  s.select_hint = hint;
   lv_label_set_text(hint, "Library reported by the Audio Node through the P4.");
   lv_obj_set_pos(hint, 16, 36);
   lv_obj_set_style_text_color(hint, lv_color_hex(ShowduinoPalette::Muted), 0);
@@ -517,8 +549,8 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
                              s_asset_cmds[i], false);
     lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
   }
-  s.btn_inv_next = make_btn(s.select, "NEXT PAGE", 20, 214, 160, 44, PAGE05_CMD_INV_NEXT, false);
-  s.select_close = make_btn(s.select, "CLOSE", 340, 214, 160, 44, PAGE05_CMD_CLOSE, false);
+  s.btn_inv_next = make_btn(s.select, "NEXT PAGE", 20, selectFooterY, 160, 44, PAGE05_CMD_INV_NEXT, false);
+  s.select_close = make_btn(s.select, "CLOSE", 340, selectFooterY, 160, 44, PAGE05_CMD_CLOSE, false);
 
   page_05_audio_node_apply_theme();
   s_active = true;
@@ -544,6 +576,8 @@ void page_05_audio_node_destroy(void) {
   showduino_theme_unregister(s.btn_select);
   showduino_theme_unregister(s.btn_test);
   showduino_theme_unregister(s.btn_details);
+  showduino_theme_unregister(s.btn_mic_controls);
+  showduino_theme_unregister(s.mic_close);
   showduino_theme_unregister(s.btn_cal);
   showduino_theme_unregister(s.btn_snd);
   showduino_theme_unregister(s.btn_th_dn);
@@ -582,7 +616,17 @@ void page_05_audio_node_set_model(const DirectorAudioNodeControl *model) {
   paint();
 }
 
+void page_05_audio_node_show_mic(bool show) {
+  if (!s.mic_controls) return;
+  if (show) lv_obj_clear_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
+  paint();
+}
+
 void page_05_audio_node_show_details(bool show) {
+  if (s.mic_controls) lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
   if (!s.details) return;
   if (show) lv_obj_clear_flag(s.details, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
@@ -591,6 +635,7 @@ void page_05_audio_node_show_details(bool show) {
 }
 
 void page_05_audio_node_show_select(bool show) {
+  if (s.mic_controls) lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
   if (!s.select) return;
   if (show) lv_obj_clear_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);

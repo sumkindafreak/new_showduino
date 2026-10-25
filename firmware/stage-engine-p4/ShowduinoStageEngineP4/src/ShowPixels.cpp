@@ -1,4 +1,5 @@
 #include "ShowPixels.h"
+#include "../../../protocol/showduino_pixel_defaults.h"
 
 #if SHOWDUINO_SHOW_PIXEL_ENABLED
 
@@ -16,7 +17,7 @@ static uint32_t sTestStartedMs = 0;
 static uint32_t sLastFrameMs = 0;
 static uint32_t sLastEmergencyRefreshMs = 0;
 static uint8_t sGlobalBrightness = SHOWDUINO_SHOW_PIXEL_BRIGHTNESS;
-static uint16_t sConfiguredCount = 0;
+static uint16_t sConfiguredCount = SHOWDUINO_PIXEL_DEFAULT_COUNT;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr; /* RGB triplets */
@@ -485,9 +486,7 @@ bool showPixelsBegin() {
 
 void showPixelsApplyPersisted() {
   const uint16_t n = stageConfigPixels().pixelCount;
-  if (n > 0 && n <= SHOWDUINO_SHOW_PIXEL_MAX) {
-    sConfiguredCount = n;
-  }
+  sConfiguredCount = showduino_pixel_boot_count(n, SHOWDUINO_SHOW_PIXEL_MAX);
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO23 not initialised — set line length then PIXEL:INIT (1-%u, default %u)\n",
                   (unsigned)SHOWDUINO_SHOW_PIXEL_MAX,

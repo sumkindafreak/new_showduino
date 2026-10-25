@@ -16,6 +16,7 @@
 #include "src/LocalButtons.h"
 #include "src/NodeDiagnostics.h"
 #include "src/AudioPixelEngine.h"
+#include "src/AudioStatusPixel.h"
 #include "src/AudioPixelIdentity.h"
 #include "src/AudioPixelProtocol.h"
 #include "src/AudioPixelNodeState.h"
@@ -108,6 +109,7 @@ void setup() {
   audioPixelEngineSafeGpio();
   nodeDiagBegin();
   audioNodeStateBegin(SHOWDUINO_AUDIO_ST_BOOTING);
+  audioStatusPixelBegin();
 
   const bool codecOk = audioCodecBegin();
   const bool sdOk = audioStorageBegin();
@@ -139,11 +141,13 @@ void setup() {
 
 void loop() {
   const uint32_t t0 = micros();
+  audioEspNowProcessCommands();
   pollUsb();
   pollButtons();
   audioStorageLoop();
   audioInputService();
   audioCommandService();
+  audioCodecService();
   audioPixelEngineService();
   audioPixelProtocolService();
   nodeDiagServiceLed();
