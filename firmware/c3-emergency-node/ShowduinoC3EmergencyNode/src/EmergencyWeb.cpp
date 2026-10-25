@@ -9,6 +9,7 @@
 #include "EmergencyDisplay.h"
 #include "EstopPixelEngine.h"
 #include "EstopPixelProtocol.h"
+#include "EmergencyStatusPixels.h"
 #include "EspNowEmergencyTransport.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_emergency_node.h"
@@ -44,6 +45,10 @@ button{background:#2a2a2a;color:#fff;border:1px solid #444;padding:8px 10px;bord
 <button id=save>SAVE IDENTITY</button>
 <button id=rearm>MAINTENANCE LOCAL RESET</button>
 <p class=warn>ASSERT ONLY — cannot clear P4. Release never clears. Pixel = capability of this ESTOP peer (GPIO2), not a fake LED-xx.</p>
+</div>
+<div class=card><h2>LOCAL STATUS / ATMOSPHERE (GPIO3, FIXED 2 PIXELS)</h2>
+<div class=kv id=skv></div>
+<p>Independent indicator strip. Not part of the show pixel controller. Emergency always forces both white.</p>
 </div>
 <div class=card><h2>PIXELS (GPIO2)</h2><div class=kv id=pkv></div>
 <div class=row>
@@ -98,6 +103,13 @@ async function load(){
     ['Firmware',S.firmware||'—','']
   ];
   $('kv').innerHTML=rows.map(r=>`<div>${r[0]}</div><div class="${r[2]||''}">${r[1]}</div>`).join('');
+  const statusRows=[
+    ['GPIO',String(S.statusPixelGpio),''],
+    ['LEDs',String(S.statusPixelCount),''],
+    ['Driver',S.statusPixelReady?'READY':'OFFLINE',S.statusPixelReady?'ok':'warn'],
+    ['Mode',S.statusPixelMode||'—',S.statusPixelMode==='EMERGENCY'?'err':'ok']
+  ];
+  $('skv').innerHTML=statusRows.map(r=>`<div>${r[0]}</div><div class="${r[2]||''}">${r[1]}</div>`).join('');
   const prow=[
     ['Pixel GPIO',String(S.pixelGpio||2),''],
     ['Configured count',String(S.pixelCount||0),''],
@@ -155,6 +167,15 @@ static void sendStatus() {
   json += "\",\n  \"gpioVerified\": ";
   json += SHOWDUINO_EMERGENCY_NODE_GPIO_VERIFIED ? "true" : "false";
   json += ",\n  \"canClearGlobal\": false";
+  json += ",\n  \"statusPixelGpio\": ";
+  json += String(SHOWDUINO_ESTOP_STATUS_PIXEL_PIN);
+  json += ",\n  \"statusPixelCount\": ";
+  json += String(SHOWDUINO_ESTOP_STATUS_PIXEL_COUNT);
+  json += ",\n  \"statusPixelReady\": ";
+  json += emergencyStatusPixelsReady() ? "true" : "false";
+  json += ",\n  \"statusPixelMode\": \"";
+  json += emergencyStatusPixelsMode();
+  json += "\"";
   json += ",\n  \"pixelGpio\": ";
   json += String(SHOWDUINO_ESTOP_PIXEL_DATA_PIN);
   json += ",\n  \"pixelCount\": ";

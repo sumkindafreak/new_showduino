@@ -20,6 +20,7 @@
 #include "BoardConfig.h"
 #include "src/EmergencyInput.h"
 #include "src/EmergencyIndicate.h"
+#include "src/EmergencyStatusPixels.h"
 #include "src/EmergencyIdentity.h"
 #include "src/EmergencyProtocol.h"
 #include "src/EmergencyDisplay.h"
@@ -70,6 +71,7 @@ void setup() {
 
   /* 3: Pixel data line safe (no garbage WS2812) before radio/OLED. */
   pixelEngineSafeGpio();
+  emergencyStatusPixelsSafeGpio();
 
   Serial.begin(115200);
 
@@ -91,6 +93,8 @@ void setup() {
   Serial.printf("[ESTOP] Free heap before Pixel INIT path: %u\n",
                 (unsigned)ESP.getFreeHeap());
   pixelEngineApplyPersisted();
+  /* Initialise independent two-pixel line without rendering before assert. */
+  emergencyStatusPixelsBegin();
   Serial.printf("[ESTOP] Free heap after Pixel persist/init: %u (cfg=%u)\n",
                 (unsigned)ESP.getFreeHeap(),
                 (unsigned)pixelEngineConfiguredCount());
@@ -123,6 +127,13 @@ void loop() {
   const uint32_t t0 = micros();
   pollUsb();
   emergencyProtocolService();
+  /* Priority: emergency input + assert TX before status pixels are rendered. */
+  emergencyStatusPixelsService(gEmergencyMachine.latched,
+                               emergencyProtocolSystemEmergencyActive(),
+                               emergencyInputPressed(),
+                               emergencyEspNowLinkFresh(),
+                               emergencyProtocolState(),
+                               pixelEngineLocateActive());
   emergencyIndicateService(&gEmergencyMachine, emergencyEspNowLinkFresh());
 
   const uint8_t latch = gEmergencyMachine.latched;
