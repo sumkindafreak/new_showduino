@@ -16,4 +16,4 @@ Old Word/PDF/downloaded copies do not update themselves. Use this maintained set
 
 ## Latest finish-line status
 
-- [24 October 2026: main versus bench-test audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — unmerged fixes, current manual/firmware differences, and the smallest non-DMX acceptance sequence. No complete physical acceptance pass recorded.
+- [24–25 October 2026: main versus bench-test audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — unmerged fixes, current manual/firmware differences, and the smallest non-DMX acceptance sequence. 25 October check confirms only generated bundle/manifest updates on main; no complete physical acceptance pass recorded.
