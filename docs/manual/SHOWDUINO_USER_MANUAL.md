@@ -14,6 +14,10 @@
 
 ---
 
+## Finish-line status update — 26 October 2026
+
+The latest reviewed `main` is [`36215ee4`](https://github.com/sumkindafreak/new_showduino/commit/36215ee4a10c09b99ce69803e60f1cd2f402c187) (26 October 2026, 18:40 UTC). Since the previous 25 October check, four commits regenerated the Comms embedded Studio WebUI and manifest; the manifest's content hash and pinned Studio source are unchanged, and no active firmware-source changes were found. **This is not a new hardware acceptance result.** The 20 October firmware baseline of this manual is retained deliberately; see the [26 October audit addendum](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the current main-vs-draft distinction. The existing 22-second physical normal run and Emergency repeat are **still unverified**. Do not treat draft PR fixes, Studio preview, host tests or regenerated bundles as installed or accepted features.
+
 ## Finish-line status update — 24 October 2026
 
 **Read the [24 October main-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) before commissioning the existing non-DMX acceptance show.** The 20 October firmware baseline of this manual is still the active `main` firmware: later `main` commits changed documentation and generated Comms Studio assets, not the active firmware source. The 22-second all-node acceptance production, independent Audio GPIO5 status indicator, default-ten-pixel changes, WAV-stutter repair and SHDO parser fixes are on **separate unmerged PRs**, not on `main` or proven installed hardware. No complete physical normal run plus Emergency repeat is recorded. Do not confuse a passing host test or a proposed firmware version with a passed hardware test.
