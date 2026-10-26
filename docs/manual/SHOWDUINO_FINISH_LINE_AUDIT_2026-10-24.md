@@ -2,6 +2,15 @@
 
 **Target:** one complete, physically observed, non-DMX show followed by a mid-show Emergency repeat. **Status: NOT YET PASSED.**
 
+## 26 October 2026 follow-up — four more generated-bundle commits, no new physical pass
+
+- Checked `main` at [`36215ee4`](https://github.com/sumkindafreak/new_showduino/commit/36215ee4a10c09b99ce69803e60f1cd2f402c187), committed **26 October 2026 at 18:40:39 UTC**. This is **four commits ahead** of the 25 October check (`43e0cebd`), and **eight commits ahead** of the 24 October audit (`87963bb`).
+- GitHub comparison `43e0cebd..main` shows only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json` changed. All four commits say **“Regenerate S3 Studio WebUI bundle”** (26 October at 01:00, 06:53, 14:02 and 18:40 UTC). No active firmware source, acceptance fixture or operator manual changed in that range.
+- Current manifest: `buildHash: 56677901c6a2`, **42 assets**, **861,510 raw bytes**, **214,954 embedded bytes**, website Studio pinned to `sumkindafreak/showduino.com@850dea084320a45fb89b584507eda1514662b8dd`; only the build timestamp differs from the 25 October manifest in the fields checked. This is consistent with regeneration rather than a functional update. The generated header bytes were **not** decoded or run on hardware here; do not claim a proven regression-free binary.
+- The **20 October manual firmware baseline remains intentionally dated**; current `main` is now **28 commits ahead** of `f4c9aea`, without evidence of active firmware-source changes in those subsequent commits. Draft integration/fix PRs [#29](https://github.com/sumkindafreak/new_showduino/pull/29), [#35](https://github.com/sumkindafreak/new_showduino/pull/35), [#36](https://github.com/sumkindafreak/new_showduino/pull/36), [#37](https://github.com/sumkindafreak/new_showduino/pull/37) and [#40](https://github.com/sumkindafreak/new_showduino/pull/40) remain **open**, not part of `main`.
+- The existing [bench result record](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/docs/manual/SHOWDUINO_BENCH_RESULT_RECORD.md) is still marked **NOT RUN**. No new dated physical LOAD → START → COMPLETE or mid-show Emergency acceptance evidence was found in the reviewed GitHub main/acceptance branch. The previously reported roughly 7-metre wireless Emergency-to-Audio observation is the most recent limited physical evidence available here; it is **not** proof of full Emergency acceptance.
+- **Documentation disposition:** This addendum updates the audit and linked manual/index in [PR #41](https://github.com/sumkindafreak/new_showduino/pull/41), without changing the original manual's 20 October source baseline, firmware or acceptance criteria. The same five-step non-DMX procedure below remains the minimum route to a pass.
+
 ## 25 October 2026 follow-up — main advanced, acceptance unchanged
 
 - Latest checked `main`: [`43e0cebd`](https://github.com/sumkindafreak/new_showduino/commit/43e0cebd3107a4d044cbddc53b70b6be6b0cf62c) (25 October, 18:29 UTC), **four commits ahead** of the 24 October audit baseline `87963bb`.
