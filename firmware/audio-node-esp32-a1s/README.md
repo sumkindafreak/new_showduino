@@ -5,7 +5,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.8
+Firmware: 0.5.0-mp3-rc2
 ```
 
 ```text
@@ -81,11 +81,116 @@ Arduino-ESP32 3.3.11 has no `dout` option — use `dio`:
 esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
 ```
 
-Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, plus **Adafruit NeoPixel**. WAV only. MP3 is PLANNED. SoftAP SSID `Showduino-Audio-XXXX` stays on ESP-NOW channel 1 at **http://192.168.5.1**. ESP-NOW keeps running while the AP is up.
+Arduino-ESP32 3.3.x. Libraries: core `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, plus **Adafruit NeoPixel**. **WAV and MP3 (MP3 is experimental in this branch)**. SoftAP SSID `Showduino-Audio-XXXX` stays on ESP-NOW channel 1 at **http://192.168.5.1**. ESP-NOW keeps running while the AP is up.
+
+## Local MP3 alignment — 0.5.0-mp3-rc2
+
+This local reconciliation merges feature/audio-a1s-mp3 into the newer Audio
+Node 0.4.8 source, preserving its useful volume curve, explicit zero-volume
+mute, separate GPIO5 status/GPIO22 show outputs and ten-pixel minimums. It also
+retains the eight-second silence between Emergency WAV announcements. The MP3
+branch brings its 4 KiB buffering and SD-contention repairs.
+
+MP3 is experimental until actual playback and Emergency interruption pass the
+bench. This local integration does not merge GitHub main or establish a release.
+The MP3 adapter now yields to the playback controller after each bounded audio
+block instead of holding the playback lock for a whole track.
+
+### Arduino Library Manager dependency
+
+Install **ESP8266Audio**, by Earle F. Philhower III, version **2.4.1**.
+It includes the `AudioGeneratorMP3` software MP3 decoder and
+`AudioFileSourceSD` file source. The library works on ESP32 without PSRAM,
+but decoder heap consumption and decoding performance must be verified on
+our actual 4 MB flash / no-PSRAM ESP32-A1S with ESP-NOW active.
+
+Source: https://github.com/earlephilhower/ESP8266Audio
+Licence: **GPL-3.0**. Review the source-distribution and licence
+compatibility obligations before any Showduino commercial distribution.
+No ESP8266Audio source code has been copied into the Showduino repository.
+
+### Matching P4 routing firmware
+
+For Director-controlled MP3, also flash the matching local P4
+**0.6.13-mp3-rc1** build: P4 validates filenames before forwarding PLAY/LOOP.
+The older WAV-only P4 firmware rejects MP3 paths. The local source aligns both
+P4 routing gates and the Audio Node to the same bounded asset roots.
+
+### SD card
+
+Use standard, non-encrypted MPEG Layer III MP3 tracks (start with
+constant-bitrate 128 kbps, 44.1 kHz stereo). Keep WAV for the most critical,
+low-latency and precisely timed show cues.
+
+Examples:
+
+```text
+/showduino/audio/music/ambience.mp3
+/showduino/audio/dialogue/intro.mp3
+/showduino/audio/effects/thunder.wav
+/The_Chamber/ambience/theme.mp3
+```
+
+Existing `AUDIO:NODE:PLAY:<path>`, `AUDIO:NODE:LOOP:<path>`,
+`AUDIO:NODE:STOP`, `PAUSE`, `RESUME`, `VOLUME`, fades/duck,
+`OWN:GRANT`, emergency STOP/CLEAR, and file inventories apply to both
+formats. The physical A1S codec and I2S GPIOs are unchanged.
+
+The source dispatcher routes WAV into the native 16-bit PCM engine, MP3
+into `AudioGeneratorMP3`, and decoded stereo PCM to a 4096-byte I2S
+staging output. Only one track/output owns I2S at a time. No HTTP MP3
+streaming or two-track mixing is enabled.
+
+The `AUDIO:STATUS` positional numbers for MP3 represent **compressed
+file bytes**, not playback milliseconds. User-interface elapsed time is
+not yet calculated from MP3 frame timestamps.
+
+### Test steps and release blockers
+
+1. On this combined source, confirm the same WAV no longer stutters.
+2. Install ESP8266Audio 2.4.1, compile this branch with Arduino-ESP32
+   3.3.12 and the documented A161 build board settings.
+3. Put `music/ambience.mp3` on the Audio Node SD card, select it from the
+   Director Audio Node library and start playback there. Read-only serial
+   `AUDIO:STATUS` remains available.
+4. Listen to 128/192/320 kbps CBR and VBR, mono and stereo, at 44.1/48kHz.
+5. Exercise pause/resume, stop, loop, preemption, fades, volume/duck,
+   SD removal, speaker/headphone/line and memory after 30 repeated starts.
+6. With ESP-NOW, pixels and SoftAP enabled, play a complete long file
+   without audible gaps and confirm that emergency interrupts MP3
+   immediately and clears safely.
+7. Compile and hardware tests must pass before promoting this candidate.
+   Avoid using MP3 as the emergency sound until validated.
 
 ## Test WAV
 
 Create `/showduino/audio/system-test.wav` as **16-bit PCM WAV**, mono or stereo, **44.1 kHz or 48 kHz**. Also accepted: 8 / 16 / 22.05 / 32 kHz PCM.
+
+## Included WAV buffering repair
+
+The previous audio task slept 2 ms after every tiny 512-byte read/write.
+That consumed most of the deadline for 44.1/48 kHz stereo PCM.
+This release uses a 4 KiB PCM staging block, no forced per-block delay,
+retries short I2S writes without dropping samples, and defers SD configuration
+writes and card-size polling until audio is idle. No PSRAM is required;
+Director protocol, Showduino ownership and Emergency paths are unchanged.
+
+### Bench comparison before accepting this patch
+
+1. Put the same 16-bit 44.1 or 48 kHz test WAV on the Audio Node SD card.
+2. With the Director owning this node, start playback from its Audio Node controls.
+   Use serial only for read-only diagnostics while the node is managed.
+3. During playback run `AUDIO:STATUS` and record `SD_READ_MAX_US`,
+   `I2S_WRITE_MAX_US`, `short_writes`, `underruns` and `ERR`.
+   Note: the existing `underruns` counter actually measures failed I2S writes,
+   not hardware DMA underflows.
+4. Listen with ESP-NOW, the configured pixel line and SoftAP in operation.
+5. Re-test PAUSE/RESUME, STOP, LOOP, track end, bad WAV, card removal,
+   standalone use, P4 ownership transitions and Emergency STOP/CLEAR.
+
+Not hardware-verified. If audio still stutters, the next step is a
+prefilled ring buffer with independent SD-reader and I2S-writer tasks,
+including measurements of genuine starvation.
 
 ## Bench
 
@@ -95,3 +200,7 @@ Do not flash from this document unless you intend a hardware bring-up session.
 
 
 Pixel indication follows [`docs/status-colour-standard.md`](../../docs/status-colour-standard.md). In the checked-in hardware definition the programmable Audio pixel line is GPIO22; Emergency forces that configured line to full 255 white and Locate uses moving white.
+
+For the current owner bench, keep **Both outputs (external amplifier)** selected:
+this produced the confirmed dinosaur roar through the jack. HEADPHONE mode
+output-pair mapping still needs a separate physical repair/verification.

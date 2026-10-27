@@ -1,4 +1,5 @@
 #include "AudioStorage.h"
+#include "AudioPlayback.h"
 #include "input/AudioInputConfig.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_storage.h"
@@ -164,6 +165,9 @@ void audioStorageSetVolume(uint8_t percent) {
 }
 
 void audioStorageLoop() {
+  /* Defer configuration writes and card-size polling: both contend with
+   * deadline-sensitive WAV reads on the same SD/SPI bus during playback. */
+  if (audioPlaybackActive() || audioPlaybackPaused()) return;
   if (sVolDirty && sWritable && (int32_t)(millis() - sVolSaveAt) >= 0) {
     sVolDirty = false;
     writeConfig();
@@ -231,7 +235,7 @@ static void collectDir(const char *relDir, char names[][SHOWDUINO_AUDIO_REL_MAX 
         : snprintf(entry, sizeof(entry), "%s", base);
     if (length > 0 && (size_t)length < sizeof(entry) && strcmp(base, ".") && strcmp(base, "..")) {
       if (e.isDirectory()) collectDir(entry, names, maxNames, n);
-      else if (showduino_audio_has_wav_ext(base)) {
+      else if ((showduino_audio_has_wav_ext(base) || showduino_audio_has_mp3_ext(base))) {
         char playable[SHOWDUINO_AUDIO_PATH_MAX + 1];
         // Only list paths accepted by playback, including its absolute limit.
         if (audioStorageResolve(entry, playable, sizeof(playable))) {
@@ -260,7 +264,7 @@ static void collectShowDir(const char *absDir) {
     path[sizeof(path) - 1] = '\0';
     if (e.isDirectory()) {
       collectShowDir(path);
-    } else if (showduino_audio_has_wav_ext(path)) {
+    } else if (showduino_audio_has_wav_ext(path) || showduino_audio_has_mp3_ext(path)) {
       char canonical[SHOWDUINO_AUDIO_PATH_MAX + 1];
       if (showduino_audio_resolve_show_path(path, canonical, sizeof(canonical)) ==
           SHOWDUINO_AUDIO_PATH_OK) {

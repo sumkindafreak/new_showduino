@@ -7,7 +7,7 @@
 #include "../../../protocol/showduino_pixel_defaults.h"
 
 #ifndef SHOWDUINO_P4_FIRMWARE_VERSION
-#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.12"
+#define SHOWDUINO_P4_FIRMWARE_VERSION      "0.6.13-mp3-rc1"
 #endif
 
 /*

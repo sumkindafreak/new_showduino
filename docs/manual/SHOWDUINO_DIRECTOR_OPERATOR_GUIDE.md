@@ -93,7 +93,7 @@ The Director's configured automatic display-off behaviour turns off its **backli
 
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
-| **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
+| **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV**, plus experimental **MP3** in local Audio `0.5.0-mp3-rc2` with matching P4 `0.6.13-mp3-rc1`, from its **own microSD card**. MP3 hardware checks remain open; Ogg/FLAC are not implemented. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -125,7 +125,7 @@ Ask the installer/show designer to place an approved file on the **Audio Node's 
     test/
 ```
 
-For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
+For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. For WAV, export 16-bit PCM, typically at 44.1 or 48 kHz. The local MP3 candidate can instead play the original `.mp3` file through its separate decoder; keep the actual extension and use the matching P4 routing firmware. Retain WAV for critical timed cues and the fixed acceptance show until MP3 hardware checks pass. A show file must reference the same relative file name present on the card.
 
 **No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
 

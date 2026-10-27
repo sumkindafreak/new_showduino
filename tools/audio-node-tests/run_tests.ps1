@@ -15,4 +15,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $volumeOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & node (Join-Path $here "test_codec_playback.cjs")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& node (Join-Path $here "test_mp3_adapter.cjs")
 exit $LASTEXITCODE

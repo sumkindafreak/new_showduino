@@ -12,3 +12,9 @@ on physical hardware.
 ```text
 powershell -File tools/audio-node-tests/run_tests.ps1
 ```
+
+The MP3 adapter regression executes the actual adapter against a mocked decoder
+and I2S sink, testing bounded service calls, exact sample order through partial
+writes, natural EOF drain, STOP discard, mono, and failure cleanup. It does not
+claim a real libmad decode or hardware continuity test. Shared protocol tests
+cover MP3 paths/capabilities and preserve ownership and Emergency command gates.

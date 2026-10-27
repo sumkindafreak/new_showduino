@@ -1,4 +1,9 @@
-# Audio output commissioning (Audio Node 0.4.8)
+# Audio output commissioning (Audio Node 0.5.0-mp3-rc2)
+
+The local MP3 merge retains the 0.4.8 volume and Emergency WAV repeat behaviour.
+For the current powered-speaker bench, keep **Both outputs (external amplifier)**
+selected: audible dinosaur playback was confirmed with this setting. The
+HEADPHONE-only output-pair mapping remains an open hardware alignment issue.
 
 ## Useful volume and spaced Emergency announcements
 

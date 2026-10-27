@@ -1,6 +1,18 @@
 # Non-DMX finish-line bench result record
 
-Status: NOT RUN. Do not mark a pass from a build or simulation.
+Status: PARTIAL PHYSICAL CHECKS RECORDED; combined 22-second acceptance remains open.
+
+## Confirmed individual checks — 27 October 2026
+
+- [x] Audio Node NeoPixels produce visible output — owner confirmed in chat.
+- [x] P4 NeoPixels produce visible output — owner confirmed in chat.
+
+These are physical visual-output passes, not build/simulation results. Exact
+installed firmware revisions, pixel counts and a complete cue-by-cue sequence
+were not supplied with this confirmation. Do not infer those results or mark
+the combined normal/Emergency acceptance passes complete from these checks.
+Audible dinosaur playback was also reported with Both outputs selected, but
+audio stuttering is still an open issue. MP3 hardware playback is not yet passed.
 
 Follow [the fixed production and expected cue times](../../examples/productions/ALL_NODES_BENCH_TEST.md). Use the persisted all-nodes-bench-test.shdo production, rather than the narrower Studio RAM timeline path.
 

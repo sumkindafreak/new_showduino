@@ -4,8 +4,14 @@
 Status: ACTIVE
 Role: Showduino Show Engine
 Product: Stage Controller (ESP32-P4)
-Firmware: 0.6.9
+Firmware: 0.6.13-mp3-rc1 (local Audio MP3 routing candidate)
 ```
+
+This local candidate pairs with Audio Node `0.5.0-mp3-rc2`: P4 must accept
+WAV/MP3 asset paths before forwarding them to the node. The older WAV-only P4
+firmware rejects MP3 filenames. The Director remains in control; this update
+does not change pixel wiring, Emergency gates or automatic-restart policy.
+See [local MP3 alignment and validation](../../docs/audio-mp3-local-alignment-2026-10-27.md).
 
 Canonical active Show Engine firmware:
 

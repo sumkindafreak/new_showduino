@@ -346,7 +346,7 @@ static bool webCommandAllowed(const String &cmd) {
     }
     if ((parsed == SHOWDUINO_AUDIO_CMD_PLAY || parsed == SHOWDUINO_AUDIO_CMD_LOOP) && arg[0]) {
       char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
-      return showduino_audio_resolve_path(arg, absPath, sizeof(absPath)) ==
+      return showduino_audio_resolve_asset_path(arg, absPath, sizeof(absPath)) ==
              SHOWDUINO_AUDIO_PATH_OK;
     }
     return true;

@@ -945,7 +945,10 @@ If a system WAV is missing or invalid, the Show Engine must continue operating r
 
 Attraction audio is produced by the specialist **Audio Node** from its local SD card.
 
-Current playback support is WAV PCM. MP3, Ogg and FLAC are planned rather than current supported formats.
+The local 27 October candidate supports WAV PCM and experimental MP3 on the
+Audio Node, using Audio `0.5.0-mp3-rc2` with P4 `0.6.13-mp3-rc1` for routing.
+MP3 hardware acceptance remains pending; Ogg and FLAC remain planned.
+See [the local alignment record](../audio-mp3-local-alignment-2026-10-27.md).
 
 Current Audio Node operations include play, loop, stop, pause, resume, volume, fade and duck/unduck.
 

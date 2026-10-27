@@ -1,5 +1,11 @@
 # Showduino Audio Node
 
+> Local 27 October candidate: **Audio 0.5.0-mp3-rc2**, paired with
+> **P4 0.6.13-mp3-rc1**, supports WAV and experimental MP3. The newer volume
+> curve, eight-second Emergency WAV repeat gap and GPIO5/GPIO22 split are
+> retained. Historical main-only details below are not this local source's
+> version. See [the alignment record](audio-mp3-local-alignment-2026-10-27.md).
+
 **Status:** IMPLEMENTED / HARDWARE TEST REQUIRED  
 **Current `main` firmware source:** `0.4.3` · protocol `1.3` (earlier bring-up sections originated at 0.4.0; confirm installed version)  
 **Board:** Ai-Thinker ESP32-Audio-Kit **V2.2 A161** · ESP32-A1S · **ES8388**  
@@ -138,7 +144,7 @@ States: `OFFLINE` `BOOTING` `IDLE` `LOADING` `PLAYING` `LOOPING` `PAUSED` `STOPP
 Supported now: PLAY, LOOP, STOP, PAUSE, RESUME, VOLUME, FADE IN/OUT, DUCK/UNDUCK, STATUS, INVENTORY, TEST.
 
 - WAV 16-bit PCM, mono or stereo, 8 / 16 / 22.05 / 32 / **44.1** / **48** kHz is mandatory.
-- **MP3 / Ogg / FLAC are PLANNED.** 4 MB flash and unproven PSRAM make a second decoder a stability risk. WAV must stay working.
+- **MP3 is experimental in the local 27 October candidate** (ESP8266Audio 2.4.1, no PSRAM requested). Ogg/FLAC remain planned. WAV continuity, MP3 decoding and Emergency interruption still need physical acceptance on the actual board.
 - One decoder only. Priority (SFX > dialogue > ambience) **interrupts**; it does not mix.
 - Ducking is master/programme gain, not a second stream.
 - Fades are non-blocking. Fade-out complete reports `AUDIO:IDLE`, not file `COMPLETED`.
@@ -262,7 +268,7 @@ Arduino-ESP32 3.3.11 exposes `FlashMode=qio` and `FlashMode=dio` only — there 
 esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
 ```
 
-Arduino-ESP32 3.3.x. Libraries: `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, Adafruit NeoPixel. No MP3 framework. SoftAP stays on ESP-NOW channel 1.
+Arduino-ESP32 3.3.x. Libraries: `WiFi`, `esp_now`, `SD`, `SPI`, `Wire`, `ESP_I2S`, `WebServer`, `Preferences`, Adafruit NeoPixel, and **ESP8266Audio 2.4.1** for the local MP3 candidate. SoftAP stays on ESP-NOW channel 1.
 
 ## 10. Hardware acceptance
 
@@ -305,4 +311,4 @@ Q. Playback stays clean while the input engine runs
 
 ## 11. Deliberately not implemented
 
-Bluetooth speaker, internet radio, Spotify/Alexa/DLNA, OTA, cloud, MP3/Ogg/FLAC decode, simultaneous mix, sample-accurate gapless, PSRAM preload, speech/wake-word AI, FFT bands, automatic scare/cue mapping from microphone events, Relay / MOSFET / LED / DMX work.
+Bluetooth speaker, internet radio, Spotify/Alexa/DLNA, OTA, cloud, Ogg/FLAC decode, simultaneous mix, sample-accurate gapless, PSRAM preload, speech/wake-word AI, FFT bands, automatic scare/cue mapping from microphone events, Relay / MOSFET / LED / DMX work. Local MP3 decoding is now a separate experimental path; it is not a streaming or mixing feature.

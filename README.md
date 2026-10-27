@@ -2,6 +2,10 @@
 
 > Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](docs/LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
 
+> 27 October local audio update: Audio Node **0.5.0-mp3-rc2** adds experimental
+> MP3 alongside WAV, retaining the volume and Emergency-gap fixes. Matching P4
+> **0.6.13-mp3-rc1** enables the routing gate. See [MP3 alignment and validation](docs/audio-mp3-local-alignment-2026-10-27.md).
+
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2\
@@ -67,7 +71,7 @@ The Comms S3 serves the browser frontend and forwards commands; it **does not** 
 
 | Node | Intended capability | Repository status |
 | --- | --- | --- |
-| **Audio Node** (ESP32-A1S / ES8388) | SD-based WAV attraction audio; play, loop, stop, pause, volume, fade/duck, local sound-level/trigger diagnostics and standalone/managed ownership | Active firmware; physical audio, radio and end-to-end cue tests required |
+| **Audio Node** (ESP32-A1S / ES8388) | SD-based WAV and experimental MP3 attraction audio; play, loop, stop, pause, volume, fade/duck, local sound-level/trigger diagnostics and standalone/managed ownership | Active firmware; physical audio, radio and end-to-end cue tests required |
 | **S3 Lamp Node** | Interactive carbide-lamp simulation: striker button, seven-pixel flame Jewel, blow detection, local Adafruit Audio FX UART WAV audio, optional motion provision (disabled by the default unconfirmed-pin gate) and standalone or Showduino-managed operation | Active firmware; integrated physical acceptance required; optional motion input needs verification |
 | **C3 Pixel Node** | One remote WS2812/NeoPixel line on GPIO2, segmented effects, OLED and node commissioning; configured limit 1–512 pixels | Active firmware; physical output and radio testing required |
 | **C3 Emergency Node** | Additional wireless station that can **assert**, but never clear, the P4 emergency latch | Active firmware; station-specific hardware/input commissioning and safety acceptance required |

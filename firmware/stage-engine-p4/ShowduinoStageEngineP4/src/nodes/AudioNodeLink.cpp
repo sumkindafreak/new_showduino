@@ -681,7 +681,7 @@ bool audioNodeLinkHandleCommand(const char *command, char *reply, size_t replyLe
   if ((cmd == SHOWDUINO_AUDIO_CMD_PLAY || cmd == SHOWDUINO_AUDIO_CMD_LOOP ||
        cmd == SHOWDUINO_AUDIO_CMD_TEST) && arg[0]) {
     char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
-    if (showduino_audio_resolve_path(arg, absPath, sizeof(absPath)) != SHOWDUINO_AUDIO_PATH_OK) {
+    if (showduino_audio_resolve_asset_path(arg, absPath, sizeof(absPath)) != SHOWDUINO_AUDIO_PATH_OK) {
       if (reply && replyLen) strncpy(reply, "ERR:AUDIO:NODE:BAD_PATH", replyLen - 1);
       return true;
     }

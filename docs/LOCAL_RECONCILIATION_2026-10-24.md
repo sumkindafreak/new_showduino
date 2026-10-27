@@ -84,3 +84,22 @@ min_spiffs FQBN: flash 1,166,262 bytes (59% of 1,966,080), static RAM 60,688 byt
 Source is updated in `outputs/showduino-reconciled`; the board has not been
 flashed automatically. Audible output, perceived volume, real repeat spacing
 and clear-during-gap behaviour still require physical verification after flash.
+
+## 27 October — MP3 branch alignment candidate
+
+Integrated `origin/feature/audio-a1s-mp3` (`e8ea73f`) into the local reconciliation
+branch, retaining the 0.4.8 volume mapping and eight-second Emergency WAV gap.
+Audio candidate: `0.5.0-mp3-rc2`; matched P4 candidate: `0.6.13-mp3-rc1` for
+Director-managed MP3 path validation. The original 22-second WAV fixture and
+Studio assets are unchanged. No GitHub main merge or automatic flashing.
+
+All 16 host suite groups passed; the new adapter checks use mocked decoder/I2S,
+so physical MP3 decode, playback continuity and Emergency timing remain open.
+The owner confirmed visible NeoPixel output on Audio Node and P4; these individual
+visual passes are recorded in the bench result record.
+
+Full target builds are pending. The first Audio attempt failed because a shared
+Arduino temporary dependency folder disappeared. An isolated Audio/P4 build is
+running; consult `outputs/validation/MP3-target-results.json` and target logs for
+its eventual result. Do not treat this source merge as a completed firmware build
+or hardware acceptance. Details: `docs/audio-mp3-local-alignment-2026-10-27.md`.

@@ -162,9 +162,7 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
                        bool fromShow, int fadeMs, int priIn, uint32_t repeatGapMs = 0) {
   char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
   const ShowduinoAudioPathStatus ps =
-      (rel && rel[0] == '/')
-          ? showduino_audio_resolve_show_path(rel, absPath, sizeof(absPath))
-          : showduino_audio_resolve_path(rel, absPath, sizeof(absPath));
+      showduino_audio_resolve_asset_path(rel, absPath, sizeof(absPath));
   if (ps != SHOWDUINO_AUDIO_PATH_OK) {
     char line[96];
     audioProtocolFormatFailed(line, sizeof(line), seq, SHOWDUINO_AUDIO_FAIL_BAD_PATH);
@@ -642,7 +640,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     char caps[SHOWDUINO_NODE_COMMAND_MAX];
     /* Wire-safe CAPS (NODE_COMMAND_MAX=96). Full vocabulary remains in protocol header. */
     snprintf(caps, sizeof(caps),
-             "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+             "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
     report(caps, sequence);
     char meta[SHOWDUINO_NODE_COMMAND_MAX];
     snprintf(meta, sizeof(meta), "AUDIO:META:%s:%s:%s",
@@ -717,7 +715,7 @@ void audioCommandAnnounce() {
                               audioNodeStateName());
   audioEspNowSend(line, 0);
   snprintf(line, sizeof(line),
-           "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+           "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
   audioEspNowSend(line, 0);
 }
 
