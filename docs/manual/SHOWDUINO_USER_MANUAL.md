@@ -14,6 +14,10 @@
 
 ---
 
+## Finish-line status update — 27 October 2026
+
+The latest reviewed `main` is [`ddfdb6fc`](https://github.com/sumkindafreak/new_showduino/commit/ddfdb6fc78a84e7d1acaa6a7024ca100d8110d73). GitHub comparison against the 26 October review (`36215ee4`) finds **four more generated Comms Studio bundle/manifest commits only**, without changes to active firmware sources or the acceptance fixture. The manifest still reports build hash `56677901c6a2`, 42 assets, 214,954 embedded bytes and the same pinned authoring Studio source; `buildUtc` advanced to 27 October 18:23:11 UTC. The maintained firmware manual baseline remains 20 October; draft PR fixes are **not** part of `main`. The [27 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) records the evidence and unresolved gates. **No physical 22-second LOAD → START → COMPLETE pass or Emergency repeat has been recorded.**
+
 ## Finish-line status update — 26 October 2026
 
 The latest reviewed `main` is [`36215ee4`](https://github.com/sumkindafreak/new_showduino/commit/36215ee4a10c09b99ce69803e60f1cd2f402c187) (26 October 2026, 18:40 UTC). Since the previous 25 October check, four commits regenerated the Comms embedded Studio WebUI and manifest; the manifest's content hash and pinned Studio source are unchanged, and no active firmware-source changes were found. **This is not a new hardware acceptance result.** The 20 October firmware baseline of this manual is retained deliberately; see the [26 October audit addendum](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the current main-vs-draft distinction. The existing 22-second physical normal run and Emergency repeat are **still unverified**. Do not treat draft PR fixes, Studio preview, host tests or regenerated bundles as installed or accepted features.
