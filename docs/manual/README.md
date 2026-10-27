@@ -18,4 +18,3 @@ Old Word/PDF/downloaded copies do not update themselves. Use this maintained set
 
 - [27 October 2026 addendum: main versus physical acceptance](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — four more generated Comms bundle/manifest commits since 26 October; unchanged content hash and no newly accepted hardware run. Current `main` is `ddfdb6fc`. Draft firmware changes are not installed/verified by this documentation review.
 
-- [24–26 October 2026: main versus bench-test audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — unmerged fixes, current manual/firmware differences, and the smallest non-DMX acceptance sequence. 26 October check confirms four further generated bundle/manifest commits, with the same manifest build hash and no complete physical acceptance pass recorded.
