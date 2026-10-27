@@ -159,7 +159,7 @@ static void onOwnerEdges() {
 }
 
 static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
-                       bool fromShow, int fadeMs, int priIn) {
+                       bool fromShow, int fadeMs, int priIn, uint32_t repeatGapMs = 0) {
   char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
   const ShowduinoAudioPathStatus ps =
       (rel && rel[0] == '/')
@@ -205,7 +205,7 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   report(acc, seq);
 
   const uint32_t t0 = millis();
-  if (!audioPlaybackStart(absPath, mode)) {
+  if (!audioPlaybackStart(absPath, mode, repeatGapMs)) {
     char line[96];
     const ShowduinoAudioFail f =
         (audioPlaybackLastError()[0] && strstr(audioPlaybackLastError(), "FILE"))
@@ -272,7 +272,7 @@ static void startEmergencyAsset() {
   }
 
   const bool started = startAsset(kEmergencyAssetRel, AudioPlayMode::Loop, 0, false, 0,
-                                  (int)SHOWDUINO_AUDIO_PRI_SFX);
+                                  (int)SHOWDUINO_AUDIO_PRI_SFX, 8000);
   if (started) {
     SD_LOGW("AUDIO", "Emergency playback START");
   } else if (audioPlaybackLastError()[0] &&

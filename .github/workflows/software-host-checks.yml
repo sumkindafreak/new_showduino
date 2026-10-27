@@ -51,6 +51,7 @@ jobs:
           node tools/director-tests/test_emergency_reconnect.cjs
           node tools/director-tests/test_estop_production.cjs
           node tools/audio-node-tests/test_live_headphones.cjs
+          node tools/audio-node-tests/test_codec_playback.cjs
           node tools/audio-node-tests/test_web_pixel_setup.cjs
       - name: Whitespace check
         run: git diff --check

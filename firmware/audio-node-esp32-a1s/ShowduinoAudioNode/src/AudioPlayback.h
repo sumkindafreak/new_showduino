@@ -6,7 +6,7 @@
 enum class AudioPlayMode : uint8_t { Once = 0, Loop };
 
 bool audioPlaybackBegin();
-bool audioPlaybackStart(const char *absPath, AudioPlayMode mode);
+bool audioPlaybackStart(const char *absPath, AudioPlayMode mode, uint32_t repeatGapMs = 0);
 void audioPlaybackStop();
 bool audioPlaybackPause();
 bool audioPlaybackResume();

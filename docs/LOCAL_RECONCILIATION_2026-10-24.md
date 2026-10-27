@@ -50,3 +50,37 @@ ESP32 Arduino core 3.3.11, FQBN `esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M
 The clean user-facing Git checkout is `outputs/showduino-reconciled`, on branch `reconcile/local-github-20261024`, with GitHub origin configured and current main history incorporated. It is the updated review/bench source copy. Original Desktop and linked working folders remain intact. The separate OTA/UI/MOSFET edits were preserved, not silently folded into the acceptance candidate. Build logs and host-suite result inventory are saved under `outputs/validation`.
 
 Do not treat this candidate as a fully accepted release. Fresh Director/Comms/C3 target builds and physical Emergency/Director-loss acceptance are not established by the passing Audio/P4 builds or host tests. No push, main merge or flashing occurred.
+
+## 27 October 2026 — Audio Node 0.4.8 volume and Emergency spacing
+
+User hardware logs show Emergency reception, HEADPHONE output, increasing WAV
+read position/byte counters, no reported underruns and no playback error, but no
+sound was heard. These logs do not establish a working physical headphone output.
+
+Changed the Audio Node percentage-to-DAC mapping from a linear 96 dB attenuation
+range to signal-amplitude percentage, quantised to half-dB steps. 50% now maps to
+-6 dB instead of -48 dB; 100% retains unity gain with no boost. Zero percent
+explicitly mutes the DAC, including when unmute is requested at zero. Saved
+percentages, fades, ducking, output selection and ownership rules are retained.
+Existing percentages are substantially louder: start the physical check at low
+Director volume with headphones off your ears, then raise gradually.
+
+Emergency playback still starts immediately, but now queues eight seconds of
+silent stereo PCM after every complete announcement before repeating. Normal
+show loops keep their immediate repeats. No blocking eight-second sleep was
+added. Existing Emergency latch/duplicate-message protections remain, and clear
+stops playback and cancels any remaining gap without automatically restarting
+normal audio or the show. The change is on the Audio Node only.
+
+Validation: Audio protocol host suite, amplitude curve/quantisation tests, actual
+codec volume/mute/PA functions and actual playback service against mocked I/O
+passed. Playback tests cover immediate first data, consecutive eight-second gaps
+at 8/16/22.05/32/44.1/48 kHz for mono/stereo, partial writes, normal loops and stop
+cancellation. Headphone auto-routing and WebUI commissioning regressions passed.
+
+Full ESP32-A1S target build PASS using the same 4 MB / DIO / 40 MHz / no-PSRAM /
+min_spiffs FQBN: flash 1,166,262 bytes (59% of 1,966,080), static RAM 60,688 bytes
+(18% of 327,680). Log: `outputs/validation/Audio-0.4.8-volume-gap-build.log`.
+Source is updated in `outputs/showduino-reconciled`; the board has not been
+flashed automatically. Audible output, perceived volume, real repeat spacing
+and clear-during-gap behaviour still require physical verification after flash.

@@ -1,4 +1,5 @@
 #include "AudioCodec.h"
+#include "AudioVolume.h"
 #include "../BoardConfig.h"
 #include "../../../protocol/showduino_audio_node.h"
 #include <Wire.h>
@@ -38,12 +39,6 @@ static bool wr(uint8_t reg, uint8_t val) {
 static bool probe(uint8_t addr) {
   Wire.beginTransmission(addr);
   return Wire.endTransmission() == 0;
-}
-
-static uint8_t dacVol(uint8_t percent) {
-  if (percent == 0) return 0xC0;
-  const int att = (int)((100 - percent) * 192 / 100);
-  return (uint8_t)constrain(att, 0, 192);
 }
 
 bool audioCodecBegin() {
@@ -169,14 +164,15 @@ void audioCodecService() {
 bool audioCodecSetVolume(uint8_t percent) {
   if (percent > 100) percent = 100;
   sLastPercent = percent;
-  const uint8_t d = dacVol(percent);
+  const uint8_t d = showduinoAudioDacVolume(percent);
   // Keep enabled analogue outputs at unity; digital DAC attenuation controls volume.
   const uint8_t o = 0x1E;
   if (!wr(0x1A, d) || !wr(0x1B, d)) return false;
   const bool hp = !strcmp(sOutput, "HEADPHONE") || !strcmp(sOutput, "LINE");
   const bool spk = !strcmp(sOutput, "SPEAKER") || !strcmp(sOutput, "LINE");
   if (!wr(0x2E, hp ? o : 0) || !wr(0x2F, hp ? o : 0) ||
-      !wr(0x30, spk ? o : 0) || !wr(0x31, spk ? o : 0)) {
+      !wr(0x30, spk ? o : 0) || !wr(0x31, spk ? o : 0) ||
+      !wr(0x19, (sMuted || percent == 0) ? 0x24 : 0x00)) {
     audioCodecSetPa(false);
     return false;
   }
@@ -185,7 +181,7 @@ bool audioCodecSetVolume(uint8_t percent) {
 }
 
 void audioCodecMute(bool mute) {
-  if (wr(0x19, mute ? 0x24 : 0x00)) sMuted = mute;
+  if (wr(0x19, (mute || sLastPercent == 0) ? 0x24 : 0x00)) sMuted = mute;
   audioCodecSetPa(!sMuted && !strcmp(sOutput, "SPEAKER") && sLastPercent > 0);
 }
 

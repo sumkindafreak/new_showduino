@@ -1,4 +1,42 @@
-# Audio output commissioning (Audio Node 0.4.7)
+# Audio output commissioning (Audio Node 0.4.8)
+
+## Useful volume and spaced Emergency announcements
+
+Volume now describes signal amplitude, rounded to the ES8388's half-dB steps.
+The old mapping made 50% approximately -48 dB; the new mapping gives:
+
+| Setting | New DAC gain |
+| --- | --- |
+| 0% | Explicit DAC mute |
+| 10% | -20 dB |
+| 25% | -12 dB |
+| 50% | -6 dB |
+| 75% | -2.5 dB |
+| 100% | 0 dB (unity, no boost) |
+
+Saved percentages and cue commands stay unchanged. Fades, ducking and output
+switching use the new curve. Existing settings will be louder: begin testing
+at a low Director volume with headphones off your ears, then increase gradually.
+The fixed 22-second show still requests 50%. The reported silent headphone jack
+still requires physical verification; software changes alone do not prove a fix.
+
+Emergency audio starts immediately, then queues eight seconds of zero PCM after
+each complete announcement before repeating. Output buffering therefore does
+not shorten the audible gap. The task remains responsive and Emergency stays
+active during the gap. Repeated Emergency messages do not restart the cycle.
+Director clear stops playback and cancels pending repeats without resuming the
+show. Normal show loops retain their immediate repeats.
+
+During the gap, AUDIO:STATUS still reports the Emergency loop active; POS stays
+at the end of the WAV and the SD BYTES counter does not increase. This is
+expected: zero samples are being sent without reading the file again.
+
+Host regression tests execute the actual codec gain/mute functions and playback
+service: sample rates, mono/stereo, silence length, partial writes, normal loops
+and stopping during the gap. See the local reconciliation report for target-build
+evidence and physical checks still outstanding.
+
+## Output selection
 
 `Emergency playback START` confirms the WAV opened and playback initialized. It does not confirm an audible analogue output. The default saved mode is SPEAKER; using the headphone jack requires HEADPHONE (or AUTO for live headphone detection).
 

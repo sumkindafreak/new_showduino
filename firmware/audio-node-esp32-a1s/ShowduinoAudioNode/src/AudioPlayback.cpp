@@ -16,6 +16,9 @@ static bool sOpen = false;
 static bool sPaused = false;
 static bool sLoop = false;
 static bool sI2sOn = false;
+static uint32_t sRepeatGapMs = 0;
+static uint32_t sGapBytesLeft = 0;
+static bool sGapActive = false;
 static volatile bool sCompleted = false;
 static volatile bool sFailed = false;
 static uint32_t sDataStart = 0;
@@ -116,8 +119,11 @@ static void unlockPlayback() {
   if (sLock) xSemaphoreGive(sLock);
 }
 
-bool audioPlaybackStart(const char *absPath, AudioPlayMode mode) {
+bool audioPlaybackStart(const char *absPath, AudioPlayMode mode, uint32_t repeatGapMs) {
   lockPlayback();
+  sRepeatGapMs = repeatGapMs;
+  sGapBytesLeft = 0;
+  sGapActive = false;
   if (sOpen) {
     sFile.close();
     sOpen = false;
@@ -175,6 +181,9 @@ bool audioPlaybackStart(const char *absPath, AudioPlayMode mode) {
 
 void audioPlaybackStop() {
   lockPlayback();
+  sRepeatGapMs = 0;
+  sGapBytesLeft = 0;
+  sGapActive = false;
   if (sOpen) sFile.close();
   sOpen = false;
   sPaused = false;
@@ -211,6 +220,23 @@ void audioPlaybackService() {
   const uint32_t remain = (sDataPos < sDataBytes) ? (sDataBytes - sDataPos) : 0;
   if (remain == 0) {
     if (sLoop) {
+      if (sRepeatGapMs && !sGapActive) {
+        // Playback is always stereo 16-bit on I2S, including mono WAVs.
+        // Queue silence after the final samples so DMA buffering does not
+        // shorten the audible gap. Never sleep with the playback lock held.
+        sGapBytesLeft = (uint32_t)(((uint64_t)sRate * sRepeatGapMs / 1000U) * 4U);
+        sGapActive = true;
+      }
+      if (sGapActive && sGapBytesLeft) {
+        const size_t want = sGapBytesLeft > sizeof(sBuf) ? sizeof(sBuf) : sGapBytesLeft;
+        memset(sBuf, 0, want);
+        const size_t sent = sI2s.write(sBuf, want);
+        if (sent != want) sUnderrun++;
+        sGapBytesLeft -= (uint32_t)sent;
+        xSemaphoreGive(sLock);
+        return;
+      }
+      sGapActive = false;
       sFile.seek(sDataStart);
       sDataPos = 0;
       /* Immediate refill — not sample-accurate, but avoids an extra task slice. */

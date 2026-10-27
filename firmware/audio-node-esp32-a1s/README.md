@@ -5,7 +5,7 @@
 ```text
 Status: IMPLEMENTED / HARDWARE TEST REQUIRED
 Role: First production specialist Node (programme audio)
-Firmware: 0.4.7
+Firmware: 0.4.8
 ```
 
 ```text

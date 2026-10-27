@@ -8,4 +8,11 @@ Write-Host "Compiling Audio Node host tests..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $out
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$volumeOut = Join-Path $here "audio_volume_tests.exe"
+& g++ -std=c++17 -Wall -Wextra -o $volumeOut (Join-Path $here "test_audio_volume.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $volumeOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& node (Join-Path $here "test_codec_playback.cjs")
 exit $LASTEXITCODE
