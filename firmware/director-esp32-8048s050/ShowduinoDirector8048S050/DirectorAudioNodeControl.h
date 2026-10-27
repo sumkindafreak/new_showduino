@@ -5,9 +5,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "../../../protocol/showduino_state_wire.h"
+#include "../../../protocol/showduino_audio_node.h"
 
 #define DIRECTOR_AUDIO_PENDING_MS 5000u
 #define DIRECTOR_AUDIO_VOL_THROTTLE_MS 400u
+#define DIRECTOR_AUDIO_ASSETS_PER_SCREEN 3u
+static_assert(DIRECTOR_AUDIO_ASSETS_PER_SCREEN <= SHOWDUINO_AUDIO_INV_WIRE_MAX,
+              "Audio selector rows must fit inventory storage");
 
 enum DirectorAudioPending : uint8_t {
   DIRECTOR_AUDIO_PEND_NONE = 0,
@@ -40,6 +44,9 @@ struct DirectorAudioNodeControl {
   char lastErrorText[40];
   uint16_t inventoryTotal;
   uint16_t inventoryPage;
+  uint16_t inventoryExpectedPage;
+  uint8_t inventoryCount;
+  bool inventoryLoading;
   uint8_t volume;
   uint8_t pendingVolume;
   uint32_t pendingSinceMs;
@@ -58,6 +65,42 @@ struct DirectorAudioNodeControl {
   char soundReadyTok[6];
   char soundLastEvent[8];
 };
+
+// Gather bounded wire pages into one operator-facing screen. Never enlarge
+// the radio/UART payload just to display several filenames together.
+static inline uint16_t director_audio_inventory_begin(DirectorAudioNodeControl *m,
+                                                     uint16_t first) {
+  memset(m->inventory, 0, sizeof(m->inventory));
+  m->inventoryPage = first; // first asset index on this screen
+  m->inventoryExpectedPage = first / SHOWDUINO_AUDIO_INV_PER_PAGE;
+  m->inventoryCount = 0;
+  m->inventoryLoading = true;
+  return m->inventoryExpectedPage;
+}
+
+// Returns the next wire page to request, or -1 when complete/unsolicited.
+static inline int32_t director_audio_inventory_accept(DirectorAudioNodeControl *m,
+    uint16_t page, uint16_t total,
+    const char names[][SHOWDUINO_AUDIO_INV_NAME_MAX + 1], uint8_t count) {
+  if (!m->inventoryLoading || page != m->inventoryExpectedPage) return -1;
+  m->inventoryTotal = total;
+  const uint32_t first = (uint32_t)page * SHOWDUINO_AUDIO_INV_PER_PAGE;
+  for (uint8_t i = 0; names && i < count && i < SHOWDUINO_AUDIO_INV_PER_PAGE; ++i) {
+    const uint32_t index = first + i;
+    if (index >= total || index < m->inventoryPage) break;
+    const uint32_t slot = index - m->inventoryPage;
+    if (slot >= DIRECTOR_AUDIO_ASSETS_PER_SCREEN || !names[i][0]) break;
+    strncpy(m->inventory[slot], names[i], SHOWDUINO_AUDIO_INV_NAME_MAX);
+    m->inventory[slot][SHOWDUINO_AUDIO_INV_NAME_MAX] = '\0';
+    m->inventoryCount = (uint8_t)(slot + 1);
+  }
+  if (count && m->inventoryCount < DIRECTOR_AUDIO_ASSETS_PER_SCREEN &&
+      first + SHOWDUINO_AUDIO_INV_PER_PAGE < total) {
+    return ++m->inventoryExpectedPage;
+  }
+  m->inventoryLoading = false;
+  return -1;
+}
 
 static inline void director_audio_node_clear(DirectorAudioNodeControl *m) {
   if (!m) return;

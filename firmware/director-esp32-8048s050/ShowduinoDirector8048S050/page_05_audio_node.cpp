@@ -80,6 +80,8 @@ struct Page05Ui {
   lv_obj_t *select_hint;
   lv_obj_t *inv_btns[SHOWDUINO_AUDIO_INV_WIRE_MAX];
   lv_obj_t *btn_inv_next;
+  lv_obj_t *btn_inv_prev;
+  lv_obj_t *btn_inv_refresh;
   lv_obj_t *select_close;
 };
 
@@ -365,12 +367,22 @@ static void paint() {
       lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
     }
   }
-  if (s.select_hint) lv_label_set_text(s.select_hint,
-      !s_model.online ? "Audio Node offline" :
-      s_model.inventoryTotal ? "Select an audio asset" : "No assets reported. Refreshing SD inventory...");
+  if (s.select_hint) {
+    if (!s_model.online) snprintf(line, sizeof(line), "Audio Node offline");
+    else if (s_model.inventoryLoading) snprintf(line, sizeof(line), "Loading assets... Refresh to retry");
+    else if (!s_model.inventoryCount) snprintf(line, sizeof(line), "No assets reported. Tap Refresh to rescan.");
+    else snprintf(line, sizeof(line), "Assets %u-%u of %u",
+        (unsigned)(s_model.inventoryPage + 1),
+        (unsigned)(s_model.inventoryPage + s_model.inventoryCount),
+        (unsigned)s_model.inventoryTotal);
+    lv_label_set_text(s.select_hint, line);
+  }
+  if (s.btn_inv_prev) ShowduinoOsTheme::setEnabled(s.btn_inv_prev,
+      s_model.online && !s_model.inventoryLoading && s_model.inventoryPage > 0);
   if (s.btn_inv_next) {
     ShowduinoOsTheme::setEnabled(s.btn_inv_next,
-        s_model.inventoryTotal > (uint16_t)((s_model.inventoryPage + 1) * SHOWDUINO_AUDIO_INV_PER_PAGE));
+        s_model.online && !s_model.inventoryLoading && s_model.inventoryTotal >
+        (uint32_t)s_model.inventoryPage + DIRECTOR_AUDIO_ASSETS_PER_SCREEN);
   }
 
   if (s.amb_state) {
@@ -623,8 +635,10 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
                              s_asset_cmds[i], false);
     lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
   }
-  s.btn_inv_next = make_btn(s.select, "NEXT PAGE", 20, selectFooterY, 160, 44, PAGE05_CMD_INV_NEXT, false);
-  s.select_close = make_btn(s.select, "CLOSE", 340, selectFooterY, 160, 44, PAGE05_CMD_CLOSE, false);
+  s.btn_inv_prev = make_btn(s.select, "PREVIOUS", 20, selectFooterY, 114, 44, PAGE05_CMD_INV_PREV, false);
+  s.btn_inv_next = make_btn(s.select, "NEXT", 142, selectFooterY, 114, 44, PAGE05_CMD_INV_NEXT, false);
+  s.btn_inv_refresh = make_btn(s.select, "REFRESH", 264, selectFooterY, 114, 44, PAGE05_CMD_INV_REFRESH, false);
+  s.select_close = make_btn(s.select, "CLOSE", 386, selectFooterY, 114, 44, PAGE05_CMD_CLOSE, false);
 
   page_05_audio_node_apply_theme();
   s_active = true;
@@ -670,6 +684,8 @@ void page_05_audio_node_destroy(void) {
     showduino_theme_unregister(s.inv_btns[i]);
   }
   showduino_theme_unregister(s.btn_inv_next);
+  showduino_theme_unregister(s.btn_inv_prev);
+  showduino_theme_unregister(s.btn_inv_refresh);
   showduino_theme_unregister(s.select_close);
   if (s.root) lv_obj_clean(s.root);
   memset(&s, 0, sizeof(s));

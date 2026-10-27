@@ -1,5 +1,14 @@
 # Showduino Director — ESP32-8048S043 / 8048S050
 
+Local candidate `0.9.14-director`: Audio Node **Select Asset** gathers the
+existing one-filename inventory replies into three visible rows per screen.
+**Previous**, **Next** and **Refresh** browse/rescan the library; the hint shows
+the asset range and total. Refresh restarts at the first screen and can retry a
+missing reply. Selecting an asset does not start playback. This selector change
+requires a Director firmware update only; Audio Node/P4 wire messages are unchanged.
+Host paging and Director regression tests pass. Full target build and physical
+touchscreen verification are pending; see the validation logs before flashing.
+
 ```text
 Status: ACTIVE
 Role: Showduino Director

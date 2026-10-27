@@ -103,3 +103,23 @@ Arduino temporary dependency folder disappeared. An isolated Audio/P4 build is
 running; consult `outputs/validation/MP3-target-results.json` and target logs for
 its eventual result. Do not treat this source merge as a completed firmware build
 or hardware acceptance. Details: `docs/audio-mp3-local-alignment-2026-10-27.md`.
+
+## 27 October — Director Audio Node asset selector
+
+Director candidate `0.9.14-director` collects three one-filename wire replies per
+visible Select Asset screen. Previous/Next navigate groups of three; Refresh
+restarts the scan and permits retry after a missing reply. Range/total and loading
+hints replace the one-item screen. Close/selection stops further page requests;
+selection alone never starts audio. Node/P4 wire payload sizes are unchanged.
+Only the Director needs updating for this selector change.
+
+New host tests cover accumulated WAV/MP3 paths, duplicate/out-of-order/late
+replies, multiple groups, final partial/empty screens, changing SD contents and
+cancel/retry. Director host suites and all eight Director CJS regressions pass.
+The full `0.9.14-director` build is running; its result is in
+`outputs/validation/Director-asset-selector-result.json` when complete.
+Physical touchscreen selection remains unverified. No automatic flashing.
+
+The preceding Audio `0.5.0-mp3-rc2` isolated full build has now passed:
+1,278,054 / 1,966,080 flash bytes and 68,624 / 327,680 static RAM bytes.
+P4 full build is still pending; do not infer its pass from the Audio result.

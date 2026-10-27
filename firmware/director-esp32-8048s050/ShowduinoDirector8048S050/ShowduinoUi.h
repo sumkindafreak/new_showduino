@@ -526,12 +526,9 @@ public:
   }
 
   void applyAudioNodeInv(uint16_t page, uint16_t total, const char names[][SHOWDUINO_AUDIO_INV_NAME_MAX + 1], uint8_t count) {
-    audioNodeCtrl_.inventoryPage = page;
-    audioNodeCtrl_.inventoryTotal = total;
-    for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-      audioNodeCtrl_.inventory[i][0] = '\0';
-      if (i < count && names) strncpy(audioNodeCtrl_.inventory[i], names[i],
-                                     sizeof(audioNodeCtrl_.inventory[i]) - 1);
+    const int32_t next = director_audio_inventory_accept(&audioNodeCtrl_, page, total, names, count);
+    if (next >= 0) {
+      sendAudioNodeCmd(String("AUDIO:NODE:INVENTORY:") + String((unsigned)next));
     }
     refreshAudioNodePage();
   }
@@ -3047,7 +3044,9 @@ private:
       return;
     }
     if (command == PAGE05_CMD_SELECT) {
+      director_audio_inventory_begin(&audioNodeCtrl_, 0);
       sendAudioNodeCmd("AUDIO:NODE:INVENTORY:0");
+      refreshAudioNodePage();
       page_05_audio_node_show_select(true);
       return;
     }
@@ -3097,18 +3096,32 @@ private:
       return;
     }
     if (command == PAGE05_CMD_CLOSE) {
+      audioNodeCtrl_.inventoryLoading = false;
       page_05_audio_node_show_mic(false);
       page_05_audio_node_show_details(false);
       page_05_audio_node_show_select(false);
       page_05_audio_node_show_ambience(false);
       return;
     }
-    if (command == PAGE05_CMD_INV_NEXT) {
+    if (command == PAGE05_CMD_INV_NEXT || command == PAGE05_CMD_INV_PREV ||
+        command == PAGE05_CMD_INV_REFRESH) {
+      uint16_t first = audioNodeCtrl_.inventoryPage;
+      if (command == PAGE05_CMD_INV_NEXT) {
+        if (audioNodeCtrl_.inventoryLoading ||
+            (uint32_t)first + DIRECTOR_AUDIO_ASSETS_PER_SCREEN >= audioNodeCtrl_.inventoryTotal) return;
+        first += DIRECTOR_AUDIO_ASSETS_PER_SCREEN;
+      } else if (command == PAGE05_CMD_INV_PREV) {
+        if (audioNodeCtrl_.inventoryLoading || !first) return;
+        first = first >= DIRECTOR_AUDIO_ASSETS_PER_SCREEN ? first - DIRECTOR_AUDIO_ASSETS_PER_SCREEN : 0;
+      } else first = 0;
+      const uint16_t wirePage = director_audio_inventory_begin(&audioNodeCtrl_, first);
       sendAudioNodeCmd(String("AUDIO:NODE:INVENTORY:") +
-                       String((unsigned)(audioNodeCtrl_.inventoryPage + 1)));
+                       String((unsigned)wirePage));
+      refreshAudioNodePage();
       return;
     }
     if (command.startsWith("PAGE05:ASSET:")) {
+      audioNodeCtrl_.inventoryLoading = false;
       strncpy(audioNodeCtrl_.selectedAsset, command.c_str() + 13,
               sizeof(audioNodeCtrl_.selectedAsset) - 1);
       page_05_audio_node_show_select(false);

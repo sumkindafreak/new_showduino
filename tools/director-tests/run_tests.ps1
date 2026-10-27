@@ -14,6 +14,7 @@ function Run-One($name, $srcName, $exeName) {
 
 Run-One "Director lamp sheet" "test_lamp_sheet.cpp" "lamp_sheet_tests.exe"
 Run-One "Director emergency sheet" "test_emergency_sheet.cpp" "emergency_sheet_tests.exe"
+Run-One "Director audio inventory" "test_audio_inventory.cpp" "audio_inventory_tests.exe"
 $calInc = Join-Path $here "..\..\firmware\director-esp32-8048s050\ShowduinoDirector8048S050"
 Write-Host "Compiling Director touch calibration..."
 $calSrc = Join-Path $here "test_touch_calibration.cpp"
