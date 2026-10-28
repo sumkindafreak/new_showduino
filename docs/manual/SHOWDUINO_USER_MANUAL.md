@@ -12,6 +12,8 @@
 **Baseline date:** 20 October 2026  
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
 
+**28 October 2026 field-status addendum (not a new firmware baseline):** The owner reports P4 and Audio Node pixels working in the 22-second visual bench test, a limited Emergency response, and clean ESP32-A1S WAV playback with volume/stuttering resolved on the installed hardware. **This does not establish a complete all-node production pass.** A newly flashed Director subsequently exhibited repeated Core 1 `LoadProhibited` resets on Home/Audio Node navigation, Stage compatibility/synchronisation warnings, and incomplete microphone calibration feedback; some SOUND enable/disable/trigger commands did reach the Audio Node. The original 20 October source/manual revision remains dated, and the full physical acceptance sheet remains unsigned. For exact observations and the current `main` SHA, see [28 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) and [release-gate issue #42](https://github.com/sumkindafreak/new_showduino/issues/42). Do not use this manual to claim the Director, Emergency path or complete show has passed physical acceptance.
+
 ---
 
 ## Finish-line status update — 27 October 2026
