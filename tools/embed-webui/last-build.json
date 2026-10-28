@@ -1,6 +1,6 @@
 {
   "buildHash": "56677901c6a2",
-  "buildUtc": "2026-10-28T00:45:32Z",
+  "buildUtc": "2026-10-28T06:31:33Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
   "assetCount": 42,
