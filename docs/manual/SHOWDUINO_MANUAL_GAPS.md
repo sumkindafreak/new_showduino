@@ -435,3 +435,13 @@ A gap is not closed merely because code has been written. Safety, radio, power, 
 - **GAP-FL-E — Emergency and outputs:** P4/C3/Audio/Emergency pixel-white response, MOSFET safe OFF, Lamp Emergency audio, Director clear/Locate, no auto-resume and full Director/P4/Comms link stability remain physical acceptance items. Emergency latch persistence PR #33 is unmerged and not hardware-qualified.
 
 **Required decision:** Keep the Director as sole creative/operator show controller; P4 is the execution/runtime and Emergency authority, and Emergency assertion must work without Director connectivity. Run the same fixed non-DMX scenario, then its mid-show Emergency repeat; log actual results and close only demonstrated gaps. No expansion work is required.
+
+## 28 October 2026 — bench corrections and newly observed Director regression
+
+This dated note **supersedes the 24 October GAP-FL-B claim that WAV stuttering remains present on the owner's installed Audio Node**. The owner reports clean ESP32-A1S WAV playback and corrected volume after physical testing. The installed firmware SHA is not yet recorded, so neither `main` nor PR #37 can be credited as the proven fix. Retest continuity during the complete persisted production before closing all-node audio acceptance.
+
+**GAP-FL-F — Director runtime stability: OPEN, observed physical regression.** After the latest Director flash, the 28 October serial log contains repeated ESP32-S3 Core 1 `LoadProhibited` resets on Home/Audio Node navigation. The exact ELF is needed to decode the backtrace; do not assign a cause from the exception name. The same log includes `legacy Stage (STATUS:READY)`, synchronisation degradation and at least one failed Stage threshold transmission. Preserve the working hardware baseline, record versions, symbolicate the crash and verify Director/Comms/P4 compatibility before full-show acceptance.
+
+**GAP-FL-G — Audio Node microphone command confirmation: OPEN.** The Node logged SOUND DISABLE, ENABLE and a transient trigger, so the command path is not wholly dead. CALIBRATE produced no observed log/ACK; threshold changes and live telemetry remain unverified. Check Director touch/dock overlap and route/ACK with playback stopped before claiming calibration works.
+
+**GAP-FL-A / GAP-FL-E remain OPEN:** the 22-second *visual* bench test and observed Emergency response are partial evidence. The persisted, timed, all-node LOAD → START → COMPLETE and comprehensive Emergency repeat are still not signed off. The separate full active-v1 release gate and 31 October target are tracked in [issue #42](https://github.com/sumkindafreak/new_showduino/issues/42), without expanding the single-scenario test scope. See [28 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
