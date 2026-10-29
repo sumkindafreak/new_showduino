@@ -17,6 +17,8 @@ Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working s
 
 **24 October status:** Use the [finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the distinction between `main` and draft PR #29's fixed 22-second all-node test. The physical normal run and mid-show Emergency repeat are **NOT YET VERIFIED**. Do not start a different production or add new features to close this gate.
 
+**29 October physical milestone:** Showduino has now **played its first real combined audio/visual show on physical hardware**, as confirmed by the owner. That success must not be erased by the older 22-second fixture's `NOT RUN` status. Teething issues remain and the owner has not yet recorded a complete, repeatable P4-confirmed scenario or mid-show Emergency recovery. **For the smallest finish-line test, preserve today's working production and firmware, repeat that same show through COMPLETE, then test Emergency interruption and deliberate clear with no automatic restart.** Do not introduce new features or additional hardware for this gate. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+
 ## First show: safe workflow
 
 1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
