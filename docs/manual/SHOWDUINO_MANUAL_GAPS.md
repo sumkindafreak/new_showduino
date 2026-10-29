@@ -31,6 +31,14 @@ Status labels used in this revision:
 
 ---
 
+## 29 October 2026 field-evidence update (no change to 20 October source baseline)
+
+**Confirmed by owner:** First real Showduino show with combined audio and visual effects has played on physical hardware, with some teething issues. **Do not describe Showduino as never having played a show.** This confirms a functioning combined playback path on the installed bench configuration; it does **not** close formal all-node COMPLETE, repeatability or mid-show Emergency recovery acceptance.
+
+**Still open / evidence required:** Exact flashed builds and production, Director reset regression status, microphone calibration/threshold acknowledgements, full Emergency safe-state and authorised-clear/no-resume sequence. The existing 22-second all-node result sheet remains `NOT RUN` for its specific normal and Emergency procedure. Only mark individual gap items resolved after their relevant physical evidence is recorded. Current `main` `e57870c` has four further generated Comms bundle commits since 28 October, without active firmware-source changes.
+
+---
+
 ## GAP-001 — Main Emergency button 8-second Locate hold
 
 **Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
