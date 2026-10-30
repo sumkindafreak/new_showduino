@@ -102,7 +102,7 @@ For a first practical RC test, use an already installed production or the docume
 
 **As checked 30 October:** Website Studio's **Timeline** contains a searchable, collapsible **Cue Library**. Add a matching track (or Mixed Lane), expand the library, then **drag** an Audio, Pixel or MOSFET preset to the desired time. **Double-click** a preset to insert it at the playhead onto an eligible unlocked track. Select the new clip and edit its time, parameters, logical Node ID, output, Pixel segment or Audio file as applicable. Run **Project Check** before exporting.
 
-The catalogue also offers legacy Relay, generic FX and Trigger authoring presets; **do not assume those deploy to the installed P4**. Audio preset filenames do not copy WAV files onto your Audio Node. The P4's GPIO24 Emergency/signage line is not an ordinary cue output. See the [illustrated-step creator instructions in the Studio Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+The catalogue also offers legacy Relay, generic FX and Trigger authoring presets; **do not assume those deploy to the installed P4**. Audio preset filenames do not copy WAV files onto your Audio Node. The P4's GPIO24 Emergency/signage line is not an ordinary cue output. See the [step-by-step creator instructions in the Studio Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
 
 **Director distinction:** The current `main` Director HOME **CUE LIBRARY** tile is visible but disabled; author cues in **Studio**, then select, load and run the installed production from Director.
 
