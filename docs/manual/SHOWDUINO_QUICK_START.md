@@ -98,6 +98,14 @@ For a first practical RC test, use an already installed production or the docume
 
 > **29 October first-show update:** The owner has now successfully played a **real show with audio and visual effects together on hardware**. This supersedes any implication that Showduino has never played a show. The production identity, exact installed firmware, complete/terminal state, repeatability and Emergency interruption/recovery have **not** been logged as a formal acceptance pass. Preserve the working configuration, repeat that same show with P4-confirmed COMPLETE, then run its Emergency interruption/clear test. The separate PR #29 22-second all-node fixture remains formally `NOT RUN`; do not equate that record with the achieved first-show milestone. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
 
+## Studio Cue Library — choose and place cues
+
+**As checked 30 October:** Website Studio's **Timeline** contains a searchable, collapsible **Cue Library**. Add a matching track (or Mixed Lane), expand the library, then **drag** an Audio, Pixel or MOSFET preset to the desired time. **Double-click** a preset to insert it at the playhead onto an eligible unlocked track. Select the new clip and edit its time, parameters, logical Node ID, output, Pixel segment or Audio file as applicable. Run **Project Check** before exporting.
+
+The catalogue also offers legacy Relay, generic FX and Trigger authoring presets; **do not assume those deploy to the installed P4**. Audio preset filenames do not copy WAV files onto your Audio Node. The P4's GPIO24 Emergency/signage line is not an ordinary cue output. See the [illustrated-step creator instructions in the Studio Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+
+**Director distinction:** The current `main` Director HOME **CUE LIBRARY** tile is visible but disabled; author cues in **Studio**, then select, load and run the installed production from Director.
+
 ## Website Studio → installed production
 
 1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
