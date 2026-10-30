@@ -1,5 +1,7 @@
 # Showduino
 
+> **30 October 2026 bench milestone:** First combined audio-and-visual show playback was reported on 29 October. This does not yet constitute the signed 22-second all-node acceptance run or Emergency repeat. [Current evidence and documentation reconciliation](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). The release candidate is not hardware-signed-off.
+
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
