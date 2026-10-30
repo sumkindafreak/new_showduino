@@ -8,7 +8,7 @@
 
 # User Manual
 
-**Manual revision:** 0.3-RC — synchronised to current `main` architecture  
+**Manual revision:** 0.3-RC — source-reviewed against the 20 October firmware baseline (not a claim of installed-build or physical acceptance)  
 **Applicable product:** Showduino `1.0.0-rc.1`  
 **Repository baseline:** `main` at `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
 **Baseline date:** 20 October 2026  
