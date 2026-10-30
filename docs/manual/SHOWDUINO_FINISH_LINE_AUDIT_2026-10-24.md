@@ -2,6 +2,8 @@
 
 **Target:** one complete, physically observed, non-DMX show followed by a mid-show Emergency repeat. **Status: FIRST COMBINED AUDIO/VISUAL PLAYBACK ACHIEVED (29 OCT); FORMAL COMPLETE-SCENARIO + EMERGENCY ACCEPTANCE STILL OPEN.**
 
+> **Repository status correction, 30 October 2026:** This is a chronological audit. Documentation PR #41 was **merged to `main`** on 30 October, followed by first-show reconciliation PR #44 and Cue Library guide PR #45. Statements below that a change is "proposed on PR #41" describe the state when each dated note was written. For the current source-vs-bench reconciliation, use [30 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). No additional full-scenario or Emergency hardware acceptance is claimed.
+
 ## 29 October 2026 follow-up — FIRST REAL AUDIO/VISUAL SHOW PLAYBACK
 
 - **Owner-confirmed physical milestone:** On **29 October 2026**, Showduino actually played a show with **both audio and visual effects together** on real hardware for the first time. The owner reported some teething issues. This is stronger evidence than the earlier visual-only 22-second pixel test and **supersedes** prior statements that Showduino has not played a show. Do not relabel this achievement as a mere simulation or isolated pixel/audio test.
