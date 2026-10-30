@@ -31,6 +31,14 @@ Status labels used in this revision:
 
 ---
 
+## 30 October 2026 repository reconciliation
+
+Documentation PRs #41, #44 and #45 are now merged into `main`. Compared with the 20 October firmware source baseline, current `main` (`3d4790961e`) has no non-generated active firmware implementation changes; documentation and the regenerated S3 embedded WebUI header/manifest changed. The owner-reported first combined audio/visual playback on 29 October stands, but formal complete-scenario and mid-show Emergency acceptance remain open.
+
+**Draft-fix status correction:** PR #35 (SHDO parsing) and PR #37 (WAV buffering) were closed **without merging** on 30 October. PR #36 remains open/unmerged against the #35 branch; PR #29's acceptance fixture and PR #33's Emergency persistence remain unmerged. The dated 24 October gap entries below are historical and should not be read as today's PR states. The owner's clean WAV playback is a bench observation, not proof that #37 was merged or flashed. See [current finish-line reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
+---
+
 ## 29 October 2026 field-evidence update (no change to 20 October source baseline)
 
 **Confirmed by owner:** First real Showduino show with combined audio and visual effects has played on physical hardware, with some teething issues. **Do not describe Showduino as never having played a show.** This confirms a functioning combined playback path on the installed bench configuration; it does **not** close formal all-node COMPLETE, repeatability or mid-show Emergency recovery acceptance.
