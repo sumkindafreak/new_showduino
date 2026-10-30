@@ -607,6 +607,14 @@ It is the current browser front door for status, commissioning and system manage
 
 Showduino also has an SHDO v2 authoring model and an embedded Studio V4 snapshot (typically at `/studio/`) for project/attraction creation, scenes, timeline editing, device/output selection and Pixel cue authoring.
 
+### Studio Timeline Cue Library (source-checked 30 October 2026)
+
+The public **Website Studio** timeline provides a collapsible, searchable **Cue Library**. The available authoring presets include Audio, MOSFET, Pixel effects (25 effect patterns), FX, Triggers and legacy Relay. Add a compatible track or Mixed Lane; drag a preset to the required timeline position, or double-click it to insert at the playhead onto an unlocked compatible track. Select the inserted clip in the Inspector to configure its start/duration, physical logical Node ID, output, audio file or pixel segment. Run **Project Check** before exporting and attempting a P4 install.
+
+A library entry is an **authoring template**, not proof that its cue type is accepted by the running P4 compiler or that the required physical hardware/audio file is installed. Legacy Relay, Trigger and generic FX choices need compatibility checks; DMX remains parked. The GPIO24 Emergency/signage line is P4 safety-owned and must not become an ordinary production cue output. Public Studio, the S3-embedded snapshot and the installed P4 may be different builds. See the [Studio Cue Library creator guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) and the [Quick Start deploy workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
+
+**Director distinction:** In current `new_showduino/main` source, the **HOME → CUE LIBRARY** tile is visible but disabled, not a functional Director editing page. The Director selects/commands productions; Studio authors cues; P4 governs execution and Emergency state. Do not infer that the Director Cue Library tile works because Website Studio has a cue palette.
+
 Current authoring/commissioning reality at this baseline:
 
 - shared Pixel editor vocabulary (25 effects) for the P4 Show Pixel Line, standalone Pixel Nodes and the Audio Node GPIO22 Pixel Line;
