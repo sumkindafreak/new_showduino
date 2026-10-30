@@ -12,7 +12,23 @@
 **Baseline date:** 20 October 2026  
 **Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
 
+**29 October 2026 field-status addendum — FIRST REAL SHOW PLAYBACK:** The owner confirms Showduino has now **played a show with audio and visual effects together on physical hardware**. This supersedes earlier statements that no combined audio/visual show had played. Some teething issues remain. **Do not conflate first successful playback with formal full-scenario acceptance:** exact installed firmware versions, complete/terminal state, repeatability, all required nodes and mid-show Emergency recovery are not yet recorded. The prior Director resets and Audio Node microphone calibration gaps have not been explicitly retested as fixed. The existing 22-second all-node result sheet still says `NOT RUN` for its formal test; the first playback is a separate, real milestone. `main` reviewed at [`e57870c`](https://github.com/sumkindafreak/new_showduino/commit/e57870caaea2) has only generated Comms bundle/manifest updates since 28 October. See [29 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md). **This is a field observation, not a new firmware-source/manual revision or release sign-off.**
+
+**28 October 2026 field-status addendum (not a new firmware baseline):** The owner reports P4 and Audio Node pixels working in the 22-second visual bench test, a limited Emergency response, and clean ESP32-A1S WAV playback with volume/stuttering resolved on the installed hardware. **This does not establish a complete all-node production pass.** A newly flashed Director subsequently exhibited repeated Core 1 `LoadProhibited` resets on Home/Audio Node navigation, Stage compatibility/synchronisation warnings, and incomplete microphone calibration feedback; some SOUND enable/disable/trigger commands did reach the Audio Node. The original 20 October source/manual revision remains dated, and the full physical acceptance sheet remains unsigned. For exact observations and the current `main` SHA, see [28 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) and [release-gate issue #42](https://github.com/sumkindafreak/new_showduino/issues/42). Do not use this manual to claim the Director, Emergency path or complete show has passed physical acceptance.
+
 ---
+
+## Finish-line status update — 27 October 2026
+
+The latest reviewed `main` is [`ddfdb6fc`](https://github.com/sumkindafreak/new_showduino/commit/ddfdb6fc78a84e7d1acaa6a7024ca100d8110d73). GitHub comparison against the 26 October review (`36215ee4`) finds **four more generated Comms Studio bundle/manifest commits only**, without changes to active firmware sources or the acceptance fixture. The manifest still reports build hash `56677901c6a2`, 42 assets, 214,954 embedded bytes and the same pinned authoring Studio source; `buildUtc` advanced to 27 October 18:23:11 UTC. The maintained firmware manual baseline remains 20 October; draft PR fixes are **not** part of `main`. The [27 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) records the evidence and unresolved gates. **No physical 22-second LOAD → START → COMPLETE pass or Emergency repeat has been recorded.**
+
+## Finish-line status update — 26 October 2026
+
+The latest reviewed `main` is [`36215ee4`](https://github.com/sumkindafreak/new_showduino/commit/36215ee4a10c09b99ce69803e60f1cd2f402c187) (26 October 2026, 18:40 UTC). Since the previous 25 October check, four commits regenerated the Comms embedded Studio WebUI and manifest; the manifest's content hash and pinned Studio source are unchanged, and no active firmware-source changes were found. **This is not a new hardware acceptance result.** The 20 October firmware baseline of this manual is retained deliberately; see the [26 October audit addendum](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the current main-vs-draft distinction. The existing 22-second physical normal run and Emergency repeat are **still unverified**. Do not treat draft PR fixes, Studio preview, host tests or regenerated bundles as installed or accepted features.
+
+## Finish-line status update — 24 October 2026
+
+**Read the [24 October main-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) before commissioning the existing non-DMX acceptance show.** The 20 October firmware baseline of this manual is still the active `main` firmware: later `main` commits changed documentation and generated Comms Studio assets, not the active firmware source. The 22-second all-node acceptance production, independent Audio GPIO5 status indicator, default-ten-pixel changes, WAV-stutter repair and SHDO parser fixes are on **separate unmerged PRs**, not on `main` or proven installed hardware. No complete physical normal run plus Emergency repeat is recorded. Do not confuse a passing host test or a proposed firmware version with a passed hardware test.
 
 ## Read this first
 
@@ -34,6 +50,8 @@ Showduino is a modular show-control system for attractions, escape rooms, immers
 The system is designed around a simple responsibility model:
 
 > **The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.**
+
+This describes **runtime acceptance**, not independent scene selection by Nodes or the P4. The **Director alone chooses and commands productions**; the P4 executes accepted requests and enforces Emergency protection independently of Director availability. No Node button may independently select or change a scene. Emergency clear never resumes a production automatically.
 
 In normal use, an operator should not need to understand the embedded electronics behind that model.
 
@@ -950,6 +968,10 @@ Current playback support is WAV PCM. MP3, Ogg and FLAC are planned rather than c
 Current Audio Node operations include play, loop, stop, pause, resume, volume, fade and duck/unduck.
 
 The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
+
+**Audio Node pin/firmware caution (24 October):** Current `main` Audio Node 0.4.3 assigns **GPIO22 to the programmable show-pixel line** and **GPIO5 to KEY6**; it does **not** have a separately active GPIO5 indicator. Draft PR #40 reserves **GPIO5 for one status NeoPixel** (KEY6 disabled) and keeps **GPIO22 for the show strip** with a proposed 10-pixel minimum. That is not yet compiled, flashed or bench-accepted. Match the installed firmware to its own BoardConfig and never connect both functions to GPIO5.
+
+**Audio continuity and deploy caution (24 October):** Audio WAV playback has a reported physical stutter; PR #37's buffer/I2S changes are a draft, not a verified cure. Genuine website SHDO exports can encounter action parsing or truncated-command problems addressed in draft PRs #35/#36. Confirm actual P4 persist → LOAD → START and uninterrupted sound on hardware before declaring the first show successful.
 
 **Audio pixel commissioning:** On a new/unconfigured Node the saved pixel count defaults to **zero**, leaving GPIO22 dark. For the fixed 10-pixel bench strip, send `PIXEL:COUNT:10` and then `PIXEL:INIT` to that Audio Node; verify `PIXEL:STATUS` reports READY and count 10 before running the show. The count persists across boots. Do not assume the firmware's count macro automatically configures a new Node, or confuse this theatrical line with an independent status LED. Physical operation remains subject to bench acceptance.
 

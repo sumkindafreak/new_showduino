@@ -92,6 +92,10 @@ For a first practical RC test, use an already installed production or the docume
 
 ---
 
+> **24 October finish-line check:** The existing [22-second all-node acceptance production](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/examples/productions/ALL_NODES_BENCH_TEST.md) is on unmerged PR #29, **not** current `main`. The `main` [first-audio-test.shdo](../../examples/productions/first-audio-test.shdo) is a smaller 30-second audio-only smoke test (22 seconds of WAV playback), not an all-node pass. Review the [current main/bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md), record installed firmware versions and do not mark either show accepted until a physical run and Emergency repeat pass. Audio Node GPIO5 status/KEY6 disable and default-ten-pixel behaviour are draft PR #40 only; current `main` needs explicit GPIO22 pixel COUNT/INIT commissioning.
+
+> **29 October first-show update:** The owner has now successfully played a **real show with audio and visual effects together on hardware**. This supersedes any implication that Showduino has never played a show. The production identity, exact installed firmware, complete/terminal state, repeatability and Emergency interruption/recovery have **not** been logged as a formal acceptance pass. Preserve the working configuration, repeat that same show with P4-confirmed COMPLETE, then run its Emergency interruption/clear test. The separate PR #29 22-second all-node fixture remains formally `NOT RUN`; do not equate that record with the achieved first-show milestone. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+
 ## Website Studio → installed production
 
 1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.

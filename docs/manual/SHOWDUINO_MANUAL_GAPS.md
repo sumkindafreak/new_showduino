@@ -31,6 +31,14 @@ Status labels used in this revision:
 
 ---
 
+## 29 October 2026 field-evidence update (no change to 20 October source baseline)
+
+**Confirmed by owner:** First real Showduino show with combined audio and visual effects has played on physical hardware, with some teething issues. **Do not describe Showduino as never having played a show.** This confirms a functioning combined playback path on the installed bench configuration; it does **not** close formal all-node COMPLETE, repeatability or mid-show Emergency recovery acceptance.
+
+**Still open / evidence required:** Exact flashed builds and production, Director reset regression status, microphone calibration/threshold acknowledgements, full Emergency safe-state and authorised-clear/no-resume sequence. The existing 22-second all-node result sheet remains `NOT RUN` for its specific normal and Emergency procedure. Only mark individual gap items resolved after their relevant physical evidence is recorded. Current `main` `e57870c` has four further generated Comms bundle commits since 28 October, without active firmware-source changes.
+
+---
+
 ## GAP-001 — Main Emergency button 8-second Locate hold
 
 **Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
@@ -421,3 +429,27 @@ A gap is not closed merely because code has been written. Safety, radio, power, 
 2. `SHOWDUINO_MANUAL_SOURCE_MATRIX.md`;
 3. the affected customer-manual section;
 4. the manual revision/baseline SHA.
+
+---
+
+## 24 October 2026 — finish-line delta since the 20 October manual baseline
+
+**Status:** OPEN — see [dated source-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md). `main` at `87963bbd017b4ca930f49db9928a3d39b32fa690` is 20 commits ahead of the manual's firmware review commit, but those commits modify documentation and the generated Comms Studio bundle/manifest rather than active firmware. The following are **draft implementation gaps or unverified hardware behaviour**, not features delivered on `main`:
+
+- **GAP-FL-A — complete 22-second all-node run:** PR #29's existing acceptance show and bench-result sheet are unmerged; its software compile/reload and target builds passed, but no physical LOAD → RUN → COMPLETE and Emergency-repeat pass is recorded.
+- **GAP-FL-B — audible WAV stutter:** physical stuttering remains reported. PR #37 is an unmerged, uncompiled/unbenchmarked buffering and I2S write repair; don't describe it as a fix until a real A1S A/B test passes.
+- **GAP-FL-C — Studio SHDO export acceptance:** PR #35 repairs action.value token consumption and PR #36 rejects silent truncation of long runtime commands. Neither is merged; test a genuine exported production on the P4 before declaring website → SD persist reliable.
+- **GAP-FL-D — Audio Node status-vs-show pins:** `main` Audio 0.4.3 uses GPIO22 for the configurable pixel line and GPIO5 for KEY6. PR #40 proposes independent **GPIO5 single indicator**, **GPIO22 show line**, KEY6 disabled and a ten-pixel minimum. No physical validation or compilation for this PR is recorded.
+- **GAP-FL-E — Emergency and outputs:** P4/C3/Audio/Emergency pixel-white response, MOSFET safe OFF, Lamp Emergency audio, Director clear/Locate, no auto-resume and full Director/P4/Comms link stability remain physical acceptance items. Emergency latch persistence PR #33 is unmerged and not hardware-qualified.
+
+**Required decision:** Keep the Director as sole creative/operator show controller; P4 is the execution/runtime and Emergency authority, and Emergency assertion must work without Director connectivity. Run the same fixed non-DMX scenario, then its mid-show Emergency repeat; log actual results and close only demonstrated gaps. No expansion work is required.
+
+## 28 October 2026 — bench corrections and newly observed Director regression
+
+This dated note **supersedes the 24 October GAP-FL-B claim that WAV stuttering remains present on the owner's installed Audio Node**. The owner reports clean ESP32-A1S WAV playback and corrected volume after physical testing. The installed firmware SHA is not yet recorded, so neither `main` nor PR #37 can be credited as the proven fix. Retest continuity during the complete persisted production before closing all-node audio acceptance.
+
+**GAP-FL-F — Director runtime stability: OPEN, observed physical regression.** After the latest Director flash, the 28 October serial log contains repeated ESP32-S3 Core 1 `LoadProhibited` resets on Home/Audio Node navigation. The exact ELF is needed to decode the backtrace; do not assign a cause from the exception name. The same log includes `legacy Stage (STATUS:READY)`, synchronisation degradation and at least one failed Stage threshold transmission. Preserve the working hardware baseline, record versions, symbolicate the crash and verify Director/Comms/P4 compatibility before full-show acceptance.
+
+**GAP-FL-G — Audio Node microphone command confirmation: OPEN.** The Node logged SOUND DISABLE, ENABLE and a transient trigger, so the command path is not wholly dead. CALIBRATE produced no observed log/ACK; threshold changes and live telemetry remain unverified. Check Director touch/dock overlap and route/ACK with playback stopped before claiming calibration works.
+
+**GAP-FL-A / GAP-FL-E remain OPEN:** the 22-second *visual* bench test and observed Emergency response are partial evidence. The persisted, timed, all-node LOAD → START → COMPLETE and comprehensive Emergency repeat are still not signed off. The separate full active-v1 release gate and 31 October target are tracked in [issue #42](https://github.com/sumkindafreak/new_showduino/issues/42), without expanding the single-scenario test scope. See [28 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).

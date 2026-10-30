@@ -3,11 +3,15 @@
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
-**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release.
+**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release. For the latest main-vs-draft and physical acceptance status, read the [24–29 October 2026 finish-line audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+
+**29 October 2026 bench milestone:** The owner confirms Showduino **played its first real combined audio-and-visual show** on physical hardware. Some teething issues remain. This is a successful first playback, **not yet a signed repeatable complete-scenario / Emergency acceptance or full v1 release**. The latest checked `main` (`e57870c`) differs from 28 October only in generated S3 Comms WebUI assets/manifest; installed firmware revisions are not yet identified. See the [dated audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
 
 Showduino coordinates attraction audio, addressable lighting, interactive props, trigger inputs and operator controls using a central ESP32-P4 Show Engine and specialist ESP32 nodes. A loaded show runs on the Show Engine: it does not need an open browser, a connected Director touchscreen, home/venue Wi-Fi or internet access.
 
 > **Architectural rule:** The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.
+
+**Operational clarification:** **One Director. One coordinated show. Multiple replaceable nodes.** Only the Director selects/commands the production. The P4 decides whether requests may execute and enforces runtime and Emergency safety; specialist-node buttons do not change scenes. **Emergency STOP must function independently of Director connectivity**, and clearing it never auto-restarts a show.
 
 ## At a glance
 
@@ -141,6 +145,8 @@ The Comms frontend is generated into \`firmware/s3-comms-controller/ShowduinoS3C
 ## Updates and release readiness
 
 **Comms self-OTA** is implemented in software with HTTPS firmware download, SHA-256 comparison and a post-reboot health gate/rollback path. It is **Comms-only**; system-wide OTA and specialist-node OTA are not available. Installing a Comms update requires the documented maintenance, idle-show, emergency and operator-confirmation gates. Do not claim that source-code implementation proves the OTA/rollback scenario passed a live hardware test.
+
+**Bench-status note (28 October 2026):** P4/Audio Node pixel effects and clean Audio Node WAV/volume have been reported on the owner's installed hardware; these are partial physical results, not a complete production pass. The newly flashed Director has since shown repeatable Core 1 `LoadProhibited` resets, and Audio Node microphone calibration remains unconfirmed. The [dated finish-line audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) on documentation PR #41 separates observed bench facts from current `main` and proposed fixes; the audit is not yet merged into `main`. The existing 22-second all-node acceptance and Emergency repeat remain outstanding.
 
 Showduino remains **1.0.0-rc.1** until integrated hardware sign-off. The release checklist covers Director/Comms radio stability, audio and specialist-node behavior, SD deployment, physical emergency/clear/Locate, pixel emergency override and recovery after faults. Firmware compilation and protocol host tests are useful evidence, **not** a substitute for those physical tests.
 
