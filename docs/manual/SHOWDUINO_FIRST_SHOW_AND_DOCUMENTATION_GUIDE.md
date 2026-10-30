@@ -25,7 +25,7 @@ Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working s
 
 1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
 2. Confirm the link and P4 authority before using the Director.
-3. Create one simple scene and one timed Pixel or Audio clip inside Studio.
+3. Create one simple scene and one timed Pixel or Audio clip inside Studio. In Website Studio's **Timeline**, expand **Cue Library**, search a preset, drag it onto a compatible unlocked track (or Mixed Lane), or double-click to insert at the playhead. Select the clip and confirm its timing, logical Node ID, output and Pixel segment or Audio file. See the [Cue Library creator guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md); the Director HOME Cue Library tile is not the Studio editor.
 4. Validate and export SHDO v2. Refer to [show format](../show-file-format.md) and [Studio documentation](../studio/README.md).
 5. Verify which authored cue types the installed P4 firmware can deploy and execute; Studio preview alone is not physical proof.
 6. From Website Studio, export the `.shdo`, open the saved Communications S3 address, then use **Productions → Persist SHDO v2 to P4 SD → Persist to SD**. Wait for the P4 confirmation, separately **Load** the production, then explicitly **START** and **STOP**. Record actual hardware responses. See the [Quick Start workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
