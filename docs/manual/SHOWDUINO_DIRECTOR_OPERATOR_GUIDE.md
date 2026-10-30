@@ -221,6 +221,12 @@ http://192.168.4.1/studio/   embedded Studio authoring snapshot
 
 Your installer must confirm the actual network name, address and credentials used by your finished unit. The documented default password is a **bench credential, not a public venue password**.
 
+### Cue Library: Studio versus Director (30 October 2026 source check)
+
+The searchable **Cue Library** is available in **Website Studio → Timeline** for creating cues. Drag an Audio, Pixel or MOSFET preset to a compatible track or Mixed Lane; double-clicking inserts at the playhead where an eligible track exists. Edit the selected cue's routing and parameters in the Inspector, run Project Check, export and deploy using the [Quick Start](SHOWDUINO_QUICK_START.md#website-studio--installed-production). See the [full Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+
+The current `main` **Director HOME → CUE LIBRARY** tile is shown but **not tappable**; no Director Cue Library page is active in this checked firmware. Use **PRODUCTIONS** and **LIVE** on the Director to load/operate shows. A browser preset is not proof of P4 compiler support or physical-node acceptance.
+
 **Studio is where shows are prepared; Director is where operators run them.** The SHDO v2 authoring format, RAM timeline commissioning and persistent SD deploy path have different supported subsets. A show file being editable/exportable does not guarantee every effect in it is executable on the current firmware. Deployment, **LOAD** and **START** are separate stages.
 
 The local Show Engine does not need venue Internet to run an already loaded show. Internet access is relevant to optional functions such as checking for a Comms firmware update; **system-wide OTA is not currently available**.
