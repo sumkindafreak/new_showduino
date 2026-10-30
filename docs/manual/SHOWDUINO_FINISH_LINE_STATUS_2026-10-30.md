@@ -1,5 +1,13 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 30 October repository follow-up (after documentation merges)
+
+- **Current `main` checked:** `3d4790961e` (30 October 2026, 18:21 UTC). Compared with the 20 October manual firmware-source baseline `f4c9aea`, GitHub reports 47 commits. The changed paths are documentation, the generated S3 `WebAssets.generated.h` and its build manifest, plus documentation READMEs; **no non-generated active firmware implementation files changed in that comparison**. This does not identify the versions actually flashed on the bench.
+- **Documentation landed on `main`:** PR #41 (24–29 October finish-line audit), PR #44 (first-show reconciliation) and PR #45 (Website Studio Cue Library/Director limitations) are now **merged**. Previous wording calling #41/#44 proposed or unmerged belongs to its dated historical snapshot, not the current repository state.
+- **Generated S3 bundle:** build hash `56677901c6a2`, 42 assets and 214,954 embedded bytes remain unchanged; build timestamp advanced to 30 October 18:21 UTC. A regenerated header is not proof of a new tested firmware release or a changed Studio payload.
+- **Documentation correction:** the manual index's merged Cue Library entry had accidentally swallowed a duplicate Quick Start link. The 30 October follow-up corrects that rendering error and removes an obsolete duplicate milestone paragraph from the root README.
+- **Bench status unchanged since the 29 October report:** combined audio/visual playback achieved, but no new signed complete-scenario or mid-show Emergency record was found in the checked repository/issue #42. Keep Director crash, asset-selection and microphone acknowledgement concerns open until retested on the exact installed build.
+
 ## Sources and scope
 
 Repository: `sumkindafreak/new_showduino`; `main` observed at `a85f3cf8050118dbc69e363bfa70a212cfd8e48c` on 30 October. The recent visible commits regenerate the S3 embedded Studio WebUI bundle; they do not by themselves prove a physical firmware change. This is a documentation-only reconciliation, not a new firmware test or a complete code-to-manual certification.
