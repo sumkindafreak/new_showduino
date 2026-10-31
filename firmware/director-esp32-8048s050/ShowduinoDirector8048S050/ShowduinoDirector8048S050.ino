@@ -684,6 +684,9 @@ void handleStageLine(String line) {
       ui.noteEmergencyClearRejected();
       ui.appendLog("Cannot clear Emergency. Release the Emergency button first.");
       ui.pushOperatorEvent("Release the Emergency button first");
+    } else if (line.endsWith("NOT_LATCHED")) {
+      // The result may have been lost. Only a P4 snapshot can unlock the UI.
+      sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
     } else if (line.endsWith("NO_REQUEST")) {
       ui.appendLog("CLEAR rejected - no pending Director clear request");
       ui.pushOperatorEvent("Clear request is not pending");
@@ -1758,6 +1761,8 @@ void loop() {
     gDirectorEmergencyClearDialog.hide();
     // Best effort cancellation only. Never retry confirmation automatically.
     sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+    // Recover a lost authorized result using a fresh P4 state snapshot.
+    sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
     gDirectorEmergencyScreen.noteClearFailed();
     ui.pushOperatorEvent("Stage clearance timed out - retry CLEAR");
   }
