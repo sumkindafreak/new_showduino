@@ -1,5 +1,7 @@
 # Showduino Commercial Manual — Verification Gaps
 
+> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
 **Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
 
 **Manual baseline date:** 20 October 2026  
