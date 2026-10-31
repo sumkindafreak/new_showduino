@@ -129,6 +129,28 @@ static void ambience_event(lv_event_t *e){
 }
 
 
+static lv_obj_t *s_system_volume=nullptr,*s_system_volume_status=nullptr;
+static void system_volume_event(lv_event_t *e) {
+  if (lv_event_get_code(e)!=LV_EVENT_RELEASED) return;
+  char command[48];
+  snprintf(command,sizeof(command),"AUDIO:SYSTEM:VOLUME:%d",(int)lv_slider_get_value(s_system_volume));
+  lv_label_set_text(s_system_volume_status,"Saving system volume - awaiting P4");
+  if(s_cb)s_cb(command);
+}
+void page_audio_system_apply_system_volume(const char *line) {
+  if(!line || !s_system_volume_status)return;
+  if(!strncmp(line,"AUDIO:SYSTEM:VOLUME:",20)) {
+    char *end=nullptr;long value=strtol(line+20,&end,10);
+    if(end==line+20 || *end || value<0 || value>100)return;
+    lv_slider_set_value(s_system_volume,(int32_t)value,LV_ANIM_OFF);
+    lv_obj_remove_state(s_system_volume,LV_STATE_DISABLED);
+    char text[96];snprintf(text,sizeof(text),"System sounds: %ld%% | Emergency audio keeps its fixed level",value);
+    lv_label_set_text(s_system_volume_status,text);
+  } else if(!strncmp(line,"ERR:AUDIO:SYSTEM:VOLUME:",24)) {
+    lv_label_set_text(s_system_volume_status,"Volume not confirmed. Tap Refresh to check the P4 setting.");
+  }
+}
+
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
 }
@@ -273,7 +295,7 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
     if(i<6)s_ambience_controls[i]=button;
   }
   update_ambience();
-  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 248, 168);
+  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 248, 280);
   s_local_status = lv_label_create(local);
   lv_label_set_text(s_local_status, "Status: UNKNOWN");
   lv_obj_set_pos(s_local_status, 14, 36);
@@ -281,19 +303,32 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   lv_obj_set_style_text_color(s_local_status, lv_color_hex(ShowduinoPalette::Text), 0);
   s_local_detail = make_body(local, 64, kBodyW - 40);
 
-  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 424, 120);
+  s_system_volume_status=make_body(local,158,kBodyW-40);
+  lv_label_set_text(s_system_volume_status,"System volume: awaiting P4 (0% mutes notifications only)");
+  s_system_volume=lv_slider_create(local);
+  lv_obj_set_pos(s_system_volume,22,220);lv_obj_set_size(s_system_volume,510,12);
+  lv_slider_set_range(s_system_volume,0,100);
+  lv_obj_add_state(s_system_volume,LV_STATE_DISABLED);
+  lv_obj_add_event_cb(s_system_volume,system_volume_event,LV_EVENT_RELEASED,nullptr);
+  lv_obj_t *refresh=lv_button_create(local);lv_obj_set_pos(refresh,570,205);lv_obj_set_size(refresh,150,40);
+  lv_obj_set_user_data(refresh,(void*)"AUDIO:SYSTEM:VOLUME?");
+  lv_obj_add_event_cb(refresh,action_event,LV_EVENT_CLICKED,nullptr);
+  lv_obj_t *refreshLabel=lv_label_create(refresh);lv_label_set_text(refreshLabel,"Refresh volume");lv_obj_center(refreshLabel);
+
+  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 536, 120);
   s_nodes = make_body(nodes, 40, kBodyW - 40);
 
-  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 552, 100);
+  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 664, 100);
   s_routing = make_body(routing, 40, kBodyW - 40);
 
-  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 660, 88);
+  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 772, 88);
   s_cmd = make_body(cmd, 40, kBodyW - 40);
 
   // Keep the viewport fixed; the cards below define its scrollable content.
 
   page_audio_system_apply_theme();
   s_active = true;
+  emit("AUDIO:SYSTEM:VOLUME?");
 }
 
 void page_audio_system_destroy(void) {
@@ -310,6 +345,7 @@ void page_audio_system_destroy(void) {
   s_scanning=false;s_file_count=0;
   if(s_scan_timer){lv_timer_delete(s_scan_timer);s_scan_timer=nullptr;}
   for(auto &control:s_ambience_controls)control=nullptr;
+  s_system_volume=s_system_volume_status=nullptr;
   s_cb = nullptr;
   s_active = false;
 }

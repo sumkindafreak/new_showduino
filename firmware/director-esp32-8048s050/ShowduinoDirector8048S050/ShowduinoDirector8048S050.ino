@@ -380,6 +380,7 @@ void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
 
+  if(line.startsWith("AUDIO:SYSTEM:VOLUME:") || line.startsWith("ERR:AUDIO:SYSTEM:VOLUME:")) page_audio_system_apply_system_volume(line.c_str());
   if(line.startsWith("AMBIENCE:")||line.startsWith("OK:AMBIENCE:")||line.startsWith("ERR:AMBIENCE:"))page_audio_system_apply_ambience(line.c_str());
   rxCount++;
   lastStageReplyMs = millis();
