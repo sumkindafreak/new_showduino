@@ -136,7 +136,7 @@
 #define LV_USE_CHART            0
 #define LV_USE_CHECKBOX         0
 #define LV_USE_COLORWHEEL       0
-#define LV_USE_DROPDOWN         0
+#define LV_USE_DROPDOWN         1
 #define LV_USE_IMAGE            1
 #define LV_USE_IMAGEBUTTON      0
 #define LV_USE_KEYBOARD         0
@@ -150,7 +150,7 @@
 #define LV_USE_MSGBOX           0
 #define LV_USE_ROLLER           0
 #define LV_USE_SCALE            0
-#define LV_USE_SLIDER           0
+#define LV_USE_SLIDER           1
 #define LV_USE_SPAN             0
 #define LV_USE_SPINBOX          0
 #define LV_USE_SPINNER          0

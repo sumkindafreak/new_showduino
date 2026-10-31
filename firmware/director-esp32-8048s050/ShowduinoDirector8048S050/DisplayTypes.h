@@ -41,6 +41,7 @@ enum DisplayPageId : uint8_t {
   PAGE_RECOVERY,
   PAGE_DISCOVERY,
   PAGE_COMPLETE,
+  PAGE_OUTPUTS,
   PAGE_COUNT
 };
 
