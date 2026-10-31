@@ -46,6 +46,7 @@ public:
   void noteClearRequested(uint32_t nowMs);
   void noteClearRejected(uint32_t nowMs);
   void noteClearCancelled();
+  void noteClearFailed();
 
   bool isVisible() const { return visible_ && root_ != nullptr; }
   bool isAwaitingStage() const { return awaitingStage_; }
@@ -78,6 +79,7 @@ private:
   bool latchActive_ = false;
   bool physicalAsserted_ = false;
   bool awaitingStage_ = false;
+  bool clearFailed_ = false;
   uint8_t linkState_ = LINK_SEARCHING;
   uint32_t shownMs_ = 0;
   uint32_t activeSinceMs_ = 0;

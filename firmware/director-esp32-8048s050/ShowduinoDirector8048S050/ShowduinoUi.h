@@ -3294,8 +3294,7 @@ private:
       Serial.println("[E-Stop] E-STOP pressed - sending EMERGENCY:STOP");
     } else if (command == "EMERGENCY:CLEAR") {
       /* Request the P4 clear workflow. Do not unlock until STATE:EMERGENCY:CLEAR. */
-      gDirectorEmergencyScreen.noteClearRequested(millis());
-      appendLog("E-CLEAR request sent to Stage");
+      appendLog("E-CLEAR request to Stage");
       pushOperatorEvent("E-CLEAR request -> Stage");
       Serial.println("[E-Stop] CLEAR EMERGENCY - sending EMERGENCY:CLEAR request");
       outbound = "EMERGENCY:CLEAR";
