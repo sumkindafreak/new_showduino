@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "DirectorCueLibrary.h"
 #include "DisplayPages.h"
 #include "DisplaySystemPages.h"
 #include "ShowduinoOsPalette.h"
@@ -412,6 +413,8 @@ bool DisplayManager::loadBackground(DisplayPageId /*page*/) {
 }
 
 bool DisplayManager::showPage(DisplayPageId page) {
+  // Cue Library is parented to the active LVGL screen, outside page layers.
+  directorCueLibraryClose();
   if (!begun_) begin();
   if (gDirectorUnlockScreen.ownsDisplay()) {
     deferredPage_ = page;
