@@ -12,6 +12,7 @@ function Run-One($name, $srcName, $exeName) {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+Run-One "System sound volume" "test_system_sound_volume.cpp" "system_sound_volume_tests.exe"
 Run-One "Director emergency clearance" "test_emergency_clear_flow.cpp" "emergency_clear_flow_tests.exe"
 Run-One "Director lamp sheet" "test_lamp_sheet.cpp" "lamp_sheet_tests.exe"
 Run-One "Director emergency sheet" "test_emergency_sheet.cpp" "emergency_sheet_tests.exe"
