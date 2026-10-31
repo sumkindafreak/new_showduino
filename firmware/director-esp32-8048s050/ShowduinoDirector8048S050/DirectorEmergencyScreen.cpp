@@ -89,6 +89,7 @@ void DirectorEmergencyScreen::setLatchActive(bool active, uint32_t nowMs) {
   const bool was = latchActive_;
   latchActive_ = active;
   if (active && !was) {
+    clearFailed_ = false;
     physicalAsserted_ = false;
     awaitingStage_ = false;
     if (activeSinceMs_ == 0) activeSinceMs_ = nowMs;
@@ -142,12 +143,19 @@ void DirectorEmergencyScreen::setActiveSince(uint32_t startedMs) {
 
 void DirectorEmergencyScreen::noteClearRequested(uint32_t nowMs) {
   if (!latchActive_) return;
+  clearFailed_ = false;
   awaitingStage_ = true;
   lastClearMs_ = nowMs;
   if (visible_) {
     refreshCopy();
     applyPhaseStyles();
   }
+}
+
+void DirectorEmergencyScreen::noteClearFailed() {
+  noteClearCancelled();
+  clearFailed_ = true;
+  refreshStatus();
 }
 
 void DirectorEmergencyScreen::noteClearRejected(uint32_t nowMs) {
@@ -482,7 +490,7 @@ void DirectorEmergencyScreen::refreshStatus() {
              physical, linkText(linkState_), showName_);
   }
   lv_label_set_text(statusPrimary_, primary);
-  lv_label_set_text(statusSecondary_, secondary);
+  lv_label_set_text(statusSecondary_, clearFailed_ ? "STAGE CLEARANCE NOT CONFIRMED - press CLEAR EMERGENCY to retry" : secondary);
 }
 
 void DirectorEmergencyScreen::applyPhaseStyles() {

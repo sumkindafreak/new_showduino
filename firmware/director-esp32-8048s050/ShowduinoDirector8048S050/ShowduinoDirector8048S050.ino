@@ -42,6 +42,8 @@
 #include "backlight.h"
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
+#include "DirectorEmergencyClearFlow.h"
+static DirectorEmergencyClearFlow emergencyClearFlow;
 #include "ShowduinoUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
@@ -466,18 +468,21 @@ void handleStageLine(String line) {
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST) {
     directorWakeDisplay("ESTOP");
+    if (!emergencyLocked || !emergencyClearFlow.acknowledge(millis())) return;
     gDirectorEmergencyClearDialog.show(millis());
     ui.pushOperatorEvent("Emergency clear requested");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED) {
     gDirectorEmergencyClearDialog.hide();
+    emergencyClearFlow.cancel();
     ui.noteEmergencyClearCancelled();
     ui.appendLog("Emergency clear request expired");
     ui.pushOperatorEvent("Clear request expired");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK) {
+    emergencyClearFlow.cancel();
     gDirectorEmergencyClearDialog.hide();
   }
 
@@ -511,6 +516,7 @@ void handleStageLine(String line) {
     if (nowLocked && !emergencyLocked) {
       onEmergencyActivatedDirectorUx();
     }
+    if (!nowLocked) emergencyClearFlow.cancel();
     emergencyLocked = nowLocked;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(emergencyLocked);
@@ -654,6 +660,7 @@ void handleStageLine(String line) {
     ui.setEmergencyLocked(true);
   }
   if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(false);
@@ -670,8 +677,11 @@ void handleStageLine(String line) {
   if (line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD ||
       line.startsWith("ERR:EMERGENCY_CLEAR:") ||
       line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)) {
-    ui.noteEmergencyClearRejected();
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
     if (line.endsWith("BUTTON_ACTIVE") || line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD) {
+      ui.noteEmergencyClearRejected();
       ui.appendLog("Cannot clear Emergency. Release the Emergency button first.");
       ui.pushOperatorEvent("Release the Emergency button first");
     } else if (line.endsWith("NO_REQUEST")) {
@@ -768,6 +778,23 @@ void handleStageLine(String line) {
 }
 
 bool sendToStage(const String &command) {
+  const bool clearRequest = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR;
+  const bool clearConfirm = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM;
+  if (clearRequest) {
+    if (!emergencyLocked) return false;
+    emergencyClearFlow.request(millis());
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearRequested(millis());
+  }
+  if (clearConfirm && !emergencyClearFlow.confirm(millis())) return false;
+  if (clearConfirm) gDirectorEmergencyScreen.noteClearRequested(millis());
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL ||
+      command == SHOWDUINO_LEGACY_EMERGENCY_STOP) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
+  }
+
   bool sentByEspNow = false;
   bool sent = false;
 
@@ -811,6 +838,12 @@ bool sendToStage(const String &command) {
     else ui.appendLog("TX FAILED -> Stage: " + command);
   }
 
+  if ((clearRequest || clearConfirm) && !sent) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Emergency clear send failed - retry CLEAR");
+  }
   // Drain any replies that arrived during the blocking send wait.
   readEspNowReplies();
   return sent;
@@ -846,6 +879,7 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
     }
   } else if (prev == SHOW_STATE_EMERGENCY_STOP || emergencyLocked) {
     /* Runtime left EMERGENCY_STOP - unlock even if STATE:EMERGENCY:CLEAR was dropped. */
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
   }
@@ -1078,13 +1112,11 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "UI:ESTOP:ABORT") {
-    /* Always CLEAR first - works even on older Stage builds that lack SHOW:STOP. */
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
-    delay(20);
+    // ABORT leaves the emergency latched; clearance uses the dedicated control.
     sendToStage(SHOWDUINO_LEGACY_SHOW_STOP);
     sendToStage(SHOWDUINO_LEGACY_STOP_ALL);
-    ui.pushOperatorEvent("Abort: CLEAR + STOP sent - awaiting Stage");
-    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort CLEAR+STOP");
+    ui.pushOperatorEvent("Abort: STOP sent - emergency remains latched");
+    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort STOP; emergency remains latched");
     gStorage.endShowLog("aborted");
     return;
   }
@@ -1722,6 +1754,13 @@ void loop() {
   ui.setEspNowReady(espNowReady);
   gDirectorUnlockScreen.tick(now, espNowReady, linkState, emergencyLocked);
   ui.tickEmergencyOverlay(now);
+  if (emergencyClearFlow.tick(now)) {
+    gDirectorEmergencyClearDialog.hide();
+    // Best effort cancellation only. Never retry confirmation automatically.
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Stage clearance timed out - retry CLEAR");
+  }
   gDirectorEmergencyClearDialog.tick(now);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
