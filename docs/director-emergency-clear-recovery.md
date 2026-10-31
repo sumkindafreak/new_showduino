@@ -34,3 +34,9 @@ Before release, with hazardous loads disconnected:
 6. Navigate Cue Library -> Desktop/Live/Shows/Settings repeatedly, reopen it, then assert emergency while it is open. Verify no surviving overlay, timer, or hidden touch target.
 
 Hardware acceptance remains unverified. Do not merge as a hardware-qualified release based solely on host tests.
+
+## Firmware build attempt
+
+Arduino CLI 1.5.1 with installed ESP32 core 3.3.12 was invoked for `esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=huge_app`, using the installed user libraries. The initial restricted invocation could not initialize its default package indexes. Explicit installed package/library paths reached build preparation but did not produce a compiler result during this session; the stalled attempt was stopped. No successful full firmware compile or flash is claimed. The FQBN is a compile attempt, not confirmation of the user's actual flash/display configuration. Rebuild with the verified board settings before deployment.
+
+The loss harness also runs the production P4 clear authorization header together with the Director flow, dropping each protocol leg and checking that a new assertion or held physical input prevents authorization. Firmware integration, radio delivery, and LVGL behavior still require the hardware checklist above.

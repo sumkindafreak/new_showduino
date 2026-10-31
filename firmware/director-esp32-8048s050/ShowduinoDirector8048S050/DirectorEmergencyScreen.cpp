@@ -180,6 +180,7 @@ void DirectorEmergencyScreen::noteClearCancelled() {
 }
 
 void DirectorEmergencyScreen::enterClearedHold(uint32_t nowMs) {
+  clearFailed_ = false;
   awaitingStage_ = false;
   physicalAsserted_ = false;
   latchActive_ = false;
