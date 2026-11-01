@@ -538,6 +538,13 @@ public:
    * Stage 7: mirror ShowRuntime into operator UX (overlay / banner / LIVE / complete).
    * Does not mutate runtime - display + pending-confirm handling only.
    */
+  void setRuntimeFresh(bool fresh) {
+    if (runtimeFresh_ == fresh) return;
+    runtimeFresh_ = fresh;
+    liveStatusDirty = true;
+    statusDirty = true;
+  }
+
   void applyRuntimeMirror(const ShowRuntime &rt) {
     ShowState prev = mirroredState;
     mirroredState = rt.state;
@@ -2370,6 +2377,7 @@ private:
   bool emergencySessionOpen = false;
   bool completeOverlayVisible = false;
   bool liveStatusDirty = true;
+  bool runtimeFresh_ = false;
   unsigned long emergencyActiveSinceMs = 0;
   char estopShowName[64] = "-";
   char estopPlayStateBefore[24] = "Stopped";
@@ -3873,6 +3881,10 @@ private:
       pending = "EMERGENCY - Stage latch active";
       col = OsColor::Fault;
     }
+    if (!runtimeFresh_ && !emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP) {
+      pending = "PLAYBACK UPDATE STALE - checking Stage";
+      col = OsColor::Warn;
+    }
     page_10_live_set_pending(pending, col);
     page_10_live_set_progress(liveProgressPct);
     page_10_live_set_emergency((mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked);
@@ -3881,7 +3893,8 @@ private:
     if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) headerCol = OsColor::Fault;
     else if (mirroredState == SHOW_STATE_ERROR) headerCol = OsColor::Fault;
     else if (mirroredState == SHOW_STATE_RUNNING) headerCol = OsColor::Ok;
-    page_10_live_set_header(deskRuntimeWord(), headerCol);
+    page_10_live_set_header(!runtimeFresh_ && !emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP
+                            ? "PLAYBACK UPDATE STALE" : deskRuntimeWord(), headerCol);
   }
 
   void showEmergencyOverlay() {

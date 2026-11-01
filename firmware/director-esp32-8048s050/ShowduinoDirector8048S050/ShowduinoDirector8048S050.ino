@@ -43,6 +43,8 @@
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
 #include "DirectorEmergencyClearFlow.h"
+#include "DirectorRuntimeFreshness.h"
+static DirectorRuntimeFreshness runtimeFreshness;
 static DirectorEmergencyClearFlow emergencyClearFlow;
 #include "ShowduinoUi.h"
 #include "DirectorUnlockScreen.h"
@@ -114,7 +116,7 @@ static char verifiedTimelineName[64] = {};
 static void cueLibraryState(DirectorCueLibraryState *out) {
   *out=DirectorCueLibraryState{};
   out->elapsedMs=gShowMirror.elapsedMs;out->fired=gShowMirror.currentCue;
-  out->total=timeline.cueTotal();out->online=linkState==LINK_READY;
+  out->total=timeline.cueTotal();out->online=linkState==LINK_READY && runtimeFreshness.fresh(millis());
   out->emergency=emergencyLocked || gShowMirror.emergency;
   strncpy(out->name,gShowMirror.showName,sizeof(out->name)-1);
   strncpy(out->state,showStateName(gShowMirror.state),sizeof(out->state)-1);
@@ -865,6 +867,8 @@ void requestStateSync() {
 }
 
 void applyMirroredRuntime(const ShowRuntime &rt) {
+  runtimeFreshness.received(millis());
+  ui.setRuntimeFresh(true);
   ShowState prev = gShowMirror.state;
   gShowMirror = rt;
   gShowMirror.stageConnected = (linkState == LINK_READY) ? 1 : 0;
@@ -1768,6 +1772,10 @@ void loop() {
     ui.pushOperatorEvent("Stage clearance timed out - retry CLEAR");
   }
   gDirectorEmergencyClearDialog.tick(now);
+  ui.setRuntimeFresh(linkState == LINK_READY && runtimeFreshness.fresh(now));
+  // A healthy heartbeat is not proof that playback telemetry is arriving.
+  // Query only; never start/resume or synthesize elapsed time/cue firing.
+  if (runtimeFreshness.queryDue(now, linkState == LINK_READY)) sendToStage(SHOW_STATE_QUERY);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
     lastUiRefreshMs = now;
