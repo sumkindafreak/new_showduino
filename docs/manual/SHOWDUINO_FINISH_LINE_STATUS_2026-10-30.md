@@ -1,5 +1,12 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 1 November 2026 follow-up — Emergency clear remains unverified; Cue Library navigation defect
+
+- **Repository baseline:** `main` at `0e3d0786b6275783c2b1a0815ab2dcb51d1bbf3d` (1 November 22:00 UTC). Compared with `d5d8f2e7b629` (31 October), four new commits only regenerate the S3 Communications embedded `WebAssets.generated.h` and `tools/embed-webui/last-build.json`; **no active firmware source changed** in this interval. These commits cannot establish that the Director or Emergency regression has been fixed.
+- **Additional owner bench details:** The Director's **CLEAR EMERGENCY** control has remained on **AWAITING STAGE** after an E-stop request, with Emergency latched until reboot on a failed attempt. The owner also reports that navigating away from **Cue Library** can leave the previous screen visible rather than clearing/rebuilding the next page. The system temporarily appeared to recover during testing, but this is **not** repeatable Emergency-clear acceptance or a confirmed regression fix. Treat the two symptoms as separately reproducible faults until logs show a common cause; do not assume Cue Library caused Emergency failure.
+- **Priority:** Emergency clear and Director responsiveness remain **FAIL/BLOCKED** for the non-DMX finish line. Preserve the exact flashed binaries and serial logs; with effect loads isolated, trace Director confirmation → Comms UART/ESP-NOW forwarding → P4 clear decision/state reply → Director state update. Verify the physical Emergency input is released and any station blocker is cleared only by authorised P4 logic. Never bypass the latch or use reboot as a normal clear. Once fixed, test Cue Library navigation separately, then repeat one complete scenario and its mid-show Emergency acceptance.
+- **Documentation disposition:** This is a dated field-evidence update on PR #46, not a firmware correction or a new claim of physical sign-off. The 29 October first combined audio/visual playback remains achieved.
+
 ## 31 October 2026 follow-up — safety regression blocks finish-line acceptance
 
 - **Current GitHub `main`:** `d5d8f2e7b629` (31 October 18:19 UTC). Compared with 30 October `3d4790961e5b`, four commits change only generated S3 Comms `WebAssets.generated.h` and `tools/embed-webui/last-build.json`; no active firmware implementation changes in that range. Embedded bundle: 42 assets, 214,954 bytes, build hash `56677901c6a2`. This does **not** identify the firmware actually flashed onto any board.
