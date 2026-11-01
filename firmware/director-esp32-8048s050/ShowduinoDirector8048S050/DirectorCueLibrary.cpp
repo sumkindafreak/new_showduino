@@ -67,7 +67,7 @@ static void render(){
   confirmStart=false;ShowduinoOsTheme::setEnabled(startButton,false);
   for(unsigned i=0;i<8;++i){text(rows[i],"");lv_obj_clear_flag(rowBoxes[i],LV_OBJ_FLAG_CLICKABLE);}return;
  }
- snprintf(buffer,sizeof(buffer),"%s | %lu / %lu timeline | %s%s",state.state,(unsigned long)state.fired,(unsigned long)state.total,follow?"FOLLOW":"BROWSE",state.online?"":" | LINK LOST - last report");text(status,buffer);
+ snprintf(buffer,sizeof(buffer),"%s | %lu / %lu timeline | %s%s",state.state,(unsigned long)state.fired,(unsigned long)state.total,follow?"FOLLOW":"BROWSE",state.online?"":" | PLAYBACK UPDATE STALE - last report");text(status,buffer);
  uint32_t visible=0,nextRow=0,nextTime=0;bool foundNext=false;
  char latest[104]="None yet",upcoming[104]="End of cue list";
  for(uint32_t i=0;i<state.total;++i){
