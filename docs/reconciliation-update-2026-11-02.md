@@ -34,4 +34,6 @@ The host production and Director runners pass, as do 12 additional host-suite gr
 
 Full target-build status is recorded in the PR description after the build attempts. No successful target compile is implied by the passing host checks or historical logs. Board settings and combined normal/Emergency acceptance remain pending. This is a draft review candidate, not a release or a recommendation to flash.
 
+The active Arduino build workflow compiles this branch's P4 and Director sketches on Linux. It uses core 3.3.12 and pinned Director reference libraries (LVGL 9.6.0, GFX Library for Arduino 1.6.9, TAMC_GT911 1.0.2 and Adafruit NeoPixel 1.15.5). These match the inspected installed library versions, not independently identified flashed-build settings. Build artifacts are review evidence, not automatically published releases or instructions to install. The older ESP-IDF proof-target workflow remains separate.
+
 The next roadmap stages still include adapting recovered signed fleet OTA, removing its mandatory uncommissioned pixel-role assumption without skipping required safety stations, integrating FastLED in stages and separately reconciling authenticated Emergency persistence. None of those changes is hidden in this first update.

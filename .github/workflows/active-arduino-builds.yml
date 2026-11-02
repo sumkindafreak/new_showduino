@@ -1,0 +1,85 @@
+name: Active Arduino firmware builds
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/stage-engine-p4/**'
+      - 'firmware/director-esp32-8048s050/**'
+      - 'protocol/**'
+      - '.github/workflows/active-arduino-builds.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/stage-engine-p4/**'
+      - 'firmware/director-esp32-8048s050/**'
+      - 'protocol/**'
+      - '.github/workflows/active-arduino-builds.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  compile:
+    name: Compile active ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: P4
+            sketch: firmware/stage-engine-p4/ShowduinoStageEngineP4
+            fqbn: 'esp32:esp32:esp32p4:PSRAM=enabled,FlashSize=16M,ChipVariant=postv3'
+            libraries: ''
+          - target: Director
+            sketch: firmware/director-esp32-8048s050/ShowduinoDirector8048S050
+            fqbn: 'esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB'
+            libraries: 'lvgl@9.6.0;GFX Library for Arduino@1.6.9;TAMC_GT911@1.0.2;Adafruit NeoPixel@1.15.5'
+    env:
+      ESP32_CORE: '3.3.12'
+      BOARD_INDEX: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.1.1'
+      - name: Install pinned reference toolchain and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls "$BOARD_INDEX"
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@$ESP32_CORE"
+          if [ -n '${{ matrix.libraries }}' ]; then
+            arduino-cli lib update-index
+            IFS=';' read -ra libraries <<< '${{ matrix.libraries }}'
+            arduino-cli lib install "${libraries[@]}"
+            libdir="$(arduino-cli config get directories.user)/libraries"
+            cp '${{ matrix.sketch }}/lv_conf.h' "$libdir/lv_conf.h"
+          fi
+          arduino-cli version
+          arduino-cli core list
+          arduino-cli lib list
+      - name: Build active sketch
+        run: |
+          sketch="$GITHUB_WORKSPACE/${{ matrix.sketch }}"
+          arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' --warnings default \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
+            --build-property "compiler.c.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
+            --build-path "$RUNNER_TEMP/active-build" "$sketch" 2>&1 | tee compile.log
+      - name: Retain build evidence (not an install or release)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: active-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            compile.log
+            ${{ runner.temp }}/active-build/*.bin
+            ${{ runner.temp }}/active-build/*.elf
+            ${{ runner.temp }}/active-build/build.options.json
+            ${{ runner.temp }}/active-build/partitions.csv
+          if-no-files-found: warn
