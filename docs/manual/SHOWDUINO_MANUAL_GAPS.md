@@ -1,5 +1,9 @@
 # Showduino Commercial Manual — Verification Gaps
 
+> **1 November 2026 bench follow-up:** The Director **CLEAR EMERGENCY** button has been observed stuck on **AWAITING STAGE**, with the Emergency state remaining latched until reboot on a failed attempt. Navigating away from **Cue Library** can also leave its old screen content visible. Temporary normal operation during a later test does **not** establish either defect is resolved. `main` at `0e3d0786` adds four generated Comms bundle/manifest commits since 31 October, not an active firmware fix. Keep Emergency clearance and Director stability blocked for physical acceptance; [see current status and safe diagnostics](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
+> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
 **Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
 
 **Manual baseline date:** 20 October 2026  
@@ -28,6 +32,14 @@ Status labels used in this revision:
 - **PARTIALLY RESOLVED**
 - **RESOLVED** (software) — may still carry HARDWARE VALIDATION REQUIRED
 - **SUPERSEDED**
+
+---
+
+## 30 October 2026 repository reconciliation
+
+Documentation PRs #41, #44 and #45 are now merged into `main`. Compared with the 20 October firmware source baseline, current `main` (`3d4790961e`) has no non-generated active firmware implementation changes; documentation and the regenerated S3 embedded WebUI header/manifest changed. The owner-reported first combined audio/visual playback on 29 October stands, but formal complete-scenario and mid-show Emergency acceptance remain open.
+
+**Draft-fix status correction:** PR #35 (SHDO parsing) and PR #37 (WAV buffering) were closed **without merging** on 30 October. PR #36 remains open/unmerged against the #35 branch; PR #29's acceptance fixture and PR #33's Emergency persistence remain unmerged. The dated 24 October gap entries below are historical and should not be read as today's PR states. The owner's clean WAV playback is a bench observation, not proof that #37 was merged or flashed. See [current finish-line reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
 
 ---
 

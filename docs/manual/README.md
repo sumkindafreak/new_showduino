@@ -1,11 +1,13 @@
 # Showduino operating documentation
 
+> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
 > **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
 
 Revision 0.3-RC · reviewed 20 October 2026. Start here and match the documented baseline to the firmware installed on your unit.
 
 - [Quick Start](SHOWDUINO_QUICK_START.md) — power, network, Studio Cue Library, create/export/persist/load/start, Emergency.
-- [Studio Cue Library Guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) — searchable timeline presets, drag/drop, Inspector routing, compatibility and Director distinction.- [Quick Start](SHOWDUINO_QUICK_START.md) — power, network, create/export/persist/load/start, Emergency.
+- [Studio Cue Library Guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) — searchable timeline presets, drag/drop, Inspector routing, compatibility and Director distinction.
 - [User Manual](SHOWDUINO_USER_MANUAL.md) — complete RC operating reference and boundaries.
 - [Director Operator Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) — everyday touchscreen operation.
 - [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) — repeat before guest operation.

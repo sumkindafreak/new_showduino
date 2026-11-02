@@ -1,6 +1,10 @@
 # Showduino finish-line audit — 24 October 2026
 
+> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
 **Target:** one complete, physically observed, non-DMX show followed by a mid-show Emergency repeat. **Status: FIRST COMBINED AUDIO/VISUAL PLAYBACK ACHIEVED (29 OCT); FORMAL COMPLETE-SCENARIO + EMERGENCY ACCEPTANCE STILL OPEN.**
+
+> **Repository status correction, 30 October 2026:** This is a chronological audit. Documentation PR #41 was **merged to `main`** on 30 October, followed by first-show reconciliation PR #44 and Cue Library guide PR #45. Statements below that a change is "proposed on PR #41" describe the state when each dated note was written. For the current source-vs-bench reconciliation, use [30 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). No additional full-scenario or Emergency hardware acceptance is claimed.
 
 ## 29 October 2026 follow-up — FIRST REAL AUDIO/VISUAL SHOW PLAYBACK
 
