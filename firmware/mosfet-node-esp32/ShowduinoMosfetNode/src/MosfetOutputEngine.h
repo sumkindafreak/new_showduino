@@ -14,5 +14,7 @@ bool mosfetOutputEnginePulse(uint8_t ch1to4, uint8_t level, uint32_t ms);
 bool mosfetOutputEngineFade(uint8_t ch1to4, uint8_t level, uint32_t ms);
 void mosfetOutputEngineLevels(uint8_t out[4]);
 void mosfetOutputEngineSafeGpioFirst();
+void mosfetOutputEnginePauseForControlLoss();
+void mosfetOutputEngineResumeOnGrant();
 
 #endif

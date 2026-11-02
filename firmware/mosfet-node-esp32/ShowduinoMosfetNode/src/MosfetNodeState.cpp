@@ -17,13 +17,13 @@ void mosfetNodeStateLoop() {
   showduino_owner_apply(&sOwner, SHOWDUINO_OWNER_EV_TICK, now,
                         SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
   if (sOwner.lostAuthority) {
-    mosfetOutputEngineAllOff("AUTHORITY_LOST");
+    mosfetOutputEnginePauseForControlLoss();
     sOwner.lostAuthority = 0;
     sEnteredShowEdge = false;
   }
   if (before != SHOWDUINO_OWNER_SHOW_CONTROLLED &&
       sOwner.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED) {
-    mosfetOutputEngineAllOff("FIRST_GRANT");
+    mosfetOutputEngineResumeOnGrant();
     sEnteredShowEdge = true;
   }
   sState = showduino_mosfet_state_from_owner(sOwner.mode);
@@ -38,7 +38,7 @@ void mosfetNodeStateOnGrant(uint32_t nowMs) {
                         SHOWDUINO_OWNER_DISCOVER_MS, SHOWDUINO_OWNER_KEEPALIVE_MS);
   if (before != SHOWDUINO_OWNER_SHOW_CONTROLLED &&
       sOwner.mode == SHOWDUINO_OWNER_SHOW_CONTROLLED) {
-    mosfetOutputEngineAllOff("FIRST_GRANT");
+    mosfetOutputEngineResumeOnGrant();
     sEnteredShowEdge = true;
   } else {
     showduino_owner_apply(&sOwner, SHOWDUINO_OWNER_EV_KEEP, nowMs,

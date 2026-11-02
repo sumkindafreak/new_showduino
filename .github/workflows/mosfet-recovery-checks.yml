@@ -1,0 +1,31 @@
+name: MOSFET reconnect and steady recovery
+on:
+  pull_request:
+    paths:
+      - 'firmware/mosfet-node-esp32/**'
+      - 'firmware/stage-engine-p4/ShowduinoStageEngineP4/src/nodes/MosfetNodeLink.cpp'
+      - 'protocol/showduino_mosfet*'
+      - 'protocol/showduino_node_ownership.h'
+      - 'tools/mosfet-recovery-tests/**'
+      - '.github/workflows/mosfet-recovery-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reproduce old drop, test actual node and P4 recovery
+        run: python3 tools/mosfet-recovery-tests/run_tests.py
+      - name: Memory and undefined behavior checks
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: python3 tools/mosfet-recovery-tests/run_tests.py --sanitize
+      - name: Existing MOSFET engine, policy and indicator tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Iprotocol tools/mosfet-node-tests/test_mosfet_node.cpp -o "$RUNNER_TEMP/mosfet-tests"
+          "$RUNNER_TEMP/mosfet-tests"
