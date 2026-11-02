@@ -469,7 +469,8 @@ void DirectorUnlockScreen::finish(bool emergency) {
    * lv_screen_active() until the next timer tick, so a delete at this
    * point destroyed the outgoing screen and froze the last READY frame
    * on the RGB panel. The desk load owns the object (immediate swap). */
-  if (boot && lv_obj_is_valid(boot) && lv_screen_active() == boot) {
+  // The completion callback may delete boot; compare its address only.
+  if (boot && lv_screen_active() == boot) {
     Serial.println("[BootUI] WARN: desk did not replace boot screen");
   }
 }

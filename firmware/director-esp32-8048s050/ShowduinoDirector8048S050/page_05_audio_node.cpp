@@ -3,10 +3,12 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DisplayTypes.h"
+#include "../../../protocol/showduino_audio_node.h"
 #include "DirectorUiText.h"
 
 static const int16_t kHeaderY = (int16_t)OS_TITLE_Y;
@@ -40,7 +42,23 @@ struct Page05Ui {
   lv_obj_t *btn_select;
   lv_obj_t *btn_test;
   lv_obj_t *btn_details;
+  lv_obj_t *btn_ambience;
+  lv_obj_t *ambience;
+  lv_obj_t *amb_state;
+  lv_obj_t *amb_path;
+  lv_obj_t *amb_volume;
+  lv_obj_t *amb_feedback;
+  lv_obj_t *btn_amb_play;
+  lv_obj_t *btn_amb_loop;
+  lv_obj_t *btn_amb_stop;
+  lv_obj_t *btn_amb_vol_dn;
+  lv_obj_t *btn_amb_vol_up;
+  lv_obj_t *btn_amb_status;
+  lv_obj_t *btn_amb_close;
   lv_obj_t *mic;
+  lv_obj_t *mic_controls;
+  lv_obj_t *btn_mic_controls;
+  lv_obj_t *mic_close;
   lv_obj_t *mic_title;
   lv_obj_t *mic_ready;
   lv_obj_t *mic_level;
@@ -59,8 +77,11 @@ struct Page05Ui {
   lv_obj_t *details_close;
   lv_obj_t *select;
   lv_obj_t *select_list;
+  lv_obj_t *select_hint;
   lv_obj_t *inv_btns[SHOWDUINO_AUDIO_INV_WIRE_MAX];
   lv_obj_t *btn_inv_next;
+  lv_obj_t *btn_inv_prev;
+  lv_obj_t *btn_inv_refresh;
   lv_obj_t *select_close;
 };
 
@@ -68,7 +89,19 @@ static Page05Ui s;
 static page05_command_fn s_cb = nullptr;
 static bool s_active = false;
 static DirectorAudioNodeControl s_model;
-static char s_asset_cmds[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
+static void asset_picker_changed(lv_event_t *e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED && lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+  const unsigned index = lv_dropdown_get_selected(s.select_list);
+  if (!s_model.online || index >= s_model.inventoryCount || !s_model.inventory[index][0]) return;
+  char command[SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
+  snprintf(command, sizeof(command), "PAGE05:ASSET:%s", s_model.inventory[index]);
+  lv_dropdown_close(s.select_list);
+  if (s_cb) s_cb(command);
+}
+static char s_amb_state[12] = "IDLE";
+static char s_amb_path[96] = PAGE05_AMBIENCE_DEFAULT_PATH;
+static uint8_t s_amb_volume = 80;
+static char s_amb_feedback[48] = "";
 
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
@@ -177,6 +210,7 @@ static void apply_enable() {
   set_en(s.btn_test, canTest);
   set_en(s.btn_details, s_model.seen || on);
   const bool canSound = on && director_audio_has_cap(&s_model, "MIC");
+  set_en(s.btn_mic_controls, canSound);
   set_en(s.btn_cal, canSound);
   set_en(s.btn_snd, canSound);
   set_en(s.btn_th_dn, canSound);
@@ -328,23 +362,67 @@ static void paint() {
     lv_label_set_text(s.details_body, body);
   }
 
-  for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-    if (!s.inv_btns[i]) continue;
-    if (s_model.inventory[i][0]) {
-      lv_obj_clear_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_t *lab = lv_obj_get_child(s.inv_btns[i], 0);
-      if (lab) lv_label_set_text(lab, s_model.inventory[i]);
-      snprintf(s_asset_cmds[i], sizeof(s_asset_cmds[i]), "PAGE05:ASSET:%s",
-               s_model.inventory[i]);
-      lv_obj_set_user_data(s.inv_btns[i], (void *)s_asset_cmds[i]);
-    } else {
-      lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
+  if (s.select_list) {
+    // Do not replace an open list on every telemetry update.
+    static char options[DIRECTOR_AUDIO_ASSETS_PER_SCREEN * (SHOWDUINO_AUDIO_INV_NAME_MAX + 2)] = {};
+    options[0] = 0;
+    unsigned selected = 0;
+    for (unsigned i = 0; i < s_model.inventoryCount; ++i) {
+      if (i) strcat(options, "\n");
+      strcat(options, s_model.inventory[i]);
+      if (!strcmp(s_model.selectedAsset, s_model.inventory[i])) selected = i;
     }
+    const char *shown = options[0] ? options : (s_model.inventoryLoading ? "Loading assets..." : "No assets found");
+    if (strcmp(lv_dropdown_get_options(s.select_list), shown)) {
+      lv_dropdown_set_options(s.select_list, shown);
+      lv_dropdown_set_selected(s.select_list, selected);
+    }
+    ShowduinoOsTheme::setEnabled(s.select_list,
+        s_model.online && s_model.inventoryCount > 0);
   }
+  if (s.select_hint) {
+    if (!s_model.online) snprintf(line, sizeof(line), "Audio Node offline");
+    else if (s_model.inventoryLoading) snprintf(line, sizeof(line), "Loading assets... Refresh to retry");
+    else if (!s_model.inventoryCount) snprintf(line, sizeof(line), "No assets reported. Tap Refresh to rescan.");
+    else snprintf(line, sizeof(line), "Assets %u-%u of %u",
+        (unsigned)(s_model.inventoryPage + 1),
+        (unsigned)(s_model.inventoryPage + s_model.inventoryCount),
+        (unsigned)s_model.inventoryTotal);
+    lv_label_set_text(s.select_hint, line);
+  }
+  if (s.btn_inv_prev) ShowduinoOsTheme::setEnabled(s.btn_inv_prev,
+      s_model.online && !s_model.inventoryLoading && s_model.inventoryPage > 0);
   if (s.btn_inv_next) {
     ShowduinoOsTheme::setEnabled(s.btn_inv_next,
-        s_model.inventoryTotal > (uint16_t)((s_model.inventoryPage + 1) * SHOWDUINO_AUDIO_INV_WIRE_MAX));
+        s_model.online && !s_model.inventoryLoading && s_model.inventoryTotal >
+        (uint32_t)s_model.inventoryPage + DIRECTOR_AUDIO_ASSETS_PER_SCREEN);
   }
+
+  if (s.amb_state) {
+    snprintf(line, sizeof(line), "State     %s", s_amb_state[0] ? s_amb_state : "UNKNOWN");
+    lv_label_set_text(s.amb_state, line);
+  }
+  if (s.amb_path) {
+    snprintf(line, sizeof(line), "Asset     %s", s_amb_path[0] ? s_amb_path : PAGE05_AMBIENCE_DEFAULT_PATH);
+    lv_label_set_text(s.amb_path, line);
+  }
+  if (s.amb_volume) {
+    snprintf(line, sizeof(line), "Volume    %u%%", (unsigned)s_amb_volume);
+    lv_label_set_text(s.amb_volume, line);
+  }
+  if (s.amb_feedback) {
+    lv_label_set_text(s.amb_feedback, s_amb_feedback);
+    lv_obj_set_style_text_color(s.amb_feedback,
+        lv_color_hex(!strncmp(s_amb_feedback, "ERROR", 5) ? ShowduinoPalette::Danger
+                                                          : ShowduinoPalette::Muted), 0);
+  }
+  const bool ambienceSafe = !s_model.emergency;
+  set_en(s.btn_amb_play, ambienceSafe);
+  set_en(s.btn_amb_loop, ambienceSafe);
+  set_en(s.btn_amb_stop, true);
+  set_en(s.btn_amb_vol_dn, ambienceSafe);
+  set_en(s.btn_amb_vol_up, ambienceSafe);
+  set_en(s.btn_amb_status, true);
 
   apply_enable();
 }
@@ -410,30 +488,36 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.chip_play = make_chip(s.header, 660, 8, &s.chip_play_lab);
 
   const int16_t bodyY = (int16_t)(kHeaderY + kHeaderH + OS_GAP);
+  const int16_t actionRow2H = 44;
+  const int16_t actionRow1H = 48;
+  const int16_t by2 = (int16_t)(OS_DOCK_Y - OS_GAP - actionRow2H);
+  const int16_t by = (int16_t)(by2 - OS_GAP - actionRow1H);
+  const int16_t statusH = 100;
+  const int16_t micY = (int16_t)(bodyY + statusH + OS_GAP);
+  const int16_t micH = (int16_t)(by - OS_GAP - micY);
   s.status = lv_obj_create(parent);
   lv_obj_remove_style_all(s.status);
   lv_obj_set_pos(s.status, 20, bodyY);
-  lv_obj_set_size(s.status, 760, 108);
+  lv_obj_set_size(s.status, 760, statusH);
   ShowduinoOsTheme::styleRaisedCard(s.status, true);
   ShowduinoOsTheme::decorateCard(s.status, true);
   lv_obj_clear_flag(s.status, LV_OBJ_FLAG_SCROLLABLE);
   showduino_theme_register(s.status, SHOWDUINO_THEME_ROLE_BORDER);
 
-  s.name = make_stat(s.status, 16, 16);
-  s.state = make_stat(s.status, 16, 40);
-  s.asset = make_stat(s.status, 16, 64);
-  s.volume = make_stat(s.status, 400, 16);
-  s.storage = make_stat(s.status, 400, 40);
-  s.codec = make_stat(s.status, 400, 64);
-  s.feedback = make_stat(s.status, 16, 80);
+  s.name = make_stat(s.status, 16, 8);
+  s.state = make_stat(s.status, 16, 30);
+  s.asset = make_stat(s.status, 16, 52);
+  s.volume = make_stat(s.status, 400, 8);
+  s.storage = make_stat(s.status, 400, 30);
+  s.codec = make_stat(s.status, 400, 52);
+  s.feedback = make_stat(s.status, 16, 74);
   lv_obj_set_width(s.feedback, 720);
   lv_obj_set_style_text_color(s.feedback, lv_color_hex(ShowduinoPalette::Muted), 0);
 
-  const int16_t micY = (int16_t)(bodyY + 116);
   s.mic = lv_obj_create(parent);
   lv_obj_remove_style_all(s.mic);
   lv_obj_set_pos(s.mic, 20, micY);
-  lv_obj_set_size(s.mic, 760, 92);
+  lv_obj_set_size(s.mic, 760, micH);
   ShowduinoOsTheme::styleRaisedCard(s.mic, true);
   ShowduinoOsTheme::decorateCard(s.mic, true);
   lv_obj_clear_flag(s.mic, LV_OBJ_FLAG_SCROLLABLE);
@@ -457,26 +541,40 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   s.mic_trig = make_stat(s.mic, 400, 8);
   s.mic_last = make_stat(s.mic, 400, 48);
 
-  const int16_t by = (int16_t)(micY + 100);
   s.btn_play = make_btn(parent, "PLAY", 20, by, 140, 48, PAGE05_CMD_PLAY, false);
   s.btn_loop = make_btn(parent, "LOOP", 172, by, 140, 48, PAGE05_CMD_LOOP, false);
   s.btn_pause = make_btn(parent, "PAUSE", 324, by, 140, 48, PAGE05_CMD_PAUSE, false);
   s.btn_resume = make_btn(parent, "RESUME", 476, by, 140, 48, PAGE05_CMD_RESUME, false);
   s.btn_stop = make_btn(parent, "STOP", 628, by, 132, 48, PAGE05_CMD_STOP, true);
 
-  const int16_t by2 = (int16_t)(by + 56);
   s.btn_vol_dn = make_btn(parent, "VOL -", 20, by2, 100, 44, PAGE05_CMD_VOL_DOWN, false);
   s.btn_vol_up = make_btn(parent, "VOL +", 128, by2, 100, 44, PAGE05_CMD_VOL_UP, false);
   s.btn_select = make_btn(parent, "SELECT ASSET", 236, by2, 180, 44, PAGE05_CMD_SELECT, false);
   s.btn_test = make_btn(parent, "TEST", 424, by2, 120, 44, PAGE05_CMD_TEST, false);
-  s.btn_details = make_btn(parent, "DETAILS", 552, by2, 208, 44, PAGE05_CMD_DETAILS, false);
+  s.btn_details = make_btn(parent, "DETAILS", 552, by2, 96, 44, PAGE05_CMD_DETAILS, false);
+  s.btn_ambience = make_btn(parent, "AMBIENCE", 656, by2, 104, 44, PAGE05_CMD_AMBIENCE, false);
 
-  const int16_t by3 = (int16_t)(by2 + 48);
-  s.btn_cal = make_btn(parent, "CALIBRATE", 20, by3, 140, 40, PAGE05_CMD_CALIBRATE, false);
-  s.btn_snd = make_btn(parent, "ENABLE", 172, by3, 120, 40, PAGE05_CMD_SND_EN, false);
-  s.btn_th_dn = make_btn(parent, "TH -", 304, by3, 80, 40, PAGE05_CMD_TH_DN, false);
-  s.btn_th_up = make_btn(parent, "TH +", 396, by3, 80, 40, PAGE05_CMD_TH_UP, false);
-  s.btn_snd_test = make_btn(parent, "TEST TRIGGER", 488, by3, 272, 40, PAGE05_CMD_SND_TEST, false);
+  lv_obj_set_width(s.mic_trig, 220);
+  s.btn_mic_controls = make_btn(s.mic, "CONTROLS", 636, 8, 108, 40, PAGE05_CMD_MIC, false);
+  s.mic_controls = lv_obj_create(parent);
+  lv_obj_remove_style_all(s.mic_controls);
+  lv_obj_set_pos(s.mic_controls, 80, 80);
+  const int16_t micPopupH = (int16_t)(OS_DOCK_Y - OS_GAP - 80);
+  lv_obj_set_size(s.mic_controls, 640, micPopupH);
+  ShowduinoOsTheme::styleRaisedCard(s.mic_controls, true);
+  lv_obj_clear_flag(s.mic_controls, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t *mt = lv_label_create(s.mic_controls);
+  lv_label_set_text(mt, "MIC / INPUT CONTROLS");
+  lv_obj_set_pos(mt, 16, 16);
+  lv_obj_set_style_text_color(mt, lv_color_hex(ShowduinoPalette::Accent), 0);
+  const int16_t by3 = 64;
+  s.btn_cal = make_btn(s.mic_controls, "CALIBRATE", 20, by3, 280, 48, PAGE05_CMD_CALIBRATE, false);
+  s.btn_snd = make_btn(s.mic_controls, "ENABLE", 320, by3, 300, 48, PAGE05_CMD_SND_EN, false);
+  s.btn_th_dn = make_btn(s.mic_controls, "TH -", 20, by3 + 56, 136, 48, PAGE05_CMD_TH_DN, false);
+  s.btn_th_up = make_btn(s.mic_controls, "TH +", 164, by3 + 56, 136, 48, PAGE05_CMD_TH_UP, false);
+  s.btn_snd_test = make_btn(s.mic_controls, "TEST TRIGGER", 320, by3 + 56, 300, 48, PAGE05_CMD_SND_TEST, false);
+  s.mic_close = make_btn(s.mic_controls, "CLOSE", 240, micPopupH - OS_GAP - 44, 160, 44, PAGE05_CMD_CLOSE, false);
 
   s.details = lv_obj_create(parent);
   lv_obj_remove_style_all(s.details);
@@ -497,10 +595,42 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_obj_set_style_text_color(s.details_body, lv_color_hex(ShowduinoPalette::Text), 0);
   s.details_close = make_btn(s.details, "CLOSE", 240, 268, 160, 40, PAGE05_CMD_CLOSE, false);
 
+  s.ambience = lv_obj_create(parent);
+  lv_obj_remove_style_all(s.ambience);
+  lv_obj_set_pos(s.ambience, 70, 74);
+  lv_obj_set_size(s.ambience, 660, 312);
+  ShowduinoOsTheme::styleRaisedCard(s.ambience, true);
+  ShowduinoOsTheme::decorateCard(s.ambience, true);
+  lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t *at = lv_label_create(s.ambience);
+  lv_label_set_text(at, "P4 AMBIENCE  |  PCM5102A");
+  lv_obj_set_pos(at, 16, 16);
+  lv_obj_set_style_text_color(at, lv_color_hex(ShowduinoPalette::Accent), 0);
+  lv_obj_t *ah = lv_label_create(s.ambience);
+  lv_label_set_text(ah, "Finish-line asset: /showduino/audio/ambience.wav");
+  lv_obj_set_pos(ah, 16, 40);
+  lv_obj_set_style_text_color(ah, lv_color_hex(ShowduinoPalette::Muted), 0);
+  s.amb_state = make_stat(s.ambience, 16, 72);
+  s.amb_path = make_stat(s.ambience, 16, 96);
+  lv_obj_set_width(s.amb_path, 620);
+  s.amb_volume = make_stat(s.ambience, 16, 120);
+  s.amb_feedback = make_stat(s.ambience, 16, 144);
+  lv_obj_set_width(s.amb_feedback, 620);
+  s.btn_amb_play = make_btn(s.ambience, "PLAY", 16, 178, 116, 44, PAGE05_CMD_AMB_PLAY, false);
+  s.btn_amb_loop = make_btn(s.ambience, "LOOP", 140, 178, 116, 44, PAGE05_CMD_AMB_LOOP, false);
+  s.btn_amb_stop = make_btn(s.ambience, "STOP", 264, 178, 116, 44, PAGE05_CMD_AMB_STOP, true);
+  s.btn_amb_vol_dn = make_btn(s.ambience, "VOL -", 388, 178, 116, 44, PAGE05_CMD_AMB_VOL_DN, false);
+  s.btn_amb_vol_up = make_btn(s.ambience, "VOL +", 512, 178, 116, 44, PAGE05_CMD_AMB_VOL_UP, false);
+  s.btn_amb_status = make_btn(s.ambience, "STATUS", 16, 234, 150, 44, PAGE05_CMD_AMB_STATUS, false);
+  s.btn_amb_close = make_btn(s.ambience, "CLOSE", 478, 234, 150, 44, PAGE05_CMD_AMB_CLOSE, false);
+
   s.select = lv_obj_create(parent);
   lv_obj_remove_style_all(s.select);
   lv_obj_set_pos(s.select, 140, 80);
-  lv_obj_set_size(s.select, 520, 280);
+  const int16_t selectH = (int16_t)(OS_DOCK_Y - OS_GAP - 80);
+  const int16_t selectFooterY = (int16_t)(selectH - OS_GAP - 44);
+  lv_obj_set_size(s.select, 520, selectH);
+  lv_obj_clear_flag(s.select, LV_OBJ_FLAG_SCROLLABLE);
   ShowduinoOsTheme::styleRaisedCard(s.select, true);
   ShowduinoOsTheme::decorateCard(s.select, true);
   lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
@@ -509,16 +639,24 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_obj_set_pos(st, 16, 16);
   lv_obj_set_style_text_color(st, lv_color_hex(ShowduinoPalette::Accent), 0);
   lv_obj_t *hint = lv_label_create(s.select);
+  s.select_hint = hint;
   lv_label_set_text(hint, "Library reported by the Audio Node through the P4.");
   lv_obj_set_pos(hint, 16, 36);
   lv_obj_set_style_text_color(hint, lv_color_hex(ShowduinoPalette::Muted), 0);
-  for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-    s.inv_btns[i] = make_btn(s.select, "-", 20, (int16_t)(64 + i * 48), 480, 44,
-                             s_asset_cmds[i], false);
-    lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
-  }
-  s.btn_inv_next = make_btn(s.select, "NEXT PAGE", 20, 214, 160, 44, PAGE05_CMD_INV_NEXT, false);
-  s.select_close = make_btn(s.select, "CLOSE", 340, 214, 160, 44, PAGE05_CMD_CLOSE, false);
+  s.select_list = lv_dropdown_create(s.select);
+  lv_obj_set_pos(s.select_list, 20, 72);
+  lv_obj_set_size(s.select_list, 480, 48);
+  lv_dropdown_set_options(s.select_list, "Loading assets...");
+  lv_obj_add_event_cb(s.select_list, asset_picker_changed, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_t *use_asset = lv_button_create(s.select);
+  lv_obj_set_pos(use_asset, 20, 136);
+  lv_obj_set_size(use_asset, 480, 44);
+  lv_obj_t *use_label = lv_label_create(use_asset);
+  lv_label_set_text(use_label, "USE SELECTED ASSET");
+  lv_obj_center(use_label);
+  lv_obj_add_event_cb(use_asset, asset_picker_changed, LV_EVENT_CLICKED, nullptr);
+  s.btn_inv_refresh = make_btn(s.select, "REFRESH", 20, selectFooterY, 232, 44, PAGE05_CMD_INV_REFRESH, false);
+  s.select_close = make_btn(s.select, "CLOSE", 268, selectFooterY, 232, 44, PAGE05_CMD_CLOSE, false);
 
   page_05_audio_node_apply_theme();
   s_active = true;
@@ -544,6 +682,16 @@ void page_05_audio_node_destroy(void) {
   showduino_theme_unregister(s.btn_select);
   showduino_theme_unregister(s.btn_test);
   showduino_theme_unregister(s.btn_details);
+  showduino_theme_unregister(s.btn_mic_controls);
+  showduino_theme_unregister(s.mic_close);
+  showduino_theme_unregister(s.btn_ambience);
+  showduino_theme_unregister(s.btn_amb_play);
+  showduino_theme_unregister(s.btn_amb_loop);
+  showduino_theme_unregister(s.btn_amb_stop);
+  showduino_theme_unregister(s.btn_amb_vol_dn);
+  showduino_theme_unregister(s.btn_amb_vol_up);
+  showduino_theme_unregister(s.btn_amb_status);
+  showduino_theme_unregister(s.btn_amb_close);
   showduino_theme_unregister(s.btn_cal);
   showduino_theme_unregister(s.btn_snd);
   showduino_theme_unregister(s.btn_th_dn);
@@ -554,6 +702,8 @@ void page_05_audio_node_destroy(void) {
     showduino_theme_unregister(s.inv_btns[i]);
   }
   showduino_theme_unregister(s.btn_inv_next);
+  showduino_theme_unregister(s.btn_inv_prev);
+  showduino_theme_unregister(s.btn_inv_refresh);
   showduino_theme_unregister(s.select_close);
   if (s.root) lv_obj_clean(s.root);
   memset(&s, 0, sizeof(s));
@@ -571,6 +721,7 @@ void page_05_audio_node_apply_theme(void) {
     lv_obj_set_style_border_color(s.btn_back, accent, LV_STATE_PRESSED);
   }
   if (s.status) lv_obj_set_style_border_color(s.status, accent, 0);
+  if (s.ambience) lv_obj_set_style_border_color(s.ambience, accent, 0);
 }
 
 void page_05_audio_node_set_model(const DirectorAudioNodeControl *model) {
@@ -582,21 +733,93 @@ void page_05_audio_node_set_model(const DirectorAudioNodeControl *model) {
   paint();
 }
 
-void page_05_audio_node_show_details(bool show) {
-  if (!s.details) return;
-  if (show) lv_obj_clear_flag(s.details, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+void page_05_audio_node_show_mic(bool show) {
+  if (s.ambience) lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  if (!s.mic_controls) return;
+  if (show) lv_obj_clear_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
   if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   paint();
 }
 
+void page_05_audio_node_show_details(bool show) {
+  if (s.mic_controls) lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  if (!s.details) return;
+  if (show) lv_obj_clear_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
+  if (s.ambience) lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  paint();
+}
+
 void page_05_audio_node_show_select(bool show) {
+  if (s.mic_controls) lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
   if (!s.select) return;
   if (show) lv_obj_clear_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
   if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.ambience) lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
   paint();
 }
+
+void page_05_audio_node_show_ambience(bool show) {
+  if (s.mic_controls) lv_obj_add_flag(s.mic_controls, LV_OBJ_FLAG_HIDDEN);
+  if (!s.ambience) return;
+  if (show) lv_obj_clear_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(s.ambience, LV_OBJ_FLAG_HIDDEN);
+  if (s.details) lv_obj_add_flag(s.details, LV_OBJ_FLAG_HIDDEN);
+  if (s.select) lv_obj_add_flag(s.select, LV_OBJ_FLAG_HIDDEN);
+  paint();
+}
+
+void page_05_audio_node_apply_ambience_line(const char *line) {
+  if (!line || !line[0]) return;
+  static const char *kStatus = "AMBIENCE:STATUS:";
+  static const char *kOk = "OK:AMBIENCE:";
+  static const char *kErr = "ERR:AMBIENCE:";
+  if (!strncmp(line, kStatus, strlen(kStatus))) {
+    const char *p = line + strlen(kStatus);
+    const char *sep = strchr(p, ':');
+    const char *vol = strstr(p, ":VOL=");
+    if (sep) {
+      size_t n = (size_t)(sep - p);
+      if (n >= sizeof(s_amb_state)) n = sizeof(s_amb_state) - 1;
+      memcpy(s_amb_state, p, n);
+      s_amb_state[n] = 0;
+      if (vol) {
+        // Current P4 status has no path between state and VOL.
+        size_t pn = vol > sep + 1 ? (size_t)(vol - (sep + 1)) : 0;
+        if (pn >= sizeof(s_amb_path)) pn = sizeof(s_amb_path) - 1;
+        if (pn) {
+          memcpy(s_amb_path, sep + 1, pn);
+          s_amb_path[pn] = 0;
+        } else {
+          strncpy(s_amb_path, PAGE05_AMBIENCE_DEFAULT_PATH, sizeof(s_amb_path) - 1);
+        }
+        int v = atoi(vol + 5);
+        if (v < 0) v = 0;
+        if (v > 100) v = 100;
+        s_amb_volume = (uint8_t)v;
+      }
+    }
+    strncpy(s_amb_feedback, "STATUS CONFIRMED", sizeof(s_amb_feedback) - 1);
+  } else if (!strncmp(line, kErr, strlen(kErr))) {
+    snprintf(s_amb_feedback, sizeof(s_amb_feedback), "ERROR: %.36s", line + strlen(kErr));
+  } else if (!strncmp(line, kOk, strlen(kOk))) {
+    const char *tail = line + strlen(kOk);
+    if (!strncmp(tail, "VOLUME:", 7)) {
+      int v = atoi(tail + 7);
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      s_amb_volume = (uint8_t)v;
+    }
+    snprintf(s_amb_feedback, sizeof(s_amb_feedback), "%.44s", tail);
+  }
+  paint();
+}
+
+uint8_t page_05_audio_node_ambience_volume(void) { return s_amb_volume; }
 
 const char *page_05_audio_node_selected_asset(void) {
   return s_model.selectedAsset[0] ? s_model.selectedAsset : "system-test.wav";
