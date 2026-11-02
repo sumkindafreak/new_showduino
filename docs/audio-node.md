@@ -1,5 +1,7 @@
 # Showduino Audio Node
 
+> **2 November 2026 source distinction:** The `main` firmware/version label below is **not** a description of the owner's complete flashed local Audio Node. The preserved local baseline in unmerged [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51) includes WAV/MP3, buffering, volume and separate GPIO5 status/GPIO22 show pixel outputs. Draft [#56](https://github.com/sumkindafreak/new_showduino/pull/56) tests the actual native RMT output and [#57](https://github.com/sumkindafreak/new_showduino/pull/57) extracts an RGB/GRB boundary while retaining native transport; neither proves physical FastLED output. Keep exact installed firmware/settings and audio continuity as bench evidence, not inferred from a PR. [Finish-line status](manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
+
 **Status:** IMPLEMENTED / HARDWARE TEST REQUIRED  
 **Current `main` firmware source:** `0.4.3` · protocol `1.3` (earlier bring-up sections originated at 0.4.0; confirm installed version)  
 **Board:** Ai-Thinker ESP32-Audio-Kit **V2.2 A161** · ESP32-A1S · **ES8388**  
