@@ -16,5 +16,8 @@ void mosfetOutputEngineLevels(uint8_t out[4]);
 void mosfetOutputEngineSafeGpioFirst();
 void mosfetOutputEnginePauseForControlLoss();
 void mosfetOutputEngineResumeOnGrant();
+// Shared task lock for atomic owner/output transitions inside this node.
+bool mosfetOutputStateTake();
+void mosfetOutputStateGive();
 
 #endif

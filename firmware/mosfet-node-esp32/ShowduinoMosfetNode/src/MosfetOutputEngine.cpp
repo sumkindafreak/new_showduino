@@ -14,12 +14,18 @@ static const int kPins[4] = {
 };
 static bool sPwmReady = false;
 static SemaphoreHandle_t sEngineMutex = nullptr;
+bool mosfetOutputStateTake() {
+  return sEngineMutex && xSemaphoreTakeRecursive(sEngineMutex, portMAX_DELAY) == pdTRUE;
+}
+void mosfetOutputStateGive() { xSemaphoreGiveRecursive(sEngineMutex); }
 // ESP-NOW callbacks and loop() may run on different tasks. Keep output state,
 // recovery snapshots and flash commits ordered as one operation.
 class EngineLock {
  public:
-  EngineLock() : locked_(sEngineMutex && xSemaphoreTakeRecursive(sEngineMutex, portMAX_DELAY) == pdTRUE) {}
-  ~EngineLock() { if (locked_) xSemaphoreGiveRecursive(sEngineMutex); }
+  EngineLock() : locked_(mosfetOutputStateTake()) {}
+  ~EngineLock() { if (locked_) mosfetOutputStateGive(); }
+  EngineLock(const EngineLock&) = delete;
+  EngineLock& operator=(const EngineLock&) = delete;
   explicit operator bool() const { return locked_; }
  private:
   bool locked_;
