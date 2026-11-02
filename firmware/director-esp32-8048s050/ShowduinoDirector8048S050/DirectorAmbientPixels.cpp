@@ -4,7 +4,15 @@
 
 #if SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_ENABLED
 
+#if SHOWDUINO_DIRECTOR_AMBIENT_USE_FASTLED
+#define SHOWDUINO_LED_USE_FASTLED 1
+#define SHOWDUINO_LED_GPIO SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN
+#include "../../shared-pixel/ShowduinoLedStrip.h"
+using AmbientStrip = ShowduinoLedStrip;
+#else
 #include <Adafruit_NeoPixel.h>
+using AmbientStrip = Adafruit_NeoPixel;
+#endif
 
 static const uint32_t kColAccent   = ShowduinoPalette::Accent;
 static const uint32_t kColAccentLo = ShowduinoPalette::AccentDark;
@@ -17,7 +25,7 @@ static const uint32_t kColGreen    = 0x00FF28;
 static const uint32_t kColWhite    = 0xFFFFFF;
 static const uint32_t kColMagenta  = 0xDC00B4;
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static AmbientStrip *sStrip = nullptr;
 static bool sReady = false;
 static bool sUserEnabled = true;
 static bool sHoldPresentation = true;
@@ -155,6 +163,7 @@ static void setMode(DirectorAmbientMode m, bool persistent, uint32_t fadeMs) {
   targetsForMode(m, &sTgtR, &sTgtG, &sTgtB, &lvl);
   (void)lvl;
   if (isEmergencyMode(m)) {
+    sLocatorActive = false;
     sCurR = sCurG = sCurB = 255;
     sTgtR = sTgtG = sTgtB = 255;
   }
@@ -306,15 +315,31 @@ void directorAmbientBegin() {
                 (unsigned)SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                 (unsigned)sBrightness);
 
-  sStrip = new Adafruit_NeoPixel(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
+#if SHOWDUINO_DIRECTOR_AMBIENT_USE_FASTLED
+  sStrip = new (std::nothrow) AmbientStrip(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
+                                         SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN,
+                                         NEO_GRB + NEO_KHZ800);
+#else
+  sStrip = new AmbientStrip(SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_COUNT,
                                  SHOWDUINO_DIRECTOR_AMBIENT_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
+#endif
   if (!sStrip) {
     Serial.println("[Ambient] alloc failed - ambient disabled");
     return;
   }
 
+#if SHOWDUINO_DIRECTOR_AMBIENT_USE_FASTLED
+  if (!sStrip->begin()) {
+    delete sStrip;
+    sStrip = nullptr;
+    Serial.println("[Ambient] FastLED initialization failed - ambient disabled");
+    return;
+  }
+  Serial.println("[Ambient] backend=FastLED evaluation (not bench accepted)");
+#else
   sStrip->begin();
+#endif
   sStrip->setBrightness(255);
   sStrip->clear();
   sStrip->show();
@@ -457,6 +482,7 @@ void directorAmbientSync(uint8_t linkState,
 }
 
 void directorAmbientStartLocator(uint32_t nowMs) {
+  if (isEmergencyMode(sMode)) return;
   const bool fresh = !sLocatorActive;
   sLocatorActive = true;
   sLocatorStartMs = nowMs;
@@ -477,7 +503,7 @@ void directorAmbientLoop(uint32_t nowMs) {
   if (!sReady || !sStrip) return;
   if ((nowMs - sLastFrameMs) < SHOWDUINO_DIRECTOR_AMBIENT_FRAME_MS) return;
   sLastFrameMs = nowMs;
-  if (sLocatorActive) {
+  if (sLocatorActive && !isEmergencyMode(sMode)) {
     renderLocator(nowMs);
     return;
   }
