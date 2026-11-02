@@ -2,6 +2,8 @@
 
 #include <string.h>
 #include <strings.h>
+#include <Preferences.h>
+#include "SystemSoundVolume.h"
 #include <Wire.h>
 #include "driver/i2s_std.h"
 #include "driver/gpio.h"
@@ -32,6 +34,7 @@
 #endif
 
 static constexpr uint8_t kVolumePercent = 80;
+static uint8_t sSystemVolume = 80;
 static constexpr uint32_t kErrorRetriggerMs = 2500;
 static constexpr uint32_t kDefaultRate = 48000;
 
@@ -679,6 +682,12 @@ static bool openSystemWav(SystemSound sound, bool looping) {
                 (unsigned long)sSampleRate,
                 (unsigned long)sDataSize);
 
+  // Always restore the dedicated level before unmuting a new sound.
+  if (!es8311SetVolume(systemSoundOutputVolume(sSystemVolume, sound == SystemSound::Emergency))) {
+    setStatusErr("system volume apply failed");
+    sFile.close();
+    return false;
+  }
   if (!armOutputPath(sSampleRate)) {
     sFile.close();
     return false;
@@ -790,6 +799,12 @@ static bool playInternal(SystemSound sound, bool safetyEmergency, bool testLoop)
 }
 
 bool stageAudioBegin() {
+  Preferences prefs;
+  if (prefs.begin("system-audio", true)) {
+    sSystemVolume = prefs.getUChar("volume", 80);
+    prefs.end();
+    if (sSystemVolume > 100) sSystemVolume = 80;
+  }
   memset(&sStatus, 0, sizeof(sStatus));
   sCurrent = SystemSound::None;
   sCurrentPri = 0;
@@ -1116,6 +1131,37 @@ bool stageAudioHandleCommand(const char *command, char *reply, size_t replyLen) 
   if (!command || !reply || replyLen == 0) return false;
   reply[0] = '\0';
 
+  if (strcmp(command, "AUDIO:SYSTEM:VOLUME?") == 0) {
+    snprintf(reply, replyLen, "AUDIO:SYSTEM:VOLUME:%u", (unsigned)sSystemVolume);
+    return true;
+  }
+  if (strncmp(command, "AUDIO:SYSTEM:VOLUME:", 20) == 0) {
+    uint8_t value;
+    if (!parseSystemSoundVolume(command + 20, &value)) {
+      snprintf(reply, replyLen, "ERR:AUDIO:SYSTEM:VOLUME:INVALID");
+      return true;
+    }
+    Preferences prefs;
+    if (!prefs.begin("system-audio", false)) {
+      snprintf(reply, replyLen, "ERR:AUDIO:SYSTEM:VOLUME:SAVE");
+      return true;
+    }
+    bool saved = prefs.putUChar("volume", value) == 1;
+    prefs.end();
+    if (!saved) {
+      snprintf(reply, replyLen, "ERR:AUDIO:SYSTEM:VOLUME:SAVE");
+      return true;
+    }
+    sSystemVolume = value;
+    // Neither a real emergency nor an emergency audio test can be muted here.
+    if (sHwInited && sCurrent != SystemSound::Emergency && !sSafetyEmergency &&
+        !es8311SetVolume(value)) {
+      snprintf(reply, replyLen, "ERR:AUDIO:SYSTEM:VOLUME:OUTPUT");
+      return true;
+    }
+    snprintf(reply, replyLen, "AUDIO:SYSTEM:VOLUME:%u", (unsigned)sSystemVolume);
+    return true;
+  }
   if (strcmp(command, "AUDIO:STATUS") == 0) {
     stageAudioPrintStatus();
     snprintf(reply, replyLen, "AUDIO:STATUS:%s", sStatus.healthName);

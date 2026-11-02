@@ -6,7 +6,7 @@
 enum class AudioPlayMode : uint8_t { Once = 0, Loop };
 
 bool audioPlaybackBegin();
-bool audioPlaybackStart(const char *absPath, AudioPlayMode mode);
+bool audioPlaybackStart(const char *absPath, AudioPlayMode mode, uint32_t repeatGapMs = 0);
 void audioPlaybackStop();
 bool audioPlaybackPause();
 bool audioPlaybackResume();
@@ -21,6 +21,10 @@ const char *audioPlaybackRel();
 uint32_t audioPlaybackPosition();
 uint32_t audioPlaybackDuration();
 uint32_t audioPlaybackUnderruns();
+/* Diagnostics: high SD read times and short I2S writes explain glitches. */
+uint32_t audioPlaybackMaxSdReadUs();
+uint32_t audioPlaybackMaxI2sWriteUs();
+uint32_t audioPlaybackShortWrites();
 uint32_t audioPlaybackBytesRead();
 uint32_t audioPlaybackFilesPlayed();
 uint32_t audioPlaybackCompleted();

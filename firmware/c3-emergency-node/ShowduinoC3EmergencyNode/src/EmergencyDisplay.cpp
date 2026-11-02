@@ -73,7 +73,7 @@ static void paint() {
     lineAt(0, 9, "SEARCHING");
     snprintf(l3, sizeof(l3), "PIX %u", (unsigned)pixelEngineConfiguredCount());
     lineAt(0, 18, l3);
-    lineAt(0, 27, "READY");
+    lineAt(0, 27, "LINK LOST");
   } else {
     snprintf(l1, sizeof(l1), "%.12s", emergencyIdentityId());
     lineAt(0, 0, l1);

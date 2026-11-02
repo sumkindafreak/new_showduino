@@ -87,7 +87,7 @@ void DirectorEmergencyClearDialog::tick(uint32_t nowMs) {
 void DirectorEmergencyClearDialog::handleConfirm() {
   if (!isVisible()) return;
   hide();
-  Serial.println("[ESTOP] Clear confirmation sent");
+  Serial.println("[ESTOP] Operator confirmed clear - awaiting Stage authorisation");
   if (confirmFn_) confirmFn_();
 }
 

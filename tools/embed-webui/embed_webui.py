@@ -222,6 +222,9 @@ def is_local_reference(ref: str) -> bool:
 
 
 def strip_external_authoring_dependencies(html: str) -> str:
+    # Make editor-relative assets resolve identically from every editor entry URL.
+    if '<base href="/studio/">' not in html:
+        html = html.replace("<head>", '<head>\n  <base href="/studio/">', 1)
     # The local S3 copy is intentionally offline/local-first. Supabase and Anime
     # are optional in Studio V4, so remove external CDN requests rather than
     # making the phone wait for internet that is not present on the SoftAP.

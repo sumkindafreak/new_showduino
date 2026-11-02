@@ -27,7 +27,13 @@ static TAMC_GT911 *s_touch = nullptr;
 static uint16_t s_w = 0;
 static uint16_t s_h = 0;
 static bool s_ready = false;
+static lv_indev_t *s_indev = nullptr;
 static bool s_eatUntilRelease = false;
+// A brief GT911 dropout must not split one tap into two clicks.
+static constexpr uint32_t TOUCH_RELEASE_DEBOUNCE_MS = 60;
+static constexpr uint32_t TOUCH_NAVIGATION_RELEASE_MS = 180;
+static bool s_releasePending = false;
+static uint32_t s_releaseSinceMs = 0;
 static int32_t s_lastTouchX = 0;
 static int32_t s_lastTouchY = 0;
 static bool s_hadPress = false;
@@ -42,6 +48,9 @@ void touchLvglSetHook(TouchLvglHook hook) {
 
 void touchLvglConsumeUntilRelease() {
   s_eatUntilRelease = true;
+  s_releasePending = false;
+  s_hadPress = false;
+  if (s_indev) lv_indev_wait_release(s_indev);
 }
 
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
@@ -50,7 +59,6 @@ static int32_t s_diagLastX = -1;
 static int32_t s_diagLastY = -1;
 static uint32_t s_diagLastMoveMs = 0;
 static uint32_t s_diagLastScrollMs = 0;
-static lv_indev_t *s_indev = nullptr;
 
 static void diagScrollPos(const char *tag) {
   if (!s_indev) return;
@@ -137,6 +145,29 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
 
   int32_t x = 0, y = 0;
   bool pressed = sampleTouch(x, y);
+  const uint32_t sampleMs = millis();
+  if (pressed) {
+    s_releasePending = false;
+  } else if (!s_releasePending) {
+    s_releasePending = true;
+    s_releaseSinceMs = sampleMs;
+  }
+
+  // After navigation/wake, require a continuous clear interval. Any bounce
+  // restarts it; a held finger never becomes a press on the destination page.
+  if (s_eatUntilRelease) {
+    if (!pressed && (uint32_t)(sampleMs - s_releaseSinceMs) >= TOUCH_NAVIGATION_RELEASE_MS) {
+      s_eatUntilRelease = false;
+      s_hadPress = false;
+    }
+    return;
+  }
+  if (!pressed && s_hadPress &&
+      (uint32_t)(sampleMs - s_releaseSinceMs) < TOUCH_RELEASE_DEBOUNCE_MS) {
+    pressed = true;
+    x = s_lastTouchX;
+    y = s_lastTouchY;
+  }
 
   /* Preserve last pressed coords for release - GT911 reports no sample when up. */
   if (pressed) {
@@ -149,13 +180,15 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
     s_hadPress = false;
   }
 
+  data->point.x = (lv_coord_t)x;
+  data->point.y = (lv_coord_t)y;
+
   if (pressed) {
     const bool wasOff = !backlightIsOn();
     backlightNotifyActivity();
     /* First tap after screen-off only wakes - don't fire UI buttons. */
     if (wasOff) {
-      s_eatUntilRelease = true;
-      s_hadPress = false;
+      touchLvglConsumeUntilRelease();
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
       Serial.printf("[Touch] WAKE_EAT x=%ld y=%ld\n", (long)x, (long)y);
 #endif
@@ -163,17 +196,9 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
     }
   }
 
-  if (s_eatUntilRelease) {
-    if (!pressed) s_eatUntilRelease = false;
-#if SHOWDUINO_TOUCH_SCROLL_DIAG
-    if (!pressed) Serial.println("[Touch] EAT release");
-#endif
-    return;
-  }
-
   if (s_touchHook) {
     if (s_touchHook(x, y, pressed)) {
-      s_eatUntilRelease = pressed;
+      if (pressed) touchLvglConsumeUntilRelease();
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
       Serial.printf("[Touch] HOOK_EAT x=%ld y=%ld pressed=%u\n",
                     (long)x, (long)y, (unsigned)pressed);
@@ -181,6 +206,8 @@ static void touchReadCb(lv_indev_t *indev, lv_indev_data_t *data) {
       return;
     }
   }
+
+  if (s_eatUntilRelease) return; // Hook may have navigated during this sample.
 
 #if SHOWDUINO_TOUCH_SCROLL_DIAG
   const uint32_t now = millis();
@@ -230,6 +257,8 @@ void touchLvglInit(TAMC_GT911 &touch, uint16_t width, uint16_t height, uint8_t d
   s_h = height;
   s_ready = false;
   s_eatUntilRelease = false;
+  s_releasePending = false;
+  s_hadPress = false;
   s_calLogged = false;
   loadCalibrationLocked();
   logCalibrationOnce();
@@ -241,8 +270,8 @@ void touchLvglInit(TAMC_GT911 &touch, uint16_t width, uint16_t height, uint8_t d
   lv_indev_t *indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(indev, touchReadCb);
-#if SHOWDUINO_TOUCH_SCROLL_DIAG
   s_indev = indev;
+#if SHOWDUINO_TOUCH_SCROLL_DIAG
   s_diagWasPressed = false;
   Serial.println("[Touch] scroll diagnostics ON (PRESS/MOVE/RELEASE + Scroll y)");
 #endif
@@ -270,7 +299,7 @@ bool touchLvglPollActivity() {
   int32_t x = 0, y = 0;
   if (!sampleTouch(x, y)) return false;
   backlightNotifyActivity();
-  s_eatUntilRelease = true;
+  touchLvglConsumeUntilRelease();
   return true;
 }
 

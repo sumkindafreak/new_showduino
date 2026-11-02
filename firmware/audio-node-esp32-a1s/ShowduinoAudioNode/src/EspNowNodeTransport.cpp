@@ -12,6 +12,8 @@
 #include <esp_wifi.h>
 #include <esp_mac.h>
 #include <string.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
 static bool sReady = false;
 static bool sHaveComms = false;
@@ -26,6 +28,38 @@ static uint32_t sSendFail = 0;
 static uint32_t sLastService = 0;
 static AudioNodeRxFn sHandler = nullptr;
 static ShowduinoRadioFollow sFollow;
+// The Wi-Fi task must never scan SD, start playback, or write pixels.
+struct PendingRx {
+  ShowduinoNodePacket packet;
+  uint8_t source[6];
+};
+static QueueHandle_t sCommands = nullptr;
+static QueueHandle_t sEmergencyCommands = nullptr;
+static portMUX_TYPE sEmergencyMux = portMUX_INITIALIZER_UNLOCKED;
+static bool sEmergencyOverflow = false;
+
+static bool isEmergency(const char *command) {
+  return !strncmp(command, "EMERGENCY:STOP", 15) ||
+         !strncmp(command, "EMERGENCY:CLEAR", 16) ||
+         !strncmp(command, "EMERGENCY:PIXEL", 15);
+}
+
+static bool addPeer(const uint8_t *mac);
+
+static void dispatchRx(const PendingRx &rx) {
+  const bool first = !sHaveComms;
+  memcpy(sCommsMac, rx.source, 6);
+  sHaveComms = true;
+  addPeer(sCommsMac);
+  if (first || !sLoggedComms) {
+    sLoggedComms = true;
+    SD_LOGI("AUDIO", "Comms connected");
+  }
+  sRx++;
+  sLastRx = millis();
+  if (sHandler) sHandler(rx.packet.command, rx.packet.sequence);
+}
+
 static const uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 static bool addPeer(const uint8_t *mac) {
@@ -71,20 +105,21 @@ static void onRx(const uint8_t *macAddr, const uint8_t *data, int len) {
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
   const uint8_t *src = (info && info->src_addr) ? info->src_addr : nullptr;
 #endif
-  if (src) {
-    const bool first = !sHaveComms;
-    memcpy(sCommsMac, src, 6);
-    sHaveComms = true;
-    addPeer(sCommsMac);
-    if (first || !sLoggedComms) {
-      sLoggedComms = true;
-      SD_LOGI("AUDIO", "Comms connected");
+  if (!src) { sRej++; return; }
+  PendingRx rx = {};
+  rx.packet = pkt;
+  memcpy(rx.source, src, 6);
+  const bool emergency = isEmergency(pkt.command);
+  QueueHandle_t queue = emergency ? sEmergencyCommands : sCommands;
+  // ESP-NOW callbacks run in task context: zero-wait queue send, not an ISR call.
+  if (!queue || xQueueSend(queue, &rx, 0) != pdTRUE) {
+    sRej++;
+    if (emergency) {
+      portENTER_CRITICAL(&sEmergencyMux);
+      sEmergencyOverflow = true;
+      portEXIT_CRITICAL(&sEmergencyMux);
     }
   }
-  sRx++;
-  sLastRx = millis();
-  SD_LOGT("AUDIO", "RX seq=%lu cmd=%s", (unsigned long)pkt.sequence, pkt.command);
-  if (sHandler) sHandler(pkt.command, pkt.sequence);
 }
 
 static bool initEspNow() {
@@ -124,7 +159,48 @@ void audioEspNowService() {
   if (nodeSoftApStarted()) nodeSoftApFollowChannel(sFollow.channel());
 }
 
+void audioEspNowProcessCommands() {
+  if (!sCommands || !sEmergencyCommands) return;
+  PendingRx rx;
+  bool overflow;
+  portENTER_CRITICAL(&sEmergencyMux);
+  overflow = sEmergencyOverflow;
+  sEmergencyOverflow = false;
+  portEXIT_CRITICAL(&sEmergencyMux);
+  if (overflow) {
+    // A lost safety transition must leave the node in emergency, never clear it.
+    xQueueReset(sEmergencyCommands);
+    xQueueReset(sCommands);
+    if (sHandler) sHandler("EMERGENCY:STOP", 0);
+    SD_LOGE("ESPNOW", "Emergency queue overflow - emergency latched");
+    return;
+  }
+  bool emergencyProcessed = false;
+  for (unsigned i = 0; i < 8 &&
+       xQueueReceive(sEmergencyCommands, &rx, 0) == pdTRUE; ++i) {
+    dispatchRx(rx);
+    emergencyProcessed = true;
+  }
+  if (emergencyProcessed) {
+    // Discard commands queued before the safety transition, including old PLAY.
+    xQueueReset(sCommands);
+    return;
+  }
+  // Bound each pass so playback, pixels and ownership timers keep running.
+  for (unsigned i = 0; i < 4; ++i) {
+    if (uxQueueMessagesWaiting(sEmergencyCommands) != 0) break;
+    if (xQueueReceive(sCommands, &rx, 0) != pdTRUE) break;
+    dispatchRx(rx);
+  }
+}
+
 bool audioEspNowBegin() {
+  sCommands = xQueueCreate(16, sizeof(PendingRx));
+  sEmergencyCommands = xQueueCreate(8, sizeof(PendingRx));
+  if (!sCommands || !sEmergencyCommands) {
+    SD_LOGE("ESPNOW", "Command queue allocation failed - radio disabled");
+    return false;
+  }
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);

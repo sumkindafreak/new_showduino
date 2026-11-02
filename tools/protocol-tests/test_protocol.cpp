@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cstdlib>
 
+#include "showduino_pixel_defaults.h"
 #include "showduino_protocol_version.h"
 #include "showduino_desk_packet.h"
 #include "showduino_node_packet.h"
@@ -360,6 +361,12 @@ int main() {
   }
 
   std::printf("\n");
+  expect_eq_int(showduino_pixel_boot_count(0, 512), 10, "unconfigured line boots at ten");
+  expect_eq_int(showduino_pixel_boot_count(1, 512), 10, "saved small line normalised to ten");
+  expect_eq_int(showduino_pixel_boot_count(9, 512), 10, "minimum boundary");
+  expect_eq_int(showduino_pixel_boot_count(10, 512), 10, "ten remains ten");
+  expect_eq_int(showduino_pixel_boot_count(100, 512), 100, "larger commissioned line retained");
+  expect_eq_int(showduino_pixel_boot_count(513, 512), 10, "invalid saved count falls back");
   if (g_failures == 0) {
     std::printf("All tests passed.\n");
     return 0;

@@ -1,10 +1,13 @@
 import { el } from '../utils.js';
 import { Nav, bindMenuToggle } from './Nav.js';
 import { startStore, subscribeStore } from '../store.js';
-import { postPanic } from '../api.js';
+import { postPanic, postEmergencyClear } from '../api.js';
 import {
   chipClass, emergencyWord, linkWord, productionLabel, systemHealth
 } from '../status.js';
+
+let clearBusy = false;
+let latestSnap = null;
 
 function chip(id, label) {
   return el('span', { id, className: 'status-chip unknown', text: label });
@@ -18,6 +21,7 @@ function setChip(id, label, state) {
 }
 
 function paintShell(snap) {
+  latestSnap = snap;
   const commsWord = snap.commsOnline ? 'ONLINE' : 'OFFLINE';
   const p4Word = snap.comms ? (snap.comms.p4Online ? 'ONLINE' : 'OFFLINE') : 'OFFLINE';
   const directorWord = snap.comms
@@ -53,6 +57,13 @@ function paintShell(snap) {
 
   const panic = document.getElementById('header-panic');
   if (panic) panic.disabled = !snap.p4Online;
+  const clear = document.getElementById('header-clear-emergency');
+  if (clear) clear.disabled = clearBusy || !snap.p4Online || emergency !== 'EMERGENCY';
+  const result = document.getElementById('header-clear-result');
+  if (result && emergency === 'CLEAR' && result.dataset.pending === '1') {
+    result.textContent = 'P4 confirms emergency clear. Show remains stopped.';
+    result.dataset.pending = '0';
+  }
 }
 
 export function Layout() {
@@ -87,10 +98,9 @@ export function Layout() {
             el('button', {
               id: 'header-panic',
               className: 'btn-panic',
-              text: 'PANIC',
+              text: 'EMERGENCY STOP',
               title: 'PANIC latches P4 emergency stop',
               onClick: async () => {
-                if (!window.confirm('PANIC = P4 EMERGENCY STOP. Latch the Show Engine now?')) return;
                 try {
                   const data = await postPanic();
                   if (data && data.error === 'p4_offline') {
@@ -100,7 +110,31 @@ export function Layout() {
                   alert(err.message);
                 }
               }
-            })
+            }),
+            el('button', {
+              id: 'header-clear-emergency', className: 'btn-cancel',
+              text: 'CLEAR EMERGENCY', disabled: true,
+              onClick: async () => {
+                if (clearBusy || !latestSnap?.p4Online || emergencyWord(latestSnap.system) !== 'EMERGENCY') return;
+                clearBusy = true;
+                paintShell(latestSnap);
+                const result = document.getElementById('header-clear-result');
+                result.textContent = 'Requesting clearance from P4…';
+                result.dataset.pending = '0';
+                try {
+                  const sent = await postEmergencyClear(() => window.confirm(
+                    'Release all emergency buttons. Clear emergency and leave the show stopped?'));
+                  result.textContent = sent ? 'Awaiting P4 confirmation. Do not press Run.' : 'Clear cancelled.';
+                  result.dataset.pending = sent ? '1' : '0';
+                } catch (err) {
+                  result.textContent = 'Clear not confirmed: ' + err.message;
+                } finally {
+                  clearBusy = false;
+                  if (latestSnap) paintShell(latestSnap);
+                }
+              }
+            }),
+            el('span', { id: 'header-clear-result', role: 'status', 'aria-live': 'polite' })
           ])
         ]),
         el('main', { id: 'page-content', className: 'content' })

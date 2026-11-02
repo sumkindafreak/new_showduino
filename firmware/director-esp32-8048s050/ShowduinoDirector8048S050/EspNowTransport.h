@@ -98,7 +98,15 @@ public:
 
   bool sendCommand(const String &command) {
     if (!online) return false;
-    if (sendBusy) return false;
+    // Serialize sends through the Wi-Fi callback. A busy radio is not a
+    // reason to discard the next timeline cue or pretend UART delivered it.
+    const bool safety = command.startsWith("EMERGENCY:");
+    uint32_t waitFrom = millis();
+    while (!safety && sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
+    // Safety traffic must remain sendable even if a previous Wi-Fi callback
+    // was lost. ESP-NOW still rejects a full SDK queue; callers must handle it.
+    if (sendBusy && !safety) return false;
+    if (!command.length() || command.length() >= SHOWDUINO_ESPNOW_COMMAND_MAX) return false;
 
     ShowduinoEspNowPacket packet = {};
     packet.magic = SHOWDUINO_ESPNOW_MAGIC;
@@ -121,8 +129,12 @@ public:
       return false;
     }
 
-    lastSendOk = true;
-    return true;
+    // Safety clearance uses P4 application acknowledgement, never this callback.
+    if (safety) { lastSendOk = true; return true; }
+    waitFrom = millis();
+    while (sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
+    lastSendOk = !sendBusy && callbackSeen && lastCallbackOk;
+    return lastSendOk;
   }
 
   bool popReply(String &outLine) {

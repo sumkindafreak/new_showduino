@@ -2,6 +2,7 @@
 #include "PluginRegistry.h"
 #include "PluginDriver.h"
 #include "../StageStorage.h"
+#include "../storage/StageStore.h"
 #include "../../BoardConfig.h"
 #include <Wire.h>
 #include <string.h>
@@ -624,6 +625,30 @@ const PluginInstance *pluginBusInstanceAt(uint8_t index) {
   return (index < sCount) ? &sInst[index] : nullptr;
 }
 
+
+bool pluginBusAssignPreset(uint8_t address,const char *chipName,const char *roleName,char *reply,size_t replyLen) {
+  PluginChip chip;PluginRole role=PluginRole::None;
+  const bool remove=!strcmp(roleName,"NONE");
+  if(address<PLUGIN_ROLE_ADDR_MIN||address>PLUGIN_ROLE_ADDR_MAX||address==PLUGIN_BUILTIN_ES8311_ADDR||!pluginChipFromName(chipName,&chip)||chip==PluginChip::Unknown||chip==PluginChip::ES8311||(!remove&&(!pluginRoleFromName(roleName,&role)||!pluginRoleCompatible(chip,role)))) {
+    snprintf(reply,replyLen,"Invalid or protected assignment.");return false;
+  }
+  const PluginInstance *found=nullptr;
+  for(unsigned i=0;i<sCount;i++)if(sInst[i].loc.address==address&&sInst[i].loc.muxAddr==PLUGIN_MUX_NONE){found=&sInst[i];break;}
+  if(!found){snprintf(reply,replyLen,"Device not in current root inventory.");return false;}
+  if(sRoleLoad!=PluginConfigLoadResult::Ok&&sRoleLoad!=PluginConfigLoadResult::Missing){snprintf(reply,replyLen,"Fix invalid SD role file before editing.");return false;}
+  PluginRoleFile next=sRoles;next.formatVersion=PLUGIN_ROLE_FILE_FORMAT;
+  unsigned slot=next.deviceCount;
+  for(unsigned i=0;i<next.deviceCount;i++)if(next.devices[i].busId==0&&next.devices[i].address==address){slot=i;break;}
+  if(remove){if(slot<next.deviceCount){for(unsigned i=slot+1;i<next.deviceCount;i++)next.devices[i-1]=next.devices[i];next.deviceCount--;}}
+  else {if(slot>=PLUGIN_ROLE_MAX_DEVICES){snprintf(reply,replyLen,"Preset table full.");return false;}if(slot==next.deviceCount)next.deviceCount++;next.devices[slot].busId=0;next.devices[slot].address=address;next.devices[slot].chip=chip;next.devices[slot].role=role;}
+  String json="{\"formatVersion\":1,\"devices\":[";
+  for(unsigned i=0;i<next.deviceCount;i++){char row[160];const auto &v=next.devices[i];snprintf(row,sizeof(row),"%s{\"bus\":%u,\"address\":\"0x%02X\",\"chip\":\"%s\",\"role\":\"%s\"}",i?",":"",v.busId,v.address,pluginChipName(v.chip),pluginRoleName(v.role));json+=row;}json+="]}";
+  PluginRoleFile verified;PluginConfigLoadResult validation;
+  if(!pluginParseRoleFile(json.c_str(),json.length(),&verified,&validation)){snprintf(reply,replyLen,"Preset validation failed.");return false;}
+  if(!stageStoreAtomicWrite(PATH_PLUGIN_BUS_CONFIG,json.c_str(),json.length())){snprintf(reply,replyLen,"SD save failed; assignment unchanged.");return false;}
+  loadRoleFile();pluginBusScan();snprintf(reply,replyLen,"Assignment saved. No load activated.");return true;
+}
+
 PluginConfigLoadResult pluginBusRoleFileResult() { return sRoleLoad; }
 
 const PluginRoleFile *pluginBusRoleFile() { return &sRoles; }
@@ -650,6 +675,7 @@ void pluginBusFormatPath(const PluginLocation &, char *out, size_t) {
   if (out) out[0] = '\0';
 }
 bool pluginBusPing(const PluginLocation &) { return false; }
+bool pluginBusAssignPreset(uint8_t,const char*,const char*,char *reply,size_t len){snprintf(reply,len,"Plugin bus disabled.");return false;}
 PluginConfigLoadResult pluginBusRoleFileResult() { return PluginConfigLoadResult::Missing; }
 const PluginRoleFile *pluginBusRoleFile() { return nullptr; }
 

@@ -2,6 +2,7 @@
 
 #include "../EspNowTransport.h"
 #include "../ProtocolBridge.h"
+#include "../CommsUart.h"
 #include "../web/CommsWebServer.h"
 #include "../../BoardConfig.h"
 #include "../../../protocol/showduino_version.h"
@@ -13,6 +14,8 @@
 #include "../update/CommsOta.h"
 
 #include <Preferences.h>
+#include <esp_sntp.h>
+#include <time.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -56,6 +59,65 @@ static CommsUpdateStatus sUpdateStatus = COMMS_UPDATE_NEVER;
 static uint32_t sLastCheckMs = 0;
 static bool sLastCheckOk = false;
 static bool sChecking = false;
+
+// SNTP owns the gateway wall clock; P4 remains the system clock authority.
+// The callback only signals the loop: UART traffic must never run on the TCP/IP task.
+static portMUX_TYPE sTimeMux = portMUX_INITIALIZER_UNLOCKED;
+static bool sNtpUpdated = false;
+static bool sNtpStarted = false;
+static bool sNtpVerified = false;
+static bool sTimeSent = false;
+static uint32_t sLastTimePushMs = 0;
+
+static void onTimeSync(struct timeval *tv) {
+  if (!tv || tv->tv_sec < 1600000000LL || tv->tv_sec > 4102444799LL) return;
+  portENTER_CRITICAL(&sTimeMux);
+  sNtpUpdated = true;
+  portEXIT_CRITICAL(&sTimeMux);
+}
+
+static void serviceTimeSync(uint32_t now) {
+  const bool connected = sGotIp && WiFi.status() == WL_CONNECTED;
+  if (connected && !sNtpStarted) {
+    portENTER_CRITICAL(&sTimeMux);
+    sNtpUpdated = false;
+    portEXIT_CRITICAL(&sTimeMux);
+    sNtpVerified = false;
+    sTimeSent = false;
+    sNtpStarted = true;
+    sntp_set_time_sync_notification_cb(onTimeSync);
+    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com", "time.google.com");
+    Serial.println("[TIME] Wi-Fi connected - requesting internet time");
+  } else if (!connected && sNtpStarted) {
+    esp_sntp_stop();
+    sNtpStarted = false;
+    sNtpVerified = false;
+    Serial.println("[TIME] Wi-Fi disconnected - P4 clock continues offline");
+  }
+  if (!connected) return;
+  portENTER_CRITICAL(&sTimeMux);
+  const bool updated = sNtpUpdated;
+  sNtpUpdated = false;
+  portEXIT_CRITICAL(&sTimeMux);
+  if (updated) {
+    sNtpVerified = true;
+    sTimeSent = false;
+    Serial.println("[TIME] Internet time received");
+  }
+  // A plausible local clock alone is insufficient: require an actual SNTP reply.
+  // Periodic forwarding also restores P4 time after a P4 reboot/reconnection.
+  if (!sNtpVerified || !commsUartReady() || !protocolBridgeP4Alive()) return;
+  if (sTimeSent && (uint32_t)(now - sLastTimePushMs) < 60000UL) return;
+  const time_t epoch = time(nullptr);
+  if (epoch < 1600000000LL || epoch > 4102444799LL) return;
+  char line[40];
+  snprintf(line, sizeof(line), "TIME:SET:%lu", (unsigned long)epoch);
+  const bool announce = !sTimeSent;
+  commsUartWriteLine(line);
+  sLastTimePushMs = now;
+  sTimeSent = true;
+  if (announce) Serial.println("[TIME] Synced P4 clock from internet time (UTC)");
+}
 
 static const char *modeWord(CommsWifiMode m) {
   return m == COMMS_WIFI_AP_STA ? "ap_sta" : "ap_only";
@@ -531,6 +593,7 @@ void commsGatewayBegin() {
 void commsGatewayLoop() {
   currentRadioChannel();
   const uint32_t now = millis();
+  serviceTimeSync(now);
 
   if (!sStaAssociated && sDisconnectSettleMs &&
       (now - sDisconnectSettleMs) > 3000UL) {

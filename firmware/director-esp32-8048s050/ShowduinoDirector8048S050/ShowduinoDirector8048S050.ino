@@ -42,6 +42,10 @@
 #include "backlight.h"
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
+#include "DirectorEmergencyClearFlow.h"
+#include "DirectorRuntimeFreshness.h"
+static DirectorRuntimeFreshness runtimeFreshness;
+static DirectorEmergencyClearFlow emergencyClearFlow;
 #include "ShowduinoUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
@@ -53,6 +57,7 @@
 #include "src/WebServerManager.h"
 #include "src/StorageAPI.h"
 #include "src/TimelineEngine.h"
+#include "../../../protocol/showduino_scene_recovery.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
@@ -106,17 +111,48 @@ uint32_t rxCount = 0;
 uint8_t gNodesOnline = 0;
 bool tlEndAckSeen = false;
 int tlEndAckCount = -1;
+static char verifiedTimelineId[64] = {};
+static char verifiedTimelineName[64] = {};
+static void cueLibraryState(DirectorCueLibraryState *out) {
+  *out=DirectorCueLibraryState{};
+  out->elapsedMs=gShowMirror.elapsedMs;out->fired=gShowMirror.currentCue;
+  out->total=timeline.cueTotal();out->online=linkState==LINK_READY && runtimeFreshness.fresh(millis());
+  out->emergency=emergencyLocked || gShowMirror.emergency;
+  strncpy(out->name,gShowMirror.showName,sizeof(out->name)-1);
+  strncpy(out->state,showStateName(gShowMirror.state),sizeof(out->state)-1);
+  out->matched=verifiedTimelineId[0] && out->total && out->total==gShowMirror.totalCues &&
+    (!strcmp(gShowMirror.showName,verifiedTimelineId) || !strcmp(gShowMirror.showName,verifiedTimelineName));
+}
+static bool cueLibraryRead(uint32_t index,uint32_t *time,char *command,size_t size) {
+  if(index>=timeline.cueTotal() || !size)return false;
+  const TimelineCue *cue=timeline.cueAt(index);if(!cue)return false;
+  *time=cue->timeMs;snprintf(command,size,"%s",cue->command);return true;
+}
 
+
+bool sendToStage(const String &command);
+static bool cueLibraryStart(uint32_t point) {
+  DirectorCueLibraryState state{};cueLibraryState(&state);
+  if(!state.matched || !state.online || state.emergency || gShowMirror.running)return false;
+  bool checkpoint=false;uint32_t fingerprint=2166136261u;
+  for(uint16_t i=0;i<timeline.cueTotal();++i){const TimelineCue *cue=timeline.cueAt(i);
+    if(cue){fingerprint=showduinoSceneFingerprint(fingerprint,cue->timeMs,cue->command);
+      if(cue->timeMs==point && showduinoSceneLabel(cue->command))checkpoint=true;}}
+  if(!checkpoint || point>=timeline.Duration())return false;
+  char command[64];snprintf(command,sizeof(command),"SHOW:STARTAT:%lu:%08lx:%lu",(unsigned long)point,(unsigned long)fingerprint,(unsigned long)gShowMirror.revision);
+  return sendToStage(String(command));
+}
 void markLinkDisconnected(const char *reason);
 void requestLinkRetry();
 void readEspNowReplies();
 void readStageSerial();
-void sendToStage(const String &command);
+bool sendToStage(const String &command);
 void requestStateSync();
 void applyMirroredRuntime(const ShowRuntime &rt);
 void onEmergencyActivatedDirectorUx();
 void pushEmergencyTimelineSnapshot();
 bool uploadShowTimelineToStage(const char *idOrName);
+bool requestShowRun(const char *idOrName);
 
 static void directorWakeDisplay(const char *tag) {
   Serial.printf("[%s] Display wake\n", tag);
@@ -204,12 +240,15 @@ void drainOs2Commands() {
           ui.appendLog(String("CMD LoadProduction failed: ") + cmd.arg);
           Os2::commandService().markFailed(cmd.seq, "missing production");
         } else {
-          ui.setLoadedShowName(def.name);
           DirectorConfig &cfg = gStorage.getConfig();
           strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
           gStorage.markConfigDirty();
           gStorage.startShowLog(def.id);
-          uploadShowTimelineToStage(def.id);
+          if (!uploadShowTimelineToStage(def.id)) {
+            Os2::commandService().markFailed(cmd.seq, "timeline upload failed");
+            break;
+          }
+          ui.setLoadedShowName(def.name);
           Os2::sessionService().setLastProduction(def.id);
           ui.appendLog(String("CMD loaded: ") + def.name);
           Os2::commandService().markSucceeded(cmd.seq, def.name);
@@ -225,7 +264,10 @@ void drainOs2Commands() {
           key = gShowMirror.showName;
         }
         if (key && key[0]) {
-          sendToStage(String("SHOW:RUN:") + key);
+          if (!requestShowRun(key)) {
+            Os2::commandService().markFailed(cmd.seq, "timeline not verified");
+            break;
+          }
           Os2::commandService().markSucceeded(cmd.seq);
           ui.appendLog("CMD StartShow");
         } else {
@@ -340,6 +382,8 @@ void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
 
+  if(line.startsWith("AUDIO:SYSTEM:VOLUME:") || line.startsWith("ERR:AUDIO:SYSTEM:VOLUME:")) page_audio_system_apply_system_volume(line.c_str());
+  if(line.startsWith("AMBIENCE:")||line.startsWith("OK:AMBIENCE:")||line.startsWith("ERR:AMBIENCE:"))page_audio_system_apply_ambience(line.c_str());
   rxCount++;
   lastStageReplyMs = millis();
   linkLostLogged = false;
@@ -359,6 +403,15 @@ void handleStageLine(String line) {
   /* SUE TimeService - display only; do not invent a local clock. */
   if (line.startsWith(SHOWDUINO_LEGACY_TIME_PREFIX)) {
     ui.applySueTimeWire(line.c_str());
+    return;
+  }
+
+  /* P4-local PCM5102A ambience is controlled from the Director Audio page.
+   * Keep it separate from specialist AUDIO:NODE:* state. */
+  if (line.startsWith("AMBIENCE:STATUS:") ||
+      line.startsWith("OK:AMBIENCE:") ||
+      line.startsWith("ERR:AMBIENCE:")) {
+    page_05_audio_node_apply_ambience_line(line.c_str());
     return;
   }
 
@@ -418,18 +471,21 @@ void handleStageLine(String line) {
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST) {
     directorWakeDisplay("ESTOP");
+    if (!emergencyLocked || !emergencyClearFlow.acknowledge(millis())) return;
     gDirectorEmergencyClearDialog.show(millis());
     ui.pushOperatorEvent("Emergency clear requested");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED) {
     gDirectorEmergencyClearDialog.hide();
+    emergencyClearFlow.cancel();
     ui.noteEmergencyClearCancelled();
     ui.appendLog("Emergency clear request expired");
     ui.pushOperatorEvent("Clear request expired");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK) {
+    emergencyClearFlow.cancel();
     gDirectorEmergencyClearDialog.hide();
   }
 
@@ -463,6 +519,7 @@ void handleStageLine(String line) {
     if (nowLocked && !emergencyLocked) {
       onEmergencyActivatedDirectorUx();
     }
+    if (!nowLocked) emergencyClearFlow.cancel();
     emergencyLocked = nowLocked;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(emergencyLocked);
@@ -523,6 +580,7 @@ void handleStageLine(String line) {
 #endif
   }
   {
+    page_p4_io_receive(line.c_str());
     ShowduinoMosfetDetailWire mdet{};
     if (showduino_parse_state_node_mosfet_detail(line.c_str(), &mdet)) {
       ui.setMosfetNodeDetail(mdet);
@@ -605,6 +663,7 @@ void handleStageLine(String line) {
     ui.setEmergencyLocked(true);
   }
   if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(false);
@@ -621,10 +680,16 @@ void handleStageLine(String line) {
   if (line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD ||
       line.startsWith("ERR:EMERGENCY_CLEAR:") ||
       line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)) {
-    ui.noteEmergencyClearRejected();
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
     if (line.endsWith("BUTTON_ACTIVE") || line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD) {
+      ui.noteEmergencyClearRejected();
       ui.appendLog("Cannot clear Emergency. Release the Emergency button first.");
       ui.pushOperatorEvent("Release the Emergency button first");
+    } else if (line.endsWith("NOT_LATCHED")) {
+      // The result may have been lost. Only a P4 snapshot can unlock the UI.
+      sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
     } else if (line.endsWith("NO_REQUEST")) {
       ui.appendLog("CLEAR rejected - no pending Director clear request");
       ui.pushOperatorEvent("Clear request is not pending");
@@ -718,22 +783,42 @@ void handleStageLine(String line) {
   ui.updateStatusWidgets(false);
 }
 
-void sendToStage(const String &command) {
+bool sendToStage(const String &command) {
+  const bool clearRequest = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR;
+  const bool clearConfirm = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM;
+  if (clearRequest) {
+    if (!emergencyLocked) return false;
+    emergencyClearFlow.request(millis());
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearRequested(millis());
+  }
+  if (clearConfirm && !emergencyClearFlow.confirm(millis())) return false;
+  if (clearConfirm) gDirectorEmergencyScreen.noteClearRequested(millis());
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL ||
+      command == SHOWDUINO_LEGACY_EMERGENCY_STOP) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
+  }
+
   bool sentByEspNow = false;
+  bool sent = false;
 
 #if SHOWDUINO_USE_ESPNOW
   if (espNowReady) {
     sentByEspNow = espNowTransport.sendCommand(command);
+    sent = sentByEspNow;
   }
 #endif
 
 #if SHOWDUINO_USE_UART_FALLBACK
   if (!sentByEspNow) {
     Serial1.println(command);
+    sent = true;
   }
 #endif
 
-  txCount++;
+  if (sent) txCount++;
   if (command == SHOWDUINO_LEGACY_HELLO) lastHelloMs = millis();
 
   /* Emergency lock: E-STOP may set local activating feedback in UI;
@@ -755,11 +840,19 @@ void sendToStage(const String &command) {
 
   if (!isQuietLinkTraffic(command)) {
     if (sentByEspNow) ui.appendLog("TX -> Stage: " + command);
-    else ui.appendLog("TX -> Stage UART: " + command);
+    else if (sent) ui.appendLog("TX -> Stage UART: " + command);
+    else ui.appendLog("TX FAILED -> Stage: " + command);
   }
 
+  if ((clearRequest || clearConfirm) && !sent) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Emergency clear send failed - retry CLEAR");
+  }
   // Drain any replies that arrived during the blocking send wait.
   readEspNowReplies();
+  return sent;
 }
 
 void requestStateSync() {
@@ -774,6 +867,8 @@ void requestStateSync() {
 }
 
 void applyMirroredRuntime(const ShowRuntime &rt) {
+  runtimeFreshness.received(millis());
+  ui.setRuntimeFresh(true);
   ShowState prev = gShowMirror.state;
   gShowMirror = rt;
   gShowMirror.stageConnected = (linkState == LINK_READY) ? 1 : 0;
@@ -792,6 +887,7 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
     }
   } else if (prev == SHOW_STATE_EMERGENCY_STOP || emergencyLocked) {
     /* Runtime left EMERGENCY_STOP - unlock even if STATE:EMERGENCY:CLEAR was dropped. */
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
   }
@@ -828,6 +924,8 @@ void serviceTimeline() {
 }
 
 bool uploadShowTimelineToStage(const char *idOrName) {
+  verifiedTimelineId[0] = '\0';
+  if (emergencyLocked) return false;
   if (!idOrName || !idOrName[0]) return false;
 
   ShowManager &sm = gStorage.showManager();
@@ -873,8 +971,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   if (strlen(loadCmd) >= SHOWDUINO_DESK_COMMAND_MAX) {
     snprintf(loadCmd, sizeof(loadCmd), "SHOW:LOAD:%s", showName);
   }
-  sendToStage(loadCmd);
-  sendToStage("SHOW:TL:BEGIN");
+  if (!sendToStage(loadCmd) || !sendToStage("SHOW:TL:BEGIN")) {
+    ui.appendLog("LOAD failed - timeline transfer could not start");
+    return false;
+  }
 
   uint16_t sent = 0;
   uint16_t skipped = 0;
@@ -888,7 +988,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
       skipped++;
       continue;
     }
-    sendToStage(cueLine);
+    if (!sendToStage(cueLine) || emergencyLocked) {
+      ui.appendLog("LOAD failed - timeline cue delivery interrupted");
+      return false;
+    }
     sent++;
     if ((i & 7) == 0) {
       readEspNowReplies();
@@ -898,7 +1001,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 
   tlEndAckSeen = false;
   tlEndAckCount = -1;
-  sendToStage("SHOW:TL:END");
+  if (skipped || !sent || !sendToStage("SHOW:TL:END")) {
+    ui.appendLog("LOAD failed - timeline incomplete");
+    return false;
+  }
 
   const unsigned long TL_END_ACK_MS = 2000UL;
   unsigned long t0 = millis();
@@ -921,6 +1027,8 @@ bool uploadShowTimelineToStage(const char *idOrName) {
     return false;
   }
 
+  strncpy(verifiedTimelineId, showId, sizeof(verifiedTimelineId) - 1);
+  snprintf(verifiedTimelineName,sizeof(verifiedTimelineName),"%s",showName);
   ui.setLoadedShowName(showName);
   snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues verified, %u skipped)",
            showName, (unsigned)sent, (unsigned)skipped);
@@ -930,6 +1038,10 @@ bool uploadShowTimelineToStage(const char *idOrName) {
 }
 
 bool requestShowRun(const char *idOrName) {
+  if (emergencyLocked || linkState != LINK_READY) {
+    ui.appendLog("RUN blocked - emergency or Stage link unavailable");
+    return false;
+  }
   if (idOrName && idOrName[0]) {
     /* Ensure package metadata is local; Stage must already have timeline. */
     ShowManager &sm = gStorage.showManager();
@@ -941,10 +1053,10 @@ bool requestShowRun(const char *idOrName) {
       }
     }
   }
-  if (gShowMirror.state != SHOW_STATE_SHOW_LOADED &&
+  if (!verifiedTimelineId[0] || !idOrName || strcmp(verifiedTimelineId, idOrName) != 0 ||
+      (gShowMirror.state != SHOW_STATE_SHOW_LOADED &&
       gShowMirror.state != SHOW_STATE_PAUSED &&
-      gShowMirror.state != SHOW_STATE_FINISHED &&
-      gShowMirror.totalCues == 0) {
+      gShowMirror.state != SHOW_STATE_FINISHED && gShowMirror.totalCues == 0)) {
     /* Try upload then run if operator pressed RUN without LOAD. */
     const char *key = idOrName;
     if ((!key || !key[0]) && gStorage.showManager().hasCurrentShow()) {
@@ -952,9 +1064,9 @@ bool requestShowRun(const char *idOrName) {
     }
     if (key && key[0]) {
       if (!uploadShowTimelineToStage(key)) return false;
-    }
+    } else return false;
   }
-  sendToStage("SHOW:RUN");
+  if (!sendToStage("SHOW:RUN")) return false;
   ui.appendLog("Requested SHOW:RUN (await Stage runtime)");
   return true;
 }
@@ -1008,13 +1120,11 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "UI:ESTOP:ABORT") {
-    /* Always CLEAR first - works even on older Stage builds that lack SHOW:STOP. */
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
-    delay(20);
+    // ABORT leaves the emergency latched; clearance uses the dedicated control.
     sendToStage(SHOWDUINO_LEGACY_SHOW_STOP);
     sendToStage(SHOWDUINO_LEGACY_STOP_ALL);
-    ui.pushOperatorEvent("Abort: CLEAR + STOP sent - awaiting Stage");
-    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort CLEAR+STOP");
+    ui.pushOperatorEvent("Abort: STOP sent - emergency remains latched");
+    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort STOP; emergency remains latched");
     gStorage.endShowLog("aborted");
     return;
   }
@@ -1092,12 +1202,12 @@ void handleUiCommand(const String &command) {
       ui.appendLog(String("LOAD failed - missing show.json for ") + ui.selectedShowId());
       return;
     }
+    if (!uploadShowTimelineToStage(def.id)) return;
     ui.setLoadedShowName(def.name);
     DirectorConfig &cfg = gStorage.getConfig();
     strncpy(cfg.lastShow, def.id, sizeof(cfg.lastShow) - 1);
     gStorage.markConfigDirty();
     gStorage.startShowLog(def.id);
-    uploadShowTimelineToStage(def.id);
     return;
   }
 
@@ -1251,7 +1361,7 @@ void handleUiCommand(const String &command) {
 
   backlightNotifyActivity();
   if (command.startsWith("RELAY:")) {
-    ui.appendLog("Relay retired — use Lamp Node");
+    ui.appendLog("Relay retired â€” use Lamp Node");
     return;
   }
   if (command.startsWith("AUDIO:") &&
@@ -1272,6 +1382,7 @@ void handleUiCommand(const String &command) {
 }
 
 void markLinkDisconnected(const char *reason) {
+  verifiedTimelineId[0] = '\0';
   static unsigned long lastLogMs = 0;
   const bool alreadyDown = (linkState == LINK_DISCONNECTED);
   applyLinkState(LINK_DISCONNECTED);
@@ -1561,6 +1672,7 @@ void setup() {
   sendToStage("HELLO");
 
   Serial.println("UI: begin (behind boot screen)...");
+  directorCueLibrarySetSource(cueLibraryState,cueLibraryRead,cueLibraryStart);
   ui.begin(handleUiCommand);
   ui.setEspNowReady(espNowReady);
   gDirectorEmergencyClearDialog.setConfirmHandler(onEmergencyClearConfirm);
@@ -1629,6 +1741,12 @@ void setup() {
 }
 
 void loop() {
+  // Service incoming state and heartbeats before display rendering.
+  readEspNowReplies();
+  readStageSerial();
+  sendHeartbeatIfDue();
+  sendHelloIfNeeded();
+  ui.serviceNodeUpdates();
   unsigned long now = millis();
   unsigned long elapsed = now - lastLvglTickMs;
   lastLvglTickMs = now;
@@ -1644,7 +1762,20 @@ void loop() {
   ui.setEspNowReady(espNowReady);
   gDirectorUnlockScreen.tick(now, espNowReady, linkState, emergencyLocked);
   ui.tickEmergencyOverlay(now);
+  if (emergencyClearFlow.tick(now)) {
+    gDirectorEmergencyClearDialog.hide();
+    // Best effort cancellation only. Never retry confirmation automatically.
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+    // Recover a lost authorized result using a fresh P4 state snapshot.
+    sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Stage clearance timed out - retry CLEAR");
+  }
   gDirectorEmergencyClearDialog.tick(now);
+  ui.setRuntimeFresh(linkState == LINK_READY && runtimeFreshness.fresh(now));
+  // A healthy heartbeat is not proof that playback telemetry is arriving.
+  // Query only; never start/resume or synthesize elapsed time/cue firing.
+  if (runtimeFreshness.queryDue(now, linkState == LINK_READY)) sendToStage(SHOW_STATE_QUERY);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
     lastUiRefreshMs = now;

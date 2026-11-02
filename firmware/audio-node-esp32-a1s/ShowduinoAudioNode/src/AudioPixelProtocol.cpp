@@ -23,6 +23,7 @@ static bool isRoutine(const char *line) {
   if (!strncmp(line, "STATUS:", 7)) return true;
   if (!strncmp(line, "PIXEL:OWNED:", 12)) return true;
   if (!strncmp(line, "PIXEL:CAPS:", 11)) return true;
+  if (!strncmp(line, "PIXEL:STATUS:", sizeof("PIXEL:STATUS:") - 1)) return true;
   return false;
 }
 
@@ -40,12 +41,12 @@ static void report(const char *line, uint32_t seq) {
 }
 
 void audioPixelProtocolFormatStatus(char *out, size_t n) {
-  snprintf(out, n, "STATUS:%s:P%u:I%u:S%u:%s",
-           audioPixelNodeStateName(),
-           (unsigned)audioPixelEngineConfiguredCount(),
-           audioPixelEngineReady() ? 1U : 0U,
-           (unsigned)audioPixelEngineActiveSegments(),
-           audioPixelNodeStateFault());
+  snprintf(out, n,
+           "PIXEL:STATUS:%s:GPIO=%d:CONFIGURED=%u:COUNT=%u:MAX=%u:BRIGHTNESS=%u:EMERGENCY=%u",
+           audioPixelEngineReady() ? "READY" : "UNINIT", audioPixelEnginePin(),
+           (unsigned)audioPixelEngineConfiguredCount(), (unsigned)audioPixelEngineCount(),
+           (unsigned)audioPixelEngineMax(), (unsigned)audioPixelEngineGlobalBrightness(),
+           audioPixelEngineEmergency() ? 1U : 0U);
 }
 
 static void formatAnnounce(char *out, size_t n) {
@@ -126,8 +127,13 @@ void audioPixelProtocolApply(const char *command, uint32_t sequence, ShowduinoCm
                              : SHOWDUINO_OWNER_EV_KEEP);
   }
 
-  const ShowduinoPixelFail gate =
-      showduino_pixel_can_accept_ex(st, cmd, origin, initialised ? 1 : 0);
+  // P4 ownership alone does not prohibit commissioning an idle output.
+  const bool setup = cmd == SHOWDUINO_PIXEL_CMD_COUNT || cmd == SHOWDUINO_PIXEL_CMD_INIT;
+  const bool idleSetup = setup && !audioPixelEngineEmergency() &&
+      st != SHOWDUINO_PIXEL_ST_EMERGENCY && audioPixelEngineActiveSegments() == 0 &&
+      !audioPixelEngineLocateActive();
+  const ShowduinoPixelFail gate = showduino_pixel_can_accept_ex(
+      idleSetup ? SHOWDUINO_PIXEL_ST_UNINIT : st, cmd, origin, initialised ? 1 : 0);
   if (gate != SHOWDUINO_PIXEL_FAIL_NONE) {
     char line[64];
     snprintf(line, sizeof(line), "PIXEL:FAILED:%lu:%s",
@@ -197,6 +203,7 @@ void audioPixelProtocolApply(const char *command, uint32_t sequence, ShowduinoCm
   }
 
   if (cmd == SHOWDUINO_PIXEL_CMD_STATUS) {
+    if (origin != SHOWDUINO_CMD_ORIGIN_SHOW) audioPixelEnginePrintStatus();
     char line[96];
     audioPixelProtocolFormatStatus(line, sizeof(line));
     report(line, sequence);

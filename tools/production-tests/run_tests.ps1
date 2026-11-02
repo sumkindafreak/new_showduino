@@ -42,6 +42,12 @@ Write-Host "Running..."
 & $runtimeOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$sceneOut = Join-Path $here "scene_recovery_tests.exe"
+& g++ -std=c++17 -Wall -Wextra "-I$stubs" "-I$sketch" -o $sceneOut (Join-Path $here "test_scene_recovery.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $sceneOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host "Compiling Studio web timeline upload policy tests..."
 & g++ -std=c++17 -Wall -Wextra -o $webTimelineOut `
   (Join-Path $here "test_web_timeline_upload_policy.cpp")
@@ -59,10 +65,16 @@ Write-Host "Running..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Compiling SHDO compiler tests..."
-& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp")
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp") $format
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $shdoOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$ambienceOut = Join-Path $here "shdo_ambience_tests.exe"
+& g++ -std=c++17 -Wall -Wextra -o $ambienceOut (Join-Path $here "test_shdo_ambience.cpp") $format
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $ambienceOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Compiling WEB/BODY framing tests..."

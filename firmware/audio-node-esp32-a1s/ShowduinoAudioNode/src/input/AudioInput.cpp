@@ -27,6 +27,8 @@ static uint32_t sOverruns = 0;
 static uint32_t sLastFeed = 0;
 static uint32_t sLastStatusTx = 0;
 static uint32_t sLastMon = 0;
+static uint32_t sMonitorBytes = 0;
+static uint32_t sMonitorRawPeak = 0;
 static uint32_t sLastCalProg = 0;
 static uint32_t sRecStart = 0;
 static uint32_t sRecBytes = 0;
@@ -196,6 +198,13 @@ void audioInputService() {
     if (n <= 0) {
       sOverruns++;
     } else {
+      // Accumulate raw capture evidence between monitor prints.
+      sMonitorBytes += (uint32_t)n;
+      for (size_t i = 0; i < (size_t)n / sizeof(sBuf[0]); ++i) {
+        const int32_t sample = sBuf[i];
+        const uint32_t magnitude = (uint32_t)(sample < 0 ? -sample : sample);
+        if (magnitude > sMonitorRawPeak) sMonitorRawPeak = magnitude;
+      }
       const size_t frames = (size_t)n / 4;
       audioLevelMeterAddFrames(sBuf, frames);
       if (sRecording && sRec) {
@@ -260,6 +269,12 @@ void audioInputService() {
                   (unsigned)showduino_sound_fire_level(soundTriggerEngine()),
                   (unsigned)soundTriggerEngine()->armed,
                   (unsigned long)showduino_sound_cooldown_remaining(soundTriggerEngine(), now));
+    Serial.printf("[SOUND] CAP=%u WANT=%u PLAY=%u BYTES=%lu RAWPEAK=%lu OVERRUNS=%lu\n",
+                  sCapOn ? 1u : 0u, sWantCap ? 1u : 0u, playing ? 1u : 0u,
+                  (unsigned long)sMonitorBytes, (unsigned long)sMonitorRawPeak,
+                  (unsigned long)sOverruns);
+    sMonitorBytes = 0;
+    sMonitorRawPeak = 0;
   }
 
   if (audioInputConfig().enabled && sReady &&
@@ -321,7 +336,11 @@ void audioInputTriggerTest() {
   soundTriggerEmitTest(millis());
 }
 
-void audioInputSetMonitor(bool on) { sMonitor = on; }
+void audioInputSetMonitor(bool on) {
+  sMonitorBytes = 0;
+  sMonitorRawPeak = 0;
+  sMonitor = on;
+}
 bool audioInputMonitor() { return sMonitor; }
 
 void audioInputPrintStatus() {

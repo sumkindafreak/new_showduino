@@ -1,10 +1,12 @@
 #include "DisplayManager.h"
+#include "DirectorCueLibrary.h"
 #include "DisplayPages.h"
 #include "DisplaySystemPages.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
+#include "touch_lvgl.h"
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <string.h>
@@ -411,6 +413,8 @@ bool DisplayManager::loadBackground(DisplayPageId /*page*/) {
 }
 
 bool DisplayManager::showPage(DisplayPageId page) {
+  // Cue Library is parented to the active LVGL screen, outside page layers.
+  directorCueLibraryClose();
   if (!begun_) begin();
   if (gDirectorUnlockScreen.ownsDisplay()) {
     deferredPage_ = page;
@@ -441,6 +445,7 @@ bool DisplayManager::showPage(DisplayPageId page) {
 
   const bool leavingBoot = (lv_screen_active() != screen_);
 
+  touchLvglConsumeUntilRelease();
   state_ = DISPLAY_TRANSITION;
   ensureShell();
   hidePagePanels();

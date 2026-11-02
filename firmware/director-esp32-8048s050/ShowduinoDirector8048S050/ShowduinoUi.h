@@ -31,10 +31,14 @@
 #include "page_02_productions.h"
 #include "page_04_nodes.h"
 #include "page_05_audio_node.h"
+#include "page_outputs.h"
+#include "page_p4_io.h"
+#include "../../../protocol/showduino_mosfet_node.h"
 #include "page_lamp_node.h"
 #include "page_06_diagnostics.h"
 #include "page_08_settings.h"
 #include "page_10_live.h"
+#include "DirectorCueLibrary.h"
 #include "page_logs.h"
 #include "page_audio_system.h"
 #include "DirectorDiagnostics.h"
@@ -463,6 +467,8 @@ public:
 
   void setMosfetNodeDetail(const ShowduinoMosfetDetailWire &d) {
     mosfetDetail_ = d;
+    refreshOutputsPage();
+    if (d.haveLevels) page_outputs_report_received();
     refreshNodesPage();
   }
 
@@ -521,12 +527,9 @@ public:
   }
 
   void applyAudioNodeInv(uint16_t page, uint16_t total, const char names[][SHOWDUINO_AUDIO_INV_NAME_MAX + 1], uint8_t count) {
-    audioNodeCtrl_.inventoryPage = page;
-    audioNodeCtrl_.inventoryTotal = total;
-    for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-      audioNodeCtrl_.inventory[i][0] = '\0';
-      if (i < count && names) strncpy(audioNodeCtrl_.inventory[i], names[i],
-                                     sizeof(audioNodeCtrl_.inventory[i]) - 1);
+    const int32_t next = director_audio_inventory_accept(&audioNodeCtrl_, page, total, names, count);
+    if (next >= 0) {
+      sendAudioNodeCmd(String("AUDIO:NODE:INVENTORY:") + String((unsigned)next));
     }
     refreshAudioNodePage();
   }
@@ -535,6 +538,13 @@ public:
    * Stage 7: mirror ShowRuntime into operator UX (overlay / banner / LIVE / complete).
    * Does not mutate runtime - display + pending-confirm handling only.
    */
+  void setRuntimeFresh(bool fresh) {
+    if (runtimeFresh_ == fresh) return;
+    runtimeFresh_ = fresh;
+    liveStatusDirty = true;
+    statusDirty = true;
+  }
+
   void applyRuntimeMirror(const ShowRuntime &rt) {
     ShowState prev = mirroredState;
     mirroredState = rt.state;
@@ -1321,6 +1331,8 @@ public:
   }
 
   // Call often from loop. Only touches LVGL when something actually changed.
+  void serviceNodeUpdates() { serviceNodesPage(); }
+
   void updateStatusWidgets(bool refreshTrafficAndUptime = false) {
     syncStatusBarHealth();
     statusBar_.update(millis());
@@ -1526,6 +1538,7 @@ private:
     snap.nodeCount = nodeCount;
     snap.progressPct = liveProgressPct;
     displayManager_.updateWidgets(snap);
+    refreshOutputsPage();
 
     if (page_04_nodes_is_active() && snap.page == PAGE_NODES) {
       refreshNodesPage();
@@ -1691,7 +1704,25 @@ private:
     if (commandCallback) commandCallback(cmd);
   }
 
+  // Coalesce incoming reports; do not redraw once for every status packet.
   void refreshNodesPage() {
+    if (page_04_nodes_is_active() && displayManager_.currentPage() == PAGE_NODES) {
+      nodesPageDirty_ = true;
+    }
+  }
+
+  void serviceNodesPage() {
+    if (!nodesPageDirty_ || displayManager_.currentPage() != PAGE_NODES ||
+        !page_04_nodes_is_active()) return;
+    const uint32_t now = millis();
+    if (nodesPageRendered_ && (now - nodesPageLastRefreshMs_) < 100UL) return;
+    nodesPageDirty_ = false;
+    nodesPageRendered_ = true;
+    nodesPageLastRefreshMs_ = now;
+    renderNodesPage();
+  }
+
+  void renderNodesPage() {
     if (!page_04_nodes_is_active()) return;
     char sum[64];
     snprintf(sum, sizeof(sum), "FABRIC  |  %u ONLINE  |  5 SPECIALISTS",
@@ -2346,6 +2377,7 @@ private:
   bool emergencySessionOpen = false;
   bool completeOverlayVisible = false;
   bool liveStatusDirty = true;
+  bool runtimeFresh_ = false;
   unsigned long emergencyActiveSinceMs = 0;
   char estopShowName[64] = "-";
   char estopPlayStateBefore[24] = "Stopped";
@@ -2474,6 +2506,9 @@ private:
   bool lastHealthStage_ = false;
   bool statusBarCovered_ = true;
   bool emergencyActivating = false;
+  bool nodesPageDirty_ = false;
+  bool nodesPageRendered_ = false;
+  uint32_t nodesPageLastRefreshMs_ = 0;
   bool statusDirty = true;
   bool trafficDirty = true;
   uint32_t txCount = 0;
@@ -2670,8 +2705,13 @@ private:
       if (commandCallback) commandCallback("UI:SHOW:RUN");
       return;
     }
-    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY" ||
-        command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
+    if (command == PAGE01_CMD_OUTPUTS || command == "HOME:OUTPUTS") {
+      showOutputs();
+      maybeRestoreEmergencyOverlay();
+      return;
+    }
+    if (command == PAGE01_CMD_CUE_LIBRARY || command == "HOME:CUE_LIBRARY" || command == "LIVE:CUE_LIBRARY") {
+      directorCueLibraryOpen();
       return;
     }
     if (command == PAGE01_CMD_NODES || command == "HOME:NODES") {
@@ -2796,6 +2836,60 @@ private:
     }
     if (command == PAGE04_CMD_LAMP_STATUS) {
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
+      return;
+    }
+    if (command.startsWith("OUTPUTS:TAB:")) {
+      unsigned tab=command.substring(12).toInt();page_outputs_select(tab);
+      if(commandCallback)commandCallback(tab==1?"IO:STATUS":tab==2?"PLUGIN:PAGE:0":"STATUS:REQUEST");return;
+    }
+    if(command.startsWith("OUTPUTS:IO:") || command.startsWith("OUTPUTS:PLUGIN:")) {
+      const bool up=linkState==LINK_READY&&liveStageConnected;
+      const bool blocked=emergencyLocked||mirroredState==SHOW_STATE_EMERGENCY_STOP||mirroredState==SHOW_STATE_RUNNING||mirroredState==SHOW_STATE_PAUSED;
+      String request=command.substring(8);
+      const bool read=request=="IO:STATUS"||request.startsWith("PLUGIN:PAGE:");
+      const bool safe=request=="IO:ALL:OFF"||request=="IO:1:OFF"||request=="IO:2:OFF";
+      if(!up||(!read&&!safe&&blocked)){page_p4_io_feedback("Controls locked / P4 disconnected.");return;}
+      if(commandCallback){commandCallback(request.startsWith("IO:")?String("DESK:")+request:request);if(!read)page_p4_io_feedback("Request sent. Awaiting P4 confirmation.");}return;
+    }
+    if (command == "OUTPUTS:BACK") { showDesktop(); maybeRestoreEmergencyOverlay(); return; }
+    if (command == "OUTPUTS:REFRESH") {
+      if (commandCallback) commandCallback("STATUS:REQUEST");
+      return;
+    }
+    if (command.startsWith("OUTPUTS:")) {
+      const bool connected = linkState == LINK_READY && liveStageConnected;
+      const char *id = mosfetDetail_.firstId;
+      if (!connected || !showduino_mosfet_id_ok(id)) {
+        page_outputs_feedback("No connected MOSFET node."); return;
+      }
+      String local;
+      if (command == "OUTPUTS:ALL:OFF") local = "MOSFET:ALL:OFF";
+      else if (command == "OUTPUTS:IDENTIFY") local = "MOSFET:IDENTIFY";
+      else if (command.startsWith("OUTPUTS:MOSFET:")) local = command.substring(8);
+      else return;
+      ShowduinoMosfetOutCmd parsed{};
+      if (!showduino_mosfet_parse_out_command(local.c_str(), &parsed)) {
+        page_outputs_feedback("Invalid output request."); return;
+      }
+      const bool safeOff = parsed.cmd == SHOWDUINO_MOSFET_CMD_ALL_OFF || parsed.cmd == SHOWDUINO_MOSFET_CMD_OUT_OFF;
+      const bool showActive = mirroredState == SHOW_STATE_RUNNING || mirroredState == SHOW_STATE_PAUSED;
+      const bool em = emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP || mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
+      if (!safeOff && (em || mosfetNodeRaw_ != SHOWDUINO_MOSFET_NODE_WIRE_ONLINE ||
+          (showActive && parsed.cmd != SHOWDUINO_MOSFET_CMD_IDENTIFY))) {
+        page_outputs_feedback("Output controls are locked."); return;
+      }
+      char request[96];
+      snprintf(request, sizeof(request), "MOSFET:NODE:%s:%s", id, local.c_str() + 7);
+      if (commandCallback) {
+        commandCallback(request);
+        page_outputs_feedback("Request sent. Waiting for node status.");
+      }
+      return;
+    }
+    if (command == PAGE04_CMD_MOSFET_OPEN) {
+      page_outputs_select(0);
+      showOutputs();
+      maybeRestoreEmergencyOverlay();
       return;
     }
     if (command == PAGE04_CMD_MOSFET_STATUS) {
@@ -2955,7 +3049,14 @@ private:
       sendAudioNodeCmd("AUDIO:NODE:TEST");
       return;
     }
+    if (command == PAGE05_CMD_MIC) {
+      page_05_audio_node_show_mic(true);
+      return;
+    }
     if (command == PAGE05_CMD_SELECT) {
+      director_audio_inventory_begin(&audioNodeCtrl_, 0);
+      sendAudioNodeCmd("AUDIO:NODE:INVENTORY:0");
+      refreshAudioNodePage();
       page_05_audio_node_show_select(true);
       return;
     }
@@ -2963,17 +3064,74 @@ private:
       page_05_audio_node_show_details(true);
       return;
     }
-    if (command == PAGE05_CMD_CLOSE) {
-      page_05_audio_node_show_details(false);
-      page_05_audio_node_show_select(false);
+    if (command == PAGE05_CMD_AMBIENCE) {
+      page_05_audio_node_show_ambience(true);
+      if (commandCallback) commandCallback("AMBIENCE:STATUS");
       return;
     }
-    if (command == PAGE05_CMD_INV_NEXT) {
+    if (command == PAGE05_CMD_AMB_PLAY || command == PAGE05_CMD_AMB_LOOP) {
+      if (emergencyLocked) return;
+      if (commandCallback) {
+        commandCallback(String(command == PAGE05_CMD_AMB_LOOP ? "AMBIENCE:LOOP:" : "AMBIENCE:PLAY:") +
+                        PAGE05_AMBIENCE_DEFAULT_PATH);
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_STOP) {
+      if (commandCallback) {
+        commandCallback("AMBIENCE:STOP");
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_VOL_DN || command == PAGE05_CMD_AMB_VOL_UP) {
+      if (emergencyLocked) return;
+      int v = (int)page_05_audio_node_ambience_volume() +
+              (command == PAGE05_CMD_AMB_VOL_UP ? 10 : -10);
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      if (commandCallback) {
+        commandCallback(String("AMBIENCE:VOLUME:") + String(v));
+        commandCallback("AMBIENCE:STATUS");
+      }
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_STATUS) {
+      if (commandCallback) commandCallback("AMBIENCE:STATUS");
+      return;
+    }
+    if (command == PAGE05_CMD_AMB_CLOSE) {
+      page_05_audio_node_show_ambience(false);
+      return;
+    }
+    if (command == PAGE05_CMD_CLOSE) {
+      audioNodeCtrl_.inventoryLoading = false;
+      page_05_audio_node_show_mic(false);
+      page_05_audio_node_show_details(false);
+      page_05_audio_node_show_select(false);
+      page_05_audio_node_show_ambience(false);
+      return;
+    }
+    if (command == PAGE05_CMD_INV_NEXT || command == PAGE05_CMD_INV_PREV ||
+        command == PAGE05_CMD_INV_REFRESH) {
+      uint16_t first = audioNodeCtrl_.inventoryPage;
+      if (command == PAGE05_CMD_INV_NEXT) {
+        if (audioNodeCtrl_.inventoryLoading ||
+            (uint32_t)first + DIRECTOR_AUDIO_ASSETS_PER_SCREEN >= audioNodeCtrl_.inventoryTotal) return;
+        first += DIRECTOR_AUDIO_ASSETS_PER_SCREEN;
+      } else if (command == PAGE05_CMD_INV_PREV) {
+        if (audioNodeCtrl_.inventoryLoading || !first) return;
+        first = first >= DIRECTOR_AUDIO_ASSETS_PER_SCREEN ? first - DIRECTOR_AUDIO_ASSETS_PER_SCREEN : 0;
+      } else first = 0;
+      const uint16_t wirePage = director_audio_inventory_begin(&audioNodeCtrl_, first);
       sendAudioNodeCmd(String("AUDIO:NODE:INVENTORY:") +
-                       String((unsigned)(audioNodeCtrl_.inventoryPage + 1)));
+                       String((unsigned)wirePage));
+      refreshAudioNodePage();
       return;
     }
     if (command.startsWith("PAGE05:ASSET:")) {
+      audioNodeCtrl_.inventoryLoading = false;
       strncpy(audioNodeCtrl_.selectedAsset, command.c_str() + 13,
               sizeof(audioNodeCtrl_.selectedAsset) - 1);
       page_05_audio_node_show_select(false);
@@ -3144,8 +3302,7 @@ private:
       Serial.println("[E-Stop] E-STOP pressed - sending EMERGENCY:STOP");
     } else if (command == "EMERGENCY:CLEAR") {
       /* Request the P4 clear workflow. Do not unlock until STATE:EMERGENCY:CLEAR. */
-      gDirectorEmergencyScreen.noteClearRequested(millis());
-      appendLog("E-CLEAR request sent to Stage");
+      appendLog("E-CLEAR request to Stage");
       pushOperatorEvent("E-CLEAR request -> Stage");
       Serial.println("[E-Stop] CLEAR EMERGENCY - sending EMERGENCY:CLEAR request");
       outbound = "EMERGENCY:CLEAR";
@@ -3422,6 +3579,10 @@ private:
     }
     uiBuildPump();
 
+    lv_obj_t *outputsPanel = makePagePanel(PAGE_OUTPUTS);
+    if (outputsPanel) page_outputs_create(outputsPanel, displayCommandThunk);
+    uiBuildPump("[UI] Outputs");
+
     Serial.println("[UI] Page 05 Audio Node...");
     lv_obj_t *audioNodePanel = makePagePanel(PAGE_AUDIO_NODE);
     uiBuildPump("[UI] Page 05");
@@ -3665,7 +3826,7 @@ private:
     formatClock(millis() - bootMs, done, sizeof(done));
     char detail[320];
     snprintf(detail, sizeof(detail),
-             "Show: %s\nTotal runtime: %s\nCues executed: %lu / %lu\nWarnings: %u\nErrors: %u\nEmergency count: %u\nCompletion time: T+%s\nStage reports finished. The production remains loaded.",
+             "Show: %s\nTotal runtime: %s\nTimeline position: %lu / %lu\nWarnings: %u\nErrors: %u\nEmergency count: %u\nCompletion time: T+%s\nStage reports finished. The production remains loaded.",
              rt.showName[0] ? rt.showName : "-",
              et,
              (unsigned long)rt.currentCue,
@@ -3720,6 +3881,10 @@ private:
       pending = "EMERGENCY - Stage latch active";
       col = OsColor::Fault;
     }
+    if (!runtimeFresh_ && !emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP) {
+      pending = "PLAYBACK UPDATE STALE - checking Stage";
+      col = OsColor::Warn;
+    }
     page_10_live_set_pending(pending, col);
     page_10_live_set_progress(liveProgressPct);
     page_10_live_set_emergency((mirroredState == SHOW_STATE_EMERGENCY_STOP) || emergencyLocked);
@@ -3728,7 +3893,8 @@ private:
     if (emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP) headerCol = OsColor::Fault;
     else if (mirroredState == SHOW_STATE_ERROR) headerCol = OsColor::Fault;
     else if (mirroredState == SHOW_STATE_RUNNING) headerCol = OsColor::Ok;
-    page_10_live_set_header(deskRuntimeWord(), headerCol);
+    page_10_live_set_header(!runtimeFresh_ && !emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP
+                            ? "PLAYBACK UPDATE STALE" : deskRuntimeWord(), headerCol);
   }
 
   void showEmergencyOverlay() {
@@ -3889,6 +4055,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_OUTPUTS: showOutputs(); break;
       case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
@@ -3905,6 +4072,7 @@ private:
       case PAGE_SHOW_DETAILS: showShows(); break;
       case PAGE_NODES: showNodes(); break;
       case PAGE_AUDIO_NODE: showAudioNode(); break;
+      case PAGE_OUTPUTS: showOutputs(); break;
       case PAGE_LAMP_NODE: showLampNode(); break;
       case PAGE_DIAGNOSTICS: showDiagnostics(); break;
       case PAGE_SETTINGS: showSettings(); break;
@@ -4225,7 +4393,7 @@ private:
     if (displayManager_.showPage(PAGE_NODES)) {
       Serial.println("[UI] Page 04 Nodes (LVGL)");
       if (page_04_nodes_is_active()) {
-        page_04_nodes_apply_theme();
+        // Theme is applied at creation and when the selected theme changes.
         refreshNodesPage();
       }
       pushDisplaySnapshot();
@@ -4238,6 +4406,25 @@ private:
     trafficDirty = true;
     updateStatusWidgets(true);
   }
+  void refreshOutputsPage() {
+    OutputsModel model;
+    model.detail = mosfetDetail_;
+    model.linked = linkState == LINK_READY && liveStageConnected;
+    model.online = mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_ONLINE;
+    model.emergency = emergencyLocked || mirroredState == SHOW_STATE_EMERGENCY_STOP ||
+                      mosfetNodeRaw_ == SHOWDUINO_MOSFET_NODE_WIRE_EMERGENCY;
+    model.showRunning = mirroredState == SHOW_STATE_RUNNING || mirroredState == SHOW_STATE_PAUSED;
+    page_outputs_set_model(model);
+    page_p4_io_locks(model.linked,model.emergency||model.showRunning);
+  }
+  void showOutputs() {
+    if (!displayManager_.showPage(PAGE_OUTPUTS)) { showDesktop(); return; }
+    refreshOutputsPage();
+    pushDisplaySnapshot();
+    if (commandCallback) commandCallback("STATUS:REQUEST");
+    statusDirty = true;
+    updateStatusWidgets(true);
+  }
   void showAudioNode() {
     if (displayManager_.showPage(PAGE_AUDIO_NODE)) {
       Serial.println("[UI] Page 05 Audio Node (LVGL)");
@@ -4246,7 +4433,10 @@ private:
         refreshAudioNodePage();
       }
       pushDisplaySnapshot();
-      if (commandCallback) commandCallback("STATUS:REQUEST");
+      if (commandCallback) {
+        commandCallback("STATUS:REQUEST");
+        commandCallback("AMBIENCE:STATUS");
+      }
     } else {
       Serial.println("[UI] Audio Node page unavailable");
       showNodes();
@@ -4309,6 +4499,7 @@ private:
     updateStatusWidgets(true);
   }
   void showAudio() {
+    if(commandCallback)commandCallback("AMBIENCE:STATUS");
     if (displayManager_.showPage(PAGE_AUDIO)) {
       if (page_audio_system_is_active()) page_audio_system_apply_theme();
       refreshAudioPresentation();

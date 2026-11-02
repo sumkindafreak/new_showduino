@@ -1,5 +1,7 @@
 # Showduino
 
+> **2 November 2026 reconciliation candidate:** The owner confirms the preserved local firmware is currently flashed across the active system, runs the 22-second full-node show, and has fixed Emergency clearance. All nodes are reported complete except the deferred C3 LED-only node. This draft preserves that working source and adds narrow SHDO correctness fixes; dated reports below remain historical. Fresh complete-scenario/Emergency acceptance and exact board settings are still to be recorded. See [candidate scope and evidence](docs/reconciliation-update-2026-11-02.md).
+
 > **31 October 2026 safety regression — NOT READY:** Bench testing now reports Emergency sometimes cannot be cleared and the Director sometimes freezes until reset. This is not a confirmed Cue Library root cause. Keep effect loads isolated, preserve logs and flashed versions, and do not operate publicly or treat reset as Emergency clearance. The 29 October first audio/visual show remains achieved; full repeatable scenario and Emergency acceptance are blocked. [Current evidence and safe next steps](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
 
 > **30 October 2026 bench milestone:** First combined audio-and-visual show playback was reported on 29 October. This does not yet constitute the signed 22-second all-node acceptance run or Emergency repeat. [Current evidence and documentation reconciliation](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). The release candidate is not hardware-signed-off.

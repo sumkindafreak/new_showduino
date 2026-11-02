@@ -30,3 +30,6 @@ Thumbs.db
 credentials.json
 secrets.json
 **/LocalSecrets.h
+
+# Compiled host regression scratch files.
+.host-test-cache/
