@@ -214,7 +214,7 @@ void mosfetNodeLinkLoop() {
     sKeepaliveMs = millis();
     for (uint8_t i = 0; i < SHOWDUINO_MOSFET_NODE_MAX_NODES; ++i) {
       if (!sNodes[i].used || !sNodes[i].online) continue;
-      routeTo(sNodes[i].id, sSeq++, "MOSFET:OWN:GRANT");
+      routeTo(sNodes[i].id, sSeq++, emergencyLocked ? "EMERGENCY:STOP" : "MOSFET:OWN:GRANT");
       routeTo(sNodes[i].id, sSeq++, "MOSFET:STATUS");
     }
   }
@@ -252,7 +252,7 @@ bool mosfetNodeLinkHandleReport(const char *line) {
       zeroCachedLevels(st);
     }
     if (st->id[0]) {
-      routeTo(st->id, sSeq++, "MOSFET:OWN:GRANT");
+      routeTo(st->id, sSeq++, emergencyLocked ? "EMERGENCY:STOP" : "MOSFET:OWN:GRANT");
       routeTo(st->id, sSeq++, "MOSFET:STATUS");
     }
     publishState();
