@@ -1,18 +1,22 @@
 #include "support.h"
-#include "../../firmware/audio-node-esp32-a1s/ShowduinoAudioNode/src/AudioPixelEngine.cpp"
+#ifndef AUDIO_ENGINE_SOURCE
+#define AUDIO_ENGINE_SOURCE "../../firmware/audio-node-esp32-a1s/ShowduinoAudioNode/src/AudioPixelEngine.cpp"
+#endif
+#include AUDIO_ENGINE_SOURCE
 static uint16_t savedCount=0;
 static uint8_t savedBrightness=255;
 uint16_t nodeConfigGetU16(const char*,uint16_t){return savedCount;}
 uint8_t nodeConfigGetU8(const char*,uint8_t){return savedBrightness;}
-void nodeConfigSetU16(const char*,uint16_t v){savedCount=v;}
-void nodeConfigSetU8(const char*,uint8_t v){savedBrightness=v;}
+void nodeConfigSetU16(const char* key,uint16_t v){savedCount=v;printf("CONFIG16 %s %u\n",key,unsigned(v));}
+void nodeConfigSetU8(const char* key,uint8_t v){savedBrightness=v;printf("CONFIG8 %s %u\n",key,unsigned(v));}
 static unsigned samples=0;static uint32_t digest=2166136261U;
 static void capture(){
   std::vector<uint8_t> expected;
   for(unsigned i=0;i<sCount;++i){expected.push_back(sFrame[i*3+1]);expected.push_back(sFrame[i*3]);expected.push_back(sFrame[i*3+2]);}
   expectBytes(22,expected);for(auto b:expected)digest=(digest^b)*16777619U;++samples;
+  printf("STATE %u %u %u %u %u %u %u\n",testNow,sReady,sEmergency,sTestActive,sLocateActive,unsigned(sCount),unsigned(sGlobalBrightness));
 }
-static std::string command(const char* cmd){char reply[180];assert(audioPixelEngineHandleCommand(cmd,reply,sizeof(reply)));return reply;}
+static std::string command(const char* cmd){char reply[180];assert(audioPixelEngineHandleCommand(cmd,reply,sizeof(reply)));printf("COMMAND %s -> %s\n",cmd,reply);return reply;}
 static void step(unsigned n){for(unsigned i=0;i<n;++i){testNow+=25;audioPixelEngineService();capture();}}
 static void fillWhite(){auto bytes=decode(channels[22].writes.back());assert(std::all_of(bytes.begin(),bytes.end(),[](uint8_t b){return b==255;}));}
 static void fillBlack(){auto bytes=decode(channels[22].writes.back());assert(std::all_of(bytes.begin(),bytes.end(),[](uint8_t b){return b==0;}));}
@@ -58,4 +62,5 @@ int main(){
   for(unsigned count:{30U,512U,10U}){char line[40];snprintf(line,sizeof(line),"PIXEL:COUNT:%u",count);command(line);command("PIXEL:INIT");assert(audioPixelEngineCount()==count);fillBlack();capture();}
   audioPixelEngineRelease();assert(!channels[22].active&&outputAllocations.empty());
   printf("PASS actual engine + vendor buffer + encoder: %u frame samples, digest=%08x, defaults/counts/effects/brightness/Emergency/failures/rebind\n",samples,digest);
+  dumpAudioTrace();
 }

@@ -2,6 +2,7 @@
 #include "../BoardConfig.h"
 #include "AudioStatusPixel.h"
 #include "AudioPixelOutput.h"
+#include "AudioPixelFrame.h"
 #include "AudioNodeState.h"
 #include "AudioPixelEngine.h"
 #include "input/AudioInput.h"
@@ -57,8 +58,10 @@ void audioStatusPixelService() {
     else colour = sPixel.Color(12, 0, 24);
   }
   if (sOutputReady && (colour != sColour || now - sLastWriteMs >= 250U)) {
-    sPixel.setPixelColor(0, colour);
-    if (sStatusOutput.write(sPixel.getPixels(), SHOWDUINO_AUDIO_STATUS_PIXEL_COUNT * 3U)) {
+    const uint8_t rgb[] = {static_cast<uint8_t>(colour >> 16),
+                           static_cast<uint8_t>(colour >> 8),
+                           static_cast<uint8_t>(colour)};
+    if (audioPixelWriteRgbFrame(sStatusOutput, sPixel, rgb, sizeof(rgb))) {
       sColour = colour;
       sLastWriteMs = now;
     }
