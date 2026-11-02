@@ -1,0 +1,67 @@
+name: S3 Lamp optional FastLED
+on:
+  pull_request:
+    paths:
+      - 'firmware/s3-lamp-node/**'
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
+      - 'protocol/**'
+      - 'tools/lamp-node-tests/**'
+      - 'tools/led-backend-tests/**'
+      - '.github/workflows/s3-lamp-backend-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  renderer-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tools/lamp-node-tests/run_backend_tests.py
+      - run: python3 tools/led-backend-tests/run_tests.py
+      - name: Existing Lamp protocol and state-machine tests
+        run: |
+          for test in lamp_node carbide_lamp lamp_motion; do
+            g++ -std=c++17 -Iprotocol "tools/lamp-node-tests/test_${test}.cpp" -o "$RUNNER_TEMP/$test"
+            "$RUNNER_TEMP/$test"
+          done
+  full-lamp-build:
+    name: Complete S3 Lamp backend=${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [0, 1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.1.1'
+      - name: Install pinned libraries and toolchain
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli lib update-index
+          arduino-cli lib install 'Adafruit NeoPixel@1.15.5'
+          if [ '${{ matrix.backend }}' = 1 ]; then arduino-cli lib install 'FastLED@3.10.8'; fi
+      - name: Compile complete Lamp candidate (never flashed)
+        run: |
+          sketch="$GITHUB_WORKSPACE/firmware/s3-lamp-node/ShowduinoS3LampNode"
+          arduino-cli compile --jobs 2 \
+            --fqbn 'esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled' \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch -DSHOWDUINO_LAMP_USE_FASTLED=${{ matrix.backend }}" \
+            --build-path "$RUNNER_TEMP/lamp-build" "$sketch" 2>&1 | tee compile.log
+      - name: Retain build evidence (not a release)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-lamp-backend-${{ matrix.backend }}-logs
+          path: compile.log
+          if-no-files-found: warn

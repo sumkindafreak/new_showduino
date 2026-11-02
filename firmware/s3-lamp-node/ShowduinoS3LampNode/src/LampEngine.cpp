@@ -3,11 +3,19 @@
 #include "LampConfig.h"
 #include "../BoardConfig.h"
 
+#if SHOWDUINO_LAMP_USE_FASTLED
+#define SHOWDUINO_LED_USE_FASTLED 1
+#define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
+using LampStrip = ShowduinoLedStrip;
+#else
 #include <Adafruit_NeoPixel.h>
+using LampStrip = Adafruit_NeoPixel;
+#endif
 #include <math.h>
 #include <string.h>
 
-static Adafruit_NeoPixel *sStrip = nullptr;
+static LampStrip *sStrip = nullptr;
 static uint8_t sRgb[SHOWDUINO_LAMP_PIXEL_COUNT][3];
 static float sLevel[SHOWDUINO_LAMP_PIXEL_COUNT];
 static float sTarget[SHOWDUINO_LAMP_PIXEL_COUNT];
@@ -84,10 +92,22 @@ static void ensureStrip() {
   if (sStrip || SHOWDUINO_LAMP_PIXEL_PIN < 0) return;
   pinMode(SHOWDUINO_LAMP_PIXEL_PIN, OUTPUT);
   digitalWrite(SHOWDUINO_LAMP_PIXEL_PIN, LOW);
-  sStrip = new Adafruit_NeoPixel(SHOWDUINO_LAMP_PIXEL_COUNT,
+#if SHOWDUINO_LAMP_USE_FASTLED
+  sStrip = new (std::nothrow) LampStrip(SHOWDUINO_LAMP_PIXEL_COUNT,
+                                      SHOWDUINO_LAMP_PIXEL_PIN,
+                                      NEO_GRB + NEO_KHZ800);
+  if (!sStrip) return;
+  if (!sStrip->begin()) {
+    delete sStrip;
+    sStrip = nullptr;
+    return;
+  }
+#else
+  sStrip = new LampStrip(SHOWDUINO_LAMP_PIXEL_COUNT,
                                  SHOWDUINO_LAMP_PIXEL_PIN,
                                  NEO_GRB + NEO_KHZ800);
   sStrip->begin();
+#endif
   sStrip->clear();
   sStrip->show();
 }
