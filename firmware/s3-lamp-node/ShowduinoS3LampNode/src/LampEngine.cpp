@@ -6,7 +6,9 @@
 #if SHOWDUINO_LAMP_USE_FASTLED
 #define SHOWDUINO_LED_USE_FASTLED 1
 #define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
-#include "../../../shared-pixel/ShowduinoLedStrip.h"
+// Resolved through the original sketch include path in Arduino's staged build,
+// like the existing shared-node includes used by this sketch.
+#include "../../shared-pixel/ShowduinoLedStrip.h"
 using LampStrip = ShowduinoLedStrip;
 #else
 #include <Adafruit_NeoPixel.h>
