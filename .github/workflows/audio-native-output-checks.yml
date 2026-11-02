@@ -1,0 +1,48 @@
+name: Audio native LED output regression checks
+on:
+  pull_request:
+    paths:
+      - 'firmware/audio-node-esp32-a1s/**'
+      - 'firmware/shared-node/**'
+      - 'protocol/**'
+      - 'tools/audio-output-tests/**'
+      - '.github/workflows/audio-native-output-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  native-output:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.1.1'
+      - name: Install real pinned Adafruit buffer implementation
+        run: |
+          arduino-cli config init
+          arduino-cli lib update-index
+          arduino-cli lib install 'Adafruit NeoPixel@1.15.5'
+      - name: Actual production output, engine and status tests
+        run: |
+          libdir="$(arduino-cli config get directories.user)/libraries/Adafruit_NeoPixel"
+          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" 2>&1 | tee native-output.log
+      - name: Check memory and undefined behavior during failure/rebind cases
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          libdir="$(arduino-cli config get directories.user)/libraries/Adafruit_NeoPixel"
+          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" --sanitize 2>&1 | tee native-output-sanitizers.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audio-native-output-test-evidence
+          path: |
+            native-output.log
+            native-output-sanitizers.log
+          if-no-files-found: warn
