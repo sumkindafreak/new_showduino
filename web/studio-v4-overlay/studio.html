@@ -137,27 +137,8 @@
   <script src="js/studio-deploy.js"></script>
   <script src="js/studio-creator-bootstrap.js"></script>
 
-  <!-- Android keyboards resize the visual viewport. Protect an open mobile cue
-       editor from resize/autosave redraws so focused inputs are not replaced. -->
-  <script>
-    (() => {
-      const mobileCueEditorOpen = () => Boolean(
-        document.body.classList.contains('studio-mobile-native') &&
-        document.querySelector('#studio-mobile-app .sm-editor:not([hidden])')
-      );
-
-      const protectOpenCueEditor = (event) => {
-        if (mobileCueEditorOpen()) event.stopImmediatePropagation();
-      };
-
-      window.addEventListener('resize', protectOpenCueEditor, true);
-      window.addEventListener('orientationchange', protectOpenCueEditor, true);
-      window.addEventListener('showduino:project-saved', protectOpenCueEditor, true);
-      window.addEventListener('showduino:v4-saved', protectOpenCueEditor, true);
-    })();
-  </script>
-
-  <script src="js/studio-mobile.js"></script>
+<script src="js/studio-live-layers.js"></script>
+  <script src="js/studio-responsive-editor.js"></script>
   <script src="js/current-system-ui.js"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>

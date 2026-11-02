@@ -1,6 +1,8 @@
 # SHOWDUINO — Quick Start
 
-> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](../LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
+> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
+> **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
 
 **Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
 
@@ -93,6 +95,18 @@ The fuller Studio/SHDO authoring experience is substantially more capable than e
 For a first practical RC test, use an already installed production or the documented commissioning/deploy path rather than inventing files manually.
 
 ---
+
+> **24 October finish-line check:** The existing [22-second all-node acceptance production](https://github.com/sumkindafreak/new_showduino/blob/integration/pr27-pr28-current-main/examples/productions/ALL_NODES_BENCH_TEST.md) is on unmerged PR #29, **not** current `main`. The `main` [first-audio-test.shdo](../../examples/productions/first-audio-test.shdo) is a smaller 30-second audio-only smoke test (22 seconds of WAV playback), not an all-node pass. Review the [current main/bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md), record installed firmware versions and do not mark either show accepted until a physical run and Emergency repeat pass. Audio Node GPIO5 status/KEY6 disable and default-ten-pixel behaviour are draft PR #40 only; current `main` needs explicit GPIO22 pixel COUNT/INIT commissioning.
+
+> **29 October first-show update:** The owner has now successfully played a **real show with audio and visual effects together on hardware**. This supersedes any implication that Showduino has never played a show. The production identity, exact installed firmware, complete/terminal state, repeatability and Emergency interruption/recovery have **not** been logged as a formal acceptance pass. Preserve the working configuration, repeat that same show with P4-confirmed COMPLETE, then run its Emergency interruption/clear test. The separate PR #29 22-second all-node fixture remains formally `NOT RUN`; do not equate that record with the achieved first-show milestone. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+
+## Studio Cue Library — choose and place cues
+
+**As checked 30 October:** Website Studio's **Timeline** contains a searchable, collapsible **Cue Library**. Add a matching track (or Mixed Lane), expand the library, then **drag** an Audio, Pixel or MOSFET preset to the desired time. **Double-click** a preset to insert it at the playhead onto an eligible unlocked track. Select the new clip and edit its time, parameters, logical Node ID, output, Pixel segment or Audio file as applicable. Run **Project Check** before exporting.
+
+The catalogue also offers legacy Relay, generic FX and Trigger authoring presets; **do not assume those deploy to the installed P4**. Audio preset filenames do not copy WAV files onto your Audio Node. The P4's GPIO24 Emergency/signage line is not an ordinary cue output. See the [step-by-step creator instructions in the Studio Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+
+**Director distinction:** The current `main` Director HOME **CUE LIBRARY** tile is visible but disabled; author cues in **Studio**, then select, load and run the installed production from Director.
 
 ## Website Studio → installed production
 

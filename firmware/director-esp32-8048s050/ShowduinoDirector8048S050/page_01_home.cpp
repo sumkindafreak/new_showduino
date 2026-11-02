@@ -489,7 +489,7 @@ static void build_controls(void) {
     build_control(i);
   }
   /* Cue Library remains a placeholder. Outputs opens the MOSFET desk. */
-  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], true);
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], true);
   refresh_hero();
 
@@ -633,7 +633,7 @@ void page_01_home_set_capabilities(const ShowduinoCapabilities *caps) {
   if (caps != nullptr) {
     s_caps = *caps;
   }
-  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], false);
+  set_tile_enabled(&s_ctrls[PAGE01_CTRL_CUE_LIBRARY], true);
   set_tile_enabled(&s_ctrls[PAGE01_CTRL_OUTPUTS], true);
   apply_footer_visibility();
   refresh_hero();

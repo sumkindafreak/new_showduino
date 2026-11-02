@@ -352,7 +352,8 @@ void lampProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
       report(line, sequence);
       return;
     }
-    if (showduino_blow_blocks_ignite(lampSensorsBlow())) {
+    if (lampOwnerMode() != SHOWDUINO_OWNER_SHOW_CONTROLLED &&
+        showduino_blow_blocks_ignite(lampSensorsBlow())) {
       Serial.println("[LAMP] Ignition blocked — waiting for blow release");
       char line[64];
       snprintf(line, sizeof(line), "LAMP:FAILED:%lu:BLOW_ACTIVE",
@@ -396,7 +397,8 @@ void lampProtocolLocalIgnite() {
     Serial.println("[LAMP] Local striker: already lit");
     return;
   }
-  if (showduino_blow_blocks_ignite(lampSensorsBlow())) {
+  if (lampOwnerMode() != SHOWDUINO_OWNER_SHOW_CONTROLLED &&
+        showduino_blow_blocks_ignite(lampSensorsBlow())) {
     Serial.println("[LAMP] Local striker blocked — waiting for blow release");
     return;
   }
@@ -415,9 +417,11 @@ void lampProtocolService() {
   lampOwnerTick();
   onOwnerEdges();
 
+  // Local mic reactions belong to standalone mode; P4 owns managed lamp effects.
+  const bool allowLocalBlow = lampOwnerMode() != SHOWDUINO_OWNER_SHOW_CONTROLLED;
   const ShowduinoBlowDetector *blowDet = lampSensorsBlow();
   uint8_t stress = 0;
-  if (blowDet && blowDet->threshold > 0) {
+  if (allowLocalBlow && blowDet && blowDet->threshold > 0) {
     const int32_t delta = blowDet->filtered - blowDet->baseline;
     if (delta > 0) {
       int32_t n = (delta * 100) / blowDet->threshold;
@@ -434,10 +438,10 @@ void lampProtocolService() {
        !lampEngineFlameLit())) {
     stress = 0;
   }
-  lampEngineSetBlowStress(lampEngineEmergency() ? 0 : stress);
+  lampEngineSetBlowStress((!allowLocalBlow || lampEngineEmergency()) ? 0 : stress);
 
   const ShowduinoBlowClass blow = lampSensorsTakeBlowEvent();
-  if (lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
+  if (allowLocalBlow && lampNodeState() != SHOWDUINO_LAMP_ST_EMERGENCY) {
     if (blow == SHOWDUINO_BLOW_SUSTAINED && lampEngineFlameLit()) {
       lampEngineApplyEvent(SHOWDUINO_CARBIDE_EV_BLOW);
       Serial.println("[LAMP] Sustained blow → EXTINGUISH");

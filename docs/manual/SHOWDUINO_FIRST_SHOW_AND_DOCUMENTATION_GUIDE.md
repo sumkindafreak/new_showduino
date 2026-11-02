@@ -1,5 +1,7 @@
 # Showduino: Weekend Build and First-Show Guide
 
+> **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
 **Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
 
 Product: 1.0.0-rc.1 / SHDO v2. Status: documentation work in progress.
@@ -15,11 +17,15 @@ This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.m
 
 Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working source for pinouts and vendor/firmware references. Do not claim a representative product photo is a verified photo of the installed module.
 
+**24 October status:** Use the [finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the distinction between `main` and draft PR #29's fixed 22-second all-node test. The physical normal run and mid-show Emergency repeat are **NOT YET VERIFIED**. Do not start a different production or add new features to close this gate.
+
+**29 October physical milestone:** Showduino has now **played its first real combined audio/visual show on physical hardware**, as confirmed by the owner. That success must not be erased by the older 22-second fixture's `NOT RUN` status. Teething issues remain and the owner has not yet recorded a complete, repeatable P4-confirmed scenario or mid-show Emergency recovery. **For the smallest finish-line test, preserve today's working production and firmware, repeat that same show through COMPLETE, then test Emergency interruption and deliberate clear with no automatic restart.** Do not introduce new features or additional hardware for this gate. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+
 ## First show: safe workflow
 
 1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
 2. Confirm the link and P4 authority before using the Director.
-3. Create one simple scene and one timed Pixel or Audio clip inside Studio.
+3. Create one simple scene and one timed Pixel or Audio clip inside Studio. In Website Studio's **Timeline**, expand **Cue Library**, search a preset, drag it onto a compatible unlocked track (or Mixed Lane), or double-click to insert at the playhead. Select the clip and confirm its timing, logical Node ID, output and Pixel segment or Audio file. See the [Cue Library creator guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md); the Director HOME Cue Library tile is not the Studio editor.
 4. Validate and export SHDO v2. Refer to [show format](../show-file-format.md) and [Studio documentation](../studio/README.md).
 5. Verify which authored cue types the installed P4 firmware can deploy and execute; Studio preview alone is not physical proof.
 6. From Website Studio, export the `.shdo`, open the saved Communications S3 address, then use **Productions → Persist SHDO v2 to P4 SD → Persist to SD**. Wait for the P4 confirmation, separately **Load** the production, then explicitly **START** and **STOP**. Record actual hardware responses. See the [Quick Start workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).

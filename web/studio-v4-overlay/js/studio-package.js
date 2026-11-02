@@ -55,7 +55,7 @@
     const node = String(clip?.routing?.nodeId || '').trim().toLowerCase();
     const pixels = window.ShowduinoPixelAuthoring;
     switch (clip?.type) {
-      case 'audio': return 'audio-node';
+      case 'audio': return (clip?.routing?.route === 'p4-ambience' || node === 'p4' || node === 'p4-ambience') ? 'p4-ambience' : 'audio-node';
       case 'mosfet': return 'mosfet-node';
       case 'trigger': return 'input-node';
       case 'pixel':
@@ -75,7 +75,7 @@
     const node = String(clip?.routing?.nodeId || '').trim().toLowerCase();
     const pixels = window.ShowduinoPixelAuthoring;
     switch (clip?.type) {
-      case 'audio': return 'audio-node';
+      case 'audio': return (clip?.routing?.route === 'p4-ambience' || node === 'p4' || node === 'p4-ambience') ? 'p4-ambience' : 'audio-node';
       case 'mosfet': return 'mosfet-node';
       case 'trigger': return 'input-node';
       case 'pixel':
@@ -271,7 +271,8 @@
         enabled: track.muted !== true,
         locked: track.locked === true,
         order: Number.isFinite(Number(track.order)) ? Math.max(0, Math.round(Number(track.order))) : index,
-        ...(uniqueTargets.length === 1 ? { targetDeviceId: uniqueTargets[0] } : {})
+        ...(uniqueTargets.length === 1 ? { targetDeviceId: uniqueTargets[0] } :
+          (track.targetDeviceId ? { targetDeviceId: String(track.targetDeviceId) } : {}))
       };
     });
 

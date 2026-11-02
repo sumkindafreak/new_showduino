@@ -12,6 +12,7 @@ struct AudioNodeStatus {
   uint32_t lastSeq = 0;
   uint32_t pendingSeq = 0;
   uint32_t lastRxMs = 0;
+  uint32_t inventoryRevision = 0;
   uint16_t inventoryTotal = 0;
   uint16_t inventoryPage = 0;
   char mac[18] = "";

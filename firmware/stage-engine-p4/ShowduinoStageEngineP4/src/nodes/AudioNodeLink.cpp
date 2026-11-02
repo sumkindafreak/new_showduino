@@ -391,6 +391,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     char *page = strtok_r(buf, ":", &save);
     char *total = strtok_r(nullptr, ":", &save);
     char *list = strtok_r(nullptr, ":", &save);
+    sSt.inventoryRevision++;
     if (page) sSt.inventoryPage = (uint16_t)atoi(page);
     if (total) sSt.inventoryTotal = (uint16_t)atoi(total);
     for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_PER_PAGE; i++) sSt.inventory[i][0] = '\0';
@@ -580,7 +581,7 @@ bool audioNodeLinkHandleCommand(const char *command, char *reply, size_t replyLe
   if (!command || strncmp(command, "AUDIO:NODE:", 11) != 0) return false;
   if (reply && replyLen) reply[0] = '\0';
 
-  /* Audio Node GPIO22 pixel engine — same ESP-NOW peer, not a fake LED-XX identity. */
+  /* Audio Node GPIO22 pixel engine â€” same ESP-NOW peer, not a fake LED-XX identity. */
   if (!strncmp(command, "AUDIO:NODE:PIXEL:", 17)) {
     const char *pixelCmd = command + 17; /* "PIXEL:..." expected */
     char forwarded[96];
@@ -771,6 +772,10 @@ void audioNodeLinkAppendJson(String &json) {
   json += ",\n      \"caps\": \"";
   json += sSt.pixelCaps;
   json += "\"\n    }";
+  json += ",\n    \"inventoryRevision\": ";
+  json += String((unsigned long)sSt.inventoryRevision);
+  json += ",\n    \"inventoryPageSize\": ";
+  json += String((unsigned)SHOWDUINO_AUDIO_INV_PER_PAGE);
   json += ",\n    \"inventoryTotal\": ";
   json += String((unsigned)sSt.inventoryTotal);
   json += ",\n    \"inventoryPage\": ";

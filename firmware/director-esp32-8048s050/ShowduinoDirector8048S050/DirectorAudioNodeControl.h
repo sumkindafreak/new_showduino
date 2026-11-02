@@ -9,9 +9,9 @@
 
 #define DIRECTOR_AUDIO_PENDING_MS 5000u
 #define DIRECTOR_AUDIO_VOL_THROTTLE_MS 400u
-#define DIRECTOR_AUDIO_ASSETS_PER_SCREEN 3u
-static_assert(DIRECTOR_AUDIO_ASSETS_PER_SCREEN <= SHOWDUINO_AUDIO_INV_WIRE_MAX,
-              "Audio selector rows must fit inventory storage");
+#define DIRECTOR_AUDIO_ASSETS_PER_SCREEN SHOWDUINO_AUDIO_INV_MAX
+static_assert(DIRECTOR_AUDIO_ASSETS_PER_SCREEN <= 255u,
+              "Audio picker count must fit uint8_t");
 
 enum DirectorAudioPending : uint8_t {
   DIRECTOR_AUDIO_PEND_NONE = 0,
@@ -39,7 +39,7 @@ struct DirectorAudioNodeControl {
   char mac[18];
   char caps[48];
   char selectedAsset[SHOWDUINO_AUDIO_DETAIL_ASSET_MAX + 1];
-  char inventory[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 1];
+  char inventory[DIRECTOR_AUDIO_ASSETS_PER_SCREEN][SHOWDUINO_AUDIO_INV_NAME_MAX + 1];
   char feedback[48];
   char lastErrorText[40];
   uint16_t inventoryTotal;

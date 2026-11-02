@@ -290,8 +290,10 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "EMERGENCY:STOP" || cmd == "STATUS:REQUEST") {
     return true;
   }
-#if defined(SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR) && SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
-  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
+#if !defined(SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR) || SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
+  // P4 validates the pending request, physical inputs and explicit confirmation.
+  if (cmd == "EMERGENCY:CLEAR" || cmd == "EMERGENCY:CLEAR_CONFIRM" ||
+      cmd == "EMERGENCY:CLEAR_CANCEL") {
     return true;
   }
 #endif

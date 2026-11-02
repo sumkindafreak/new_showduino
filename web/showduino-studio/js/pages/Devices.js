@@ -5,9 +5,6 @@ import {
   pluginConfigWord, pluginDisplayName, pluginRolePhrase, presenceWord
 } from '../status.js';
 
-const FUTURE_NODES = [
-  'MOSFET Node'
-];
 
 export async function DevicesPage(container) {
   container.append(el('p', {
@@ -97,15 +94,24 @@ export async function DevicesPage(container) {
       ? lastSnap.system.pixelNodes : [];
     const ens = (lastSnap.system && Array.isArray(lastSnap.system.emergencyNodes))
       ? lastSnap.system.emergencyNodes : [];
+    const mns = Array.isArray(lastSnap.system?.mosfetNodes) ? lastSnap.system.mosfetNodes : [];
     const audioSeen = an.seen || an.online;
     const lampSeen = ln.seen || ln.online;
     const pixelSeen = pns.length > 0;
     const estopSeen = ens.length > 0;
     if (!lastSnap.p4Online) {
       nodes.append(emptyState('P4 OFFLINE', 'Node presence is owned by the Show Engine.'));
-    } else if (!audioSeen && !lampSeen && !pixelSeen && !estopSeen) {
-      nodes.append(emptyState('No Showduino Nodes detected', 'Audio, Lamp, Pixel and Emergency Nodes appear here after ESP-NOW announce.'));
+    } else if (!audioSeen && !lampSeen && !pixelSeen && !estopSeen && !mns.length) {
+      nodes.append(emptyState('No Showduino Nodes detected', 'Audio, Lamp, Pixel, MOSFET and Emergency Nodes appear here after ESP-NOW announce.'));
     } else {
+      for (const mn of mns) {
+        nodes.append(statRow(mn.name || mn.id || 'MOSFET Node', mn.online ? 'ONLINE' : 'OFFLINE'));
+        nodes.append(statRow('State', mn.state || 'UNKNOWN'));
+        nodes.append(statRow('Emergency', mn.emergency ? 'ACTIVE' : 'CLEAR'));
+        for (const output of (mn.outputs || [])) {
+          nodes.append(statRow(output.name || output.id, String(output.level ?? 0)));
+        }
+      }
       if (audioSeen) {
         nodes.append(statRow('Audio Node', an.online ? 'ONLINE' : 'OFFLINE'));
         nodes.append(statRow('State', an.state || '—'));
@@ -193,7 +199,7 @@ export async function DevicesPage(container) {
         }
       }
     }
-    nodes.append(plannedNote('Planned next: ' + FUTURE_NODES.join(', ') + '. Relay Node is retired. DMX is parked. Emergency is inventory only — never a timeline cue.'));
+    nodes.append(plannedNote('MOSFET Node is implemented. Four-channel manual control, emergency all-off and reconnect behaviour passed the owner’s bench tests. Scene cues remain to be verified. Relay Node is retired; DMX is parked.'));
     host.append(nodes);
   }
 

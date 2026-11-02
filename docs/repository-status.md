@@ -1,7 +1,5 @@
 # Showduino Repository Status
 
-> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
-
 Classification of firmware projects. Status labels guide development priority; legacy source is retained where useful.
 
 Related:

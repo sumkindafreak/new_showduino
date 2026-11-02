@@ -756,7 +756,7 @@ export async function OutputsPage(container) {
 
     const future = el('div', { className: 'card' });
     future.append(el('h2', { text: 'Specialist-node roadmap' }));
-    future.append(plannedNote('Audio, Lamp, Pixel, Emergency and MOSFET Nodes are software-implemented. MOSFET physical pin validation remains open. The old Relay Node concept is retired. DMX remains parked/out of scope until explicitly revisited.'));
+    future.append(plannedNote('Audio, Lamp, Pixel, Emergency and MOSFET Nodes are software-implemented. MOSFET four-channel manual control and fail-safe behaviour are bench-verified; scene cues remain to be verified. The old Relay Node concept is retired. DMX remains parked/out of scope until explicitly revisited.'));
     host.append(future);
   }
 

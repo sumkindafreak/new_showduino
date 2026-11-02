@@ -49,6 +49,12 @@ SHDO v2 is the authoring interchange to build toward. The P4 parser does **not**
 
 ---
 
+## Studio Cue Library reality (30 October 2026)
+
+In the **public Website Studio** source (`sumkindafreak/showduino.com/js/timeline-fx-daw.js`), the timeline includes a searchable, collapsible **Cue Library** with Audio, Pixel, MOSFET, FX, Trigger and legacy Relay presets. Drag/drop onto an unlocked compatible track or Mixed Lane, or double-click to add at the playhead; then configure the cue in the Inspector and validate before export. **Authoring support is not hardware/compiler acceptance**: available P4 deployment commands are a bounded subset, and the public website, embedded Studio snapshot and flashed firmware can differ. In `new_showduino/main`, the Director's HOME Cue Library tile is still disabled.
+
+See the [step-by-step Studio Cue Library creator guide](../manual/SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+
 ## Document map
 
 | Document | Purpose | Honesty |

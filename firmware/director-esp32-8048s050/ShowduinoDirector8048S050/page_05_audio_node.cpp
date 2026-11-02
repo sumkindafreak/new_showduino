@@ -89,7 +89,15 @@ static Page05Ui s;
 static page05_command_fn s_cb = nullptr;
 static bool s_active = false;
 static DirectorAudioNodeControl s_model;
-static char s_asset_cmds[SHOWDUINO_AUDIO_INV_WIRE_MAX][SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
+static void asset_picker_changed(lv_event_t *e) {
+  if (lv_event_get_code(e) != LV_EVENT_CLICKED && lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+  const unsigned index = lv_dropdown_get_selected(s.select_list);
+  if (!s_model.online || index >= s_model.inventoryCount || !s_model.inventory[index][0]) return;
+  char command[SHOWDUINO_AUDIO_INV_NAME_MAX + 16];
+  snprintf(command, sizeof(command), "PAGE05:ASSET:%s", s_model.inventory[index]);
+  lv_dropdown_close(s.select_list);
+  if (s_cb) s_cb(command);
+}
 static char s_amb_state[12] = "IDLE";
 static char s_amb_path[96] = PAGE05_AMBIENCE_DEFAULT_PATH;
 static uint8_t s_amb_volume = 80;
@@ -354,18 +362,23 @@ static void paint() {
     lv_label_set_text(s.details_body, body);
   }
 
-  for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-    if (!s.inv_btns[i]) continue;
-    if (s_model.inventory[i][0]) {
-      lv_obj_clear_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
-      lv_obj_t *lab = lv_obj_get_child(s.inv_btns[i], 0);
-      if (lab) lv_label_set_text(lab, s_model.inventory[i]);
-      snprintf(s_asset_cmds[i], sizeof(s_asset_cmds[i]), "PAGE05:ASSET:%s",
-               s_model.inventory[i]);
-      lv_obj_set_user_data(s.inv_btns[i], (void *)s_asset_cmds[i]);
-    } else {
-      lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
+  if (s.select_list) {
+    // Do not replace an open list on every telemetry update.
+    static char options[DIRECTOR_AUDIO_ASSETS_PER_SCREEN * (SHOWDUINO_AUDIO_INV_NAME_MAX + 2)] = {};
+    options[0] = 0;
+    unsigned selected = 0;
+    for (unsigned i = 0; i < s_model.inventoryCount; ++i) {
+      if (i) strcat(options, "\n");
+      strcat(options, s_model.inventory[i]);
+      if (!strcmp(s_model.selectedAsset, s_model.inventory[i])) selected = i;
     }
+    const char *shown = options[0] ? options : (s_model.inventoryLoading ? "Loading assets..." : "No assets found");
+    if (strcmp(lv_dropdown_get_options(s.select_list), shown)) {
+      lv_dropdown_set_options(s.select_list, shown);
+      lv_dropdown_set_selected(s.select_list, selected);
+    }
+    ShowduinoOsTheme::setEnabled(s.select_list,
+        s_model.online && s_model.inventoryCount > 0);
   }
   if (s.select_hint) {
     if (!s_model.online) snprintf(line, sizeof(line), "Audio Node offline");
@@ -630,15 +643,20 @@ void page_05_audio_node_create(lv_obj_t *parent, page05_command_fn command_cb) {
   lv_label_set_text(hint, "Library reported by the Audio Node through the P4.");
   lv_obj_set_pos(hint, 16, 36);
   lv_obj_set_style_text_color(hint, lv_color_hex(ShowduinoPalette::Muted), 0);
-  for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_WIRE_MAX; i++) {
-    s.inv_btns[i] = make_btn(s.select, "-", 20, (int16_t)(64 + i * 48), 480, 44,
-                             s_asset_cmds[i], false);
-    lv_obj_add_flag(s.inv_btns[i], LV_OBJ_FLAG_HIDDEN);
-  }
-  s.btn_inv_prev = make_btn(s.select, "PREVIOUS", 20, selectFooterY, 114, 44, PAGE05_CMD_INV_PREV, false);
-  s.btn_inv_next = make_btn(s.select, "NEXT", 142, selectFooterY, 114, 44, PAGE05_CMD_INV_NEXT, false);
-  s.btn_inv_refresh = make_btn(s.select, "REFRESH", 264, selectFooterY, 114, 44, PAGE05_CMD_INV_REFRESH, false);
-  s.select_close = make_btn(s.select, "CLOSE", 386, selectFooterY, 114, 44, PAGE05_CMD_CLOSE, false);
+  s.select_list = lv_dropdown_create(s.select);
+  lv_obj_set_pos(s.select_list, 20, 72);
+  lv_obj_set_size(s.select_list, 480, 48);
+  lv_dropdown_set_options(s.select_list, "Loading assets...");
+  lv_obj_add_event_cb(s.select_list, asset_picker_changed, LV_EVENT_VALUE_CHANGED, nullptr);
+  lv_obj_t *use_asset = lv_button_create(s.select);
+  lv_obj_set_pos(use_asset, 20, 136);
+  lv_obj_set_size(use_asset, 480, 44);
+  lv_obj_t *use_label = lv_label_create(use_asset);
+  lv_label_set_text(use_label, "USE SELECTED ASSET");
+  lv_obj_center(use_label);
+  lv_obj_add_event_cb(use_asset, asset_picker_changed, LV_EVENT_CLICKED, nullptr);
+  s.btn_inv_refresh = make_btn(s.select, "REFRESH", 20, selectFooterY, 232, 44, PAGE05_CMD_INV_REFRESH, false);
+  s.select_close = make_btn(s.select, "CLOSE", 268, selectFooterY, 232, 44, PAGE05_CMD_CLOSE, false);
 
   page_05_audio_node_apply_theme();
   s_active = true;

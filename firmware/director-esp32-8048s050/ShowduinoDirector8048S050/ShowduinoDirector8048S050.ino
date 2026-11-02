@@ -42,6 +42,10 @@
 #include "backlight.h"
 #include "DirectorAmbientPixels.h"
 #include "DirectorEmergencyClearDialog.h"
+#include "DirectorEmergencyClearFlow.h"
+#include "DirectorRuntimeFreshness.h"
+static DirectorRuntimeFreshness runtimeFreshness;
+static DirectorEmergencyClearFlow emergencyClearFlow;
 #include "ShowduinoUi.h"
 #include "DirectorUnlockScreen.h"
 #include "DirectorUiMotion.h"
@@ -53,6 +57,7 @@
 #include "src/WebServerManager.h"
 #include "src/StorageAPI.h"
 #include "src/TimelineEngine.h"
+#include "../../../protocol/showduino_scene_recovery.h"
 #include "../../../protocol/showduino_state_wire.h"
 #include "../../../protocol/showduino_legacy_strings.h"
 #include "../../../protocol/showduino_log.h"
@@ -107,7 +112,36 @@ uint8_t gNodesOnline = 0;
 bool tlEndAckSeen = false;
 int tlEndAckCount = -1;
 static char verifiedTimelineId[64] = {};
+static char verifiedTimelineName[64] = {};
+static void cueLibraryState(DirectorCueLibraryState *out) {
+  *out=DirectorCueLibraryState{};
+  out->elapsedMs=gShowMirror.elapsedMs;out->fired=gShowMirror.currentCue;
+  out->total=timeline.cueTotal();out->online=linkState==LINK_READY && runtimeFreshness.fresh(millis());
+  out->emergency=emergencyLocked || gShowMirror.emergency;
+  strncpy(out->name,gShowMirror.showName,sizeof(out->name)-1);
+  strncpy(out->state,showStateName(gShowMirror.state),sizeof(out->state)-1);
+  out->matched=verifiedTimelineId[0] && out->total && out->total==gShowMirror.totalCues &&
+    (!strcmp(gShowMirror.showName,verifiedTimelineId) || !strcmp(gShowMirror.showName,verifiedTimelineName));
+}
+static bool cueLibraryRead(uint32_t index,uint32_t *time,char *command,size_t size) {
+  if(index>=timeline.cueTotal() || !size)return false;
+  const TimelineCue *cue=timeline.cueAt(index);if(!cue)return false;
+  *time=cue->timeMs;snprintf(command,size,"%s",cue->command);return true;
+}
 
+
+bool sendToStage(const String &command);
+static bool cueLibraryStart(uint32_t point) {
+  DirectorCueLibraryState state{};cueLibraryState(&state);
+  if(!state.matched || !state.online || state.emergency || gShowMirror.running)return false;
+  bool checkpoint=false;uint32_t fingerprint=2166136261u;
+  for(uint16_t i=0;i<timeline.cueTotal();++i){const TimelineCue *cue=timeline.cueAt(i);
+    if(cue){fingerprint=showduinoSceneFingerprint(fingerprint,cue->timeMs,cue->command);
+      if(cue->timeMs==point && showduinoSceneLabel(cue->command))checkpoint=true;}}
+  if(!checkpoint || point>=timeline.Duration())return false;
+  char command[64];snprintf(command,sizeof(command),"SHOW:STARTAT:%lu:%08lx:%lu",(unsigned long)point,(unsigned long)fingerprint,(unsigned long)gShowMirror.revision);
+  return sendToStage(String(command));
+}
 void markLinkDisconnected(const char *reason);
 void requestLinkRetry();
 void readEspNowReplies();
@@ -348,6 +382,7 @@ void handleStageLine(String line) {
   line.trim();
   if (line.length() == 0) return;
 
+  if(line.startsWith("AUDIO:SYSTEM:VOLUME:") || line.startsWith("ERR:AUDIO:SYSTEM:VOLUME:")) page_audio_system_apply_system_volume(line.c_str());
   if(line.startsWith("AMBIENCE:")||line.startsWith("OK:AMBIENCE:")||line.startsWith("ERR:AMBIENCE:"))page_audio_system_apply_ambience(line.c_str());
   rxCount++;
   lastStageReplyMs = millis();
@@ -436,18 +471,21 @@ void handleStageLine(String line) {
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REQUEST) {
     directorWakeDisplay("ESTOP");
+    if (!emergencyLocked || !emergencyClearFlow.acknowledge(millis())) return;
     gDirectorEmergencyClearDialog.show(millis());
     ui.pushOperatorEvent("Emergency clear requested");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_EXPIRED) {
     gDirectorEmergencyClearDialog.hide();
+    emergencyClearFlow.cancel();
     ui.noteEmergencyClearCancelled();
     ui.appendLog("Emergency clear request expired");
     ui.pushOperatorEvent("Clear request expired");
   }
 
   if (line == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_OK) {
+    emergencyClearFlow.cancel();
     gDirectorEmergencyClearDialog.hide();
   }
 
@@ -481,6 +519,7 @@ void handleStageLine(String line) {
     if (nowLocked && !emergencyLocked) {
       onEmergencyActivatedDirectorUx();
     }
+    if (!nowLocked) emergencyClearFlow.cancel();
     emergencyLocked = nowLocked;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(emergencyLocked);
@@ -624,6 +663,7 @@ void handleStageLine(String line) {
     ui.setEmergencyLocked(true);
   }
   if (line == SHOWDUINO_LEGACY_STATUS_ECLEARED) {
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.markEmergencyStateFromStage();
     ui.setEmergencyLocked(false);
@@ -640,10 +680,16 @@ void handleStageLine(String line) {
   if (line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD ||
       line.startsWith("ERR:EMERGENCY_CLEAR:") ||
       line.startsWith(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_REJECTED_PREFIX)) {
-    ui.noteEmergencyClearRejected();
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
     if (line.endsWith("BUTTON_ACTIVE") || line == SHOWDUINO_LEGACY_ERR_ESTOP_HELD) {
+      ui.noteEmergencyClearRejected();
       ui.appendLog("Cannot clear Emergency. Release the Emergency button first.");
       ui.pushOperatorEvent("Release the Emergency button first");
+    } else if (line.endsWith("NOT_LATCHED")) {
+      // The result may have been lost. Only a P4 snapshot can unlock the UI.
+      sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
     } else if (line.endsWith("NO_REQUEST")) {
       ui.appendLog("CLEAR rejected - no pending Director clear request");
       ui.pushOperatorEvent("Clear request is not pending");
@@ -738,6 +784,23 @@ void handleStageLine(String line) {
 }
 
 bool sendToStage(const String &command) {
+  const bool clearRequest = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR;
+  const bool clearConfirm = command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CONFIRM;
+  if (clearRequest) {
+    if (!emergencyLocked) return false;
+    emergencyClearFlow.request(millis());
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearRequested(millis());
+  }
+  if (clearConfirm && !emergencyClearFlow.confirm(millis())) return false;
+  if (clearConfirm) gDirectorEmergencyScreen.noteClearRequested(millis());
+  if (command == SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL ||
+      command == SHOWDUINO_LEGACY_EMERGENCY_STOP) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    ui.noteEmergencyClearCancelled();
+  }
+
   bool sentByEspNow = false;
   bool sent = false;
 
@@ -781,6 +844,12 @@ bool sendToStage(const String &command) {
     else ui.appendLog("TX FAILED -> Stage: " + command);
   }
 
+  if ((clearRequest || clearConfirm) && !sent) {
+    emergencyClearFlow.cancel();
+    gDirectorEmergencyClearDialog.hide();
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Emergency clear send failed - retry CLEAR");
+  }
   // Drain any replies that arrived during the blocking send wait.
   readEspNowReplies();
   return sent;
@@ -798,6 +867,8 @@ void requestStateSync() {
 }
 
 void applyMirroredRuntime(const ShowRuntime &rt) {
+  runtimeFreshness.received(millis());
+  ui.setRuntimeFresh(true);
   ShowState prev = gShowMirror.state;
   gShowMirror = rt;
   gShowMirror.stageConnected = (linkState == LINK_READY) ? 1 : 0;
@@ -816,6 +887,7 @@ void applyMirroredRuntime(const ShowRuntime &rt) {
     }
   } else if (prev == SHOW_STATE_EMERGENCY_STOP || emergencyLocked) {
     /* Runtime left EMERGENCY_STOP - unlock even if STATE:EMERGENCY:CLEAR was dropped. */
+    emergencyClearFlow.cancel();
     emergencyLocked = false;
     ui.setEmergencyLocked(false);
   }
@@ -956,6 +1028,7 @@ bool uploadShowTimelineToStage(const char *idOrName) {
   }
 
   strncpy(verifiedTimelineId, showId, sizeof(verifiedTimelineId) - 1);
+  snprintf(verifiedTimelineName,sizeof(verifiedTimelineName),"%s",showName);
   ui.setLoadedShowName(showName);
   snprintf(line, sizeof(line), "Uploaded show to Stage: %s (%u cues verified, %u skipped)",
            showName, (unsigned)sent, (unsigned)skipped);
@@ -1047,13 +1120,11 @@ void handleUiCommand(const String &command) {
     return;
   }
   if (command == "UI:ESTOP:ABORT") {
-    /* Always CLEAR first - works even on older Stage builds that lack SHOW:STOP. */
-    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR);
-    delay(20);
+    // ABORT leaves the emergency latched; clearance uses the dedicated control.
     sendToStage(SHOWDUINO_LEGACY_SHOW_STOP);
     sendToStage(SHOWDUINO_LEGACY_STOP_ALL);
-    ui.pushOperatorEvent("Abort: CLEAR + STOP sent - awaiting Stage");
-    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort CLEAR+STOP");
+    ui.pushOperatorEvent("Abort: STOP sent - emergency remains latched");
+    logEvent(LogLevel::Event, LogCategory::Emergency, "E-Stop", "Abort STOP; emergency remains latched");
     gStorage.endShowLog("aborted");
     return;
   }
@@ -1601,6 +1672,7 @@ void setup() {
   sendToStage("HELLO");
 
   Serial.println("UI: begin (behind boot screen)...");
+  directorCueLibrarySetSource(cueLibraryState,cueLibraryRead,cueLibraryStart);
   ui.begin(handleUiCommand);
   ui.setEspNowReady(espNowReady);
   gDirectorEmergencyClearDialog.setConfirmHandler(onEmergencyClearConfirm);
@@ -1690,7 +1762,20 @@ void loop() {
   ui.setEspNowReady(espNowReady);
   gDirectorUnlockScreen.tick(now, espNowReady, linkState, emergencyLocked);
   ui.tickEmergencyOverlay(now);
+  if (emergencyClearFlow.tick(now)) {
+    gDirectorEmergencyClearDialog.hide();
+    // Best effort cancellation only. Never retry confirmation automatically.
+    sendToStage(SHOWDUINO_LEGACY_EMERGENCY_CLEAR_CANCEL);
+    // Recover a lost authorized result using a fresh P4 state snapshot.
+    sendToStage(SHOWDUINO_LEGACY_STATUS_REQUEST);
+    gDirectorEmergencyScreen.noteClearFailed();
+    ui.pushOperatorEvent("Stage clearance timed out - retry CLEAR");
+  }
   gDirectorEmergencyClearDialog.tick(now);
+  ui.setRuntimeFresh(linkState == LINK_READY && runtimeFreshness.fresh(now));
+  // A healthy heartbeat is not proof that playback telemetry is arriving.
+  // Query only; never start/resume or synthesize elapsed time/cue firing.
+  if (runtimeFreshness.queryDue(now, linkState == LINK_READY)) sendToStage(SHOW_STATE_QUERY);
   ui.setTraffic(txCount, rxCount);
   if (now - lastUiRefreshMs >= UI_REFRESH_INTERVAL_MS) {
     lastUiRefreshMs = now;

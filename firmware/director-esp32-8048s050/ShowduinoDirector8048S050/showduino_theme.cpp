@@ -119,6 +119,11 @@ lv_color_t showduino_theme_get_accent(void) {
   return s_accent;
 }
 
+// Remove entries while the object is still alive, before LVGL frees its storage.
+static void theme_object_deleted(lv_event_t *event) {
+  showduino_theme_unregister((lv_obj_t *)lv_event_get_target(event));
+}
+
 void showduino_theme_register(lv_obj_t *obj, showduino_theme_role_t role) {
   if (obj == nullptr) {
     return;
@@ -145,6 +150,9 @@ void showduino_theme_register(lv_obj_t *obj, showduino_theme_role_t role) {
     return;
   }
 
+  // Keep one cleanup callback even if this object is unregistered and re-registered.
+  lv_obj_remove_event_cb(obj, theme_object_deleted);
+  lv_obj_add_event_cb(obj, theme_object_deleted, LV_EVENT_DELETE, nullptr);
   s_entries[s_count].obj = obj;
   s_entries[s_count].role = role;
   s_count++;

@@ -9,6 +9,7 @@
 #include <ctype.h>
 
 #include "showduino_version.h"
+#include "showduino_ambience_command.h"
 #include "showduino_lamp_node.h"
 #include "showduino_pixel_node.h"
 #include "showduino_mosfet_node.h"
@@ -837,6 +838,28 @@ static bool shdoCompileAudio(const ShdoClip &clip, const ShdoDevice *device,
     *status = SHDO_MISSING_DEVICE;
     return false;
   }
+  if (strcmp(device->route, "p4-ambience") == 0) {
+    // Use the same directory/filename validation as independent operator playback.
+    char cmd[SHOWDUINO_SHDO_CMD_MAX];
+    const char *file = clip.params.file;
+    const char *base = "/showduino/audio/ambience/";
+    const int n = snprintf(cmd, sizeof(cmd), "AMBIENCE:%s:%s%s",
+        clip.params.loop ? "LOOP" : "PLAY", file[0] == '/' ? "" : base, file);
+    if (n <= 0 || (size_t)n >= sizeof(cmd)) {
+      *status = SHDO_COMMAND_TOO_LONG; return false;
+    }
+    if (!showduinoAmbienceTimelineCommandAllowed(cmd)) {
+      *status = SHDO_UNSUPPORTED_ACTION; return false;
+    }
+    char volume[32];
+    snprintf(volume, sizeof(volume), "AMBIENCE:VOLUME:%lu",
+        (unsigned long)shdoClampU32(clip.params.volume, 0, 100, 100));
+    if (!shdoAddCue(cues, count, clip.startMs, "AMBIENCE", volume, status) ||
+        !shdoAddCue(cues, count, clip.startMs, "AMBIENCE", cmd, status)) return false;
+    if (clip.durationMs > 0 && !shdoAddCue(cues, count,
+        clip.startMs + clip.durationMs, "AMBIENCE", "AMBIENCE:STOP", status)) return false;
+    return true;
+  }
   if (strcmp(device->route, "audio-node") != 0) {
     *status = SHDO_UNSUPPORTED_DEVICE;
     return false;
@@ -1222,7 +1245,12 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
     }
   }
 
-  qsort(clips, clipCount, sizeof(ShdoClip), shdoClipOrder);
+  // Equal-time authored setup must retain its order (baseline before scene effects).
+  for (uint16_t i = 1; i < clipCount; ++i) {
+    ShdoClip clip = clips[i];uint16_t j = i;
+    while(j > 0 && shdoClipOrder(&clips[j-1],&clip) > 0){clips[j]=clips[j-1];--j;}
+    clips[j]=clip;
+  }
   uint16_t compiled = 0;
   uint8_t pixelSlots[SHOWDUINO_SHDO_MAX_DEVICES];
   memset(pixelSlots, 0, sizeof(pixelSlots));
@@ -1234,6 +1262,7 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
       const char *type = "TEST";
       if (strncmp(clip.command, "PIXEL:", 6) == 0) type = "PIXEL";
       else if (strncmp(clip.command, "AUDIO:NODE:", 11) == 0) type = "AUDIO";
+      else if (showduinoAmbienceTimelineCommandAllowed(clip.command)) type = "AMBIENCE";
       else if (strncmp(clip.command, "LAMP:", 5) == 0) type = "LAMP";
       else if (strncmp(clip.command, "MOSFET:NODE:", 12) == 0) type = "MOSFET";
       else if (strncmp(clip.command, "INTERNAL:", 9) == 0) type = "TEST";
@@ -1308,6 +1337,16 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
   if (compiled > cueCap) {
     return fail(SHDO_TOO_MANY_CUES, "compiled timeline exceeds P4 cue capacity");
   }
+  // Clips overlap: their end commands must not precede another clip's earlier start.
+  // Stable insertion order at equal times keeps volume-before-play and stop-before-next-play.
+  for (uint16_t i = 1; i < compiled; ++i) {
+    ShdoCue cue = cueBuf[i];
+    uint16_t j = i;
+    while (j > 0 && cueBuf[j - 1].timeMs > cue.timeMs) {
+      cueBuf[j] = cueBuf[j - 1]; --j;
+    }
+    cueBuf[j] = cue;
+  }
   *manifestOut = manifest;
   if (cueCount) *cueCount = compiled;
   if (error && errorLen) {
@@ -1363,9 +1402,17 @@ static inline size_t shdoWriteTimelineJson(char *out, size_t cap,
   if (n <= 0 || (size_t)n >= cap) return 0;
   used = (size_t)n;
   for (uint16_t i = 0; i < count; ++i) {
+    char command[SHOWDUINO_SHDO_CMD_MAX * 2] = {};
+    char value[SHOWDUINO_SHDO_CMD_MAX * 2] = {};
+    shdoJsonEscape(cues[i].command, command, sizeof(command));
+    if (!strcmp(cues[i].type,"LOG") || !strcmp(cues[i].type,"TEST")) {
+      const char *p = strchr(cues[i].command + 9, ':');
+      if (p) p = strchr(p + 1, ':');
+      if (p) shdoJsonEscape(p + 1, value, sizeof(value));
+    }
     n = snprintf(out + used, cap - used,
-                 "    {\"id\":\"%s\",\"timeMs\":%lu,\"type\":\"%s\",\"command\":\"%s\"}%s\n",
-                 cues[i].id, (unsigned long)cues[i].timeMs, cues[i].type, cues[i].command,
+                 "    {\"id\":\"%s\",\"timeMs\":%lu,\"type\":\"%s\",\"command\":\"%s\",\"value\":\"%s\"}%s\n",
+                 cues[i].id, (unsigned long)cues[i].timeMs, cues[i].type, command, value,
                  (i + 1 < count) ? "," : "");
     if (n <= 0 || used + (size_t)n >= cap) return 0;
     used += (size_t)n;

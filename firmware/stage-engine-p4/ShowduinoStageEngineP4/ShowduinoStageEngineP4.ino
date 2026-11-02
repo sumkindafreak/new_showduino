@@ -833,6 +833,26 @@ void handleShowCommand(const String &command) {
     return;
   }
 
+  if (command.startsWith("SHOW:STARTAT:")) {
+    uint32_t point=0,fingerprint=0,revision=0;
+    if(emergencyLocked || gMaintenanceMode || !showduinoParseSceneStart(command.c_str(),&point,&fingerprint,&revision) ||
+       !gRuntime.canStartScene(point,&gEngine,fingerprint,revision)) {
+      sendCommandReply("REJECTED:SHOW:SCENE_NOT_READY");return;
+    }
+    // Clear present outputs; never execute old timeline cues to reconstruct a scene.
+    stageAudioStopShow();stageAmbienceStop();showPixelsBlackout();
+    mosfetNodeLinkAllOff("SCENE_RESTART");showduinoIOAllOff("SCENE_RESTART");
+    dispatchCommand("AUDIO:NODE:STOP");dispatchCommand("AUDIO:NODE:PIXEL:BLACKOUT");
+    dispatchCommand("LAMP:NODE:EXTINGUISH");
+    for(uint8_t i=0;i<SHOWDUINO_PIXEL_NODE_MAX_NODES;++i){
+      const PixelNodeStatus *node=pixelNodeLinkSlot(i);
+      if(node && node->used && node->online){
+        char off[64];snprintf(off,sizeof(off),"PIXEL:NODE:%s:BLACKOUT",node->id);dispatchCommand(String(off));
+      }
+    }
+    gRuntime.handleStartScene(point,now,&gEngine,fingerprint,revision);return;
+  }
+
   if (command.startsWith("SHOW:RUN:") || command.startsWith("SHOW:LOAD:")) {
     int colon = command.indexOf(':', 5);
     String name = (colon >= 0) ? command.substring(colon + 1) : "";

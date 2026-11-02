@@ -1,11 +1,11 @@
 {
-  "buildHash": "e5f98fdaa9ea",
-  "buildUtc": "2026-10-24T12:27:01Z",
+  "buildHash": "6301e1fe1546",
+  "buildUtc": "2026-10-29T10:09:39Z",
   "source": "web/showduino-studio + canonical website Studio V4",
   "output": "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h",
-  "assetCount": 42,
-  "rawBytes": 872969,
-  "embeddedBytes": 216680,
+  "assetCount": 44,
+  "rawBytes": 887839,
+  "embeddedBytes": 221789,
   "bundledModules": [
     "/js/utils.js",
     "/js/router.js",
@@ -31,9 +31,9 @@
     "ref": "main",
     "commit": "850dea084320a45fb89b584507eda1514662b8dd",
     "route": "/studio/",
-    "assetCount": 39,
-    "rawBytes": 701790,
-    "embeddedBytes": 176282,
+    "assetCount": 41,
+    "rawBytes": 713655,
+    "embeddedBytes": 180621,
     "sourceFiles": [
       "style.css",
       "css/studio-daw.css",
@@ -72,18 +72,24 @@
       "js/studio-ollie-ux.js",
       "js/studio-testing-hardening.js",
       "css/studio-mobile-v4.css",
-      "css/studio-mobile-simple.css"
+      "css/studio-mobile-simple.css",
+      "js/studio-live-layers.js",
+      "js/studio-responsive-editor.js"
     ],
     "overlayDir": "web/studio-v4-overlay",
     "overlayFiles": [
       "css/studio-mobile-simple.css",
       "css/studio-v4.css",
+      "js/api.js",
+      "js/audio_browser.js",
       "js/shdo_model.js",
       "js/showduino-mosfet-authoring.js",
       "js/showduino-pixel-authoring.js",
       "js/studio-deploy.js",
+      "js/studio-live-layers.js",
       "js/studio-mobile.js",
       "js/studio-package.js",
+      "js/studio-responsive-editor.js",
       "js/studio-v4.js",
       "js/timeline-professional-inspector.js",
       "js/timeline.js",
@@ -97,7 +103,7 @@
       "path": "/index.html",
       "mime": "text/html; charset=utf-8",
       "raw": 10720,
-      "embedded": 3470,
+      "embedded": 3469,
       "gzip": true
     },
     {
@@ -110,15 +116,15 @@
     {
       "path": "/js/app.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 147710,
-      "embedded": 33976,
+      "raw": 150715,
+      "embedded": 34747,
       "gzip": true
     },
     {
       "path": "/studio/index.html",
       "mime": "text/html; charset=utf-8",
-      "raw": 11730,
-      "embedded": 3219,
+      "raw": 10937,
+      "embedded": 2997,
       "gzip": true
     },
     {
@@ -194,8 +200,8 @@
     {
       "path": "/studio/js/api.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 4989,
-      "embedded": 1638,
+      "raw": 7168,
+      "embedded": 2376,
       "gzip": true
     },
     {
@@ -229,8 +235,8 @@
     {
       "path": "/studio/js/timeline.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 65227,
-      "embedded": 13989,
+      "raw": 65796,
+      "embedded": 14171,
       "gzip": true
     },
     {
@@ -271,8 +277,8 @@
     {
       "path": "/studio/js/audio_browser.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 9101,
-      "embedded": 2593,
+      "raw": 9488,
+      "embedded": 2697,
       "gzip": true
     },
     {
@@ -306,8 +312,8 @@
     {
       "path": "/studio/js/studio-package.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 19845,
-      "embedded": 5039,
+      "raw": 20136,
+      "embedded": 5068,
       "gzip": true
     },
     {
@@ -341,8 +347,8 @@
     {
       "path": "/studio/js/studio-mobile.js",
       "mime": "text/javascript; charset=utf-8",
-      "raw": 49910,
-      "embedded": 11793,
+      "raw": 49407,
+      "embedded": 11900,
       "gzip": true
     },
     {
@@ -385,6 +391,20 @@
       "mime": "text/css; charset=utf-8",
       "raw": 15042,
       "embedded": 3659,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-live-layers.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 6658,
+      "embedded": 2266,
+      "gzip": true
+    },
+    {
+      "path": "/studio/js/studio-responsive-editor.js",
+      "mime": "text/javascript; charset=utf-8",
+      "raw": 3077,
+      "embedded": 1135,
       "gzip": true
     }
   ]

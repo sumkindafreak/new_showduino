@@ -173,8 +173,10 @@ static bool webCommandAllowed(const String &cmd) {
       cmd == "TIME:REQUEST") {
     return true;
   }
-#if SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
-  if (cmd == "EMERGENCY:CLEAR_CONFIRM" || cmd == "EMERGENCY:CLEAR_CANCEL") {
+#if !defined(SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR) || SHOWDUINO_WEBUI_ALLOW_EMERGENCY_CLEAR
+  // P4 validates the pending request, physical inputs and explicit confirmation.
+  if (cmd == "EMERGENCY:CLEAR" || cmd == "EMERGENCY:CLEAR_CONFIRM" ||
+      cmd == "EMERGENCY:CLEAR_CANCEL") {
     return true;
   }
 #endif
@@ -406,6 +408,13 @@ static bool isMissingAssetPath(const String &path) {
 
 static void handleStaticOrSpa() {
   const String path = assetPathFromUri(sServer.uri());
+  // Relative editor assets require a directory URL, not the /studio alias.
+  if (path == "/studio") {
+    sServer.sendHeader("Location", "/studio/");
+    sServer.sendHeader("Cache-Control", "no-store");
+    sServer.send(302, "text/plain", "Open /studio/\n");
+    return;
+  }
   if (path.startsWith("/api/")) {
     sendJson(404, "{\"error\":\"not_found\"}\n");
     return;
@@ -414,6 +423,13 @@ static void handleStaticOrSpa() {
   const ShowduinoWebAsset *asset = commsWebFindAsset(path.c_str());
   if (asset) {
     serveAsset(asset, path == "/index.html");
+    return;
+  }
+
+  // An editor asset/route error must not silently open the runtime console.
+  if (path.startsWith("/studio/")) {
+    sServer.sendHeader("Cache-Control", "no-store");
+    sServer.send(404, "text/plain", "Studio asset not found. Check the flashed Comms web build.\n");
     return;
   }
 

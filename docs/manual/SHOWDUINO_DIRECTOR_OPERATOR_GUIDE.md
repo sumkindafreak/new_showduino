@@ -1,7 +1,5 @@
 # Showduino | The Operator's Guide
 
-> Local 24 October reconciliation candidate: see [confirmed source state and acceptance gates](../LOCAL_RECONCILIATION_2026-10-24.md). Historical main-only claims below do not describe this candidate; GPIO5 is status, GPIO22 is the show line with an automatic ten-pixel minimum. Physical acceptance remains pending.
-
 **Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
 
 **The Director touchscreen, sound, lighting and everyday attraction operation**  
@@ -93,7 +91,7 @@ The Director's configured automatic display-off behaviour turns off its **backli
 
 | Device | Sound purpose | Supported customer-facing format in this RC |
 | --- | --- | --- |
-| **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV**, plus experimental **MP3** in local Audio `0.5.0-mp3-rc2` with matching P4 `0.6.13-mp3-rc1`, from its **own microSD card**. MP3 hardware checks remain open; Ogg/FLAC are not implemented. |
+| **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
 | **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
 | **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
 
@@ -125,7 +123,7 @@ Ask the installer/show designer to place an approved file on the **Audio Node's 
     test/
 ```
 
-For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. For WAV, export 16-bit PCM, typically at 44.1 or 48 kHz. The local MP3 candidate can instead play the original `.mp3` file through its separate decoder; keep the actual extension and use the matching P4 routing firmware. Retain WAV for critical timed cues and the fixed acceptance show until MP3 hardware checks pass. A show file must reference the same relative file name present on the card.
+For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
 
 **No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
 
@@ -222,6 +220,12 @@ http://192.168.4.1/studio/   embedded Studio authoring snapshot
 ```
 
 Your installer must confirm the actual network name, address and credentials used by your finished unit. The documented default password is a **bench credential, not a public venue password**.
+
+### Cue Library: Studio versus Director (30 October 2026 source check)
+
+The searchable **Cue Library** is available in **Website Studio → Timeline** for creating cues. Drag an Audio, Pixel or MOSFET preset to a compatible track or Mixed Lane; double-clicking inserts at the playhead where an eligible track exists. Edit the selected cue's routing and parameters in the Inspector, run Project Check, export and deploy using the [Quick Start](SHOWDUINO_QUICK_START.md#website-studio--installed-production). See the [full Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
+
+The current `main` **Director HOME → CUE LIBRARY** tile is shown but **not tappable**; no Director Cue Library page is active in this checked firmware. Use **PRODUCTIONS** and **LIVE** on the Director to load/operate shows. A browser preset is not proof of P4 compiler support or physical-node acceptance.
 
 **Studio is where shows are prepared; Director is where operators run them.** The SHDO v2 authoring format, RAM timeline commissioning and persistent SD deploy path have different supported subsets. A show file being editable/exportable does not guarantee every effect in it is executable on the current firmware. Deployment, **LOAD** and **START** are separate stages.
 

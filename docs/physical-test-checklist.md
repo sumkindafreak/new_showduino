@@ -1,5 +1,7 @@
 # Showduino V1 physical-test checklist
 
+> **31 October 2026 — safety gate FAIL/BLOCKED:** Owner-reported Emergency clearance failures and intermittent unresponsive Director during recent show/Cue Library testing. Do not mark the physical Emergency/clear checklist PASS, run with live hazardous effect loads, or treat Director reset as an Emergency clear. Preserve exact flashed builds; capture P4, Director and Comms serial logs of assert, physical release, Director confirmation, request/ACK or rejection, P4 authoritative latch and post-clear no-resume state. Test with isolated low-power outputs only after investigation. This supersedes the older blanket `NOT RUN` wording as a statement about *all* physical tests: some audio/pixel/show playback has been observed, but this specific safety acceptance is now reported failing.
+
 Product: **1.0.0-rc.1**. Do not tag `v1.0.0` until this list is signed off.
 
 Pass/fail must come from hardware. Source inspection is not a pass.

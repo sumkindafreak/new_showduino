@@ -23,3 +23,10 @@ inline bool showduinoAmbienceCommandAllowed(const char *c) {
   for(;*p;++p)if(!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z')||(*p>='0'&&*p<='9')||*p=='_'||*p=='-'||*p=='.'||*p==' '))return false;
   return true;
 }
+
+// Persisted shows may control playback only; inventory/status are operator queries.
+inline bool showduinoAmbienceTimelineCommandAllowed(const char *c) {
+  return c && showduinoAmbienceCommandAllowed(c) &&
+    (!strcmp(c,"AMBIENCE:STOP") || !strncmp(c,"AMBIENCE:VOLUME:",16) ||
+     !strncmp(c,"AMBIENCE:PLAY:",14) || !strncmp(c,"AMBIENCE:LOOP:",14));
+}

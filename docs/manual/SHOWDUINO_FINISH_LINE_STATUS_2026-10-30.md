@@ -1,0 +1,53 @@
+# Showduino finish-line evidence reconciliation — 30 October 2026
+
+## 1 November 2026 follow-up — Emergency clear remains unverified; Cue Library navigation defect
+
+- **Repository baseline:** `main` at `0e3d0786b6275783c2b1a0815ab2dcb51d1bbf3d` (1 November 22:00 UTC). Compared with `d5d8f2e7b629` (31 October), four new commits only regenerate the S3 Communications embedded `WebAssets.generated.h` and `tools/embed-webui/last-build.json`; **no active firmware source changed** in this interval. These commits cannot establish that the Director or Emergency regression has been fixed.
+- **Additional owner bench details:** The Director's **CLEAR EMERGENCY** control has remained on **AWAITING STAGE** after an E-stop request, with Emergency latched until reboot on a failed attempt. The owner also reports that navigating away from **Cue Library** can leave the previous screen visible rather than clearing/rebuilding the next page. The system temporarily appeared to recover during testing, but this is **not** repeatable Emergency-clear acceptance or a confirmed regression fix. Treat the two symptoms as separately reproducible faults until logs show a common cause; do not assume Cue Library caused Emergency failure.
+- **Priority:** Emergency clear and Director responsiveness remain **FAIL/BLOCKED** for the non-DMX finish line. Preserve the exact flashed binaries and serial logs; with effect loads isolated, trace Director confirmation → Comms UART/ESP-NOW forwarding → P4 clear decision/state reply → Director state update. Verify the physical Emergency input is released and any station blocker is cleared only by authorised P4 logic. Never bypass the latch or use reboot as a normal clear. Once fixed, test Cue Library navigation separately, then repeat one complete scenario and its mid-show Emergency acceptance.
+- **Release planning note:** The owner's current intended launch window is **February 2027**; older issue #42 text identifying Halloween 2026 is a historical target, not evidence of a completed release. This finish-line audit concerns one complete non-DMX scenario and does not expand into a broader release feature list.
+- **Documentation disposition:** This is a dated field-evidence update on PR #46, not a firmware correction or a new claim of physical sign-off. The 29 October first combined audio/visual playback remains achieved.
+
+## 31 October 2026 follow-up — safety regression blocks finish-line acceptance
+
+- **Current GitHub `main`:** `d5d8f2e7b629` (31 October 18:19 UTC). Compared with 30 October `3d4790961e5b`, four commits change only generated S3 Comms `WebAssets.generated.h` and `tools/embed-webui/last-build.json`; no active firmware implementation changes in that range. Embedded bundle: 42 assets, 214,954 bytes, build hash `56677901c6a2`. This does **not** identify the firmware actually flashed onto any board.
+- **Owner-reported physical regression, 31 October:** Following recent show/Cue Library testing, Emergency sometimes **does not clear**, and the Director sometimes **becomes unresponsive until reset**. These are observations, not a root-cause finding. Do not attribute the failure to Cue Library or any GitHub commit without serial/backtrace evidence. An Emergency latch that stays active until an authorised clear is correct; inability to clear after release and confirmation is not acceptable. A Director reset is not a safety-clearance method.
+- **Acceptance decision:** The 29 October first combined audio/visual show is still a confirmed milestone. Repeatable full LOAD → START → COMPLETE is not formally signed. Emergency clear/recovery and Director availability are **FAIL/BLOCKED**, so the non-DMX scenario and full v1 release remain **NOT READY**. Do not connect hazardous external effect loads or operate for guests while this remains unresolved.
+- **Smallest diagnostic sequence:** (1) preserve current working flashed builds, production and assets; (2) capture synchronized or timestamped Director, S3 Comms and P4 serial output during one controlled low-power Emergency assertion, physical button release and Director-confirmed clear attempt; (3) determine whether Director input/confirmation, Comms transport, P4 acceptance/rejection or station identity/latch persistence is preventing clearance; (4) capture exact Director crash/lockup context and decode any panic against the flashed ELF; (5) implement only a verified correction, then repeat Emergency latch → authorised clear → all outputs safe/no auto-resume and repeat the same complete show. Do not weaken or bypass Emergency to obtain a pass.
+- **Documentation:** This 31 October addendum is owner bench evidence added to documentation PR #46. No firmware fix, physical retest, or safety acceptance is claimed by the documentation change.
+
+## 30 October repository follow-up (after documentation merges)
+
+- **Current `main` checked:** `3d4790961e` (30 October 2026, 18:21 UTC). Compared with the 20 October manual firmware-source baseline `f4c9aea`, GitHub reports 47 commits. The changed paths are documentation, the generated S3 `WebAssets.generated.h` and its build manifest, plus documentation READMEs; **no non-generated active firmware implementation files changed in that comparison**. This does not identify the versions actually flashed on the bench.
+- **Documentation landed on `main`:** PR #41 (24–29 October finish-line audit), PR #44 (first-show reconciliation) and PR #45 (Website Studio Cue Library/Director limitations) are now **merged**. Previous wording calling #41/#44 proposed or unmerged belongs to its dated historical snapshot, not the current repository state.
+- **Generated S3 bundle:** build hash `56677901c6a2`, 42 assets and 214,954 embedded bytes remain unchanged; build timestamp advanced to 30 October 18:21 UTC. A regenerated header is not proof of a new tested firmware release or a changed Studio payload.
+- **Documentation correction:** the manual index's merged Cue Library entry had accidentally swallowed a duplicate Quick Start link. The 30 October follow-up corrects that rendering error and removes an obsolete duplicate milestone paragraph from the root README.
+- **Open versus closed draft fixes (30 October):** PR #35 (SHDO `action.value` parsing) and PR #37 (WAV stutter buffering) are **closed without merge**, not implemented on `main`. PR #36 (long-command rejection) is still open and unmerged, based on the #35 branch; PR #29 (22-second integration fixture), PR #33 (Emergency persistence) and PR #40 (ten-pixel defaults) remain open/unmerged. Do not equate a closed PR with an installed fix or undo the owner's separately observed clean WAV playback.
+- **Bench status unchanged since the 29 October report:** combined audio/visual playback achieved, but no new signed complete-scenario or mid-show Emergency record was found in the checked repository/issue #42. Keep Director crash, asset-selection and microphone acknowledgement concerns open until retested on the exact installed build.
+
+## Sources and scope
+
+Repository: `sumkindafreak/new_showduino`; `main` observed at `a85f3cf8050118dbc69e363bfa70a212cfd8e48c` on 30 October. The recent visible commits regenerate the S3 embedded Studio WebUI bundle; they do not by themselves prove a physical firmware change. This is a documentation-only reconciliation, not a new firmware test or a complete code-to-manual certification.
+
+## Verified evidence levels
+
+- **Owner-reported physical milestone (29 October):** Showduino played its first show combining audio and visual effects. Some teething issues remain. Do not describe the system as never having played a show.
+- **Previously owner-reported partial bench successes:** WAV audio and volume behaving correctly on the installed Audio Node; working P4 and Audio Node pixel effects. Exact installed firmware commits have not been recorded in this document.
+- **Not formally accepted:** existing 22-second all-node production through LOAD → START → COMPLETE; complete timing and node-output record; Emergency asserted during audio, all outputs safe, Director-authorised clear, and no automatic restart.
+- **Unresolved or not retested:** Director Core 1 LoadProhibited resets observed 28 October; microphone CALIBRATE and threshold acknowledgement; installed firmware version matching; remaining SHDO deployment and node compatibility findings. Do not infer that any unmerged fix is installed.
+
+## Smallest non-DMX finish-line actions
+
+1. Preserve and identify the exact firmware, SD assets and show used for successful playback.
+2. Repeat the same production, recording LOAD, START, expected cues, COMPLETE, audio continuity and node output observations.
+3. Reproduce and fix Director resets only if they remain present on this configuration.
+4. Repeat with Emergency asserted mid-playback; record independent P4 latch, safe outputs, deliberate authorised clear and no automatic restart.
+5. Sign the acceptance record and only then update release readiness claims.
+
+## Documentation rules
+
+The 20 October manual source baseline is retained as historical evidence, not silently relabelled as current. Keep implemented-in-main, proposed-on-PR, flashed-on-bench, observed-on-hardware and formally-accepted distinct. The Director selects and requests shows; P4 owns runtime and Emergency decisions; Comms transports; specialist nodes act and report. Emergency cannot depend on Director connectivity. Do not add DMX to this finish-line scope.
+
+## Remaining documentation work
+
+This reconciliation updates the operator entrypoints and records the first-show milestone. It does not claim to have checked every firmware symbol, pin mapping, document, release note, archived design or example in the repository. A full source-by-source documentation audit is still required before calling all repository documentation current.
