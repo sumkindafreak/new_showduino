@@ -1,0 +1,71 @@
+name: FastLED backend foundation
+
+on:
+  pull_request:
+    paths:
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
+      - 'tools/led-backend-tests/**'
+      - '.github/workflows/fastled-backend-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
+      - 'tools/led-backend-tests/**'
+      - '.github/workflows/fastled-backend-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  host-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check both driver contracts with failure injection
+        run: python3 tools/led-backend-tests/run_tests.py
+  compile-api:
+    name: Compile probe ${{ matrix.target }} backend=${{ matrix.backend }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [0, 1]
+        target: [ESP32, ESP32-S3]
+        include:
+          - target: ESP32
+            fqbn: 'esp32:esp32:esp32:FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio'
+          - target: ESP32-S3
+            fqbn: 'esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=8M,PSRAM=disabled'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.1.1'
+      - name: Install pinned libraries and toolchain
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli lib update-index
+          arduino-cli lib install 'Adafruit NeoPixel@1.15.5'
+          if [ '${{ matrix.backend }}' = 1 ]; then arduino-cli lib install 'FastLED@3.10.8'; fi
+      - name: Compile API probe (not a node image; never flashed)
+        run: |
+          probe="$GITHUB_WORKSPACE/tools/led-backend-tests/arduino/BackendCompileProbe"
+          arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' --warnings default \
+            --build-property "compiler.cpp.extra_flags=-I$probe -DSHOWDUINO_LED_USE_FASTLED=${{ matrix.backend }}" \
+            --build-path "$RUNNER_TEMP/backend-probe" "$probe" 2>&1 | tee compile.log
+      - name: Retain compile evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-probe-${{ matrix.target }}-${{ matrix.backend }}
+          path: compile.log
+          if-no-files-found: warn
