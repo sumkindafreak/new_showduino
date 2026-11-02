@@ -3,7 +3,7 @@ const root=path.resolve(__dirname,'../../firmware/director-esp32-8048s050/Showdu
 function body(text,needle){let a=text.indexOf(needle),start=text.indexOf('{',a),end=start+1,d=1;assert(a>=0);for(;d;end++){if(text[end]==='{')d++;if(text[end]==='}')d--;}return text.slice(start+1,end-1);}
 const transport=fs.readFileSync(path.join(root,'EspNowTransport.h'),'utf8');
 let send=body(transport,'bool sendCommand(const String &command)')
- .replace('uint32_t waitFrom','let waitFrom').replaceAll('(uint32_t)(millis() - waitFrom)','((millis() - waitFrom) >>> 0)')
+ .replace('const bool safety','const safety').replace('uint32_t waitFrom','let waitFrom').replaceAll('(uint32_t)(millis() - waitFrom)','((millis() - waitFrom) >>> 0)')
  .replaceAll('250UL','250').replace('ShowduinoEspNowPacket packet = {};','const packet = {};')
  .replace(/command\.substring\([^\n]+;/,'packet.command = command.value;')
  .replace('esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));','const result = radioSend(packet);');
@@ -14,7 +14,7 @@ function radio(options={}){
  c.radioSend=p=>{if(options.reject)return -1;c.delivered.push({...p});c.pending={start:c.now,after:options.after??4,ok:options.ok??true};return 0;};
  vm.runInContext('function send(command){'+send+'}',c);return c;
 }
-function sendOne(c,value){c.input={value,length:()=>value.length};return vm.runInContext('send(input)',c);}
+function sendOne(c,value){c.input={value,length:()=>value.length,startsWith:prefix=>value.startsWith(prefix)};return vm.runInContext('send(input)',c);}
 let c=radio();for(let i=0;i<177;i++)assert(sendOne(c,'SHOW:TL:C:'+i+':PIXEL:OFF'));assert.equal(c.delivered.length,177);assert(c.delivered.every((p,i)=>p.command==='SHOW:TL:C:'+i+':PIXEL:OFF'),'No cues dropped or reordered during a full upload');
 c=radio({sendBusy:true});c.pending={start:0,after:7,ok:true};assert(sendOne(c,'SHOW:TL:END'));assert.equal(c.delivered.length,1,'Prior callback is awaited');
 c=radio({sendBusy:true});assert(!sendOne(c,'SHOW:TL:END'));assert.equal(c.delivered.length,0,'Stuck previous send cannot overwrite callback state');
@@ -23,6 +23,8 @@ c=radio({reject:true});assert(!sendOne(c,'SHOW:TL:END'));assert(!c.sendBusy);
 c=radio({after:500});assert(!sendOne(c,'SHOW:TL:END'));assert(c.sendBusy,'Late callback stays owned by prior frame');
 c=radio({now:0xfffffffe});assert(sendOne(c,'SHOW:TL:END'),'Deadline survives uptime wrap');
 c=radio();assert(!sendOne(c,''));assert(!sendOne(c,'x'.repeat(96)));assert.equal(c.delivered.length,0,'Reject oversized commands rather than truncate');
+c=radio({sendBusy:true});assert(sendOne(c,'EMERGENCY:CLEAR'),'Safety reaches SDK despite missing prior callback');assert.equal(c.delivered.length,1);
+c=radio({sendBusy:true,reject:true});assert(!sendOne(c,'EMERGENCY:CLEAR'),'SDK queue rejection remains visible for safety');
 const sketch=fs.readFileSync(path.join(root,'ShowduinoDirector8048S050.ino'),'utf8');
 let run=body(sketch,'bool requestShowRun(const char *idOrName) {')
  .replace('ShowManager &sm','const sm').replace('const ShowIndexEntry *entry','const entry').replace('ShowDefinition def;','const def = {};').replaceAll('entry->','entry.').replace('const char *key','let key');

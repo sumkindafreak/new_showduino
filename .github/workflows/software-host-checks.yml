@@ -35,6 +35,8 @@ jobs:
         run: bash tools/ambience-tests/run_tests.sh
       - name: Persistent format, store, runtime, SHDO roundtrip and web protocol
         run: bash tools/production-tests/run_tests.sh
+      - name: Director clearance, volume, freshness, Cue Library and touch policies
+        run: bash tools/director-tests/run_tests.sh
       - name: Studio authoring and live Outputs controls
         run: |
           node tools/studio-v4-tests/test_pixel_authoring.js

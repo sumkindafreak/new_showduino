@@ -30,6 +30,16 @@ static bool loadFirstAudioExample(std::string *out, std::string *usedPath) {
   return false;
 }
 
+static bool loadFixture(const char *name, std::string *out) {
+  static const char *kDirs[] = {"tools/production-tests/fixtures/", "fixtures/",
+                                "../../tools/production-tests/fixtures/", nullptr};
+  for (int i = 0; kDirs[i]; ++i) {
+    if (loadFile((std::string(kDirs[i]) + name).c_str(), out)) return true;
+  }
+  return false;
+}
+
+
 static int failures = 0;
 
 static void expect(bool condition, const char *name) {
@@ -499,5 +509,120 @@ int main() {
   }
   expect(benchCount > 0 && benchCues[benchCount - 1].timeMs == 22000,
          "acceptance show completes at 22 seconds");
+  // W005: genuine files exported by the website Studio (Export .shdo button, website
+  // main at 1f4986a). They put action.value before action.params and carry no
+  // clip-level params, which is what the old parser rejected.
+  {
+    std::string web;
+    expect(loadFixture("website-studio-export.shdo", &web), "website Studio export fixture loads");
+    if (!web.empty()) {
+      ShdoManifest webManifest{};
+      ShdoCue webCues[64]{};
+      uint16_t webCount = 0;
+      const ShdoStatus webStatus = shdoCompile(web.c_str(), web.size(), &webManifest, webCues, 64,
+                                               &webCount, err, sizeof(err));
+      expect(webStatus == SHDO_OK, "website Studio export compiles");
+      expect(webCount == 28, "website Studio export yields 28 cues");
+      bool p4Fx = false, nodeFx = false, thunder = false, scream = false;
+      for (uint16_t i = 0; i < webCount; ++i) {
+        const char *c = webCues[i].command;
+        if (webCues[i].timeMs == 0 && std::strcmp(c, "PIXEL:SEGMENT:0:FX:LIGHTNING") == 0) p4Fx = true;
+        if (webCues[i].timeMs == 500 && std::strcmp(c, "PIXEL:NODE:LED-01:SEGMENT:0:FX:FIRE") == 0) nodeFx = true;
+        if (webCues[i].timeMs == 1000 && std::strcmp(c, "AUDIO:NODE:PLAY:thunder.wav") == 0) thunder = true;
+        if (webCues[i].timeMs == 6000 && std::strcmp(c, "AUDIO:NODE:PLAY:scream.wav") == 0) scream = true;
+      }
+      expect(p4Fx, "website export: P4 pixel lightning at 0 ms");
+      expect(nodeFx, "website export: Pixel Node fire at 500 ms");
+      expect(thunder && scream, "website export: both Audio Node plays at the authored times");
+      expect(std::strcmp(webManifest.name, "W005 website Studio export") == 0,
+             "website export keeps production name");
+    }
+    std::string slots;
+    expect(loadFixture("website-17-pixel-clips.shdo", &slots), "17-pixel-clip website export loads");
+    if (!slots.empty()) {
+      ShdoManifest slotsManifest{};
+      ShdoCue slotsCues[SHOWDUINO_SHDO_MAX_CUES]{};
+      uint16_t slotsCount = 0;
+      const ShdoStatus slotsStatus = shdoCompile(slots.c_str(), slots.size(), &slotsManifest,
+                                                 slotsCues, SHOWDUINO_SHDO_MAX_CUES, &slotsCount,
+                                                 err, sizeof(err));
+      expect(slotsStatus == SHDO_TOO_MANY_CUES,
+             "17 pixel clips on one device are refused (16 segment slots); Studio must warn");
+    }
+    // W005: a genuine website export whose audio file name (74 characters) cannot fit
+    // the 63-character command. It used to compile with the PLAY command silently cut
+    // short, so the Audio Node would be told to play a file that does not exist.
+    std::string longName;
+    expect(loadFixture("website-long-audio-name.shdo", &longName), "long audio name website export loads");
+    if (!longName.empty()) {
+      ShdoManifest longManifest{};
+      ShdoCue longCues[16]{};
+      uint16_t longCount = 0;
+      const ShdoStatus longStatus = shdoCompile(longName.c_str(), longName.size(), &longManifest,
+                                                longCues, 16, &longCount, err, sizeof(err));
+      expect(longStatus == SHDO_COMMAND_TOO_LONG,
+             "over-long audio file name is refused, not truncated");
+      expect(longCount == 0, "a refused production yields no cues");
+    }
+  }
+  // Boundary: "AUDIO:NODE:PLAY:" is 16 characters, so a 47-character file name makes a
+  // complete 63-character command and a 48-character name is refused.
+  {
+    std::string base;
+    if (loadFixture("website-long-audio-name.shdo", &base)) {
+      const std::string original(70, 'f');
+      auto withName = [&](size_t stemLength) {
+        std::string doc = base;
+        const std::string replacement = std::string(stemLength - 4, 'g') + ".wav";
+        for (size_t at = doc.find(original + ".wav"); at != std::string::npos;
+             at = doc.find(original + ".wav", at + replacement.size())) {
+          doc.replace(at, original.size() + 4, replacement);
+        }
+        return doc;
+      };
+      ShdoManifest m{};
+      ShdoCue c[16]{};
+      uint16_t n = 0;
+      const std::string fits = withName(47);
+      const ShdoStatus fitStatus = shdoCompile(fits.c_str(), fits.size(), &m, c, 16, &n, err, sizeof(err));
+      bool complete = false;
+      for (uint16_t i = 0; i < n; ++i) {
+        if (std::strcmp(c[i].command, ("AUDIO:NODE:PLAY:" + std::string(43, 'g') + ".wav").c_str()) == 0) complete = true;
+      }
+      expect(fitStatus == SHDO_OK && complete, "47-character audio name compiles to the complete command");
+      const std::string over = withName(48);
+      expect(shdoCompile(over.c_str(), over.size(), &m, c, 16, &n, err, sizeof(err)) == SHDO_COMMAND_TOO_LONG,
+             "48-character audio name is refused");
+    }
+  }
+
+
+  // Exercise action member order through the public compiler, not a parser mock.
+  {
+    auto actionDocument = [](const std::string &action) {
+      return std::string(R"({"schema":"showduino-production-v2","package":{"version":2},"project":{"id":"action_order","name":"Action order"},"devices":[{"id":"sound","type":"audio-node","binding":{"route":"audio-node","nodeId":"AUDIO-01"}}],"clips":[{"id":"sound_cue","type":"audio","targetDeviceId":"sound","startMs":1000,"durationMs":1000,"action":)") + action + "}]}";
+    };
+    for (const char *action : {
+         R"({"type":"audio","value":"fallback.wav","params":{"file":"explicit.wav","volume":34}})",
+         R"({"params":{"file":"explicit.wav","volume":34},"value":"fallback.wav","type":"audio"})"}) {
+      const std::string doc = actionDocument(action);
+      ShdoCue actionCues[8]{}; ShdoManifest m{}; uint16_t n=0;
+      expect(shdoCompile(doc.c_str(),doc.size(),&m,actionCues,8,&n,err,sizeof(err))==SHDO_OK,
+             "action.value consumes one member in either order");
+      bool explicitFile=false, volume=false;
+      for(uint16_t i=0;i<n;++i){
+        explicitFile |= !std::strcmp(actionCues[i].command,"AUDIO:NODE:PLAY:explicit.wav");
+        volume |= !std::strcmp(actionCues[i].command,"AUDIO:NODE:VOLUME:34");
+      }
+      expect(explicitFile && volume,"explicit params file and volume survive action member order");
+    }
+    for (const char *action : {R"({"type":"audio","value":42})", R"({"type":"audio","value":"broken.wav",})"}) {
+      const std::string doc=actionDocument(action);
+      ShdoCue actionCues[8]{}; ShdoManifest m{}; uint16_t n=123;
+      expect(shdoCompile(doc.c_str(),doc.size(),&m,actionCues,8,&n,err,sizeof(err))!=SHDO_OK && n==0,
+             "malformed action value refuses the production without exposing cues");
+    }
+  }
+
   return failures ? 1 : 0;
 }

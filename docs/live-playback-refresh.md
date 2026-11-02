@@ -1,0 +1,9 @@
+# Live playback telemetry recovery
+
+Director previously treated other replies/heartbeats as proof of a healthy Stage link, even when SHOW:RUNTIME stopped arriving. It had no periodic recovery query once initial synchronization completed. Live counts/clocks, playback state and Cue Library FOLLOW all depend on that stream; they can appear frozen while P4 continues running the show.
+
+Track playback-report freshness independently of link heartbeats. After 2.5 seconds without a full runtime report, show PLAYBACK UPDATE STALE on Live and query SHOW:STATE? at most once every two seconds while linked. P4 already answers this read-only query with current state and runtime. The next valid report updates the display and clears the warning. Lost queries/replies are retried; offline links are not flooded. Never extrapolate cue firing, advance show clocks, start/resume playback, or change clearance authority to conceal missing telemetry.
+
+Cue Library marks stale data as last report and disables scene starts until fresh authoritative playback data returns. FOLLOW uses the recovered fired-cue count. Manual PREVIOUS/NEXT browsing still requires FOLLOW to return to automatic tracking; SCENES filters out ordinary cues. Name/fingerprint matching remains strict.
+
+Host tests cover missing initial reports, healthy link with missing runtime, dropped recovery queries/replies, rate limiting, reconnect, resumed reports and millis rollover. Existing Director clearance and volume tests remain in the runner. Hardware reproduction is not confirmed: investigate radio congestion, UART hush/transport and version mismatches if recurring. Test Live and Cue Library with real playback, loss/restoration of runtime reports while heartbeat replies continue, pause/stop/finish, manual FOLLOW/browse, navigation, and emergency preemption. Full firmware compilation and physical display/RF acceptance remain unverified.

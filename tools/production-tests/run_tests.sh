@@ -34,3 +34,12 @@ g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
   -o "$HERE/web_body_tests" "$HERE/test_web_body.cpp"
 "$HERE/web_body_tests"
+
+# Local checkpoint and ambience extensions must remain covered on Linux CI too.
+g++ -std=c++17 -Wall -Wextra -I"$HERE/stubs" \
+  -I"$HERE/../../firmware/stage-engine-p4/ShowduinoStageEngineP4" \
+  -o "$HERE/scene_recovery_tests" "$HERE/test_scene_recovery.cpp"
+"$HERE/scene_recovery_tests"
+g++ -std=c++17 -Wall -Wextra \
+  -o "$HERE/shdo_ambience_tests" "$HERE/test_shdo_ambience.cpp" "$SRC_DIR/ProductionFormat.cpp"
+"$HERE/shdo_ambience_tests"
