@@ -1,0 +1,79 @@
+name: Remaining active node reference builds
+on:
+  pull_request:
+    paths:
+      - 'firmware/audio-node-esp32-a1s/**'
+      - 'firmware/c3-emergency-node/**'
+      - 'firmware/s3-comms-controller/**'
+      - 'firmware/mosfet-node-esp32/**'
+      - 'firmware/shared-node/**'
+      - 'firmware/shared-pixel/**'
+      - 'protocol/**'
+      - '.github/workflows/remaining-active-node-builds.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  compile:
+    name: Reference build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Audio
+            sketch: firmware/audio-node-esp32-a1s/ShowduinoAudioNode
+            fqbn: 'esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40'
+          - target: Emergency
+            sketch: firmware/c3-emergency-node/ShowduinoC3EmergencyNode
+            fqbn: 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M'
+          - target: Comms
+            sketch: firmware/s3-comms-controller/ShowduinoS3CommsController
+            fqbn: 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB'
+          - target: MOSFET
+            sketch: firmware/mosfet-node-esp32/ShowduinoMosfetNode
+            fqbn: 'esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: '1.1.1'
+      - name: Install pinned reference toolchain
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+          arduino-cli lib update-index
+          arduino-cli lib install 'Adafruit NeoPixel@1.15.5'
+          if [ '${{ matrix.target }}' = Audio ]; then
+            arduino-cli lib install 'ESP8266Audio@2.4.1'
+          fi
+          if [ '${{ matrix.target }}' = Emergency ]; then
+            arduino-cli lib install 'Adafruit BusIO@1.17.4'
+            arduino-cli lib install 'Adafruit GFX Library@1.13.0'
+            arduino-cli lib install 'Adafruit SSD1306@2.5.17'
+          fi
+      - name: Compile unchanged active firmware (no uploads)
+        run: |
+          sketch="$GITHUB_WORKSPACE/${{ matrix.sketch }}"
+          arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
+            --build-path "$RUNNER_TEMP/reference-build" "$sketch" 2>&1 | tee compile.log
+          arduino-cli core list > toolchain.txt
+          arduino-cli lib list >> toolchain.txt
+      - name: Retain build and partition evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-${{ matrix.target }}-evidence
+          path: |
+            compile.log
+            toolchain.txt
+            ${{ runner.temp }}/reference-build/build.options.json
+            ${{ runner.temp }}/reference-build/partitions.csv
+          if-no-files-found: warn
