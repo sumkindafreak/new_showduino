@@ -34,3 +34,17 @@ inline void expectBytes(int pin,const std::vector<uint8_t>& expected){
   const auto& a=channels[pin].writes.back();assert(a.success);assert(decode(a)==expected);
 }
 inline size_t errorLogs(){return std::count_if(serialLines.begin(),serialLines.end(),[](const std::string& s){return s.find("[PIXEL][ERROR]")!=std::string::npos;});}
+// Canonical complete attempt/symbol/log trace for original/candidate comparison.
+// Captured by the runner, hashed and optionally saved; not printed as CI noise.
+inline void dumpAudioTrace(){
+  for(unsigned pin=0;pin<40;++pin){const auto& c=channels[pin];
+    if(!c.inits&&!c.deinits&&c.writes.empty())continue;
+    printf("CHANNEL %u %u %u %u %u\n",pin,c.active,c.inits,c.deinits,c.hz);
+    for(const auto& w:c.writes){printf("WRITE %u %u %u ",pin,w.success,w.timeout);
+      for(const auto& s:w.symbols)printf("%u,%u,%u,%u;",unsigned(s.level0),unsigned(s.duration0),unsigned(s.level1),unsigned(s.duration1));
+      puts("");
+    }
+  }
+  for(const auto& line:serialLines)printf("SERIAL %zu:%s\n",line.size(),line.c_str());
+  printf("VENDOR %u %u\n",vendorInitializations,vendorReleaseCalls);
+}

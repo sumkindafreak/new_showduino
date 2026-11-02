@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: arduino/setup-arduino-cli@v2
         with:
           version: '1.1.1'
@@ -30,14 +32,14 @@ jobs:
       - name: Actual production output, engine and status tests
         run: |
           libdir="$(arduino-cli config get directories.user)/libraries/Adafruit_NeoPixel"
-          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" 2>&1 | tee native-output.log
+          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" --evidence-dir traces 2>&1 | tee native-output.log
       - name: Check memory and undefined behavior during failure/rebind cases
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           libdir="$(arduino-cli config get directories.user)/libraries/Adafruit_NeoPixel"
-          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" --sanitize 2>&1 | tee native-output-sanitizers.log
+          python3 tools/audio-output-tests/run_tests.py --neopixel-dir "$libdir" --sanitize --evidence-dir sanitizer-traces 2>&1 | tee native-output-sanitizers.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -45,4 +47,6 @@ jobs:
           path: |
             native-output.log
             native-output-sanitizers.log
+            traces/
+            sanitizer-traces/
           if-no-files-found: warn

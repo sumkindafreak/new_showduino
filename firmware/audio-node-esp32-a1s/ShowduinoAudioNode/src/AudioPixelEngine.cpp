@@ -6,6 +6,7 @@
 #include <math.h>
 #include <Adafruit_NeoPixel.h>
 #include "AudioPixelOutput.h"
+#include "AudioPixelFrame.h"
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -87,11 +88,7 @@ static ShowduinoPixelColor hsv(uint16_t hue, uint8_t sat, uint8_t val) {
 
 static bool writeFrame() {
   if (!sReady || !sStrip || !sFrame) return false;
-  for (uint16_t i = 0; i < sCount; ++i) {
-    const size_t base = (size_t)i * 3U;
-    sStrip->setPixelColor(i, sStrip->Color(sFrame[base], sFrame[base + 1], sFrame[base + 2]));
-  }
-  return sShowOutput.write(sStrip->getPixels(), (size_t)sCount * 3U);
+  return audioPixelWriteRgbFrame(sShowOutput, *sStrip, sFrame, (size_t)sCount * 3U);
 }
 
 static uint32_t periodFromSpeed(uint8_t speed, uint32_t slowMs, uint32_t fastMs) {
