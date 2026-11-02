@@ -11,7 +11,12 @@
 #include MOSFET_STATE_SOURCE
 void mosfetIdentifierPixelsAllOff(){}
 static void boot(){mosfetOutputEngineBegin();mosfetNodeStateBegin();}
-static uint8_t level(unsigned i){uint8_t out[4];mosfetOutputEngineLevels(out);return out[i];}
+static uint8_t level(unsigned i){
+ uint8_t out[4];mosfetOutputEngineLevels(out);
+ const unsigned pins[4]={16,17,26,27};
+ assert(duty[pins[i]]==(unsigned(out[i])*255U)/100U);
+ return out[i];
+}
 static void tick(uint32_t delta){testNow+=delta;mosfetOutputEngineLoop();mosfetNodeStateLoop();}
 static void grant(){mosfetNodeStateOnGrant(testNow);}
 int main(int argc,char**){
