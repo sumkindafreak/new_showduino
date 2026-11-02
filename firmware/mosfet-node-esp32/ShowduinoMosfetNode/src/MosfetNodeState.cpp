@@ -1,16 +1,7 @@
 #include "MosfetNodeState.h"
 #include "MosfetOutputEngine.h"
 
-class OwnerLock {
- public:
-  OwnerLock() : locked_(mosfetOutputStateTake()) {}
-  ~OwnerLock() { if (locked_) mosfetOutputStateGive(); }
-  OwnerLock(const OwnerLock&) = delete;
-  OwnerLock& operator=(const OwnerLock&) = delete;
-  explicit operator bool() const { return locked_; }
- private:
-  bool locked_;
-};
+using OwnerLock = MosfetOutputStateLock;
 
 static ShowduinoOwnerMachine sOwner;
 static ShowduinoMosfetNodeState sState = SHOWDUINO_MOSFET_ST_BOOTING;

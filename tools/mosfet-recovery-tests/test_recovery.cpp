@@ -14,6 +14,17 @@
 #include MOSFET_OUTPUT_SOURCE
 #include MOSFET_STATE_SOURCE
 void mosfetIdentifierPixelsAllOff(){}
+#ifdef MOSFET_CANDIDATE
+#include "../../firmware/mosfet-node-esp32/ShowduinoMosfetNode/src/MosfetProtocol.cpp"
+const char* mosfetIdentityId(){return "MOSFET-01";}
+const char* mosfetIdentityName(){return "TEST";}
+bool mosfetIdentitySetId(const char*){return true;}
+bool mosfetIdentitySetName(const char*){return true;}
+bool mosfetIdentitySetOutName(uint8_t,const char*){return true;}
+bool mosfetEspNowSend(const char*,uint32_t){return true;}
+void mosfetEspNowMacString(char* out,size_t n){std::snprintf(out,n,"00:11:22:33:44:55");}
+void mosfetIdentifierPixelsIdentify(){}
+#endif
 static void boot(){mosfetOutputEngineBegin();mosfetNodeStateBegin();}
 static uint8_t level(unsigned i){
  uint8_t out[4];mosfetOutputEngineLevels(out);
@@ -73,7 +84,7 @@ int main(int argc,char**){
  boot();grant();
  lockContention=0;
  {std::lock_guard<std::mutex> lock(flashTestMutex);pauseFlashWrite=true;flashWriteEntered=false;releaseFlashWrite=false;}
- std::thread earlier([]{assert(mosfetOutputEngineSetLevel(1,73));});
+ std::thread earlier([]{assert(mosfetProtocolApply("MOSFET:OUT:1:LEVEL:73",1,SHOWDUINO_CMD_ORIGIN_SHOW));});
  {std::unique_lock<std::mutex> lock(flashTestMutex);flashTestCv.wait(lock,[]{return flashWriteEntered;});}
  std::atomic<bool> stopRequested{false};
  std::thread later([&]{stopRequested=true;mosfetNodeStateOnEmergencyStop();});
@@ -82,7 +93,11 @@ int main(int argc,char**){
  while(!lockContention.load()&&std::chrono::steady_clock::now()-waitStart<std::chrono::seconds(2))std::this_thread::yield();
  assert(lockContention.load()>0); // The later task really contends with the older commit.
  {std::lock_guard<std::mutex> lock(flashTestMutex);releaseFlashWrite=true;flashTestCv.notify_all();}
- earlier.join();later.join();assert(level(0)==0);boot();grant();assert(level(0)==0);
+ earlier.join();later.join();assert(level(0)==0);
+ assert(!mosfetProtocolApply("MOSFET:OUT:1:LEVEL:62",2,SHOWDUINO_CMD_ORIGIN_SHOW));assert(level(0)==0);
+ assert(mosfetProtocolApply("MOSFET:OWN:GRANT",3,SHOWDUINO_CMD_ORIGIN_SHOW));assert(level(0)==0);
+ assert(mosfetProtocolApply("EMERGENCY:CLEAR",4,SHOWDUINO_CMD_ORIGIN_SHOW));grant();assert(level(0)==0);
+ boot();grant();assert(level(0)==0);
  sEngineMutex=nullptr;failMutexCreate=true;boot();grant();assert(level(0)==0);assert(!mosfetOutputEngineSetLevel(1,80));failMutexCreate=false;
  #endif
  puts("PASS actual MOSFET recovery: hold/regrant, cold steady restore, warm pulse/fade pause, cold timed cancel, Emergency/fault/off, storage validation/retry");

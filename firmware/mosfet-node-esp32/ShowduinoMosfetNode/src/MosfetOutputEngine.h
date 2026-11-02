@@ -20,4 +20,15 @@ void mosfetOutputEngineResumeOnGrant();
 bool mosfetOutputStateTake();
 void mosfetOutputStateGive();
 
+class MosfetOutputStateLock {
+ public:
+  MosfetOutputStateLock() : locked_(mosfetOutputStateTake()) {}
+  ~MosfetOutputStateLock() { if (locked_) mosfetOutputStateGive(); }
+  MosfetOutputStateLock(const MosfetOutputStateLock&) = delete;
+  MosfetOutputStateLock& operator=(const MosfetOutputStateLock&) = delete;
+  explicit operator bool() const { return locked_; }
+ private:
+  bool locked_;
+};
+
 #endif

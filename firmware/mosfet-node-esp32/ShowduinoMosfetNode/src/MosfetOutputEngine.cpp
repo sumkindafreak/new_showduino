@@ -20,16 +20,7 @@ bool mosfetOutputStateTake() {
 void mosfetOutputStateGive() { xSemaphoreGiveRecursive(sEngineMutex); }
 // ESP-NOW callbacks and loop() may run on different tasks. Keep output state,
 // recovery snapshots and flash commits ordered as one operation.
-class EngineLock {
- public:
-  EngineLock() : locked_(mosfetOutputStateTake()) {}
-  ~EngineLock() { if (locked_) mosfetOutputStateGive(); }
-  EngineLock(const EngineLock&) = delete;
-  EngineLock& operator=(const EngineLock&) = delete;
-  explicit operator bool() const { return locked_; }
- private:
-  bool locked_;
-};
+using EngineLock = MosfetOutputStateLock;
 static uint8_t sSteady[4] = {};
 static uint8_t sRestoreMask = 0, sPausedMask = 0;
 static ShowduinoMosfetChannel sPaused[4];
