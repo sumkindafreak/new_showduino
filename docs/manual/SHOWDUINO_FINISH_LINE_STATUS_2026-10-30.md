@@ -1,5 +1,38 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 2 November 2026 — working local baseline and staged GitHub integration
+
+**Source snapshot:** GitHub `main` at `6b0fb4e4cf7418ca3350c2a066e91336afb0a9a5` (2 November, 15:47 UTC). Compared with `0e3d0786` (1 November, 22:00 UTC), the 23 intervening commits change documentation and generated Communications S3 WebUI assets/manifest only; **no non-generated active firmware implementation changes**. PR #46's documentation correction is merged. The newer local/PR firmware is **not on main**.
+
+**Latest owner-reported physical state:** The user reports that Emergency clearance is fixed in the local flashed copy, the existing 22-second full-node production runs, and the active nodes are working apart from the deferred C3 LED-only node. This updates the 31 October `AWAITING STAGE` failure report, but it does **not** independently establish repeated clear/no-resume safety acceptance, exact flashed hashes, or a signed full-scenario LOAD → START → COMPLETE record. Preserve the working local folder and assets; don't overwrite it with older main or older PR #47–#50 sources.
+
+**Newly reported behavior to test:** The actual MOSFET load reportedly drops to zero when the Director reconnects even though P4 and Communications remain powered. This is an owner-reported regression, not a confirmed root cause. Draft [#58](https://github.com/sumkindafreak/new_showduino/pull/58) adds candidate MOSFET hold/restore logic and a matching P4 Emergency discovery/keepalive guard. It is not on main; tests/compilation and physical reconnect, node reboot and Emergency gates must pass before any deployment. The MOSFET channel driving the smoke effect must not be assumed reliable on reconnect.
+
+**Integration candidates, all still draft and not merged:**
+
+| Candidate | What exists | Evidence and limitations |
+| --- | --- | --- |
+| [#51](https://github.com/sumkindafreak/new_showduino/pull/51) | Preserves 904-file local working firmware snapshot, plus bounded SHDO `action.value` and long-command fixes | Host suites and reference P4/Director builds pass; no flash, installed settings/SD identities or physical acceptance |
+| [#52](https://github.com/sumkindafreak/new_showduino/pull/52) | Isolated shared FastLED strip adapter, not enabled by any existing node | Host contracts and API probes pass; no bench output |
+| [#53](https://github.com/sumkindafreak/new_showduino/pull/53) | Opt-in S3 Lamp FastLED with Adafruit legacy default | Renderer parity and both reference builds pass; no Lamp hardware sign-off |
+| [#54](https://github.com/sumkindafreak/new_showduino/pull/54) | LED dependency map and unchanged Audio/Emergency/Comms/MOSFET reference builds | Compile evidence only; Audio's native RMT transport cannot be replaced wholesale |
+| [#55](https://github.com/sumkindafreak/new_showduino/pull/55) | Opt-in Director ambient FastLED; Emergency locator priority correction; Audio boundary design | Synthetic parity and reference builds pass; no Director physical sign-off |
+| [#56](https://github.com/sumkindafreak/new_showduino/pull/56) | Tests for actual Audio native LED output, no firmware conversion | Host/sanitizer tests pass; physical timing/audio concurrency untested |
+| [#57](https://github.com/sumkindafreak/new_showduino/pull/57) | Audio RGB/GRB packing boundary retaining native RMT transport | Reference builds and trace parity pass; no FastLED Audio renderer enabled or physical validation |
+| [#58](https://github.com/sumkindafreak/new_showduino/pull/58) | MOSFET reconnect/steady recovery plus P4 Emergency ownership guard | Candidate with local tests; pending CI/bench validation; node and P4 must be reviewed/deployed together |
+
+These are **stacked pull requests**: #51 targets main, and each of #52–#58 targets the preceding integration branch. Their PR descriptions and successful CI runs are evidence of implementation/compilation, **not evidence of installed firmware or safe hardware behavior**. Older broad all-node FastLED [#31](https://github.com/sumkindafreak/new_showduino/pull/31) is an unmerged experimental draft; do not substitute it for the staged review.
+
+**Smallest non-expansion finish-line gates:**
+
+1. Preserve the exact flashed local baseline, P4/Director/Comms/node version and configuration records, and the working SD production/assets. Keep candidate changes off the bench until reviewed.
+2. Repeat the *same* 22-second full-node production, recording P4 LOAD → START → COMPLETE, expected audio/pixels and MOSFET smoke command timing; record any playback or Director UI regressions.
+3. With hazardous effect loads disconnected, verify the local Emergency fix: independent P4 latch, safe outputs, physical release, deliberate Director-confirmed clear, no automatic show resume; repeat after lost messages/reconnect.
+4. Reproduce the MOSFET output-drop case during Director-only reconnect, and test node reboot and Emergency with the paired candidate on a controlled isolated bench **before** accepting #58.
+5. Reconcile #51 against current main, then integrate only changes required for reliable completion; defer optional FastLED conversion and other enhancements until after the acceptance record. Update the manual baseline and feature matrix only after the corresponding source and tests are merged.
+
+**Release classification:** first audio/visual show **achieved** (29 October); local 22-second full-node show **owner-reported running** (2 November); repeatable complete-scenario and Emergency recovery **not formally accepted**. The historical 31 October failure remains recorded below, not silently erased.
+
 ## 1 November 2026 follow-up — Emergency clear remains unverified; Cue Library navigation defect
 
 - **Repository baseline:** `main` at `0e3d0786b6275783c2b1a0815ab2dcb51d1bbf3d` (1 November 22:00 UTC). Compared with `d5d8f2e7b629` (31 October), four new commits only regenerate the S3 Communications embedded `WebAssets.generated.h` and `tools/embed-webui/last-build.json`; **no active firmware source changed** in this interval. These commits cannot establish that the Director or Emergency regression has been fixed.
