@@ -7,6 +7,11 @@
 #include <Adafruit_NeoPixel.h>
 #include "AudioPixelOutput.h"
 #include "AudioPixelFrame.h"
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+// FastLED's RGB type only: no FastLED wire controller or global refresh.
+#include <fl/gfx/crgb.h>
+#include <new>
+#endif
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -21,7 +26,11 @@ static uint8_t sGlobalBrightness = 255;
 static uint16_t sConfiguredCount = SHOWDUINO_PIXEL_DEFAULT_COUNT;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_PIXEL_MAX_SEGMENTS];
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+static fl::CRGB *sFrame = nullptr;
+#else
 static uint8_t *sFrame = nullptr;
+#endif
 static Adafruit_NeoPixel *sStrip = nullptr;
 static AudioPixelOutput sShowOutput;
 
@@ -34,15 +43,23 @@ static uint8_t effectScale(uint8_t value, uint8_t factor) {
 }
 
 static void clearFrame() {
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  if (sFrame) for (uint16_t i = 0; i < sCount; ++i) sFrame[i] = fl::CRGB(0, 0, 0);
+#else
   if (sFrame) memset(sFrame, 0, (size_t)sCount * 3U);
+#endif
 }
 
 static void setPixelRaw(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
   if (!sFrame || index >= sCount) return;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  sFrame[index] = fl::CRGB(r, g, b);
+#else
   const size_t base = (size_t)index * 3U;
   sFrame[base + 0] = r;
   sFrame[base + 1] = g;
   sFrame[base + 2] = b;
+#endif
 }
 
 static void setPixelScaled(uint16_t index, const ShowduinoPixelSegmentState &seg,
@@ -88,7 +105,11 @@ static ShowduinoPixelColor hsv(uint16_t hue, uint8_t sat, uint8_t val) {
 
 static bool writeFrame() {
   if (!sReady || !sStrip || !sFrame) return false;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  return audioPixelWriteRgbPixels(sShowOutput, *sStrip, sFrame, sCount);
+#else
   return audioPixelWriteRgbFrame(sShowOutput, *sStrip, sFrame, (size_t)sCount * 3U);
+#endif
 }
 
 static uint32_t periodFromSpeed(uint8_t speed, uint32_t slowMs, uint32_t fastMs) {
@@ -401,7 +422,11 @@ static void audioPixelEngineShutdown() {
     delete sStrip;
     sStrip = nullptr;
   }
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  delete[] sFrame;
+#else
   free(sFrame);
+#endif
   sFrame = nullptr;
 }
 
@@ -431,7 +456,11 @@ bool audioPixelEngineBegin() {
   }
 
   sCount = sConfiguredCount;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  sFrame = new (std::nothrow) fl::CRGB[sCount];
+#else
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
+#endif
   sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                                  SHOWDUINO_AUDIO_SHOW_PIXEL_ORDER);
   if (!sFrame || !sStrip) {

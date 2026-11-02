@@ -4,6 +4,7 @@
 #include <map>
 #include <cassert>
 inline bool failNextOutputAllocation=false;
+inline bool failNextRenderAllocation=false;
 inline std::map<void*,size_t> outputAllocations;
 inline void* outputCalloc(size_t n,size_t size){
   if(failNextOutputAllocation){failNextOutputAllocation=false;return nullptr;}
