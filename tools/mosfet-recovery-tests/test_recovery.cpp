@@ -1,7 +1,11 @@
 #define SHOWDUINO_LOG_H
 #include <cassert>
 #include <Preferences.h>
+#include <thread>
+#include <atomic>
+#include <chrono>
 #ifndef MOSFET_OUTPUT_SOURCE
+#define MOSFET_CANDIDATE 1
 #define MOSFET_OUTPUT_SOURCE "../../firmware/mosfet-node-esp32/ShowduinoMosfetNode/src/MosfetOutputEngine.cpp"
 #endif
 #ifndef MOSFET_STATE_SOURCE
@@ -64,5 +68,23 @@ int main(int argc,char**){
  testNow=UINT32_MAX-10000U;grant();assert(mosfetOutputEnginePulse(1,70,20000));tick(8001);assert(level(0)==70);
  tick(30000);grant();for(unsigned i=0;i<6;++i){tick(2000);grant();}assert(level(0)==0);
  failStoreBegin=true;boot();grant();assert(level(0)==0);failStoreBegin=false;
+ #ifdef MOSFET_CANDIDATE
+ // Force a slow old commit to overlap a later Emergency from another task.
+ boot();grant();
+ lockContention=0;
+ {std::lock_guard<std::mutex> lock(flashTestMutex);pauseFlashWrite=true;flashWriteEntered=false;releaseFlashWrite=false;}
+ std::thread earlier([]{assert(mosfetOutputEngineSetLevel(1,73));});
+ {std::unique_lock<std::mutex> lock(flashTestMutex);flashTestCv.wait(lock,[]{return flashWriteEntered;});}
+ std::atomic<bool> stopRequested{false};
+ std::thread later([&]{stopRequested=true;mosfetNodeStateOnEmergencyStop();});
+ while(!stopRequested.load())std::this_thread::yield();
+ const auto waitStart=std::chrono::steady_clock::now();
+ while(!lockContention.load()&&std::chrono::steady_clock::now()-waitStart<std::chrono::seconds(2))std::this_thread::yield();
+ assert(lockContention.load()>0); // The later task really contends with the older commit.
+ {std::lock_guard<std::mutex> lock(flashTestMutex);releaseFlashWrite=true;flashTestCv.notify_all();}
+ earlier.join();later.join();assert(level(0)==0);boot();grant();assert(level(0)==0);
+ sEngineMutex=nullptr;failMutexCreate=true;boot();grant();assert(level(0)==0);assert(!mosfetOutputEngineSetLevel(1,80));failMutexCreate=false;
+ #endif
  puts("PASS actual MOSFET recovery: hold/regrant, cold steady restore, warm pulse/fade pause, cold timed cancel, Emergency/fault/off, storage validation/retry");
+ puts("PASS serialized output/persistence: delayed old write cannot overwrite later Emergency; lock allocation fails off");
 }

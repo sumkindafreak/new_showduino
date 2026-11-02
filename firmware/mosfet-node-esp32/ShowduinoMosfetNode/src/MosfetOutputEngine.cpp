@@ -2,6 +2,8 @@
 #include "MosfetIdentifierPixels.h"
 #include "../BoardConfig.h"
 #include "MosfetRecoveryStore.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 static ShowduinoMosfetEngine sEng;
 static const int kPins[4] = {
@@ -11,6 +13,17 @@ static const int kPins[4] = {
   SHOWDUINO_MOSFET_OUT4_GPIO
 };
 static bool sPwmReady = false;
+static SemaphoreHandle_t sEngineMutex = nullptr;
+// ESP-NOW callbacks and loop() may run on different tasks. Keep output state,
+// recovery snapshots and flash commits ordered as one operation.
+class EngineLock {
+ public:
+  EngineLock() : locked_(sEngineMutex && xSemaphoreTakeRecursive(sEngineMutex, portMAX_DELAY) == pdTRUE) {}
+  ~EngineLock() { if (locked_) xSemaphoreGiveRecursive(sEngineMutex); }
+  explicit operator bool() const { return locked_; }
+ private:
+  bool locked_;
+};
 static uint8_t sSteady[4] = {};
 static uint8_t sRestoreMask = 0, sPausedMask = 0;
 static ShowduinoMosfetChannel sPaused[4];
@@ -53,6 +66,12 @@ void mosfetOutputEngineSafeGpioFirst() {
 
 void mosfetOutputEngineBegin() {
   mosfetOutputEngineSafeGpioFirst();
+  if (!sEngineMutex) sEngineMutex = xSemaphoreCreateRecursiveMutex();
+  EngineLock lock;
+  if (!lock) {
+    Serial.println("[MOSFET][ERROR] Output synchronization unavailable; outputs stay off");
+    return;
+  }
   for (int i = 0; i < 4; ++i) {
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
     ledcAttach(kPins[i], SHOWDUINO_MOSFET_PWM_HZ, SHOWDUINO_MOSFET_PWM_BITS);
@@ -73,6 +92,8 @@ void mosfetOutputEngineBegin() {
 }
 
 void mosfetOutputEngineLoop() {
+  EngineLock lock;
+  if (!lock) return;
   ShowduinoMosfetChMode before[4];
   for (uint8_t i = 0; i < 4; ++i) before[i] = sEng.ch[i].mode;
   showduino_mosfet_engine_tick(&sEng, millis());
@@ -88,6 +109,8 @@ void mosfetOutputEngineLoop() {
 }
 
 void mosfetOutputEngineAllOff(const char *reason) {
+  EngineLock lock;
+  if (!lock) { mosfetOutputEngineSafeGpioFirst(); return; }
   sPausedMask = sRestoreMask = 0;
   showduino_mosfet_engine_all_off(&sEng, reason ? reason : "ALL_OFF");
   memset(sSteady, 0, sizeof(sSteady));
@@ -97,6 +120,8 @@ void mosfetOutputEngineAllOff(const char *reason) {
 }
 
 bool mosfetOutputEngineSetLevel(uint8_t ch, uint8_t level) {
+  EngineLock lock;
+  if (!lock) return false;
   const bool ok = showduino_mosfet_engine_set_level(&sEng, ch, level) != 0;
   if (ok) replaceChannel(ch, level);
   return ok;
@@ -108,20 +133,29 @@ bool mosfetOutputEngineOff(uint8_t ch) {
   return mosfetOutputEngineSetLevel(ch, 0);
 }
 bool mosfetOutputEnginePulse(uint8_t ch, uint8_t level, uint32_t ms) {
+  EngineLock lock;
+  if (!lock) return false;
   const bool ok = showduino_mosfet_engine_pulse(&sEng, ch, level, ms, millis()) != 0;
   if (ok) replaceChannel(ch, 0); // Timed effects are never restored after node power loss.
   return ok;
 }
 bool mosfetOutputEngineFade(uint8_t ch, uint8_t level, uint32_t ms) {
+  EngineLock lock;
+  if (!lock) return false;
   const bool ok = showduino_mosfet_engine_fade(&sEng, ch, level, ms, millis()) != 0;
   if (ok) replaceChannel(ch, ms ? 0 : level);
   return ok;
 }
 void mosfetOutputEngineLevels(uint8_t out[4]) {
+  if (!out) return;
+  EngineLock lock;
+  if (!lock) { memset(out, 0, 4); return; }
   showduino_mosfet_engine_levels(&sEng, out);
 }
 
 void mosfetOutputEnginePauseForControlLoss() {
+  EngineLock lock;
+  if (!lock) return;
   const uint32_t now = millis();
   // Update to the loss-detection instant, then hold physical levels unchanged.
   mosfetOutputEngineLoop();
@@ -140,6 +174,8 @@ void mosfetOutputEnginePauseForControlLoss() {
 }
 
 void mosfetOutputEngineResumeOnGrant() {
+  EngineLock lock;
+  if (!lock) return;
   const uint32_t now = millis();
   for (uint8_t i = 0; i < 4; ++i) {
     const uint8_t bit = (uint8_t)(1U << i);

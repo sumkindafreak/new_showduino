@@ -25,7 +25,7 @@ void mosfetRecoveryLoad(uint8_t levels[4]) {
   if (record[0] != 1 || record[5] != checksum(record)) return;
   for (uint8_t i = 0; i < 4; ++i) if (record[i + 1] > 100) return;
   memcpy(levels, record + 1, 4);
-  memcpy(sCommitted, levels, 4);
+  memcpy(sCommitted, record + 1, 4);
   sHaveCommitted = true;
 }
 bool mosfetRecoverySave(const uint8_t levels[4]) {
@@ -37,7 +37,7 @@ bool mosfetRecoverySave(const uint8_t levels[4]) {
     Serial.println("[MOSFET][ERROR] Could not save steady output levels");
     return false;
   }
-  memcpy(sCommitted, levels, 4);
+  memcpy(sCommitted, record + 1, 4);
   sHaveCommitted = true;
   return true;
 }

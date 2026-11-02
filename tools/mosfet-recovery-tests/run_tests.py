@@ -19,6 +19,7 @@ with tempfile.TemporaryDirectory(prefix='showduino-mosfet-recovery-') as tmp:
    sources=[str(HERE/('test_'+test+'.cpp'))]
    if test=='recovery':sources+=[str(SKETCH/'src/MosfetRecoveryStore.cpp')]
    subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',
+    *(['-pthread'] if sys.platform!='win32' else []),
     *(['-fsanitize=address,undefined','-fno-omit-frame-pointer','-g'] if args.sanitize else []),
     '-I'+str(HERE/'stubs'),'-I'+str(SKETCH),'-I'+str(SKETCH/'src'),'-I'+str(P4),'-I'+str(P4/'src/nodes'),*extra,*sources,'-o',str(binary)],check=True)
    if mode=='reference':
