@@ -6,6 +6,7 @@ on:
       - 'firmware/stage-engine-p4/**'
       - 'firmware/director-esp32-8048s050/**'
       - 'protocol/**'
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
       - '.github/workflows/active-arduino-builds.yml'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'firmware/stage-engine-p4/**'
       - 'firmware/director-esp32-8048s050/**'
       - 'protocol/**'
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
       - '.github/workflows/active-arduino-builds.yml'
   workflow_dispatch:
 
@@ -40,6 +42,11 @@ jobs:
             sketch: firmware/director-esp32-8048s050/ShowduinoDirector8048S050
             fqbn: 'esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB'
             libraries: 'lvgl@9.6.0;GFX Library for Arduino@1.6.9;TAMC_GT911@1.0.2;Adafruit NeoPixel@1.15.5'
+          - target: Director-FastLED
+            sketch: firmware/director-esp32-8048s050/ShowduinoDirector8048S050
+            fqbn: 'esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB'
+            libraries: 'lvgl@9.6.0;GFX Library for Arduino@1.6.9;TAMC_GT911@1.0.2;Adafruit NeoPixel@1.15.5;FastLED@3.10.8'
+            extra_flags: '-DSHOWDUINO_DIRECTOR_AMBIENT_USE_FASTLED=1'
     env:
       ESP32_CORE: '3.3.12'
       BOARD_INDEX: https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -68,7 +75,7 @@ jobs:
         run: |
           sketch="$GITHUB_WORKSPACE/${{ matrix.sketch }}"
           arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' --warnings default \
-            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch ${{ matrix.extra_flags }}" \
             --build-property "compiler.c.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
             --build-path "$RUNNER_TEMP/active-build" "$sketch" 2>&1 | tee compile.log
       - name: Retain build evidence (not an install or release)
