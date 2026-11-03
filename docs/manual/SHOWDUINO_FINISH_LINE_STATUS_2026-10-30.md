@@ -1,5 +1,13 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 3 November 2026 — GitHub main and integration status
+
+**Checked 3 November:** `main` is `6bf6956cf78c204ce4377c1814f87c523b0d2436` (14:10:56 UTC). The two commits since the 2 November 15:47 baseline are labelled **Regenerate S3 Studio WebUI bundle**; no merged local-firmware reconciliation is evidenced by these commits. PR #51 (working local baseline) remains a draft based on `main`; PRs #52–#58 and new #60 (Audio opt-in FastLED RGB frames) form a dependent draft integration chain, **not main**. Documentation PR #59 remains open. These statuses do not establish installed hardware behaviour.
+
+**Latest physical evidence available:** 29 October first combined audio/visual playback; owner subsequently reports local Emergency clearance fixed and a local 22-second show run. No new serial logs or signed repeat LOAD → START → COMPLETE / mid-show Emergency acceptance have been provided. Director stability, Cue Library navigation and the reported MOSFET output drop on Director reconnect still require controlled verification. The local working Emergency implementation must be preserved over any untested PR variant.
+
+**Minimum non-DMX path:** snapshot exact flashed firmware and show assets; validate one complete repeatable run and P4-confirmed completion; exercise Emergency assert, physical release, authorised clear and no auto-resume; isolate and test the MOSFET reconnect regression if used in that show. Only promote verified essential fixes from draft branches; defer optional FastLED rollout and new features. This dated update supersedes older PR-status wording below without rewriting historical test evidence.
+
 ## 2 November 2026 — working local baseline and staged GitHub integration
 
 **Source snapshot:** GitHub `main` at `6b0fb4e4cf7418ca3350c2a066e91336afb0a9a5` (2 November, 15:47 UTC). Compared with `0e3d0786` (1 November, 22:00 UTC), the 23 intervening commits change documentation and generated Communications S3 WebUI assets/manifest only; **no non-generated active firmware implementation changes**. PR #46's documentation correction is merged. The newer local/PR firmware is **not on main**.
