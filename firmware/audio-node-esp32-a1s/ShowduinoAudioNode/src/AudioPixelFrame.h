@@ -30,3 +30,21 @@ inline bool audioPixelWriteRgbFrame(AudioPixelOutput& output,
   if (!audioPixelPackRgbToGrb(rgb, rgbBytes, wire, capacity)) return false;
   return output.write(wire, rgbBytes);
 }
+
+// RGB888 pixel objects (including real FastLED fl::CRGB) are packed by fields,
+// never by casting object memory or assuming its layout. Same fitted GRB
+// buffer, full driver brightness and actual native-write result as above.
+template<class RgbPixel>
+inline bool audioPixelWriteRgbPixels(AudioPixelOutput& output,
+                                     Adafruit_NeoPixel& grbBuffer,
+                                     const RgbPixel* pixels, size_t count) {
+  if (!pixels || !count || count != grbBuffer.numPixels() || grbBuffer.getBrightness() != 255) return false;
+  uint8_t* wire = grbBuffer.getPixels();
+  if (!wire) return false;
+  for (size_t i = 0; i < count; ++i) {
+    wire[i * 3U] = pixels[i].g;
+    wire[i * 3U + 1U] = pixels[i].r;
+    wire[i * 3U + 2U] = pixels[i].b;
+  }
+  return output.write(wire, count * 3U);
+}

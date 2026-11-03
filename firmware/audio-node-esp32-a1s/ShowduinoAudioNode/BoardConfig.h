@@ -20,7 +20,18 @@
  *   esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40
  */
 
+// RGB-frame evaluation only. Native RMT transport is retained in both modes.
+#ifndef SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+#define SHOWDUINO_AUDIO_FASTLED_RGB_FRAME 0
+#endif
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME != 0 && SHOWDUINO_AUDIO_FASTLED_RGB_FRAME != 1
+#error "SHOWDUINO_AUDIO_FASTLED_RGB_FRAME must be 0 or 1"
+#endif
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+#define SHOWDUINO_AUDIO_NODE_FW            "0.5.1-rc1"
+#else
 #define SHOWDUINO_AUDIO_NODE_FW            "0.5.0-mp3-rc2"
+#endif
 #define SHOWDUINO_AUDIO_NODE_BOARD         "ESP32-A1S Audio Kit V2.2 A161"
 #define SHOWDUINO_AUDIO_NODE_CODEC         "ES8388"
 

@@ -28,6 +28,10 @@ jobs:
           - target: Audio
             sketch: firmware/audio-node-esp32-a1s/ShowduinoAudioNode
             fqbn: 'esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40'
+          - target: Audio-FastLED-Frame
+            sketch: firmware/audio-node-esp32-a1s/ShowduinoAudioNode
+            fqbn: 'esp32:esp32:esp32:PSRAM=disabled,FlashSize=4M,PartitionScheme=min_spiffs,FlashMode=dio,FlashFreq=40'
+            extra_flags: '-DSHOWDUINO_AUDIO_FASTLED_RGB_FRAME=1'
           - target: Emergency
             sketch: firmware/c3-emergency-node/ShowduinoC3EmergencyNode
             fqbn: 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M'
@@ -50,19 +54,25 @@ jobs:
           arduino-cli core install esp32:esp32@3.3.12
           arduino-cli lib update-index
           arduino-cli lib install 'Adafruit NeoPixel@1.15.5'
-          if [ '${{ matrix.target }}' = Audio ]; then
+          if [ '${{ matrix.target }}' = Audio ] || [ '${{ matrix.target }}' = Audio-FastLED-Frame ]; then
             arduino-cli lib install 'ESP8266Audio@2.4.1'
           fi
+          if [ '${{ matrix.target }}' = Audio-FastLED-Frame ]; then arduino-cli lib install 'FastLED@3.10.8'; fi
           if [ '${{ matrix.target }}' = Emergency ]; then
             arduino-cli lib install 'Adafruit BusIO@1.17.4'
             arduino-cli lib install 'Adafruit GFX Library@1.13.0'
             arduino-cli lib install 'Adafruit SSD1306@2.5.17'
           fi
-      - name: Compile unchanged active firmware (no uploads)
+      - name: Compile active reference or evaluation firmware (no uploads)
         run: |
           sketch="$GITHUB_WORKSPACE/${{ matrix.sketch }}"
+          fastled_flags=
+          if [ '${{ matrix.target }}' = Audio-FastLED-Frame ]; then
+            # Arduino's discovery does not resolve FastLED's nested RGB header.
+            fastled_flags="-I$(arduino-cli config get directories.user)/libraries/FastLED/src"
+          fi
           arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' \
-            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch" \
+            --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch ${{ matrix.extra_flags }} $fastled_flags" \
             --build-path "$RUNNER_TEMP/reference-build" "$sketch" 2>&1 | tee compile.log
           arduino-cli core list > toolchain.txt
           arduino-cli lib list >> toolchain.txt

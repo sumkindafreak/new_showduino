@@ -12,7 +12,13 @@ void nodeConfigSetU8(const char* key,uint8_t v){savedBrightness=v;printf("CONFIG
 static unsigned samples=0;static uint32_t digest=2166136261U;
 static void capture(){
   std::vector<uint8_t> expected;
-  for(unsigned i=0;i<sCount;++i){expected.push_back(sFrame[i*3+1]);expected.push_back(sFrame[i*3]);expected.push_back(sFrame[i*3+2]);}
+  for(unsigned i=0;i<sCount;++i){
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+    expected.insert(expected.end(),{sFrame[i].g,sFrame[i].r,sFrame[i].b});
+#else
+    expected.push_back(sFrame[i*3+1]);expected.push_back(sFrame[i*3]);expected.push_back(sFrame[i*3+2]);
+#endif
+  }
   expectBytes(22,expected);for(auto b:expected)digest=(digest^b)*16777619U;++samples;
   printf("STATE %u %u %u %u %u %u %u\n",testNow,sReady,sEmergency,sTestActive,sLocateActive,unsigned(sCount),unsigned(sGlobalBrightness));
 }
@@ -20,7 +26,17 @@ static std::string command(const char* cmd){char reply[180];assert(audioPixelEng
 static void step(unsigned n){for(unsigned i=0;i<n;++i){testNow+=25;audioPixelEngineService();capture();}}
 static void fillWhite(){auto bytes=decode(channels[22].writes.back());assert(std::all_of(bytes.begin(),bytes.end(),[](uint8_t b){return b==255;}));}
 static void fillBlack(){auto bytes=decode(channels[22].writes.back());assert(std::all_of(bytes.begin(),bytes.end(),[](uint8_t b){return b==0;}));}
-int main(){
+int main(int argc,char** argv){
+  (void)argc;(void)argv;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  if(argc>1&&std::strcmp(argv[1],"--render-oom")==0){
+    audioPixelEngineSetConfiguredCount(10);failNextRenderAllocation=true;
+    assert(!audioPixelEngineBegin()&&!audioPixelEngineReady()&&!channels[22].active&&outputAllocations.empty());
+    assert(audioPixelEngineBegin()&&audioPixelEngineReady());
+    audioPixelEngineRelease();assert(outputAllocations.empty());
+    puts("PASS real FastLED frame allocation failure/retry/cleanup");return 0;
+  }
+#endif
   for(uint16_t stored:{uint16_t(0),uint16_t(1),uint16_t(9),uint16_t(513),uint16_t(30),uint16_t(512)}){
     savedCount=stored;audioPixelEngineApplyPersisted();
     const uint16_t want=stored==30||stored==512?stored:10;
