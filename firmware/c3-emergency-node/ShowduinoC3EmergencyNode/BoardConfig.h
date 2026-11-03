@@ -48,6 +48,9 @@
  * Max pixels: SHOWDUINO_PIXEL_NODE_MAX_PIXELS (512) — validate on hardware.
  */
 #define SHOWDUINO_ESTOP_PIXEL_DATA_PIN          2
+/* Pixel Engine 2.0 branch: FastLED as default for C3 emergency station show pixels.
+ * Emergency latch and the P4 GPIO24 output are independent. */
+#define SHOWDUINO_PIXEL_USE_FASTLED                1
 #define SHOWDUINO_PIXEL_DATA_PIN                SHOWDUINO_ESTOP_PIXEL_DATA_PIN
 #define SHOWDUINO_PIXEL_ORDER                   (NEO_GRB + NEO_KHZ800)
 #define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS      330

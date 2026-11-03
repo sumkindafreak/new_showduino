@@ -131,7 +131,7 @@ async function load(){
   kv($('linekv'),[
     ['Line pixels',S.configured],['Active',S.count],
     ['Initialised',ready?'YES':'NOT INITIALISED',ready?'ok':'warn'],
-    ['Max',S.max],['Brightness',S.brightness],['Segments',S.segments]
+    ['Max',S.max],['Brightness',S.brightness],['Segments',S.segments],['Driver',S.backend||'Unknown']
   ]);
   kv($('connkv'),[
     ['ESP-NOW',S.espNow],['Channel',S.channel],['RSSI',S.rssi],
@@ -240,6 +240,9 @@ static void handleStatus() {
   json += String((unsigned)pixelEngineMax());
   json += ",\"initialised\":";
   json += pixelEngineReady() ? "true" : "false";
+  json += ",\"backend\":\"";
+  json += pixelEngineBackendName();
+  json += "\"";
   json += ",\"brightness\":";
   json += String((unsigned)pixelEngineGlobalBrightness());
   json += ",\"segments\":";

@@ -1,8 +1,10 @@
 #include "LampEngine.h"
 #include "LampEffects.h"
 #include "../BoardConfig.h"
+#define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 
-static Adafruit_NeoPixel sStrip(
+static ShowduinoLedStrip sStrip(
     SHOWDUINO_LAMP_PIXEL_COUNT,
     SHOWDUINO_LAMP_PIXEL_PIN,
     SHOWDUINO_LAMP_PIXEL_ORDER);
@@ -20,6 +22,12 @@ static uint32_t sLastTick = 0;
 bool lampEngineBegin() {
   pinMode(SHOWDUINO_LAMP_PIXEL_PIN, OUTPUT);
   sStrip.begin();
+#if SHOWDUINO_LED_USE_FASTLED
+  if (!sStrip.ready()) {
+    Serial.println("[LAMP] FastLED C3 lamp jewel allocation failed");
+    return false;
+  }
+#endif
   sStrip.clear();
   sStrip.show();
   sReady = true;

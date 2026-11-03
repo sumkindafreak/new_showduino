@@ -1,4 +1,6 @@
 #include "LampEffects.h"
+#define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 #include "../BoardConfig.h"
 #include <math.h>
 #include <string.h>
@@ -34,12 +36,12 @@ static uint8_t scale(uint8_t v, uint8_t bri) {
   return (uint8_t)((uint16_t)v * (uint16_t)bri / 100u);
 }
 
-static void put(Adafruit_NeoPixel &strip, int i, uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
+static void put(ShowduinoLedStrip &strip, int i, uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
   if (i < 0 || i >= (int)strip.numPixels()) return;
   strip.setPixelColor((uint16_t)i, strip.Color(scale(r, bri), scale(g, bri), scale(b, bri)));
 }
 
-static void fillAll(Adafruit_NeoPixel &strip, uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
+static void fillAll(ShowduinoLedStrip &strip, uint8_t r, uint8_t g, uint8_t b, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) put(strip, i, r, g, b, bri);
 }
 
@@ -53,7 +55,7 @@ void lampEffectsReset(ShowduinoLampFx fx) {
   s.glowDir = 3;
 }
 
-static void carbideFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void carbideFlame(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     int flameBrightness = random(200, 255);
     put(strip, i, (uint8_t)flameBrightness, (uint8_t)flameBrightness,
@@ -61,7 +63,7 @@ static void carbideFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
   }
 }
 
-static void carbideFlutter(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void carbideFlutter(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     float wind = sin(s.windPhase + i * 0.3f) * 0.3f + 0.7f;
     int brightLevel = (int)(wind * 255.0f);
@@ -72,7 +74,7 @@ static void carbideFlutter(Adafruit_NeoPixel &strip, uint8_t bri) {
   if (s.windPhase >= 6.28f) s.windPhase = 0;
 }
 
-static void minerFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void minerFlame(ShowduinoLedStrip &strip, uint8_t bri) {
   s.breathe += 0.05f;
   float brightLevel = (sin(s.breathe) * 0.1f + 0.9f) * 255.0f;
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
@@ -81,7 +83,7 @@ static void minerFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
   }
 }
 
-static void gasLeak(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void gasLeak(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastLeak < 150) {
     sNeedShow = false;
     return;
@@ -95,7 +97,7 @@ static void gasLeak(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   s.lastLeak = now;
 }
 
-static void headlampBeam(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void headlampBeam(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   /* Original carbide firmware never advanced beamPosition; keep that look. */
   (void)s.beamDir;
   if (now - s.lastMove < 300) {
@@ -111,7 +113,7 @@ static void headlampBeam(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   s.lastMove = now;
 }
 
-static void oldFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void oldFlame(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     int flicker = random(180, 255);
     put(strip, i, (uint8_t)flicker, (uint8_t)(flicker * 0.8f),
@@ -119,7 +121,7 @@ static void oldFlame(Adafruit_NeoPixel &strip, uint8_t bri) {
   }
 }
 
-static void caveExplorer(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void caveExplorer(ShowduinoLedStrip &strip, uint8_t bri) {
   s.dimmer += 0.03f;
   float caveBright = (sin(s.dimmer) * 0.2f + 0.8f) * 120.0f;
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
@@ -128,7 +130,7 @@ static void caveExplorer(Adafruit_NeoPixel &strip, uint8_t bri) {
   }
 }
 
-static void lowFuel(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void lowFuel(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastSputter < (uint32_t)random(100, 800)) {
     sNeedShow = false;
     return;
@@ -146,7 +148,7 @@ static void lowFuel(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   s.lastSputter = now;
 }
 
-static void canaryWarning(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void canaryWarning(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   const uint32_t gap = s.warning ? 200 : 500;
   if (now - s.lastBlink < gap) {
     sNeedShow = false;
@@ -158,14 +160,14 @@ static void canaryWarning(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   s.lastBlink = now;
 }
 
-static void carbideFlicker(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void carbideFlicker(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     int flicker = random(100, 255);
     put(strip, i, (uint8_t)flicker, (uint8_t)random(30, 80), 0, bri);
   }
 }
 
-static void glow(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void glow(ShowduinoLedStrip &strip, uint8_t bri) {
   s.glowBrightness += s.glowDir;
   if (s.glowBrightness >= 255 || s.glowBrightness <= 30) s.glowDir *= -1;
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
@@ -174,7 +176,7 @@ static void glow(Adafruit_NeoPixel &strip, uint8_t bri) {
   }
 }
 
-static void colorShift(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void colorShift(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     float h = (s.hue % 360) / 60.0f;
     int c = 150;
@@ -192,7 +194,7 @@ static void colorShift(Adafruit_NeoPixel &strip, uint8_t bri) {
   if (s.hue >= 360) s.hue = 0;
 }
 
-static void strobe(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void strobe(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastToggle < 100) {
     sNeedShow = false;
     return;
@@ -203,7 +205,7 @@ static void strobe(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   s.lastToggle = now;
 }
 
-static void policeStrobe(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void policeStrobe(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastToggle < 200) {
     sNeedShow = false;
     return;
@@ -216,51 +218,51 @@ static void policeStrobe(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
 
 /* --- Additional Showduino FX. Do not change carbide implementations above. --- */
 
-static void extraSolid(Adafruit_NeoPixel &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
+static void extraSolid(ShowduinoLedStrip &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
   fillAll(strip, r, g, b, bri);
 }
 
-static void extraFadeIn(Adafruit_NeoPixel &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
+static void extraFadeIn(ShowduinoLedStrip &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
   s.fade += 0.02f;
   if (s.fade > 1) s.fade = 1;
   const uint8_t m = (uint8_t)(bri * s.fade);
   fillAll(strip, r, g, b, m);
 }
 
-static void extraFadeOut(Adafruit_NeoPixel &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
+static void extraFadeOut(ShowduinoLedStrip &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
   if (s.fade <= 0) s.fade = 1;
   s.fade -= 0.02f;
   if (s.fade < 0) s.fade = 0;
   fillAll(strip, r, g, b, (uint8_t)(bri * s.fade));
 }
 
-static void extraPulse(Adafruit_NeoPixel &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
+static void extraPulse(ShowduinoLedStrip &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
   s.pulse += 0.12f;
   float w = (sinf(s.pulse) * 0.5f + 0.5f);
   fillAll(strip, r, g, b, (uint8_t)(bri * w));
 }
 
-static void extraBreathe(Adafruit_NeoPixel &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
+static void extraBreathe(ShowduinoLedStrip &strip, uint8_t bri, uint8_t r, uint8_t g, uint8_t b) {
   s.pulse += 0.04f;
   float w = (sinf(s.pulse) * 0.35f + 0.65f);
   fillAll(strip, r, g, b, (uint8_t)(bri * w));
 }
 
-static void extraCandle(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void extraCandle(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     int v = random(90, 180);
     put(strip, i, (uint8_t)v, (uint8_t)(v * 0.55f), 8, bri);
   }
 }
 
-static void extraFire(Adafruit_NeoPixel &strip, uint8_t bri) {
+static void extraFire(ShowduinoLedStrip &strip, uint8_t bri) {
   for (int i = 0; i < (int)strip.numPixels(); ++i) {
     int v = random(120, 255);
     put(strip, i, (uint8_t)v, (uint8_t)random(20, 80), 0, bri);
   }
 }
 
-static void extraRandomFlicker(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void extraRandomFlicker(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastShow < (uint32_t)random(30, 120)) {
     sNeedShow = false;
     return;
@@ -272,7 +274,7 @@ static void extraRandomFlicker(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t n
   }
 }
 
-static void extraFault(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
+static void extraFault(ShowduinoLedStrip &strip, uint8_t bri, uint32_t now) {
   if (now - s.lastToggle < 80) {
     sNeedShow = false;
     return;
@@ -283,7 +285,7 @@ static void extraFault(Adafruit_NeoPixel &strip, uint8_t bri, uint32_t now) {
   else strip.clear();
 }
 
-void lampEffectsTick(Adafruit_NeoPixel &strip, ShowduinoLampFx fx,
+void lampEffectsTick(ShowduinoLedStrip &strip, ShowduinoLampFx fx,
                      uint8_t bri0to100, uint8_t speed, uint8_t intensity,
                      uint8_t solidR, uint8_t solidG, uint8_t solidB,
                      uint32_t nowMs) {

@@ -8,6 +8,10 @@
 #include "esp32-hal-rmt.h"
 #endif
 #include "storage/StageConfig.h"
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+#include <FastLED.h>
+#include <new>
+#endif
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -20,18 +24,19 @@ static uint16_t sConfiguredCount = 0;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_SHOW_PIXEL_MAX_SEGMENTS];
 static uint8_t *sFrame = nullptr; /* RGB triplets */
-#if SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+static CRGB *sFastLeds = nullptr;
+static CLEDController *sFastController = nullptr;
+#elif SOC_RMT_SUPPORTED
 static rmt_data_t *sItems = nullptr;
 #endif
 static size_t sSymbolCount = 0;
 
-static uint8_t scale8(uint8_t value, uint8_t a, uint8_t b) {
-  return (uint8_t)(((uint32_t)value * (uint32_t)a * (uint32_t)b) / (255UL * 255UL));
-}
 
-static uint8_t effectScale(uint8_t value, uint8_t factor) {
-  return (uint8_t)(((uint16_t)value * factor) / 255U);
-}
+
+
+
+#include "../../../shared-pixel/ShowduinoPixelMath.inc"
 
 static void clearFrame() {
   if (sFrame) memset(sFrame, 0, (size_t)sCount * 3U);
@@ -61,32 +66,11 @@ static void fillSegment(const ShowduinoPixelSegmentState &seg,
   for (uint16_t i = seg.start; i < end; ++i) setPixelScaled(i, seg, color, fxScale);
 }
 
-static ShowduinoPixelColor mixColor(ShowduinoPixelColor a, ShowduinoPixelColor b, uint8_t amount) {
-  ShowduinoPixelColor out;
-  out.r = (uint8_t)(((uint16_t)a.r * (255U - amount) + (uint16_t)b.r * amount) / 255U);
-  out.g = (uint8_t)(((uint16_t)a.g * (255U - amount) + (uint16_t)b.g * amount) / 255U);
-  out.b = (uint8_t)(((uint16_t)a.b * (255U - amount) + (uint16_t)b.b * amount) / 255U);
-  return out;
-}
 
-static ShowduinoPixelColor hsv(uint16_t hue, uint8_t sat, uint8_t val) {
-  hue %= 360U;
-  const uint8_t region = hue / 60U;
-  const uint16_t remainder = (hue % 60U) * 255U / 60U;
-  const uint8_t p = (uint8_t)((uint16_t)val * (255U - sat) / 255U);
-  const uint8_t q = (uint8_t)((uint16_t)val * (255U - ((uint16_t)sat * remainder / 255U)) / 255U);
-  const uint8_t t = (uint8_t)((uint16_t)val * (255U - ((uint16_t)sat * (255U - remainder) / 255U)) / 255U);
-  switch (region) {
-    case 0: return {val, t, p};
-    case 1: return {q, val, p};
-    case 2: return {p, val, t};
-    case 3: return {p, q, val};
-    case 4: return {t, p, val};
-    default: return {val, p, q};
-  }
-}
 
-#if SOC_RMT_SUPPORTED
+
+
+#if SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
 static void buildSymbolsFromFrame() {
   if (!sFrame || !sItems) return;
   size_t item = 0;
@@ -116,7 +100,16 @@ static void buildSymbolsFromFrame() {
 #endif
 
 static bool writeFrame() {
-#if !SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  if (!sReady || !sFrame || !sFastLeds || !sFastController) return false;
+  for (uint16_t i = 0; i < sCount; ++i) {
+    const size_t base = (size_t)i * 3U;
+    sFastLeds[i] = CRGB(sFrame[base], sFrame[base + 1], sFrame[base + 2]);
+  }
+  // FX kernel already includes global and segment brightness.
+  sFastController->showLeds(255);
+  return true;
+#elif !SOC_RMT_SUPPORTED
   return false;
 #else
   if (!sReady || !sItems || !sFrame) return false;
@@ -127,18 +120,9 @@ static bool writeFrame() {
 #endif
 }
 
-static uint32_t periodFromSpeed(uint8_t speed, uint32_t slowMs, uint32_t fastMs) {
-  speed = constrain(speed, 1, 100);
-  return slowMs - ((slowMs - fastMs) * (uint32_t)(speed - 1U) / 99UL);
-}
 
-static uint8_t triangleWave(uint32_t phase, uint32_t period) {
-  if (period < 2) return 255;
-  uint32_t p = phase % period;
-  const uint32_t half = period / 2U;
-  if (p <= half) return (uint8_t)(p * 255UL / max<uint32_t>(1, half));
-  return (uint8_t)((period - p) * 255UL / max<uint32_t>(1, period - half));
-}
+
+
 
 static bool segmentExpired(ShowduinoPixelSegmentState &seg, uint32_t now) {
   if (!seg.durationMs) return false;
@@ -147,239 +131,7 @@ static bool segmentExpired(ShowduinoPixelSegmentState &seg, uint32_t now) {
   return true;
 }
 
-static void renderSegment(ShowduinoPixelSegmentState &seg, uint32_t now) {
-  if (!seg.active || !seg.configured || seg.count == 0) return;
-  if (segmentExpired(seg, now)) return;
-
-  const uint32_t elapsed = now - seg.startedMs;
-  const uint16_t end = min<uint32_t>((uint32_t)seg.start + seg.count,
-                                     sCount);
-  const uint16_t actualCount = (end > seg.start) ? (end - seg.start) : 0;
-  if (!actualCount) return;
-
-  switch (seg.effect) {
-    case ShowduinoPixelFx::Off:
-      break;
-
-    case ShowduinoPixelFx::Solid:
-      fillSegment(seg, seg.primary);
-      break;
-
-    case ShowduinoPixelFx::FadeIn: {
-      const uint32_t duration = seg.durationMs ? seg.durationMs : periodFromSpeed(seg.speed, 5000, 250);
-      uint8_t amount = (uint8_t)min<uint32_t>(255UL, elapsed * 255UL / max<uint32_t>(1, duration));
-      fillSegment(seg, seg.primary, amount);
-      break;
-    }
-
-    case ShowduinoPixelFx::FadeOut: {
-      const uint32_t duration = seg.durationMs ? seg.durationMs : periodFromSpeed(seg.speed, 5000, 250);
-      uint8_t amount = (elapsed >= duration) ? 0 : (uint8_t)(255UL - elapsed * 255UL / max<uint32_t>(1, duration));
-      fillSegment(seg, seg.primary, amount);
-      break;
-    }
-
-    case ShowduinoPixelFx::Pulse: {
-      uint32_t period = periodFromSpeed(seg.speed, 5000, 250);
-      fillSegment(seg, seg.primary, triangleWave(elapsed, period));
-      break;
-    }
-
-    case ShowduinoPixelFx::Breathe: {
-      const uint32_t period = periodFromSpeed(seg.speed, 7000, 700);
-      const float angle = ((float)(elapsed % period) / (float)period) * 6.2831853f;
-      const float shaped = (1.0f - cosf(angle)) * 0.5f;
-      fillSegment(seg, seg.primary, (uint8_t)(shaped * 255.0f));
-      break;
-    }
-
-    case ShowduinoPixelFx::Flicker: {
-      const uint32_t interval = periodFromSpeed(seg.speed, 140, 20);
-      if ((now - seg.lastStepMs) >= interval) {
-        seg.lastStepMs = now;
-        const uint8_t floorV = (uint8_t)(255U - ((uint16_t)seg.intensity * 180U / 100U));
-        seg.aux = (uint32_t)random(floorV, 256);
-      }
-      fillSegment(seg, seg.primary, (uint8_t)seg.aux);
-      break;
-    }
-
-    case ShowduinoPixelFx::Candle: {
-      const uint32_t interval = periodFromSpeed(seg.speed, 180, 35);
-      if ((now - seg.lastStepMs) >= interval) {
-        seg.lastStepMs = now;
-        seg.aux = (uint32_t)random(30, 120);
-      }
-      ShowduinoPixelColor warm = seg.secondary;
-      if (warm.r == 0 && warm.g == 0 && warm.b == 0) warm = {255, 70, 0};
-      ShowduinoPixelColor c = mixColor(seg.primary, warm, (uint8_t)seg.aux);
-      fillSegment(seg, c, (uint8_t)random(190, 256));
-      break;
-    }
-
-    case ShowduinoPixelFx::Fire: {
-      for (uint16_t p = 0; p < actualCount; ++p) {
-        uint8_t heat = (uint8_t)random(120, 256);
-        uint8_t red = heat;
-        uint8_t green = (uint8_t)((uint16_t)heat * random(20, 65) / 100U);
-        uint8_t blue = (uint8_t)random(0, 8);
-        setPixelScaled(seg.start + p, seg, {red, green, blue});
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Lightning: {
-      const uint32_t interval = periodFromSpeed(seg.speed, 900, 80);
-      if ((now - seg.lastStepMs) >= interval) {
-        seg.lastStepMs = now;
-        const long chance = random(0, 101);
-        seg.aux = (chance <= seg.randomness) ? (uint32_t)random(1, 4) : 0;
-      }
-      if (seg.aux > 0) {
-        fillSegment(seg, seg.primary, 255);
-        if (random(0, 100) < 45) --seg.aux;
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Strobe: {
-      const uint32_t period = periodFromSpeed(seg.speed, 1000, 60);
-      if ((elapsed % period) < (period / 2U)) fillSegment(seg, seg.primary);
-      break;
-    }
-
-    case ShowduinoPixelFx::RandomStrobe: {
-      const uint32_t interval = periodFromSpeed(seg.speed, 700, 45);
-      if ((now - seg.lastStepMs) >= interval) {
-        seg.lastStepMs = now;
-        seg.aux = random(0, 101) <= seg.randomness ? 1 : 0;
-      }
-      if (seg.aux) fillSegment(seg, seg.primary);
-      break;
-    }
-
-    case ShowduinoPixelFx::Chase: {
-      const uint32_t stepMs = periodFromSpeed(seg.speed, 350, 20);
-      uint32_t step = elapsed / max<uint32_t>(1, stepMs);
-      uint16_t pos = (uint16_t)(step % actualCount);
-      if (seg.reverse) pos = actualCount - 1U - pos;
-      uint16_t width = max<uint16_t>(1, (uint16_t)seg.intensity * min<uint16_t>(actualCount, 8) / 100U);
-      for (uint16_t w = 0; w < width; ++w) setPixelScaled(seg.start + ((pos + w) % actualCount), seg, seg.primary);
-      break;
-    }
-
-    case ShowduinoPixelFx::Bounce: {
-      const uint32_t stepMs = periodFromSpeed(seg.speed, 350, 20);
-      const uint32_t span = actualCount <= 1 ? 1 : (uint32_t)(actualCount - 1U) * 2UL;
-      uint32_t x = (elapsed / max<uint32_t>(1, stepMs)) % span;
-      uint16_t pos = x < actualCount ? (uint16_t)x : (uint16_t)(span - x);
-      if (seg.reverse) pos = actualCount - 1U - pos;
-      setPixelScaled(seg.start + pos, seg, seg.primary);
-      break;
-    }
-
-    case ShowduinoPixelFx::Comet: {
-      const uint32_t stepMs = periodFromSpeed(seg.speed, 300, 20);
-      uint16_t head = (uint16_t)((elapsed / max<uint32_t>(1, stepMs)) % actualCount);
-      if (seg.reverse) head = actualCount - 1U - head;
-      uint16_t tail = max<uint16_t>(2, min<uint16_t>(actualCount, (uint16_t)(2U + seg.intensity / 12U)));
-      for (uint16_t t = 0; t < tail; ++t) {
-        int32_t pos = seg.reverse ? (int32_t)head + t : (int32_t)head - t;
-        while (pos < 0) pos += actualCount;
-        pos %= actualCount;
-        uint8_t level = (uint8_t)(255U - ((uint32_t)t * 220U / tail));
-        setPixelScaled(seg.start + (uint16_t)pos, seg, seg.primary, level);
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Wipe:
-    case ShowduinoPixelFx::ReverseWipe:
-    case ShowduinoPixelFx::Build: {
-      const uint32_t stepMs = periodFromSpeed(seg.speed, 300, 15);
-      uint16_t filled = min<uint32_t>(actualCount, elapsed / max<uint32_t>(1, stepMs) + 1U);
-      for (uint16_t p = 0; p < filled; ++p) {
-        uint16_t pos = (seg.effect == ShowduinoPixelFx::ReverseWipe || seg.reverse)
-                         ? (actualCount - 1U - p) : p;
-        setPixelScaled(seg.start + pos, seg, seg.primary);
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Sparkle: {
-      fillSegment(seg, seg.secondary, 80);
-      uint16_t sparks = max<uint16_t>(1, (uint16_t)actualCount * seg.intensity / 100U / 4U);
-      for (uint16_t i = 0; i < sparks; ++i) {
-        uint16_t pos = (uint16_t)random(0, actualCount);
-        setPixelScaled(seg.start + pos, seg, seg.primary, (uint8_t)random(170, 256));
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Twinkle: {
-      const uint32_t period = periodFromSpeed(seg.speed, 4500, 400);
-      for (uint16_t p = 0; p < actualCount; ++p) {
-        uint32_t shifted = elapsed + (uint32_t)p * 173UL;
-        uint8_t level = triangleWave(shifted, period);
-        setPixelScaled(seg.start + p, seg, seg.primary, level);
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Glitch: {
-      const uint32_t interval = periodFromSpeed(seg.speed, 500, 35);
-      if ((now - seg.lastStepMs) >= interval) {
-        seg.lastStepMs = now;
-        seg.aux = random(0, 0x7fffffff);
-      }
-      for (uint16_t p = 0; p < actualCount; ++p) {
-        uint32_t x = seg.aux ^ ((uint32_t)p * 2654435761UL);
-        if ((x % 100U) < seg.intensity) setPixelScaled(seg.start + p, seg, (x & 1U) ? seg.primary : seg.secondary);
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Warning: {
-      ShowduinoPixelColor warning = seg.primary;
-      if (warning.r == 255 && warning.g == 255 && warning.b == 255) warning = {255, 0, 0};
-      const uint32_t period = periodFromSpeed(seg.speed, 1800, 200);
-      fillSegment(seg, warning, triangleWave(elapsed, period));
-      break;
-    }
-
-    case ShowduinoPixelFx::Portal: {
-      const uint32_t period = periodFromSpeed(seg.speed, 4000, 350);
-      for (uint16_t p = 0; p < actualCount; ++p) {
-        uint32_t shifted = elapsed + ((uint32_t)p * period / max<uint16_t>(1, actualCount));
-        uint8_t level = triangleWave(shifted, period);
-        ShowduinoPixelColor c = mixColor(seg.secondary, seg.primary, level);
-        setPixelScaled(seg.start + p, seg, c);
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::Rainbow: {
-      const uint32_t stepMs = periodFromSpeed(seg.speed, 80, 5);
-      uint16_t baseHue = (uint16_t)((elapsed / max<uint32_t>(1, stepMs)) % 360U);
-      for (uint16_t p = 0; p < actualCount; ++p) {
-        uint16_t hue = (uint16_t)((baseHue + ((uint32_t)p * 360U / actualCount)) % 360U);
-        setPixelScaled(seg.start + p, seg, hsv(hue, 255, 255));
-      }
-      break;
-    }
-
-    case ShowduinoPixelFx::CustomSequence: {
-      const uint32_t unit = periodFromSpeed(seg.speed, 1600, 150);
-      uint32_t step = (elapsed / max<uint32_t>(1, unit)) % 3U;
-      if (step == 0) fillSegment(seg, seg.primary);
-      else if (step == 1) fillSegment(seg, seg.secondary);
-      break;
-    }
-
-    default:
-      break;
-  }
-}
+#include "../../../shared-pixel/ShowduinoPixelEffects.inc"
 
 static void renderEmergencyWhite() {
   if (!sFrame) return;
@@ -417,7 +169,7 @@ static void showPixelsShutdown() {
     clearFrame();
     writeFrame();
   }
-#if SOC_RMT_SUPPORTED
+#if SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
   if (sReady) {
     rmtDeinit(SHOWDUINO_SHOW_PIXEL_PIN);
   }
@@ -428,7 +180,11 @@ static void showPixelsShutdown() {
   sSymbolCount = 0;
   free(sFrame);
   sFrame = nullptr;
-#if SOC_RMT_SUPPORTED
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  if (sFastController) sFastController->setLeds(nullptr, 0);
+  delete[] sFastLeds;
+  sFastLeds = nullptr;
+#elif SOC_RMT_SUPPORTED
   free(sItems);
   sItems = nullptr;
 #endif
@@ -441,7 +197,7 @@ bool showPixelsBegin() {
                   (unsigned)SHOWDUINO_SHOW_PIXEL_MAX);
     return false;
   }
-#if !SOC_RMT_SUPPORTED
+#if !SOC_RMT_SUPPORTED && !SHOWDUINO_SHOW_PIXEL_USE_FASTLED
   Serial.println("[PIXEL] RMT not supported — P4 show pixel line disabled");
   return false;
 #else
@@ -451,9 +207,14 @@ bool showPixelsBegin() {
 
   sCount = sConfiguredCount;
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  sFastLeds = new (std::nothrow) CRGB[sCount];
+  if (!sFrame || !sFastLeds) {
+#else
   const size_t bits = (size_t)sCount * 24U;
   sItems = (rmt_data_t *)malloc(bits * sizeof(rmt_data_t));
   if (!sFrame || !sItems) {
+#endif
     Serial.println("[PIXEL] Show line allocation failed");
     showPixelsShutdown();
     return false;
@@ -461,6 +222,19 @@ bool showPixelsBegin() {
 
   pinMode(SHOWDUINO_SHOW_PIXEL_PIN, OUTPUT);
   digitalWrite(SHOWDUINO_SHOW_PIXEL_PIN, LOW);
+#if SHOWDUINO_SHOW_PIXEL_USE_FASTLED
+  // GPIO24 signage still uses Arduino's native RMT API. Do not let a
+  // different FastLED RMT implementation claim any RMT peripheral.
+  // FastLED will select its supported non-RMT driver for this board.
+  FastLED.setDriverEnabled("RMT", false);
+  if (!sFastController) {
+    sFastController = &FastLED.addLeds<WS2812, SHOWDUINO_SHOW_PIXEL_PIN, GRB>(sFastLeds, sCount);
+    sFastController->setCorrection(UncorrectedColor);
+    sFastController->setDither(0);
+  } else {
+    sFastController->setLeds(sFastLeds, sCount);
+  }
+#else
   bool inited = rmtInit(SHOWDUINO_SHOW_PIXEL_PIN, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_2, 10000000);
   if (!inited) inited = rmtInit(SHOWDUINO_SHOW_PIXEL_PIN, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, 10000000);
   if (!inited) {
@@ -470,6 +244,7 @@ bool showPixelsBegin() {
     return false;
   }
   rmtSetEOT(SHOWDUINO_SHOW_PIXEL_PIN, 0);
+#endif
   sReady = true;
   clearFrame();
   writeFrame();
@@ -563,6 +338,8 @@ uint16_t showPixelsMax() { return SHOWDUINO_SHOW_PIXEL_MAX; }
 uint8_t showPixelsGlobalBrightness() { return sGlobalBrightness; }
 
 void showPixelsPrintStatus() {
+  Serial.printf("[PIXEL] P4 show driver=%s\n",
+                SHOWDUINO_SHOW_PIXEL_USE_FASTLED ? "FastLED(non-RMT)" : "native RMT");
   Serial.printf("[PIXEL] SHOW GPIO=%d configured=%u active=%u ready=%s brightness=%u emergency=%s\n",
                 SHOWDUINO_SHOW_PIXEL_PIN,
                 (unsigned)sConfiguredCount,

@@ -2798,6 +2798,22 @@ private:
       sendLampDesk(SHOWDUINO_LAMP_DESK_CMD_STATUS);
       return;
     }
+    if (command == PAGE04_CMD_PIXEL_P4_OFF) {
+      if (!emergencyLocked && commandCallback) commandCallback("PIXEL:BLACKOUT");
+      return;
+    }
+    if (command == PAGE04_CMD_PIXEL_P4_TEST) {
+      if (!emergencyLocked && commandCallback) commandCallback("PIXEL:TEST");
+      return;
+    }
+    if (command == PAGE04_CMD_PIXEL_LOCATE) {
+      // Only use the P4-reported node identity; never invent a remote target.
+      if (emergencyLocked || !pixelNodePresent() || !pixelDetail_.firstId[0]) return;
+      char line[72];
+      snprintf(line, sizeof(line), "PIXEL:NODE:%s:LOCATE", pixelDetail_.firstId);
+      if (commandCallback) commandCallback(line);
+      return;
+    }
     if (command == PAGE04_CMD_MOSFET_STATUS) {
       if (commandCallback) commandCallback("STATUS:REQUEST");
       return;

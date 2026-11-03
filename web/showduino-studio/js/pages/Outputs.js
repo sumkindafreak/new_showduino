@@ -88,6 +88,27 @@ export async function OutputsPage(container) {
     reverse: false
   };
 
+
+  // Browser-local group presets. Physical outputs remain owned by P4/individual nodes.
+  const groupStoreKey = 'showduino.pixel.installation-groups.v1';
+  const groupState = { name: 'Main installation', selected: new Set(['P4']), saved: {} };
+  try {
+    const loaded = JSON.parse(localStorage.getItem(groupStoreKey) || '{}');
+    if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
+      for (const [name, targets] of Object.entries(loaded)) {
+        if (Array.isArray(targets) && targets.every((id) => typeof id === 'string')) {
+          groupState.saved[name] = targets;
+        }
+      }
+    }
+  } catch (_) {
+    // WebUI still works with private browsing or disabled localStorage.
+  }
+  function saveGroupsLocally() {
+    try { localStorage.setItem(groupStoreKey, JSON.stringify(groupState.saved)); }
+    catch (_) { /* storage unavailable; current session continues */ }
+  }
+
   async function send(cmd) {
     pending = cmd;
     paint();
@@ -114,12 +135,22 @@ export async function OutputsPage(container) {
     const replies = [];
     try {
       for (const cmd of commands) {
+        // Emergency wins over any multi-command lighting request.
+        if (emergencyWord(lastSnap.system) === 'EMERGENCY') {
+          replies.push('ABORTED: EMERGENCY ACTIVE');
+          break;
+        }
         const data = await postCommand(cmd);
         if (isP4Offline(data)) {
           replies.push('P4 OFFLINE');
           break;
         }
-        replies.push(data.replies || cmd + ': OK');
+        const response = String(data.replies || cmd + ': OK');
+        replies.push(response);
+        if (data.ok === false || /PIXEL:(?:ERROR|REJECTED|FAILED)/.test(response)) {
+          replies.push('SEQUENCE ABORTED AFTER REJECTION');
+          break;
+        }
       }
       lastResult = replies.join(' | ');
       try {
@@ -353,6 +384,142 @@ export async function OutputsPage(container) {
     host.append(showPx);
 
     const remoteNodes = (lighting && Array.isArray(lighting.pixelNodes)) ? lighting.pixelNodes : [];
+
+    // A "line" is one real output: local P4 GPIO23 or a discovered C3 node GPIO2.
+    // Never expose safety-owned P4 GPIO24 as a show-programmable output.
+    const groupLines = [{
+      key: 'P4', label: 'P4 · GPIO23', prefix: 'PIXEL:',
+      ready: !!(lastSnap.p4Online && lighting && lighting.showPixelsReady),
+      count: Number(lighting && lighting.showPixelsCount) || 0
+    }];
+    for (const node of remoteNodes) {
+      const id = String(node.id || '').trim();
+      if (!id) continue;
+      groupLines.push({
+        key: 'NODE:' + id, label: id + ' · GPIO2', prefix: 'PIXEL:NODE:' + id + ':',
+        ready: !!(node.online && node.initialised),
+        count: Number(node.pixelCount || 0)
+      });
+    }
+    const groupCard = el('div', { className: emergency === 'EMERGENCY' ? 'card danger-card' : 'card' });
+    groupCard.append(el('h2', { text: 'Installation pixel groups' }));
+    groupCard.append(el('p', { className: 'sub',
+      text: 'Assign real pixel outputs to a named group. Use the P4 segment editor above to set the shared segment/FX parameters before launching. Original .shdo files are unchanged.'
+    }));
+    const groupTop = el('div', { className: 'filter-row' });
+    const groupName = el('input', {
+      className: 'text-input', type: 'text', value: groupState.name,
+      placeholder: 'Group name', maxLength: 40
+    });
+    groupName.addEventListener('input', () => { groupState.name = groupName.value; });
+    groupTop.append(groupName);
+    const groupSelector = el('select', { className: 'text-input' });
+    groupSelector.append(el('option', { value: '', text: 'Saved groups' }));
+    for (const name of Object.keys(groupState.saved).sort()) {
+      groupSelector.append(el('option', { value: name, text: name }));
+    }
+    groupSelector.addEventListener('change', () => {
+      const name = groupSelector.value;
+      if (!name || !groupState.saved[name]) return;
+      groupState.name = name;
+      groupState.selected = new Set(groupState.saved[name]);
+      paint();
+    });
+    groupTop.append(groupSelector);
+    groupTop.append(el('button', {
+      className: 'btn-cancel', text: 'SAVE GROUP',
+      disabled: !!pending,
+      onClick: () => {
+        const name = groupState.name.trim().slice(0, 40);
+        if (!name || !groupState.selected.size) {
+          lastResult = 'Enter a group name and select at least one line.';
+          paint();
+          return;
+        }
+        groupState.name = name;
+        groupState.saved[name] = [...groupState.selected];
+        saveGroupsLocally();
+        lastResult = 'Saved group ' + name + ' in this browser.';
+        paint();
+      }
+    }));
+    groupTop.append(el('button', {
+      className: 'btn-cancel', text: 'DELETE GROUP',
+      disabled: !!pending,
+      onClick: () => {
+        delete groupState.saved[groupState.name];
+        saveGroupsLocally();
+        lastResult = 'Deleted group preset (no hardware affected).';
+        paint();
+      }
+    }));
+    groupCard.append(groupTop);
+    const members = el('div', { className: 'filter-row' });
+    for (const target of groupLines) {
+      const item = el('label', { className: 'sub' });
+      const check = el('input', { type: 'checkbox',
+        checked: groupState.selected.has(target.key),
+        disabled: !!pending || emergency === 'EMERGENCY'
+      });
+      check.addEventListener('change', () => {
+        if (check.checked) groupState.selected.add(target.key);
+        else groupState.selected.delete(target.key);
+      });
+      item.append(check, document.createTextNode(' ' + target.label + (target.ready ? '' : ' (offline/uninitialised)')));
+      members.append(item);
+    }
+    groupCard.append(members);
+    const groupActions = el('div', { className: 'filter-row' });
+    const groupBusy = !!pending || !lastSnap.p4Online || emergency === 'EMERGENCY';
+    function targetsOrError(needsRange) {
+      const selected = groupLines.filter((target) => groupState.selected.has(target.key));
+      const missing = [...groupState.selected].filter((key) => !groupLines.some((target) => target.key === key));
+      const unavailable = selected.find((target) => !target.ready ||
+        (needsRange && (px.start < 0 || px.count <= 0 || px.start + px.count > target.count)));
+      if (!selected.length || missing.length || unavailable) {
+        lastResult = missing.length ? 'Group contains an undiscovered line: ' + missing.join(', ')
+          : unavailable ? 'Line unavailable or segment exceeds pixel count: ' + unavailable.label
+          : 'Choose at least one physical pixel line.';
+        paint();
+        return null;
+      }
+      return selected;
+    }
+    groupActions.append(el('button', {
+      className: 'btn-primary', text: 'APPLY + START GROUP', disabled: groupBusy,
+      onClick: () => {
+        const targets = targetsOrError(true);
+        if (!targets) return;
+        const configure = segmentCommands(false);
+        const commands = [];
+        // Configure *all* selected lines first, then request starts. This is
+        // best-effort coordination, NOT frame-accurate distributed timing.
+        for (const target of targets)
+          for (const command of configure)
+            commands.push(target.prefix + command.slice('PIXEL:'.length));
+        for (const target of targets)
+          commands.push(target.prefix + 'SEGMENT:' + px.id + ':START');
+        sendMany(commands, 'PIXEL:GROUP:START');
+      }
+    }));
+    groupActions.append(el('button', {
+      className: 'btn-cancel', text: 'BLACKOUT GROUP', disabled: groupBusy,
+      onClick: () => {
+        const targets = targetsOrError(false);
+        if (targets) sendMany(targets.map((target) => target.prefix + 'BLACKOUT'), 'PIXEL:GROUP:BLACKOUT');
+      }
+    }));
+    groupCard.append(groupActions);
+    groupCard.append(el('p', { className: 'sub',
+      text: 'Group starts are sent through the existing P4 command gateway one target at a time; they are not frame-synchronised. Membership is stored locally in this browser, not on hardware.'
+    }));
+    if (lastResult && (String(pending || '').startsWith('PIXEL:GROUP:') || String(lastResult).startsWith('Saved group') ||
+      String(lastResult).startsWith('Deleted group') || String(lastResult).startsWith('Line unavailable') ||
+      String(lastResult).startsWith('Group contains') || String(lastResult).startsWith('Choose at least'))) {
+      groupCard.append(el('p', { className: 'sub', text: lastResult }));
+    }
+    host.append(groupCard);
+
     if (!remoteNodes.length) {
       const waiting = el('div', { className: 'card' });
       waiting.append(el('h2', { text: 'Pixel Nodes' }));

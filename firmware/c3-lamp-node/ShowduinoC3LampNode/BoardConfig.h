@@ -71,4 +71,7 @@
 #define SHOWDUINO_LAMP_DISCOVER_MS         SHOWDUINO_OWNER_DISCOVER_MS
 #define SHOWDUINO_LAMP_KEEPALIVE_MS        SHOWDUINO_OWNER_KEEPALIVE_MS
 
+/* Pixel Engine 2.0: FastLED output on this development branch. */
+#define SHOWDUINO_LED_USE_FASTLED 1
+
 #endif

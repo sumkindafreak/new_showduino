@@ -27,4 +27,7 @@
 #define SHOWDUINO_MOSFET_DEFAULT_ID        "MOSFET-01"
 #define SHOWDUINO_MOSFET_DEFAULT_NAME      "MOSFET NODE 1"
 
+/* Pixel Engine 2.0: FastLED output on this development branch. */
+#define SHOWDUINO_LED_USE_FASTLED 1
+
 #endif

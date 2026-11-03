@@ -2,7 +2,9 @@
 #define SHOWDUINO_LAMP_ENGINE_H
 
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include "../BoardConfig.h"
+#define SHOWDUINO_LED_GPIO SHOWDUINO_LAMP_PIXEL_PIN
+#include "../../../shared-pixel/ShowduinoLedStrip.h"
 #include "../../../protocol/showduino_lamp_node.h"
 
 bool lampEngineBegin();

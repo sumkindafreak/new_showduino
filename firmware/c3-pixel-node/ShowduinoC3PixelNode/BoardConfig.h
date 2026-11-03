@@ -71,6 +71,8 @@
 #define SHOWDUINO_PIXEL_BTN_A               9   /* BOOT / local test */
 #define SHOWDUINO_PIXEL_BTN_B               0   /* OLED page / STATUS */
 
+/* Pixel Engine 2.0 branch: FastLED as default on the bench C3 pixel node. */
+#define SHOWDUINO_PIXEL_USE_FASTLED           1
 #define SHOWDUINO_PIXEL_DATA_PIN            2
 #define SHOWDUINO_PIXEL_ORDER               (NEO_GRB + NEO_KHZ800)
 #define SHOWDUINO_PIXEL_DATA_RESISTOR_OHMS  330

@@ -138,4 +138,7 @@
 #define SHOWDUINO_AUDIO_DEFAULT_OUTPUT     "SPEAKER"
 #define SHOWDUINO_AUDIO_AP_PASSWORD        "showduino"
 
+/* Pixel Engine 2.0: FastLED output on this development branch. */
+#define SHOWDUINO_LED_USE_FASTLED 1
+
 #endif
