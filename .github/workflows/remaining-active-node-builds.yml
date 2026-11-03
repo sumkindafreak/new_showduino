@@ -66,7 +66,13 @@ jobs:
       - name: Compile active reference or evaluation firmware (no uploads)
         run: |
           sketch="$GITHUB_WORKSPACE/${{ matrix.sketch }}"
+          libraries=()
+          if [ '${{ matrix.target }}' = Audio-FastLED-Frame ]; then
+            # Arduino's discovery does not resolve FastLED's nested RGB header.
+            libraries+=(--library "$(arduino-cli config get directories.user)/libraries/FastLED")
+          fi
           arduino-cli compile --jobs 2 --fqbn '${{ matrix.fqbn }}' \
+            "${libraries[@]}" \
             --build-property "compiler.cpp.extra_flags=-I$GITHUB_WORKSPACE/protocol -I$sketch ${{ matrix.extra_flags }}" \
             --build-path "$RUNNER_TEMP/reference-build" "$sketch" 2>&1 | tee compile.log
           arduino-cli core list > toolchain.txt
