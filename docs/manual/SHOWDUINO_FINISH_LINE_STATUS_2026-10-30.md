@@ -1,5 +1,14 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 4 November 2026 — main and documentation audit follow-up
+
+- **Verified main:** `338e5b630111cc3365bb4c9f923750daaf1596d8` (4 November 19:44:01 UTC). Compared with 3 November `6bf6956cf78c204ce4377c1814f87c523b0d2436`, exactly three commits alter only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. No active non-generated firmware changes or local-baseline integration landed in that range.
+- **Documentation drift:** `main` User Manual and dated finish-line status still lead with the 1 November Emergency-clear failure and omit the subsequent owner report that clearance works in the local copy and the 2 November 22-second show run. The historical failure must remain in the record, but must not be presented as the newest observed state. This draft documentation update is not yet part of `main`.
+- **Integration state:** #51 (preserved working local baseline), stacked #52–#58 and #60 (optional FastLED / MOSFET reconnect candidate), and documentation #59 remain open. None of those PRs is installed by virtue of existing on GitHub. The broad FastLED #31 and persistent Emergency #33 remain unvalidated drafts. Do not merge the stack or replace the known-working Emergency path without comparing the flashed local baseline and running physical tests.
+- **Latest bench evidence available:** first combined audio/visual show 29 October; local 22-second scenario reported running and local Emergency clearance reported fixed 2 November. There is still no new signed repeatable P4 LOAD → START → COMPLETE evidence, nor documented mid-show Emergency assert/release/authorised clear/no-auto-resume acceptance. Director resets/Cue Library navigation and MOSFET output drop during Director reconnect require targeted retest, especially if the MOSFET is part of the acceptance show.
+- **Minimal non-DMX next actions:** preserve firmware and SD assets; run and log the same complete production twice; perform an isolated mid-show Emergency cycle and verify P4 remains authoritative and stopped after clear; verify MOSFET reconnect only where the show depends on it; promote only tested essential fixes and reconcile the User Manual after source/bench verification. FastLED rollout is optional and outside this gate.
+
+
 ## 3 November 2026 — GitHub main and integration status
 
 **Checked 3 November:** `main` is `6bf6956cf78c204ce4377c1814f87c523b0d2436` (14:10:56 UTC). The two commits since the 2 November 15:47 baseline are labelled **Regenerate S3 Studio WebUI bundle**; no merged local-firmware reconciliation is evidenced by these commits. PR #51 (working local baseline) remains a draft based on `main`; PRs #52–#58 and new #60 (Audio opt-in FastLED RGB frames) form a dependent draft integration chain, **not main**. Documentation PR #59 remains open. These statuses do not establish installed hardware behaviour.
