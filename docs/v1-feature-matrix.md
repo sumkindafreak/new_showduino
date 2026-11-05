@@ -1,5 +1,7 @@
 # Showduino V1 feature matrix
 
+> **2 November 2026 evidence boundary:** This is an older **main-source** V1 matrix, not a feature inventory of the owner's flashed local firmware. The owner reports a working 22-second full-node show and fixed local Emergency clearance; [draft PR #51](https://github.com/sumkindafreak/new_showduino/pull/51) preserves the local firmware, while [#52–#58](https://github.com/sumkindafreak/new_showduino/pulls) stage unmerged candidates. Earlier YES/NEEDS HARDWARE TEST labels below must not be promoted to physical acceptance without matching logs. [Current dated reconciliation](manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
+
 Product version: **1.0.0-rc.1**. Do not call hardware items complete from source inspection.
 
 Legend:

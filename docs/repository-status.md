@@ -1,5 +1,7 @@
 # Showduino Repository Status
 
+> **2 November 2026:** The active-stack inventory below describes the historical main-source classification, not all features on the owner-reported working local firmware. The local baseline is represented in unmerged [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51); optional FastLED and other staged work are in draft PRs #52–#57, and a reported MOSFET reconnect output-drop has a paired P4/node candidate in draft #58. Do not treat those drafts as installed or physically accepted. [Current status](manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
+
 Classification of firmware projects. Status labels guide development priority; legacy source is retained where useful.
 
 Related:
