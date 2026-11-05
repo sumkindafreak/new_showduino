@@ -1,5 +1,14 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 5 November 2026 — documentation merged; firmware integration still pending
+
+- **Verified `main`:** `53004df4ec89175ed24cf0b65b760202442ccbc2` (5 November 19:55:51 UTC). Since the 4 November reviewed `338e5b63` baseline, the intervening history includes documentation commits, **merged PR #59** (`61502068`, 5 November 19:47:57 UTC), and regenerated S3 Studio WebUI assets. The latest commit is labelled `Regenerate S3 Studio WebUI bundle`; this does not establish that local firmware was merged or flashed.
+- **Documentation correction:** PR #59 is **merged into `main`**, not open. Its User Manual/finish-line reconciliation is now present in `main`. Older dated paragraphs below mentioning #59 as open describe their historical snapshot, not current state.
+- **Unmerged candidates:** PR #51 (working local firmware baseline), stacked draft #52–#58 and #60 (optional FastLED paths and MOSFET reconnect), and older drafts including #31 and #33 remain open. Do not equate branch code or host builds with physical acceptance. Do not merge experimental Emergency persistence (#33) without hardware validation.
+- **Latest reported bench evidence:** First combined audio/visual show 29 October; 22-second production reportedly runs locally and Emergency clearance reportedly fixed locally on 2 November. No newer signed logs establish two repeatable LOAD → START → COMPLETE runs or mid-show Emergency/no-auto-resume acceptance. Director stability, Cue Library navigation and MOSFET reconnect require targeted retest if relevant to the production.
+- **Minimum finish-line actions:** Preserve the flashed local firmware and assets; log two complete runs; perform one isolated mid-show Emergency assertion, physical release, Director-authorised P4 clear and no-auto-resume test; verify Director and MOSFET reconnect only if they affect that show; compare PR #51 to the working local files before integrating essential fixes. No DMX or optional FastLED rollout is required for this acceptance gate.
+
+
 ## 4 November 2026 — main and documentation audit follow-up
 
 - **Verified main:** `338e5b630111cc3365bb4c9f923750daaf1596d8` (4 November 19:44:01 UTC). Compared with 3 November `6bf6956cf78c204ce4377c1814f87c523b0d2436`, exactly three commits alter only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. No active non-generated firmware changes or local-baseline integration landed in that range.
