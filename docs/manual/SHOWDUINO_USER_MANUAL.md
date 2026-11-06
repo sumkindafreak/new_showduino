@@ -1,5 +1,8 @@
 # SHOWDUINO
 
+ > **6 November 2026 source check:** GitHub `main` is `95e16d9668` (19:23:25 UTC). The two 6 November commits only regenerate the Communications S3 WebUI header and build manifest; no local bench firmware integration or new hardware acceptance is established. Documentation PR #59 merged 5 November; this updated status is pending in PR #61. The local 22-second show and Emergency-clear correction remain owner-reported, with repeatable P4-confirmed completion and mid-show Emergency/no-auto-resume acceptance outstanding. Draft PR #51 preserves local firmware; #58 addresses MOSFET reconnect; optional FastLED work remains unmerged. Preserve working flashed code and isolate effect loads during safety verification. See [dated finish-line evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+
+
 > **5 November 2026 source/bench status:** Documentation reconciliation **PR #59 merged into `main`** at `61502068` (5 November 19:47:57 UTC); latest checked `main` is `53004df4` (19:55:51 UTC). The preserved working local firmware PR #51 and staged optional FastLED/MOSFET candidates #52–#58 and #60 remain **draft/unmerged**. The owner's local 22-second playback and Emergency-clear fix remain reported, not signed repeatable scenario or mid-show Emergency/no-auto-resume acceptance. Do not replace the flashed working Emergency code with unverified branch code. See [dated finish-line evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
 
 
