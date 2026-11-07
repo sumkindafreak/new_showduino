@@ -1,5 +1,8 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+> **7 November 2026 source check (21:48 UTC):** GitHub `main` is `2e25522d6f`. The three commits since 6 November (`012871c83d`, `4d26ca02fb`, `2e25522d6f`) regenerate only the S3 Communications Studio WebUI header and `tools/embed-webui/last-build.json`; they do **not** merge the locally working firmware or prove any new physical bench acceptance. Documentation reconciliation PR #61 is still open. Draft #51 preserves the reported local baseline, while #58 proposes an unverified MOSFET reconnect correction; the stacked optional FastLED PRs are not a finish-line prerequisite. Latest available bench reports remain: 29 October combined audio/visual playback, 2 November local 22-second scenario and local Emergency-clear correction. Repeat LOAD → START → COMPLETE and mid-show Emergency assert/release/Director-authorised clear/no-auto-resume are still unverified as formal acceptance. Preserve the working flashed baseline and test with hazardous effects isolated; do not promote experimental changes merely to match GitHub.
+
+
 ## 6 November 2026 — checked GitHub main and documentation delta
 
 - **Verified `main`:** `95e16d9668` (6 November 19:23:25 UTC). Two commits since 5 November `53004df4` (`f7dd0159`, 06:40 UTC; `95e16d96`, 19:23 UTC) modify only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. Neither merges the local bench firmware or proves any new hardware behaviour.
