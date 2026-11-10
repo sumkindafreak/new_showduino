@@ -1,5 +1,13 @@
 # Showduino finish-line evidence reconciliation — 30 October 2026
 
+## 10 November 2026 — source and bench evidence update
+
+- **Verified `main`:** `efb2e13ddd50d837f9be85b6d2a46b91e6080781` (19:42:18 UTC). Three commits since `04152dc7551d91d510c2df6413e3d3cb4ba72ff1` (9 November 06:23 UTC), affecting only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. These are generated WebUI/manifest updates, not a merged working-firmware baseline or new bench evidence.
+- **Latest owner bench evidence:** 29 October first combined audio/visual show; 2 November report of the 22-second full-node show running and Emergency clear corrected in flashed local firmware. No newer logged two-run P4 LOAD → START → COMPLETE or isolated mid-show Emergency assert/release/Director-authorised clear/no-auto-resume acceptance is available.
+- **Risks:** Prior Director resets/Cue Library navigation issues need targeted retest. Reported MOSFET output drop on Director reconnect is not hardware-accepted as fixed; draft #58 proposes a correction and matching P4 guard. The local Emergency fix must be protected while comparing draft #51. FastLED drafts are optional and not a finish-line prerequisite.
+- **Smallest non-DMX actions:** preserve flashed versions and show/SD assets; run and log the same complete show twice; test Emergency safely with hazardous loads isolated; reproduce MOSFET reconnect only if relevant to the acceptance production; integrate only verified essential corrections. Documentation-only update, no flash/merge/bench acceptance implied.
+
+
 ## 4 November 2026 — main and documentation audit follow-up
 
 - **Verified main:** `338e5b630111cc3365bb4c9f923750daaf1596d8` (4 November 19:44:01 UTC). Compared with 3 November `6bf6956cf78c204ce4377c1814f87c523b0d2436`, exactly three commits alter only `firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.generated.h` and `tools/embed-webui/last-build.json`. No active non-generated firmware changes or local-baseline integration landed in that range.
