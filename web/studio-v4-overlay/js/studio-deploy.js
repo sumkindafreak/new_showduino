@@ -26,6 +26,12 @@
     try {
       const url = new URL(withScheme);
       if (!url.hostname) return '';
+      // Browsers accept and percent-encode almost anything as a host ("not a host!!").
+      // Only a plain hostname, an IPv4 address or a bracketed IPv6 address is a target.
+      const host = url.hostname;
+      const plainHost = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(host);
+      const ipv6 = /^\[[0-9a-f:.]+\]$/i.test(host);
+      if (!plainHost && !ipv6) return '';
       url.pathname = '';
       url.search = '';
       url.hash = '';
@@ -366,6 +372,30 @@
     };
   }
 
+  // W001: mirror of new_showduino protocol/showduino_web_timeline_upload_policy.h.
+  // The Communications S3 and the P4 accept only PIXEL:* and AUDIO:NODE:* cues in a
+  // browser timeline upload. Check every command before SHOW:TL:BEGIN is sent so a
+  // refused cue can never leave the P4 with a half-uploaded RAM timeline.
+  function uploadEnvelopeAllowed(command) {
+    const cmd = String(command || '');
+    if (cmd === 'SHOW:TL:BEGIN' || cmd === 'SHOW:TL:END') return true;
+    const match = /^SHOW:TL:C:(\d{1,10}):(.+)$/.exec(cmd);
+    if (!match || Number(match[1]) > 0xFFFFFFFF) return false;
+    const payload = match[2];
+    if (payload.length > TIMELINE_COMMAND_MAX || /[\r\n]/.test(payload)) return false;
+    return payload.startsWith('PIXEL:') || payload.startsWith('AUDIO:NODE:');
+  }
+
+  function uploadPolicyErrors(plan) {
+    const refused = (plan.uploadCommands || []).filter((command) => !uploadEnvelopeAllowed(command));
+    if (!refused.length) return [];
+    const families = Array.from(new Set(refused.map((command) => {
+      const payload = command.replace(/^SHOW:TL:C:\d+:/, '');
+      return payload.split(':').slice(0, 2).join(':');
+    })));
+    return [`The current Showduino firmware does not accept ${families.join(', ')} cues in a Studio upload (only PIXEL and AUDIO:NODE). Export the .shdo instead; nothing was sent.`];
+  }
+
   async function postTimelineCommand(baseUrl, cmd) {
     const response = await fetchWithTimeout(`${baseUrl}${STAGE_ENDPOINT}`, {
       method: 'POST',
@@ -398,6 +428,8 @@
 
     const plan = compileShdoForStage(shdo);
     if (!plan.ok) throw new Error(plan.errors.join('\n'));
+    const policyErrors = uploadPolicyErrors(plan);
+    if (policyErrors.length) throw new Error(policyErrors.join('\n'));
 
     notify('Looking for the Showduino Communications S3…', 'NET');
     const target = await findLocalShowduino();
@@ -454,6 +486,8 @@
     deployCurrentProject,
     browserAllowsDirectLocalSend,
     compileShdoForStage,
+    uploadEnvelopeAllowed,
+    uploadPolicyErrors,
     getConfiguredTarget: configuredTarget,
     setConfiguredTarget,
     normaliseTarget
