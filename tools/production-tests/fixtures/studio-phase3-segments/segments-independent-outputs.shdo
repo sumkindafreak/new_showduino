@@ -1,0 +1,362 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "33496125-e06e-4e56-9844-dc86b54870be",
+    "name": "segments-independent-outputs",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T14:04:31.318Z",
+    "updatedAt": "2026-11-11T14:04:31.318Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "p4",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "LED-01",
+      "name": "LED-01",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "audio-node-pixels",
+      "name": "audio-node",
+      "type": "audio-node-pixels",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node-pixels",
+        "nodeId": "audio-node",
+        "outputLabel": "gpio22",
+        "parentNodeId": "audio-node"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "estop-01-pixels",
+      "name": "ESTOP-01",
+      "type": "estop-node-pixels",
+      "enabled": true,
+      "binding": {
+        "route": "estop-node-pixels",
+        "nodeId": "ESTOP-01",
+        "outputLabel": "gpio2",
+        "parentNodeId": "ESTOP-01"
+      },
+      "capabilities": {
+        "segmentedPixels": true,
+        "maxPixels": 512,
+        "segments": 16
+      },
+      "metadata": {
+        "derivedFromLegacyRouting": true,
+        "parentRole": "EMERGENCY",
+        "pin": 2
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "ce213d6d-bf0f-419f-9319-475bc055a758",
+      "name": "pixel p4-local",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "fb49da9d-3b3a-42dc-a722-2f25d34d6506",
+      "name": "pixel LED-01",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 1,
+      "targetDeviceId": "LED-01"
+    },
+    {
+      "id": "bb96a727-3f50-46ad-9366-a1c9768ebc24",
+      "name": "pixel audio-node-pixels",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 2,
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "ebeebf59-fc8e-43a4-b108-c90816c64df8",
+      "name": "pixel ESTOP-01",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 3,
+      "targetDeviceId": "estop-01-pixels"
+    }
+  ],
+  "clips": [
+    {
+      "id": "8d42d940-cccf-4dce-9198-863f856c7ad1",
+      "trackId": "ce213d6d-bf0f-419f-9319-475bc055a758",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Line",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 5000,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Line",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 5000,
+        "value": "Line",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 4,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "7b96d83d-8d90-4852-a43a-607f15c5eb72",
+      "trackId": "fb49da9d-3b3a-42dc-a722-2f25d34d6506",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Node",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 5000,
+      "enabled": true,
+      "targetDeviceId": "LED-01",
+      "target": "LED-01",
+      "action": {
+        "type": "pixel",
+        "label": "Node",
+        "targetDeviceId": "LED-01",
+        "target": "LED-01",
+        "delayMs": 0,
+        "durationMs": 5000,
+        "value": "Node",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 4,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "197e91c1-cd24-48cc-99c0-566b59198a3a",
+      "trackId": "bb96a727-3f50-46ad-9366-a1c9768ebc24",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Audio ring",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 5000,
+      "enabled": true,
+      "targetDeviceId": "audio-node-pixels",
+      "target": "audio-node",
+      "action": {
+        "type": "pixel",
+        "label": "Audio ring",
+        "targetDeviceId": "audio-node-pixels",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 5000,
+        "value": "Audio ring",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 4,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "e3b7feaf-ef01-4eeb-a04f-7fdce9adb545",
+      "trackId": "ebeebf59-fc8e-43a4-b108-c90816c64df8",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Estop ring",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 5000,
+      "enabled": true,
+      "targetDeviceId": "estop-01-pixels",
+      "target": "ESTOP-01",
+      "action": {
+        "type": "pixel",
+        "label": "Estop ring",
+        "targetDeviceId": "estop-01-pixels",
+        "target": "ESTOP-01",
+        "delayMs": 0,
+        "durationMs": 5000,
+        "value": "Estop ring",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 4,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "8d42d940-cccf-4dce-9198-863f856c7ad1",
+            "7b96d83d-8d90-4852-a43a-607f15c5eb72",
+            "197e91c1-cd24-48cc-99c0-566b59198a3a",
+            "e3b7feaf-ef01-4eeb-a04f-7fdce9adb545"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}
