@@ -1126,9 +1126,11 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
               return fail(SHDO_SAFETY_WEAKENED, "invalid safety.policy");
             }
           } else if (strcmp(skey, "productionCannotDisable") == 0) {
-            if (!r.boolean(&productionCannotDisable)) {
+            bool declared = true;
+            if (!r.boolean(&declared)) {
               return fail(SHDO_SAFETY_WEAKENED, "invalid productionCannotDisable");
             }
+            if (!declared) productionCannotDisable = false;
           } else if (strcmp(skey, "emergency") == 0) {
             if (!r.take('{')) return fail(SHDO_SAFETY_WEAKENED, "invalid emergency object");
             bool emDone = false;
@@ -1154,6 +1156,15 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
                   if (!r.string(pixelOverride, sizeof(pixelOverride))) {
                     return fail(SHDO_SAFETY_WEAKENED, "invalid pixelOverride");
                   }
+                } else if (strcmp(ekey, "productionCannotDisable") == 0) {
+                  // Studio writes this flag inside safety.emergency. It was only read at
+                  // the top of safety, so a false value here was accepted. False in
+                  // either place refuses the production; a later true cannot undo it.
+                  bool declared = true;
+                  if (!r.boolean(&declared)) {
+                    return fail(SHDO_SAFETY_WEAKENED, "invalid productionCannotDisable");
+                  }
+                  if (!declared) productionCannotDisable = false;
                 } else if (!r.skipValue()) {
                   return fail(SHDO_INVALID_JSON, "invalid emergency field");
                 }
