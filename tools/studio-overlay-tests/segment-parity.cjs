@@ -127,5 +127,50 @@ function check(condition, message) {
   check(segments(p).every((n) => n === 0), 'All sequential cues reuse slot 0');
 }
 
-console.log('PASS: S3 Studio segment allocation, overlaps, holds, compatibility and capacity (' +
-  checks + ' assertions).');
+
+// The embedded S3 page must enforce the same host validation and RAM upload
+// allow-list as the website, before sending SHOW:TL:BEGIN.
+{
+  const api = window.ShowduinoDeploy;
+  assert.equal(api.normaliseTarget('not a host!!'), ''); checks += 1;
+  assert.equal(api.normaliseTarget('192.168.4.1'), 'http://192.168.4.1'); checks += 1;
+  check(api.uploadEnvelopeAllowed('SHOW:TL:BEGIN'), 'BEGIN allowed');
+  check(api.uploadEnvelopeAllowed('SHOW:TL:C:200:PIXEL:SEGMENT:0:START'), 'Pixel allowed');
+  check(api.uploadEnvelopeAllowed('SHOW:TL:C:200:AUDIO:NODE:STOP'), 'Audio Node allowed');
+  check(!api.uploadEnvelopeAllowed('SHOW:TL:C:200:ESTOP:NODE:PIXEL:SEGMENT:0:START'),
+    'Emergency Node pixel upload not in current RAM allow-list');
+  check(!api.uploadEnvelopeAllowed('SHOW:TL:C:200:MOSFET:NODE:MOSFET-01:OUT:1:OFF'),
+    'MOSFET upload rejected before any S3 request');
+  check(!api.uploadEnvelopeAllowed('SHOW:TL:C:200:EMERGENCY:CLEAR'),
+    'Safety commands forbidden in uploaded timelines');
+  check(!api.uploadEnvelopeAllowed('SHOW:TL:C:200:PIXEL:' + 'A'.repeat(64)),
+    'Commands over the P4 63-character limit forbidden');
+  check(api.uploadPolicyErrors({ uploadCommands: [
+    'SHOW:TL:BEGIN', 'SHOW:TL:C:0:MOSFET:NODE:MOSFET-01:OUT:1:OFF', 'SHOW:TL:END'
+  ] }).length > 0, 'Unsupported timeline stopped before BEGIN');
+}
+
+// A deployment containing a refused emergency-node command must reject without
+// reaching a network request (host reachability and device are not simulated).
+(async () => {
+  const clip = cue('Emergency Node ring', 0, 2000, 0, 'estop');
+  const shdo = {
+    schema: window.ShowduinoPackage.SCHEMA_NAME,
+    devices: devices.concat([{
+      id: 'estop', binding: { route: 'estop-node-pixels', pixelStart: 0, pixelCount: 10 }
+    }]),
+    clips: [clip]
+  };
+  window.ShowduinoProjects = {
+    saveCurrentProject: async () => ({ project: { name: 'Test' } })
+  };
+  window.ShowduinoPackage.toShdo = () => shdo;
+  await assert.rejects(window.ShowduinoDeploy.deployCurrentProject(),
+    /does not accept ESTOP:NODE cues/, 'No partial RAM upload can begin');
+  checks += 1;
+  console.log('PASS: S3 Studio segment allocation and upload preflight (' +
+    checks + ' assertions).');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
