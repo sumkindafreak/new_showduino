@@ -1223,7 +1223,17 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
     }
   }
 
-  qsort(clips, clipCount, sizeof(ShdoClip), shdoClipOrder);
+  // Stable insertion sort: qsort() does not promise to keep clips with the same start
+  // time in authored order, and authored order decides setup-before-effect at one time.
+  for (uint16_t i = 1; i < clipCount; ++i) {
+    ShdoClip clip = clips[i];
+    uint16_t j = i;
+    while (j > 0 && shdoClipOrder(&clips[j - 1], &clip) > 0) {
+      clips[j] = clips[j - 1];
+      --j;
+    }
+    clips[j] = clip;
+  }
   uint16_t compiled = 0;
   uint8_t pixelSlots[SHOWDUINO_SHDO_MAX_DEVICES];
   memset(pixelSlots, 0, sizeof(pixelSlots));
@@ -1308,6 +1318,19 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
   }
   if (compiled > cueCap) {
     return fail(SHDO_TOO_MANY_CUES, "compiled timeline exceeds P4 cue capacity");
+  }
+  // A clip's end commands are emitted with the clip, so when clips overlap they sit
+  // before another clip's earlier start. The P4 timeline loader refuses descending cue
+  // times, so order by time here. Stable: commands at one time keep their emitted order
+  // (volume before play, stop before the next play).
+  for (uint16_t i = 1; i < compiled; ++i) {
+    ShdoCue cue = cueBuf[i];
+    uint16_t j = i;
+    while (j > 0 && cueBuf[j - 1].timeMs > cue.timeMs) {
+      cueBuf[j] = cueBuf[j - 1];
+      --j;
+    }
+    cueBuf[j] = cue;
   }
   *manifestOut = manifest;
   if (cueCount) *cueCount = compiled;
