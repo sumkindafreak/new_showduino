@@ -302,6 +302,8 @@ struct ShdoParams {
   bool haveR, haveG, haveB;
   bool haveLength, haveCount;
   bool haveDuty;
+  uint32_t segment;
+  bool haveSegment;
 };
 
 struct ShdoClip {
@@ -463,6 +465,16 @@ static bool shdoParseParams(ShdoJson &r, ShdoParams *params) {
       if (!r.string(params->mode, sizeof(params->mode))) return false;
     } else if (strcmp(key, "startPixel") == 0) {
       if (!r.u32(&params->startPixel)) return false;
+    } else if (strcmp(key, "segment") == 0) {
+      // Authored pixel segment. Anything that is not a whole number (null, "", text)
+      // means "not chosen", exactly as website Studio treats it.
+      const char next = r.peek();
+      if (next >= '0' && next <= '9') {
+        if (!r.u32(&params->segment)) return false;
+        params->haveSegment = true;
+      } else if (!r.skipValue()) {
+        return false;
+      }
     } else if (strcmp(key, "length") == 0) {
       if (!r.u32(&params->length)) return false;
       params->haveLength = true;
@@ -643,9 +655,59 @@ static const ShdoDevice *shdoFindDevice(const ShdoDevice *devices, uint8_t n,
   return nullptr;
 }
 
+// Pixel segment allocation, shared rule with website Studio (js/studio-deploy.js
+// freePixelSlot). A segment runs one effect at a time.
+//   1. A cue that names a segment gets it when it is free at the cue's start.
+//   2. A cue without one gets the next number on its output, as before.
+//   3. If that segment is still running an earlier cue, the lowest free one is used,
+//      so simultaneous effects never replace each other.
+//   4. A cue with no duration holds its segment for the rest of the show.
+// Clips must be visited in start-time order. Returns SHOWDUINO_SHDO_PIXEL_SLOTS (or
+// more) when no segment is free; shdoCompilePixel() then refuses the show.
+struct ShdoPixelOutputState {
+  uint32_t busyUntil[SHOWDUINO_SHDO_PIXEL_SLOTS];  // exclusive end time of the running cue
+  bool forever[SHOWDUINO_SHDO_PIXEL_SLOTS];        // held by a cue with no duration
+  bool timed[SHOWDUINO_SHDO_PIXEL_SLOTS];          // last cue on the segment set a DURATION
+  uint8_t next;                                    // next number for cues without a segment
+};
+
+static uint8_t shdoAllocatePixelSlot(ShdoPixelOutputState *state, const ShdoClip &clip,
+                                     bool *resetDuration) {
+  *resetDuration = false;
+  uint32_t wanted;
+  if (clip.params.haveSegment) {
+    wanted = clip.params.segment < SHOWDUINO_SHDO_PIXEL_SLOTS
+                 ? clip.params.segment : (uint32_t)SHOWDUINO_SHDO_PIXEL_SLOTS - 1u;
+  } else {
+    wanted = state->next;
+    if (state->next < 255u) state->next = (uint8_t)(wanted + 1u);
+  }
+  auto busy = [&](uint32_t slot) {
+    return state->forever[slot] || state->busyUntil[slot] > clip.startMs;
+  };
+  uint32_t slot = wanted;
+  if (slot < SHOWDUINO_SHDO_PIXEL_SLOTS && busy(slot)) {
+    slot = 0;
+    while (slot < SHOWDUINO_SHDO_PIXEL_SLOTS && busy(slot)) ++slot;
+  }
+  if (slot >= SHOWDUINO_SHDO_PIXEL_SLOTS) return SHOWDUINO_SHDO_PIXEL_SLOTS;
+  if (clip.durationMs == 0) {
+    state->forever[slot] = true;
+    // The engine keeps a segment's last DURATION, so a held cue on a reused segment
+    // must clear it or it would expire after the earlier cue's length.
+    *resetDuration = state->timed[slot];
+    state->timed[slot] = false;
+  } else {
+    const uint32_t end = clip.startMs + clip.durationMs;
+    state->busyUntil[slot] = end >= clip.startMs ? end : 0xFFFFFFFFu;
+    state->timed[slot] = true;
+  }
+  return (uint8_t)slot;
+}
+
 static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
-                             uint8_t slot, ShdoCue *cues, uint16_t *count,
-                             ShdoStatus *status) {
+                             uint8_t slot, bool resetDuration, ShdoCue *cues,
+                             uint16_t *count, ShdoStatus *status) {
   if (!device) {
     *status = SHDO_MISSING_DEVICE;
     return false;
@@ -734,6 +796,9 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   if (clip.durationMs > 0) {
     shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:DURATION:%lu",
              prefix, (unsigned)slot, (unsigned long)clip.durationMs);
+    if (!add(cmd)) return false;
+  } else if (resetDuration) {
+    shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:DURATION:0", prefix, (unsigned)slot);
     if (!add(cmd)) return false;
   }
   shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:START", prefix, (unsigned)slot);
@@ -1267,8 +1332,8 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
     clips[j] = clip;
   }
   uint16_t compiled = 0;
-  uint8_t pixelSlots[SHOWDUINO_SHDO_MAX_DEVICES];
-  memset(pixelSlots, 0, sizeof(pixelSlots));
+  ShdoPixelOutputState pixelOutputs[SHOWDUINO_SHDO_MAX_DEVICES];
+  memset(pixelOutputs, 0, sizeof(pixelOutputs));
   ShdoStatus status = SHDO_OK;
   for (uint16_t i = 0; i < clipCount; ++i) {
     const ShdoClip &clip = clips[i];
@@ -1310,8 +1375,9 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
         if (strcmp(devices[di].id, clip.targetDeviceId) == 0) break;
       }
       if (di >= deviceCount) di = 0;
-      uint8_t slot = pixelSlots[di]++;
-      if (!shdoCompilePixel(clip, device, slot, cueBuf, &compiled, &status)) {
+      bool resetDuration = false;
+      const uint8_t slot = shdoAllocatePixelSlot(&pixelOutputs[di], clip, &resetDuration);
+      if (!shdoCompilePixel(clip, device, slot, resetDuration, cueBuf, &compiled, &status)) {
         return fail(status, status == SHDO_MISSING_DEVICE
                                 ? "pixel clip is missing a bound show-pixel device"
                                 : shdoStatusName(status));

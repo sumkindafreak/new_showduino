@@ -87,4 +87,13 @@ Write-Host "Compiling Studio export compatibility tests..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $studioExportOut (Join-Path $here "fixtures/studio-phase3")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Phase 3: pixel segment numbers must equal website Studio's live-upload compiler.
+$pixelSegmentOut = Join-Path $here "pixel_segment_tests.exe"
+Write-Host "Compiling pixel segment policy tests..."
+& g++ -std=c++17 -Wall -Wextra -o $pixelSegmentOut (Join-Path $here "test_pixel_segments.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $pixelSegmentOut (Join-Path $here "fixtures")
 exit $LASTEXITCODE

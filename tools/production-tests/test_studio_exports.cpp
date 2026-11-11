@@ -3,7 +3,9 @@
 // fixtures/studio-phase3/*.shdo were written by the website's own packager
 // (showduino.com tests/fixtures/p4-parity/shows.cjs at commit 2399056). expected.tsv is
 // what shdoCompile() on integration/flashed-baseline-shdo-20261102 (7e23730) returned for
-// each file. This test proves the compiler in THIS tree gives the same status and the same
+// each file, with ONE deliberate difference on this branch: pixel-sequential-same-output
+// now reuses segment 0 for its second cue instead of taking segment 1 (shared segment
+// rule, see test_pixel_segments.cpp). Every other line is the flashed-baseline output. This test proves the compiler in THIS tree gives the same status and the same
 // commands at the same times, and that every accepted show is then accepted by the P4's
 // own timeline loader (ProductionFormat.cpp).
 //

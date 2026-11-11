@@ -40,3 +40,8 @@ g++ -std=c++17 -Wall -Wextra -I"$SRC_DIR" \
   -o "$HERE/studio_export_tests" \
   "$HERE/test_studio_exports.cpp" "$SRC_DIR/ProductionFormat.cpp"
 "$HERE/studio_export_tests" "$HERE/fixtures/studio-phase3"
+
+# Phase 3: pixel segment numbers must equal website Studio's live-upload compiler.
+g++ -std=c++17 -Wall -Wextra \
+  -o "$HERE/pixel_segment_tests" "$HERE/test_pixel_segments.cpp"
+"$HERE/pixel_segment_tests" "$HERE/fixtures"
