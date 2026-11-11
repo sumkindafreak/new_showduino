@@ -9,6 +9,8 @@ on:
       - 'protocol/**'
       - 'firmware/stage-engine-p4/ShowduinoStageEngineP4/src/Production*'
       - 'tools/production-tests/**'
+      - 'tools/studio-overlay-tests/**'
+      - 'web/studio-v4-overlay/js/studio-deploy.js'
       - '.github/workflows/shdo-host-tests.yml'
   push:
     branches: [main]
@@ -16,6 +18,8 @@ on:
       - 'protocol/**'
       - 'firmware/stage-engine-p4/ShowduinoStageEngineP4/src/Production*'
       - 'tools/production-tests/**'
+      - 'tools/studio-overlay-tests/**'
+      - 'web/studio-v4-overlay/js/studio-deploy.js'
       - '.github/workflows/shdo-host-tests.yml'
   workflow_dispatch:
 
@@ -28,5 +32,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: S3 embedded Studio pixel-segment regression checks
+        run: node tools/studio-overlay-tests/segment-parity.cjs
       - name: Production format, store, runtime, SHDO compiler and Studio export compatibility
         run: bash tools/production-tests/run_tests.sh
