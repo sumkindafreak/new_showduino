@@ -507,10 +507,11 @@ static bool shdoParseAction(ShdoJson &r, ShdoClip *clip) {
     } else if (strcmp(key, "targetDeviceId") == 0) {
       if (!r.string(clip->targetDeviceId, sizeof(clip->targetDeviceId))) return false;
     } else if (strcmp(key, "value") == 0) {
-      if (!clip->params.file[0] &&
-          !r.string(clip->params.file, sizeof(clip->params.file))) {
-        return false;
-      } else if (clip->params.file[0] && !r.skipValue()) {
+      // Consume exactly one action.value. The previous form read the string and then,
+      // because file was now set, skipped a second value: the following token.
+      if (clip->params.file[0]) {
+        if (!r.skipValue()) return false;
+      } else if (!r.string(clip->params.file, sizeof(clip->params.file))) {
         return false;
       }
     } else if (strcmp(key, "params") == 0) {
