@@ -1,0 +1,137 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "b91a2533-c476-4289-8479-d2ce5b6381ef",
+    "name": "mosfet-pulse",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.934Z",
+    "updatedAt": "2026-11-11T13:58:30.934Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "device-mosfet-01-mosfet",
+      "name": "MOSFET-01",
+      "type": "mosfet-node",
+      "enabled": true,
+      "binding": {
+        "route": "mosfet-node",
+        "nodeId": "MOSFET-01"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "a2a78fca-de51-46fb-803a-2be3e9921a23",
+      "name": "mosfet MOSFET-01",
+      "type": "mosfet",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "device-mosfet-01-mosfet"
+    }
+  ],
+  "clips": [
+    {
+      "id": "39f893d3-ad85-4dac-86eb-3009376d155e",
+      "trackId": "a2a78fca-de51-46fb-803a-2be3e9921a23",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Pulse",
+      "type": "mosfet",
+      "startMs": 0,
+      "durationMs": 3000,
+      "enabled": true,
+      "targetDeviceId": "device-mosfet-01-mosfet",
+      "target": "MOSFET-01",
+      "action": {
+        "type": "mosfet",
+        "label": "Pulse",
+        "targetDeviceId": "device-mosfet-01-mosfet",
+        "target": "MOSFET-01",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "Pulse",
+        "notes": "",
+        "params": {
+          "out": "out3",
+          "mode": "pulse",
+          "state": true,
+          "duty": 100,
+          "pulseMs": 500,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "safeOff": true
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "39f893d3-ad85-4dac-86eb-3009376d155e"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

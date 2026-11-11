@@ -78,4 +78,13 @@ Write-Host "Compiling WEB/WEBR tunnel framing tests..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $webTunnelOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Phase 3: genuine website Studio exports through the compiler and the P4 timeline loader.
+$studioExportOut = Join-Path $here "studio_export_tests.exe"
+Write-Host "Compiling Studio export compatibility tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$include" -o $studioExportOut (Join-Path $here "test_studio_exports.cpp") $format
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $studioExportOut (Join-Path $here "fixtures/studio-phase3")
 exit $LASTEXITCODE
