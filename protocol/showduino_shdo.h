@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -393,6 +394,26 @@ static void shdoEffectToken(const char *in, char *out, size_t outLen) {
   out[used] = '\0';
 }
 
+// Formats one runtime command or command prefix. A result that would not fit is
+// returned as an empty string, so shdoAddCue() refuses it with SHDO_COMMAND_TOO_LONG
+// instead of the P4 storing a silently truncated command (for example an
+// AUDIO:NODE:PLAY with a cut-off file name, which would play the wrong file or none).
+#if defined(__GNUC__)
+__attribute__((format(printf, 3, 4)))
+#endif
+static bool shdoFormatCommand(char *out, size_t cap, const char *fmt, ...) {
+  if (!out || cap == 0) return false;
+  va_list args;
+  va_start(args, fmt);
+  const int n = vsnprintf(out, cap, fmt, args);
+  va_end(args);
+  if (n < 0 || (size_t)n >= cap) {
+    out[0] = '\0';
+    return false;
+  }
+  return true;
+}
+
 static bool shdoAddCue(ShdoCue *cues, uint16_t *count, uint32_t timeMs,
                        const char *type, const char *command, ShdoStatus *status) {
   if (*count >= SHOWDUINO_SHDO_MAX_CUES) {
@@ -507,10 +528,11 @@ static bool shdoParseAction(ShdoJson &r, ShdoClip *clip) {
     } else if (strcmp(key, "targetDeviceId") == 0) {
       if (!r.string(clip->targetDeviceId, sizeof(clip->targetDeviceId))) return false;
     } else if (strcmp(key, "value") == 0) {
-      if (!clip->params.file[0] &&
-          !r.string(clip->params.file, sizeof(clip->params.file))) {
-        return false;
-      } else if (clip->params.file[0] && !r.skipValue()) {
+      // Consume exactly one action.value. The previous form read the string and then,
+      // because file was now set, skipped a second value: the following token.
+      if (clip->params.file[0]) {
+        if (!r.skipValue()) return false;
+      } else if (!r.string(clip->params.file, sizeof(clip->params.file))) {
         return false;
       }
     } else if (strcmp(key, "params") == 0) {
@@ -639,7 +661,7 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
       *status = SHDO_UNSUPPORTED_DEVICE;
       return false;
     }
-    snprintf(prefix, sizeof(prefix), "PIXEL:NODE:%s:", nid);
+    if (!shdoFormatCommand(prefix, sizeof(prefix), "PIXEL:NODE:%s:", nid)) { *status = SHDO_COMMAND_TOO_LONG; return false; }
   } else if (strcmp(device->route, "audio-node-pixels") == 0) {
     /* Same physical Audio Node peer as AUDIO:NODE:* — not a fake LED-XX identity. */
     strncpy(prefix, "AUDIO:NODE:PIXEL:", sizeof(prefix) - 1);
@@ -682,42 +704,42 @@ static bool shdoCompilePixel(const ShdoClip &clip, const ShdoDevice *device,
   auto add = [&](const char *line) -> bool {
     return shdoAddCue(cues, count, clip.startMs, cueType, line, status);
   };
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:RANGE:%lu:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:RANGE:%lu:%lu",
            prefix, (unsigned)slot, (unsigned long)start, (unsigned long)pixCount);
   if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:FX:%s", prefix, (unsigned)slot, fx);
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:FX:%s", prefix, (unsigned)slot, fx);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR:%lu:%lu:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR:%lu:%lu:%lu",
            prefix, (unsigned)slot, (unsigned long)r, (unsigned long)g, (unsigned long)b);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR2:%lu:%lu:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:COLOR2:%lu:%lu:%lu",
            prefix, (unsigned)slot, (unsigned long)r2, (unsigned long)g2, (unsigned long)b2);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:BRIGHTNESS:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:BRIGHTNESS:%lu",
            prefix, (unsigned)slot, (unsigned long)brightness);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:SPEED:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:SPEED:%lu",
            prefix, (unsigned)slot, (unsigned long)speed);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:INTENSITY:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:INTENSITY:%lu",
            prefix, (unsigned)slot, (unsigned long)intensity);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:RANDOMNESS:%lu",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:RANDOMNESS:%lu",
            prefix, (unsigned)slot, (unsigned long)randomness);
   if (!add(cmd)) return false;
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:REVERSE:%u",
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:REVERSE:%u",
            prefix, (unsigned)slot, clip.params.reverse ? 1u : 0u);
   if (!add(cmd)) return false;
   if (clip.durationMs > 0) {
-    snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:DURATION:%lu",
+    shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:DURATION:%lu",
              prefix, (unsigned)slot, (unsigned long)clip.durationMs);
     if (!add(cmd)) return false;
   }
-  snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:START", prefix, (unsigned)slot);
+  shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:START", prefix, (unsigned)slot);
   if (!add(cmd)) return false;
   if (clip.durationMs > 0 && clip.params.blackoutAtEnd) {
-    snprintf(cmd, sizeof(cmd), "%sSEGMENT:%u:STOP", prefix, (unsigned)slot);
+    shdoFormatCommand(cmd, sizeof(cmd), "%sSEGMENT:%u:STOP", prefix, (unsigned)slot);
     if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, cueType, cmd, status)) {
       return false;
     }
@@ -780,9 +802,9 @@ static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
     if (!pulseMs) pulseMs = 500;
     pulseMs = shdoClampU32(pulseMs, 1, SHOWDUINO_MOSFET_DURATION_MAX_MS, 500);
     if (duty == 0) {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
     } else {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:PULSE:%lu:%lu",
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:PULSE:%lu:%lu",
                nid, (unsigned)ch, (unsigned long)duty, (unsigned long)pulseMs);
     }
     if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
@@ -792,13 +814,13 @@ static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
     uint32_t fadeOut = shdoClampU32(clip.params.fadeOutMs, 0, SHOWDUINO_MOSFET_DURATION_MAX_MS, 0);
     if (fadeOut > clip.durationMs) fadeOut = clip.durationMs;
     if (fadeIn > 0 && duty > 0) {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:%lu:%lu",
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:%lu:%lu",
                nid, (unsigned)ch, (unsigned long)duty, (unsigned long)fadeIn);
     } else if (duty > 0) {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
                nid, (unsigned)ch, (unsigned long)duty);
     } else {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
     }
     if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
     if (!addAt(clip.startMs, cmd)) return false;
@@ -806,7 +828,7 @@ static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
       uint32_t t = clip.startMs + clip.durationMs;
       if (t >= fadeOut) t -= fadeOut;
       else t = clip.startMs;
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:0:%lu",
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:FADE:0:%lu",
                nid, (unsigned)ch, (unsigned long)fadeOut);
       if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
       if (!addAt(t, cmd)) return false;
@@ -814,9 +836,9 @@ static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
     }
   } else {
     if (duty == 0) {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
     } else {
-      snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
+      shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:LEVEL:%lu",
                nid, (unsigned)ch, (unsigned long)duty);
     }
     if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
@@ -824,7 +846,7 @@ static bool shdoCompileMosfet(const ShdoClip &clip, const ShdoDevice *device,
   }
 
   if (clip.durationMs > 0) {
-    snprintf(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
+    shdoFormatCommand(cmd, sizeof(cmd), "MOSFET:NODE:%s:OUT:%u:OFF", nid, (unsigned)ch);
     if (strlen(cmd) >= SHOWDUINO_SHDO_CMD_MAX) { *status = SHDO_COMMAND_TOO_LONG; return false; }
     if (!addAt(clip.startMs + clip.durationMs, cmd)) return false;
   }
@@ -847,9 +869,9 @@ static bool shdoCompileAudio(const ShdoClip &clip, const ShdoDevice *device,
   }
   const uint32_t volume = shdoClampU32(clip.params.volume, 0, 100, 100);
   char cmd[SHOWDUINO_SHDO_CMD_MAX];
-  snprintf(cmd, sizeof(cmd), "AUDIO:NODE:VOLUME:%lu", (unsigned long)volume);
+  shdoFormatCommand(cmd, sizeof(cmd), "AUDIO:NODE:VOLUME:%lu", (unsigned long)volume);
   if (!shdoAddCue(cues, count, clip.startMs, "AUDIO", cmd, status)) return false;
-  snprintf(cmd, sizeof(cmd), "AUDIO:NODE:%s:%s",
+  shdoFormatCommand(cmd, sizeof(cmd), "AUDIO:NODE:%s:%s",
            clip.params.loop ? "LOOP" : "PLAY", clip.params.file);
   if (!shdoAddCue(cues, count, clip.startMs, "AUDIO", cmd, status)) return false;
   if (clip.durationMs > 0) {
@@ -875,16 +897,16 @@ static bool shdoCompileLamp(const ShdoClip &clip, const ShdoDevice *device,
   shdoEffectToken(clip.params.effect, fx, sizeof(fx));
   char prefix[40];
   if (device->nodeId[0] && showduino_lamp_id_ok(device->nodeId)) {
-    snprintf(prefix, sizeof(prefix), "LAMP:NODE:%s:", device->nodeId);
+    if (!shdoFormatCommand(prefix, sizeof(prefix), "LAMP:NODE:%s:", device->nodeId)) { *status = SHDO_COMMAND_TOO_LONG; return false; }
   } else {
-    snprintf(prefix, sizeof(prefix), "LAMP:NODE:");
+    if (!shdoFormatCommand(prefix, sizeof(prefix), "LAMP:NODE:")) { *status = SHDO_COMMAND_TOO_LONG; return false; }
   }
   char cmd[SHOWDUINO_SHDO_CMD_MAX];
   if (strcmp(fx, "IGNITE") == 0 || strcmp(fx, "STRIKE") == 0) {
-    snprintf(cmd, sizeof(cmd), "%sIGNITE", prefix);
+    shdoFormatCommand(cmd, sizeof(cmd), "%sIGNITE", prefix);
     if (!shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status)) return false;
     if (clip.durationMs > 0) {
-      snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
+      shdoFormatCommand(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
       if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "LAMP",
                       cmd, status)) {
         return false;
@@ -893,7 +915,7 @@ static bool shdoCompileLamp(const ShdoClip &clip, const ShdoDevice *device,
     return true;
   }
   if (strcmp(fx, "EXTINGUISH") == 0 || strcmp(fx, "OFF") == 0) {
-    snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
+    shdoFormatCommand(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
     return shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status);
   }
   ShowduinoLampFx lampFx;
@@ -904,10 +926,10 @@ static bool shdoCompileLamp(const ShdoClip &clip, const ShdoDevice *device,
   uint32_t bri = clip.params.brightness;
   if (bri > 100) bri = (bri * 100u + 127u) / 255u;
   bri = shdoClampU32(bri, 0, 100, 80);
-  snprintf(cmd, sizeof(cmd), "%sFX:%s:BRI=%lu", prefix, fx, (unsigned long)bri);
+  shdoFormatCommand(cmd, sizeof(cmd), "%sFX:%s:BRI=%lu", prefix, fx, (unsigned long)bri);
   if (!shdoAddCue(cues, count, clip.startMs, "LAMP", cmd, status)) return false;
   if (clip.durationMs > 0) {
-    snprintf(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
+    shdoFormatCommand(cmd, sizeof(cmd), "%sEXTINGUISH", prefix);
     if (!shdoAddCue(cues, count, clip.startMs + clip.durationMs, "LAMP",
                     cmd, status)) {
       return false;
@@ -1104,9 +1126,11 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
               return fail(SHDO_SAFETY_WEAKENED, "invalid safety.policy");
             }
           } else if (strcmp(skey, "productionCannotDisable") == 0) {
-            if (!r.boolean(&productionCannotDisable)) {
+            bool declared = true;
+            if (!r.boolean(&declared)) {
               return fail(SHDO_SAFETY_WEAKENED, "invalid productionCannotDisable");
             }
+            if (!declared) productionCannotDisable = false;
           } else if (strcmp(skey, "emergency") == 0) {
             if (!r.take('{')) return fail(SHDO_SAFETY_WEAKENED, "invalid emergency object");
             bool emDone = false;
@@ -1132,6 +1156,15 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
                   if (!r.string(pixelOverride, sizeof(pixelOverride))) {
                     return fail(SHDO_SAFETY_WEAKENED, "invalid pixelOverride");
                   }
+                } else if (strcmp(ekey, "productionCannotDisable") == 0) {
+                  // Studio writes this flag inside safety.emergency. It was only read at
+                  // the top of safety, so a false value here was accepted. False in
+                  // either place refuses the production; a later true cannot undo it.
+                  bool declared = true;
+                  if (!r.boolean(&declared)) {
+                    return fail(SHDO_SAFETY_WEAKENED, "invalid productionCannotDisable");
+                  }
+                  if (!declared) productionCannotDisable = false;
                 } else if (!r.skipValue()) {
                   return fail(SHDO_INVALID_JSON, "invalid emergency field");
                 }
@@ -1222,7 +1255,17 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
     }
   }
 
-  qsort(clips, clipCount, sizeof(ShdoClip), shdoClipOrder);
+  // Stable insertion sort: qsort() does not promise to keep clips with the same start
+  // time in authored order, and authored order decides setup-before-effect at one time.
+  for (uint16_t i = 1; i < clipCount; ++i) {
+    ShdoClip clip = clips[i];
+    uint16_t j = i;
+    while (j > 0 && shdoClipOrder(&clips[j - 1], &clip) > 0) {
+      clips[j] = clips[j - 1];
+      --j;
+    }
+    clips[j] = clip;
+  }
   uint16_t compiled = 0;
   uint8_t pixelSlots[SHOWDUINO_SHDO_MAX_DEVICES];
   memset(pixelSlots, 0, sizeof(pixelSlots));
@@ -1307,6 +1350,19 @@ static inline ShdoStatus shdoCompile(const char *json, size_t jsonLen,
   }
   if (compiled > cueCap) {
     return fail(SHDO_TOO_MANY_CUES, "compiled timeline exceeds P4 cue capacity");
+  }
+  // A clip's end commands are emitted with the clip, so when clips overlap they sit
+  // before another clip's earlier start. The P4 timeline loader refuses descending cue
+  // times, so order by time here. Stable: commands at one time keep their emitted order
+  // (volume before play, stop before the next play).
+  for (uint16_t i = 1; i < compiled; ++i) {
+    ShdoCue cue = cueBuf[i];
+    uint16_t j = i;
+    while (j > 0 && cueBuf[j - 1].timeMs > cue.timeMs) {
+      cueBuf[j] = cueBuf[j - 1];
+      --j;
+    }
+    cueBuf[j] = cue;
   }
   *manifestOut = manifest;
   if (cueCount) *cueCount = compiled;

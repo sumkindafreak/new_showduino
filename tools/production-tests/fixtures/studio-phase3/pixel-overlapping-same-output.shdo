@@ -1,0 +1,193 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "54b0cac6-ece0-4ab0-85ce-0f8e9ae10854",
+    "name": "pixel-overlapping-same-output",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.908Z",
+    "updatedAt": "2026-11-11T13:58:30.908Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "p4",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "ab10b0ae-7a03-43bf-a835-1e5ae2d30f63",
+      "name": "pixel p4-local",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    }
+  ],
+  "clips": [
+    {
+      "id": "d8a99910-3328-4aa1-8059-3bf3cc0c516d",
+      "trackId": "ab10b0ae-7a03-43bf-a835-1e5ae2d30f63",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Green",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 10000,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Green",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 10000,
+        "value": "Green",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 4,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 0,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "c7be606e-8750-4f60-abfc-25102dd2eca4",
+      "trackId": "ab10b0ae-7a03-43bf-a835-1e5ae2d30f63",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Blue",
+      "type": "pixel",
+      "startMs": 3000,
+      "durationMs": 7000,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Blue",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 7000,
+        "value": "Blue",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 4,
+          "length": 3,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 0,
+          "b": 255,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "SOLID",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "d8a99910-3328-4aa1-8059-3bf3cc0c516d",
+            "c7be606e-8750-4f60-abfc-25102dd2eca4"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

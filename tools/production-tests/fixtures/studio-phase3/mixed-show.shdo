@@ -1,0 +1,329 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "4c6c9861-beb9-4f16-98f6-0aa36ed7b92d",
+    "name": "mixed-show",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.952Z",
+    "updatedAt": "2026-11-11T13:58:30.952Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "p4",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "device-audio-node-audio",
+      "name": "audio-node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "audio-node"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "device-mosfet-01-mosfet",
+      "name": "MOSFET-01",
+      "type": "mosfet-node",
+      "enabled": true,
+      "binding": {
+        "route": "mosfet-node",
+        "nodeId": "MOSFET-01"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "LED-01",
+      "name": "LED-01",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "0ef81869-486b-413f-a713-adf05128b3ed",
+      "name": "pixel p4-local",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "e0aabe22-7122-4c7e-b96a-24b807b57ccd",
+      "name": "audio audio-node",
+      "type": "audio",
+      "enabled": true,
+      "locked": false,
+      "order": 1,
+      "targetDeviceId": "device-audio-node-audio"
+    },
+    {
+      "id": "51ba1db3-9616-4a7b-93cf-638df81880f3",
+      "name": "mosfet MOSFET-01",
+      "type": "mosfet",
+      "enabled": true,
+      "locked": false,
+      "order": 2,
+      "targetDeviceId": "device-mosfet-01-mosfet"
+    },
+    {
+      "id": "a81de0cc-8d6c-429e-b218-7f0c73e34415",
+      "name": "pixel LED-01",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 3,
+      "targetDeviceId": "LED-01"
+    }
+  ],
+  "clips": [
+    {
+      "id": "5a2fae46-9883-4cbc-8812-cc165135aa0a",
+      "trackId": "0ef81869-486b-413f-a713-adf05128b3ed",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Flash",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 800,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Flash",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 800,
+        "value": "Flash",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 30,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "LIGHTNING",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "e46fb2f8-d1ae-44c3-8cbc-31257acec02e",
+      "trackId": "e0aabe22-7122-4c7e-b96a-24b807b57ccd",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Thunder",
+      "type": "audio",
+      "startMs": 1000,
+      "durationMs": 4000,
+      "enabled": true,
+      "targetDeviceId": "device-audio-node-audio",
+      "target": "audio-node",
+      "action": {
+        "type": "audio",
+        "label": "Thunder",
+        "targetDeviceId": "device-audio-node-audio",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 4000,
+        "value": "thunder.wav",
+        "notes": "",
+        "params": {
+          "file": "thunder.wav",
+          "volume": 80,
+          "loop": false,
+          "fadeIn": 0,
+          "fadeOut": 0,
+          "pan": 0,
+          "rate": 1
+        }
+      }
+    },
+    {
+      "id": "a2d6829d-2686-4efc-a3a2-84d2d9f55959",
+      "trackId": "51ba1db3-9616-4a7b-93cf-638df81880f3",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Fogger",
+      "type": "mosfet",
+      "startMs": 1500,
+      "durationMs": 500,
+      "enabled": true,
+      "targetDeviceId": "device-mosfet-01-mosfet",
+      "target": "MOSFET-01",
+      "action": {
+        "type": "mosfet",
+        "label": "Fogger",
+        "targetDeviceId": "device-mosfet-01-mosfet",
+        "target": "MOSFET-01",
+        "delayMs": 0,
+        "durationMs": 500,
+        "value": "Fogger",
+        "notes": "",
+        "params": {
+          "out": "out1",
+          "mode": "hold",
+          "state": true,
+          "duty": 100,
+          "pulseMs": 0,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "safeOff": true
+        }
+      }
+    },
+    {
+      "id": "ab21a3ba-86c2-46c8-81f1-b1b376fd9d00",
+      "trackId": "a81de0cc-8d6c-429e-b218-7f0c73e34415",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Lantern",
+      "type": "pixel",
+      "startMs": 2000,
+      "durationMs": 3000,
+      "enabled": true,
+      "targetDeviceId": "LED-01",
+      "target": "LED-01",
+      "action": {
+        "type": "pixel",
+        "label": "Lantern",
+        "targetDeviceId": "LED-01",
+        "target": "LED-01",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "Lantern",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 12,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "FLICKER",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "5a2fae46-9883-4cbc-8812-cc165135aa0a",
+            "e46fb2f8-d1ae-44c3-8cbc-31257acec02e",
+            "a2d6829d-2686-4efc-a3a2-84d2d9f55959",
+            "ab21a3ba-86c2-46c8-81f1-b1b376fd9d00"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

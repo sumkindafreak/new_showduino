@@ -1,0 +1,113 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "f14f86d3-116c-4116-a348-fd82076136ee",
+    "name": "trigger-refused",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.956Z",
+    "updatedAt": "2026-11-11T13:58:30.956Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [],
+  "tracks": [
+    {
+      "id": "b90aff72-b5ca-4557-a2d0-73a606eaa02c",
+      "name": "trigger ",
+      "type": "trigger",
+      "enabled": true,
+      "locked": false,
+      "order": 0
+    }
+  ],
+  "clips": [
+    {
+      "id": "424446b0-b70a-4dd7-bf92-df166788ee8d",
+      "trackId": "b90aff72-b5ca-4557-a2d0-73a606eaa02c",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Sensor",
+      "type": "trigger",
+      "startMs": 0,
+      "durationMs": 100,
+      "enabled": true,
+      "action": {
+        "type": "trigger",
+        "label": "Sensor",
+        "delayMs": 0,
+        "durationMs": 100,
+        "value": "Sensor",
+        "notes": "",
+        "params": {
+          "event": "",
+          "payload": "",
+          "scope": "project",
+          "once": false
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "424446b0-b70a-4dd7-bf92-df166788ee8d"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

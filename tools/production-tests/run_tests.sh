@@ -34,3 +34,9 @@ g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
   -o "$HERE/web_body_tests" "$HERE/test_web_body.cpp"
 "$HERE/web_body_tests"
+
+# Phase 3: genuine website Studio exports through the compiler and the P4 timeline loader.
+g++ -std=c++17 -Wall -Wextra -I"$SRC_DIR" \
+  -o "$HERE/studio_export_tests" \
+  "$HERE/test_studio_exports.cpp" "$SRC_DIR/ProductionFormat.cpp"
+"$HERE/studio_export_tests" "$HERE/fixtures/studio-phase3"

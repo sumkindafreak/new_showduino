@@ -1,0 +1,32 @@
+name: SHDO host tests
+
+# Compiles the P4 production format, store, timeline and SHDO compiler on the runner and
+# runs their host tests, including genuine website Studio exports. No hardware is involved
+# and nothing is flashed.
+on:
+  pull_request:
+    paths:
+      - 'protocol/**'
+      - 'firmware/stage-engine-p4/ShowduinoStageEngineP4/src/Production*'
+      - 'tools/production-tests/**'
+      - '.github/workflows/shdo-host-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'protocol/**'
+      - 'firmware/stage-engine-p4/ShowduinoStageEngineP4/src/Production*'
+      - 'tools/production-tests/**'
+      - '.github/workflows/shdo-host-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shdo-host-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Production format, store, runtime, SHDO compiler and Studio export compatibility
+        run: bash tools/production-tests/run_tests.sh

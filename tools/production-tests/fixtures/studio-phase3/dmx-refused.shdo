@@ -1,0 +1,111 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "d63e04e6-75d3-4ea9-a8ff-52129ce60edc",
+    "name": "dmx-refused",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.963Z",
+    "updatedAt": "2026-11-11T13:58:30.963Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [],
+  "tracks": [
+    {
+      "id": "06390b82-b9cc-4bf8-a5f6-d4d27ec1229f",
+      "name": "dmx ",
+      "type": "dmx",
+      "enabled": true,
+      "locked": false,
+      "order": 0
+    }
+  ],
+  "clips": [
+    {
+      "id": "23cc9d64-48a3-419c-9f54-bdc3bdd80035",
+      "trackId": "06390b82-b9cc-4bf8-a5f6-d4d27ec1229f",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "DMX",
+      "type": "dmx",
+      "startMs": 0,
+      "durationMs": 100,
+      "enabled": true,
+      "action": {
+        "type": "dmx",
+        "label": "DMX",
+        "delayMs": 0,
+        "durationMs": 100,
+        "value": "DMX",
+        "notes": "",
+        "params": {
+          "channels": {},
+          "legacy": true
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "23cc9d64-48a3-419c-9f54-bdc3bdd80035"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}
