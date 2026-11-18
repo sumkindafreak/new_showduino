@@ -1,0 +1,306 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "394b570e-770e-45d6-b946-2bd5f70f3929",
+    "name": "W005 website Studio export",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-10-22T18:53:26.987Z",
+    "updatedAt": "2026-10-22T18:53:27.052Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "p4",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "LED-01",
+      "name": "LED-01",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    },
+    {
+      "id": "device-audio-node-audio",
+      "name": "audio-node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "audio-node"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "9836b859-e360-4915-9daf-6b15c732398c",
+      "name": "PX L1 · 0–29",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "1ba05932-7b8e-4f4b-b780-d723bc978424",
+      "name": "PX L1 · 0–19",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 1,
+      "targetDeviceId": "LED-01"
+    },
+    {
+      "id": "f35f1f41-d030-48e4-b819-806ac2197ff0",
+      "name": "Audio Node",
+      "type": "audio",
+      "enabled": true,
+      "locked": false,
+      "order": 2,
+      "targetDeviceId": "device-audio-node-audio"
+    }
+  ],
+  "clips": [
+    {
+      "id": "09256e06-e586-4211-827d-4f4cdeb35f94",
+      "trackId": "9836b859-e360-4915-9daf-6b15c732398c",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Lightning flash",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 1500,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Lightning flash",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 1500,
+        "value": "Lightning flash",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 30,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "LIGHTNING",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "5c2e20a5-544f-4a20-8db4-4d759c363977",
+      "trackId": "1ba05932-7b8e-4f4b-b780-d723bc978424",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Fire glow",
+      "type": "pixel",
+      "startMs": 500,
+      "durationMs": 2000,
+      "enabled": true,
+      "targetDeviceId": "LED-01",
+      "target": "LED-01",
+      "action": {
+        "type": "pixel",
+        "label": "Fire glow",
+        "targetDeviceId": "LED-01",
+        "target": "LED-01",
+        "delayMs": 0,
+        "durationMs": 2000,
+        "value": "Fire glow",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 0,
+          "length": 20,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 255,
+          "g": 80,
+          "b": 0,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "FIRE",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": false
+        }
+      }
+    },
+    {
+      "id": "6d832b37-3398-4710-8596-5a1cc3d77834",
+      "trackId": "f35f1f41-d030-48e4-b819-806ac2197ff0",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Thunder",
+      "type": "audio",
+      "startMs": 1000,
+      "durationMs": 4000,
+      "enabled": true,
+      "targetDeviceId": "device-audio-node-audio",
+      "target": "audio-node",
+      "action": {
+        "type": "audio",
+        "label": "Thunder",
+        "targetDeviceId": "device-audio-node-audio",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 4000,
+        "value": "thunder.wav",
+        "notes": "",
+        "params": {
+          "file": "thunder.wav",
+          "volume": 80,
+          "loop": false,
+          "fadeIn": 0,
+          "fadeOut": 0,
+          "pan": 0,
+          "rate": 1
+        }
+      }
+    },
+    {
+      "id": "62a85d6d-01df-4fbf-bc14-9ef66de34a49",
+      "trackId": "f35f1f41-d030-48e4-b819-806ac2197ff0",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Scream",
+      "type": "audio",
+      "startMs": 6000,
+      "durationMs": 3000,
+      "enabled": true,
+      "targetDeviceId": "device-audio-node-audio",
+      "target": "audio-node",
+      "action": {
+        "type": "audio",
+        "label": "Scream",
+        "targetDeviceId": "device-audio-node-audio",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "scream.wav",
+        "notes": "",
+        "params": {
+          "file": "scream.wav",
+          "volume": 90,
+          "loop": false,
+          "fadeIn": 0,
+          "fadeOut": 0,
+          "pan": 0,
+          "rate": 1
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "09256e06-e586-4211-827d-4f4cdeb35f94",
+            "5c2e20a5-544f-4a20-8db4-4d759c363977",
+            "6d832b37-3398-4710-8596-5a1cc3d77834",
+            "62a85d6d-01df-4fbf-bc14-9ef66de34a49"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4",
+    "importedSchema": "showduino-production-v2"
+  }
+}

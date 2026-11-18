@@ -1,0 +1,145 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "f89e21d9-0240-487c-abad-65c10ef7b2c7",
+    "name": "Long file show",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-10-23T06:34:15.183Z",
+    "updatedAt": "2026-10-23T06:34:15.192Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "device-audio-node-audio",
+      "name": "audio-node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "audio-node"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "90f5c0eb-0da5-46f1-8c52-bb429b2bdd82",
+      "name": "P4 pixels",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0
+    },
+    {
+      "id": "8a991114-94e2-4bcc-a6f3-2df9e055d789",
+      "name": "Audio",
+      "type": "audio",
+      "enabled": true,
+      "locked": false,
+      "order": 1,
+      "targetDeviceId": "device-audio-node-audio"
+    }
+  ],
+  "clips": [
+    {
+      "id": "739d6db0-2439-424d-97bd-a1e318dd0504",
+      "trackId": "8a991114-94e2-4bcc-a6f3-2df9e055d789",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Sting 0",
+      "type": "audio",
+      "startMs": 500,
+      "durationMs": 900,
+      "enabled": true,
+      "targetDeviceId": "device-audio-node-audio",
+      "target": "audio-node",
+      "action": {
+        "type": "audio",
+        "label": "Sting 0",
+        "targetDeviceId": "device-audio-node-audio",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 900,
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.wav",
+        "notes": "",
+        "params": {
+          "file": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.wav",
+          "volume": 80,
+          "loop": false,
+          "fadeIn": 0,
+          "fadeOut": 0,
+          "pan": 0,
+          "rate": 1
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "739d6db0-2439-424d-97bd-a1e318dd0504"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4",
+    "importedSchema": "showduino-production-v2"
+  }
+}

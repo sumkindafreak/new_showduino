@@ -11,6 +11,7 @@
 #include "../../../protocol/showduino_os_modules.h"
 #include "ShowEngineState.h"
 #include "TimelineEngine.h"
+#include "../../../protocol/showduino_scene_recovery.h"
 
 typedef void (*ShowRuntimeSendFn)(const char *line);
 
@@ -288,6 +289,39 @@ struct ShowRuntimeOwner {
     if (sendFn) sendFn(SHOWDUINO_LEGACY_ACK_SHOW_START);
     broadcastAll();
     return true;
+  }
+
+  uint32_t sceneFingerprint() const {
+    uint32_t hash=2166136261u;
+    for(uint16_t i=0;i<timeline.cueTotal();++i){const TimelineCue *cue=timeline.cueAt(i);
+      hash=showduinoSceneFingerprint(hash,cue->timeMs,cue->command);}
+    return hash;
+  }
+  bool canStartScene(uint32_t timeMs, const ShowEngineState *legacy, uint32_t fingerprint, uint32_t revision) const {
+    if (revision != rt.revision || fingerprint != sceneFingerprint() || rt.emergency || rt.state == SHOW_STATE_EMERGENCY_STOP ||
+        (legacy && legacy->emergency == EmergencyState::Active) || tlLoadOpen ||
+        timeline.state() == TimelinePlayState::Running ||
+        (rt.state != SHOW_STATE_PAUSED && rt.state != SHOW_STATE_SHOW_LOADED &&
+         rt.state != SHOW_STATE_FINISHED && rt.state != SHOW_STATE_IDLE) ||
+        timeMs >= timeline.Duration()) return false;
+    for (uint16_t i = 0; i < timeline.cueTotal(); ++i) {
+      const TimelineCue *cue = timeline.cueAt(i);
+      if (cue && cue->timeMs == timeMs && showduinoSceneLabel(cue->command)) return true;
+    }
+    return false;
+  }
+  bool handleStartScene(uint32_t timeMs, uint32_t nowMs, ShowEngineState *legacy, uint32_t fingerprint, uint32_t revision) {
+    if (!canStartScene(timeMs, legacy, fingerprint, revision)) {
+      if(sendFn)sendFn("REJECTED:SHOW:SCENE_NOT_READY");return false;
+    }
+    if (rt.state == SHOW_STATE_IDLE || rt.state == SHOW_STATE_FINISHED) {
+      if (!transitionLogged(SHOW_STATE_SHOW_LOADED, nowMs)) return false;
+    }
+    if (!timeline.StartAt(timeMs)) return false;
+    rt.aborted = 0;
+    if (!transitionLogged(SHOW_STATE_RUNNING, nowMs)) {timeline.Pause();return false;}
+    syncFromTimeline();syncLegacyShow(legacy);
+    if(sendFn)sendFn("ACK:SHOW:SCENE_START");broadcastAll();return true;
   }
 
   bool handlePause(uint32_t nowMs, ShowEngineState *legacy) {

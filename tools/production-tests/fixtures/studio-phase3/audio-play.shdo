@@ -1,0 +1,136 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "d9ecf6f0-245d-42c1-a658-7ac582a921cf",
+    "name": "audio-play",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.913Z",
+    "updatedAt": "2026-11-11T13:58:30.913Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "device-audio-node-audio",
+      "name": "audio-node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "audio-node"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "0be721c2-f40a-4412-ae60-44818f324f5c",
+      "name": "audio audio-node",
+      "type": "audio",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "device-audio-node-audio"
+    }
+  ],
+  "clips": [
+    {
+      "id": "44fbd842-cad9-4ea4-a9f4-49cc78d62d65",
+      "trackId": "0be721c2-f40a-4412-ae60-44818f324f5c",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Roar",
+      "type": "audio",
+      "startMs": 2000,
+      "durationMs": 3000,
+      "enabled": true,
+      "targetDeviceId": "device-audio-node-audio",
+      "target": "audio-node",
+      "action": {
+        "type": "audio",
+        "label": "Roar",
+        "targetDeviceId": "device-audio-node-audio",
+        "target": "audio-node",
+        "delayMs": 0,
+        "durationMs": 3000,
+        "value": "monster_roar.wav",
+        "notes": "",
+        "params": {
+          "file": "monster_roar.wav",
+          "volume": 90,
+          "loop": false,
+          "fadeIn": 0,
+          "fadeOut": 0,
+          "pan": 0,
+          "rate": 1
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "44fbd842-cad9-4ea4-a9f4-49cc78d62d65"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

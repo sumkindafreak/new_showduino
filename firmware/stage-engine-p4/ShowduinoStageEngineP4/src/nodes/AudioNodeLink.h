@@ -12,6 +12,7 @@ struct AudioNodeStatus {
   uint32_t lastSeq = 0;
   uint32_t pendingSeq = 0;
   uint32_t lastRxMs = 0;
+  uint32_t inventoryRevision = 0;
   uint16_t inventoryTotal = 0;
   uint16_t inventoryPage = 0;
   char mac[18] = "";
@@ -24,7 +25,7 @@ struct AudioNodeStatus {
   char codec[12] = "ES8388";
   char storage[16] = "UNKNOWN";
   char output[12] = "SPEAKER";
-  char inventory[SHOWDUINO_AUDIO_INV_PER_PAGE][40] = {};
+  char inventory[SHOWDUINO_AUDIO_INV_PER_PAGE][SHOWDUINO_AUDIO_REL_MAX + 1] = {};
   /* GPIO22 NeoPixel line on the same physical Audio Node (not a second peer). */
   bool pixelCapable = false;
   bool pixelReady = false;

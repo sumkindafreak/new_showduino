@@ -32,7 +32,18 @@
  * only and must never be combined with the confirmed production map.
  */
 
+// Evaluation only. The fitted legacy LED driver remains the default.
+#ifndef SHOWDUINO_LAMP_USE_FASTLED
+#define SHOWDUINO_LAMP_USE_FASTLED 0
+#endif
+#if SHOWDUINO_LAMP_USE_FASTLED != 0 && SHOWDUINO_LAMP_USE_FASTLED != 1
+#error "SHOWDUINO_LAMP_USE_FASTLED must be 0 or 1"
+#endif
+#if SHOWDUINO_LAMP_USE_FASTLED
+#define SHOWDUINO_LAMP_NODE_FW             "0.4.4-fastled-dev1"
+#else
 #define SHOWDUINO_LAMP_NODE_FW             "0.4.3"
+#endif
 #define SHOWDUINO_LAMP_NODE_BOARD          "ESP32-S3 Dev Module (Lamp Node)"
 #define SHOWDUINO_LAMP_NODE_TARGET         "S3"
 

@@ -12,7 +12,7 @@
  *
  * Hierarchy (approved production UI):
  *   RUN SHOW hero -> Productions -> Nodes / Settings / Diagnostics
- *   Cue Library and Outputs remain in the layout but are not tappable.
+ *   Cue Library remains a placeholder; Outputs opens the MOSFET desk.
  */
 
 #ifdef __cplusplus

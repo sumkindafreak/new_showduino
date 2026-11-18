@@ -1,0 +1,148 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "beb9c1d3-aab6-4090-8f43-2d17cb0b2210",
+    "name": "pixel-p4-blackout-at-end",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.882Z",
+    "updatedAt": "2026-11-11T13:58:30.882Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "p4",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "d6a8605e-8ad3-4611-b878-54ef2afb583e",
+      "name": "pixel p4-local",
+      "type": "pixel",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    }
+  ],
+  "clips": [
+    {
+      "id": "6748773d-852b-4830-8f71-8ad6610a47e9",
+      "trackId": "d6a8605e-8ad3-4611-b878-54ef2afb583e",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Flash",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 1500,
+      "enabled": true,
+      "targetDeviceId": "p4-show-pixels",
+      "target": "p4",
+      "action": {
+        "type": "pixel",
+        "label": "Flash",
+        "targetDeviceId": "p4-show-pixels",
+        "target": "p4",
+        "delayMs": 0,
+        "durationMs": 1500,
+        "value": "Flash",
+        "notes": "",
+        "params": {
+          "segment": 0,
+          "segmentMode": "range",
+          "segmentName": "Segment 0",
+          "startPixel": 5,
+          "length": 10,
+          "groupSize": 10,
+          "markerOffset": 0,
+          "r": 0,
+          "g": 255,
+          "b": 200,
+          "secondary": "#101820",
+          "brightness": 255,
+          "effect": "FIRE",
+          "speed": 50,
+          "intensity": 80,
+          "randomness": 70,
+          "reverse": false,
+          "fadeMs": 0,
+          "blackoutAtEnd": true
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "6748773d-852b-4830-8f71-8ad6610a47e9"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

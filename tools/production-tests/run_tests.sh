@@ -28,9 +28,28 @@ g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
 "$HERE/version_tests"
 
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
-  -o "$HERE/shdo_tests" "$HERE/test_shdo.cpp"
+  -o "$HERE/shdo_tests" "$HERE/test_shdo.cpp" "$SRC_DIR/ProductionFormat.cpp"
 "$HERE/shdo_tests"
 
 g++ -std=c++17 -Wall -Wextra -I"$HERE/../../protocol" \
   -o "$HERE/web_body_tests" "$HERE/test_web_body.cpp"
 "$HERE/web_body_tests"
+
+# Local checkpoint and ambience extensions must remain covered on Linux CI too.
+g++ -std=c++17 -Wall -Wextra -I"$HERE/stubs" \
+  -I"$HERE/../../firmware/stage-engine-p4/ShowduinoStageEngineP4" \
+  -o "$HERE/scene_recovery_tests" "$HERE/test_scene_recovery.cpp"
+"$HERE/scene_recovery_tests"
+g++ -std=c++17 -Wall -Wextra \
+  -o "$HERE/shdo_ambience_tests" "$HERE/test_shdo_ambience.cpp" "$SRC_DIR/ProductionFormat.cpp"
+"$HERE/shdo_ambience_tests"
+# Phase 3: genuine website Studio exports through the compiler and the P4 timeline loader.
+g++ -std=c++17 -Wall -Wextra -I"$SRC_DIR" \
+  -o "$HERE/studio_export_tests" \
+  "$HERE/test_studio_exports.cpp" "$SRC_DIR/ProductionFormat.cpp"
+"$HERE/studio_export_tests" "$HERE/fixtures/studio-phase3"
+
+# Phase 3: pixel segment numbers must equal website Studio's live-upload compiler.
+g++ -std=c++17 -Wall -Wextra \
+  -o "$HERE/pixel_segment_tests" "$HERE/test_pixel_segments.cpp"
+"$HERE/pixel_segment_tests" "$HERE/fixtures"

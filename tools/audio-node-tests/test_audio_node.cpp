@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "showduino_audio_node.h"
+#include "showduino_pixel_defaults.h"
 
 static int gFail = 0;
 
@@ -13,6 +14,10 @@ static void expect(int cond, const char *name) {
 }
 
 int main() {
+  expect(showduino_pixel_boot_count(0, 512) == 10, "missing pixel count defaults to ten");
+  expect(showduino_pixel_boot_count(37, 512) == 37, "valid saved count preserved");
+  expect(showduino_pixel_boot_count(513, 512) == 10, "invalid saved count defaults to ten");
+  expect(showduino_pixel_boot_count(0, 5) == 5, "default respects device maximum");
   char path[96];
   char arg[80];
   int vol = -1;
@@ -29,7 +34,27 @@ int main() {
   expect(showduino_audio_resolve_path("", path, sizeof(path)) ==
              SHOWDUINO_AUDIO_PATH_EMPTY, "empty path");
   expect(showduino_audio_resolve_path("effects/thunder.mp3", path, sizeof(path)) ==
-             SHOWDUINO_AUDIO_PATH_BAD_EXT, "mp3 rejected");
+             SHOWDUINO_AUDIO_PATH_OK, "mp3 accepted");
+  expect(showduino_audio_resolve_path("music/track.MP3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "uppercase mp3 accepted");
+  expect(showduino_audio_resolve_path("effects/thunder.aac", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_BAD_EXT, "aac rejected");
+  expect(showduino_audio_resolve_path("../secret.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_TRAVERSAL, "mp3 traversal rejected");
+  expect(showduino_audio_resolve_asset_path("music/track.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "routed relative mp3 accepted");
+  expect(showduino_audio_resolve_asset_path("/showduino/audio/music/track.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "routed absolute node mp3 accepted");
+  expect(showduino_audio_resolve_asset_path(SHOWDUINO_AUDIO_SHOW_ROOT "/ambience/track.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "Director library mp3 accepted");
+  expect(showduino_audio_resolve_asset_path(SHOWDUINO_AUDIO_SHOW_ROOT "/ambience/track.wav", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OK, "Director library wav preserved");
+  expect(showduino_audio_resolve_asset_path(SHOWDUINO_AUDIO_SHOW_ROOT "/../secret.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_TRAVERSAL, "routed mp3 traversal rejected");
+  expect(showduino_audio_resolve_asset_path(SHOWDUINO_AUDIO_SHOW_ROOT "ish/track.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OUTSIDE_ROOT, "sibling root prefix rejected");
+  expect(showduino_audio_resolve_asset_path("/etc/track.mp3", path, sizeof(path)) ==
+             SHOWDUINO_AUDIO_PATH_OUTSIDE_ROOT, "arbitrary routed mp3 root rejected");
   expect(showduino_audio_resolve_path("/etc/passwd.wav", path, sizeof(path)) ==
              SHOWDUINO_AUDIO_PATH_OUTSIDE_ROOT, "outside root");
   expect(showduino_audio_resolve_path("/showduino/audio/music/a.wav", path, sizeof(path)) ==
@@ -182,10 +207,10 @@ int main() {
 
   uint16_t start = 99, count = 99;
   expect(showduino_audio_inventory_slice(13, 0, &start, &count) == 1, "inv page 0");
-  expect(start == 0 && count == 6, "inv page 0 slice");
-  expect(showduino_audio_inventory_slice(13, 2, &start, &count) == 1, "inv page 2");
+  expect(start == 0 && count == 1, "inv page 0 slice");
+  expect(showduino_audio_inventory_slice(13, 12, &start, &count) == 1, "inv page 2");
   expect(start == 12 && count == 1, "inv last slice");
-  expect(showduino_audio_inventory_slice(13, 3, &start, &count) == 0, "inv empty page");
+  expect(showduino_audio_inventory_slice(13, 13, &start, &count) == 0, "inv empty page");
 
   expect(strcmp(showduino_audio_wire_token(SHOWDUINO_AUDIO_ST_LOOPING), "LOOPING") == 0,
          "wire looping");
@@ -273,7 +298,7 @@ int main() {
 
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "STANDALONE") != NULL, "standalone advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "OWN") != NULL, "own advertised");
-  expect(strstr(SHOWDUINO_AUDIO_CAPS, "MP3") == NULL, "mp3 not advertised");
+  expect(strstr(SHOWDUINO_AUDIO_CAPS, "MP3") != NULL, "mp3 advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "FADE") != NULL, "fade advertised");
   expect(strstr(SHOWDUINO_AUDIO_CAPS, "MIC") != NULL, "mic advertised");
 

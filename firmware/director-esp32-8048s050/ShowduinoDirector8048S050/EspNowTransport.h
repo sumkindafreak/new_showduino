@@ -98,7 +98,15 @@ public:
 
   bool sendCommand(const String &command) {
     if (!online) return false;
-    if (sendBusy) return false;
+    // Serialize sends through the Wi-Fi callback. A busy radio is not a
+    // reason to discard the next timeline cue or pretend UART delivered it.
+    const bool safety = command.startsWith("EMERGENCY:");
+    uint32_t waitFrom = millis();
+    while (!safety && sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
+    // Safety traffic must remain sendable even if a previous Wi-Fi callback
+    // was lost. ESP-NOW still rejects a full SDK queue; callers must handle it.
+    if (sendBusy && !safety) return false;
+    if (!command.length() || command.length() >= SHOWDUINO_ESPNOW_COMMAND_MAX) return false;
 
     ShowduinoEspNowPacket packet = {};
     packet.magic = SHOWDUINO_ESPNOW_MAGIC;
@@ -110,19 +118,29 @@ public:
     lastCommand = command;
     lastSequence = packet.sequence;
 
+    portENTER_CRITICAL(&rxMux);
+    pendingSends++;
     sendBusy = true;
+    portEXIT_CRITICAL(&rxMux);
     lastCallbackOk = false;
     callbackSeen = false;
 
     esp_err_t result = esp_now_send(stageBridgeMac, (uint8_t *)&packet, sizeof(packet));
     if (result != ESP_OK) {
-      sendBusy = false;
+      portENTER_CRITICAL(&rxMux);
+      if (pendingSends) pendingSends--;
+      sendBusy = pendingSends != 0;
+      portEXIT_CRITICAL(&rxMux);
       lastSendOk = false;
       return false;
     }
 
-    lastSendOk = true;
-    return true;
+    // Safety clearance uses P4 application acknowledgement, never this callback.
+    if (safety) { lastSendOk = true; return true; }
+    waitFrom = millis();
+    while (sendBusy && (uint32_t)(millis() - waitFrom) < 250UL) delay(1);
+    lastSendOk = !sendBusy && callbackSeen && lastCallbackOk;
+    return lastSendOk;
   }
 
   bool popReply(String &outLine) {
@@ -154,6 +172,7 @@ private:
 
   static portMUX_TYPE rxMux;
   static volatile bool sendBusy;
+  static volatile uint32_t pendingSends;
   static volatile bool callbackSeen;
   static volatile bool lastCallbackOk;
   static volatile uint8_t rxHead;
@@ -197,9 +216,12 @@ private:
   static void onSentStatic(const uint8_t *macAddr, esp_now_send_status_t status) {
     (void)macAddr;
 #endif
+    portENTER_CRITICAL(&rxMux);
     lastCallbackOk = (status == ESP_NOW_SEND_SUCCESS);
     callbackSeen = true;
-    sendBusy = false;
+    if (pendingSends) pendingSends--;
+    sendBusy = pendingSends != 0;
+    portEXIT_CRITICAL(&rxMux);
   }
 
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -236,6 +258,7 @@ private:
 
 portMUX_TYPE ShowduinoEspNowTransport::rxMux = portMUX_INITIALIZER_UNLOCKED;
 volatile bool ShowduinoEspNowTransport::sendBusy = false;
+volatile uint32_t ShowduinoEspNowTransport::pendingSends = 0;
 volatile bool ShowduinoEspNowTransport::callbackSeen = false;
 volatile bool ShowduinoEspNowTransport::lastCallbackOk = false;
 volatile uint8_t ShowduinoEspNowTransport::rxHead = 0;

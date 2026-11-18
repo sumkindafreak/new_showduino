@@ -1,0 +1,22 @@
+name: Director ambient renderer checks
+on:
+  pull_request:
+    paths:
+      - 'firmware/director-esp32-8048s050/**'
+      - 'firmware/shared-pixel/ShowduinoLedStrip.h'
+      - 'tools/director-ambient-tests/**'
+      - 'tools/led-backend-tests/**'
+      - '.github/workflows/director-ambient-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tools/director-ambient-tests/run_tests.py
+      - run: python3 tools/led-backend-tests/run_tests.py
+      - run: bash tools/director-tests/run_tests.sh

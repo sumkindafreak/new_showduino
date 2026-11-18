@@ -42,6 +42,12 @@ Write-Host "Running..."
 & $runtimeOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$sceneOut = Join-Path $here "scene_recovery_tests.exe"
+& g++ -std=c++17 -Wall -Wextra "-I$stubs" "-I$sketch" -o $sceneOut (Join-Path $here "test_scene_recovery.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $sceneOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host "Compiling Studio web timeline upload policy tests..."
 & g++ -std=c++17 -Wall -Wextra -o $webTimelineOut `
   (Join-Path $here "test_web_timeline_upload_policy.cpp")
@@ -59,10 +65,16 @@ Write-Host "Running..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Compiling SHDO compiler tests..."
-& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp")
+& g++ -std=c++17 -Wall -Wextra "-I$protocol" -o $shdoOut (Join-Path $here "test_shdo.cpp") $format
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $shdoOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$ambienceOut = Join-Path $here "shdo_ambience_tests.exe"
+& g++ -std=c++17 -Wall -Wextra -o $ambienceOut (Join-Path $here "test_shdo_ambience.cpp") $format
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $ambienceOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "Compiling WEB/BODY framing tests..."
@@ -78,4 +90,22 @@ Write-Host "Compiling WEB/WEBR tunnel framing tests..."
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running..."
 & $webTunnelOut
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Phase 3: genuine website Studio exports through the compiler and the P4 timeline loader.
+$studioExportOut = Join-Path $here "studio_export_tests.exe"
+Write-Host "Compiling Studio export compatibility tests..."
+& g++ -std=c++17 -Wall -Wextra "-I$include" -o $studioExportOut (Join-Path $here "test_studio_exports.cpp") $format
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $studioExportOut (Join-Path $here "fixtures/studio-phase3")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Phase 3: pixel segment numbers must equal website Studio's live-upload compiler.
+$pixelSegmentOut = Join-Path $here "pixel_segment_tests.exe"
+Write-Host "Compiling pixel segment policy tests..."
+& g++ -std=c++17 -Wall -Wextra -o $pixelSegmentOut (Join-Path $here "test_pixel_segments.cpp")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Host "Running..."
+& $pixelSegmentOut (Join-Path $here "fixtures")
 exit $LASTEXITCODE

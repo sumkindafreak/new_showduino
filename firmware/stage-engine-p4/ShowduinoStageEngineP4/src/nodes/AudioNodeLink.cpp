@@ -247,7 +247,9 @@ void audioNodeLinkLoop() {
   }
   if (sSt.online && (millis() - sInvMs) >= 15000UL) {
     sInvMs = millis();
-    route(sSeq++, "AUDIO:NODE:LIBRARY");
+    char request[48];
+    snprintf(request, sizeof(request), "AUDIO:NODE:INVENTORY:%u", (unsigned)sSt.inventoryPage);
+    route(sSeq++, request);
   }
   if ((millis() - sPublishMs) >= 3000UL) {
     publishState(true);
@@ -285,7 +287,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     route(sSeq++, "AUDIO:NODE:OWN:GRANT");
     if (sInvMs == 0) {
       sInvMs = millis();
-      route(sSeq++, "AUDIO:NODE:LIBRARY");
+      route(sSeq++, "AUDIO:NODE:INVENTORY:0");
     }
     publishState();
     return true;
@@ -389,6 +391,7 @@ bool audioNodeLinkHandleReport(const char *line) {
     char *page = strtok_r(buf, ":", &save);
     char *total = strtok_r(nullptr, ":", &save);
     char *list = strtok_r(nullptr, ":", &save);
+    sSt.inventoryRevision++;
     if (page) sSt.inventoryPage = (uint16_t)atoi(page);
     if (total) sSt.inventoryTotal = (uint16_t)atoi(total);
     for (uint8_t i = 0; i < SHOWDUINO_AUDIO_INV_PER_PAGE; i++) sSt.inventory[i][0] = '\0';
@@ -404,7 +407,8 @@ bool audioNodeLinkHandleReport(const char *line) {
         item = comma ? comma + 1 : nullptr;
       }
     }
-    publishExtra(false);
+    sSt.pending = false;
+    publishExtra(true);
     return true;
   }
 
@@ -577,7 +581,7 @@ bool audioNodeLinkHandleCommand(const char *command, char *reply, size_t replyLe
   if (!command || strncmp(command, "AUDIO:NODE:", 11) != 0) return false;
   if (reply && replyLen) reply[0] = '\0';
 
-  /* Audio Node GPIO22 pixel engine — same ESP-NOW peer, not a fake LED-XX identity. */
+  /* Audio Node GPIO22 pixel engine â€” same ESP-NOW peer, not a fake LED-XX identity. */
   if (!strncmp(command, "AUDIO:NODE:PIXEL:", 17)) {
     const char *pixelCmd = command + 17; /* "PIXEL:..." expected */
     char forwarded[96];
@@ -678,7 +682,7 @@ bool audioNodeLinkHandleCommand(const char *command, char *reply, size_t replyLe
   if ((cmd == SHOWDUINO_AUDIO_CMD_PLAY || cmd == SHOWDUINO_AUDIO_CMD_LOOP ||
        cmd == SHOWDUINO_AUDIO_CMD_TEST) && arg[0]) {
     char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
-    if (showduino_audio_resolve_path(arg, absPath, sizeof(absPath)) != SHOWDUINO_AUDIO_PATH_OK) {
+    if (showduino_audio_resolve_asset_path(arg, absPath, sizeof(absPath)) != SHOWDUINO_AUDIO_PATH_OK) {
       if (reply && replyLen) strncpy(reply, "ERR:AUDIO:NODE:BAD_PATH", replyLen - 1);
       return true;
     }
@@ -768,6 +772,10 @@ void audioNodeLinkAppendJson(String &json) {
   json += ",\n      \"caps\": \"";
   json += sSt.pixelCaps;
   json += "\"\n    }";
+  json += ",\n    \"inventoryRevision\": ";
+  json += String((unsigned long)sSt.inventoryRevision);
+  json += ",\n    \"inventoryPageSize\": ";
+  json += String((unsigned)SHOWDUINO_AUDIO_INV_PER_PAGE);
   json += ",\n    \"inventoryTotal\": ";
   json += String((unsigned)sSt.inventoryTotal);
   json += ",\n    \"inventoryPage\": ";

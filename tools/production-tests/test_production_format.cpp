@@ -77,6 +77,10 @@ int main() {
   expect(std::strcmp(cues[1].command, "INTERNAL:LOG:b:next") == 0,
          "timeline preserves LOG cue type");
 
+  const char *estopPixels=R"({"formatVersion":1,"cues":[{"id":"e","timeMs":0,"type":"ESTOP","command":"ESTOP:NODE:PIXEL:OFF"}]})";
+  expect(parseTimeline(estopPixels,cues,&timeline,&result),"persistent ESTOP node pixel cue accepted");
+  const char *estopLatch=R"({"formatVersion":1,"cues":[{"id":"e","timeMs":0,"type":"ESTOP","command":"ESTOP:ASSERT"}]})";
+  expect(!parseTimeline(estopLatch,cues,&timeline,&result),"persistent cues cannot assert or clear Emergency");
   const char *optionalValue =
       "{\"formatVersion\":1,\"cues\":["
       "{\"id\":\"no_message\",\"timeMs\":0,\"type\":\"TEST\"}]}";

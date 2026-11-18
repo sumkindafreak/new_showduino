@@ -1,9 +1,17 @@
 #include "AudioPixelEngine.h"
+#include "../../../protocol/showduino_pixel_defaults.h"
 #include "../BoardConfig.h"
 #include "../../shared-node/NodeConfig.h"
 
 #include <math.h>
 #include <Adafruit_NeoPixel.h>
+#include "AudioPixelOutput.h"
+#include "AudioPixelFrame.h"
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+// FastLED's RGB type only: no FastLED wire controller or global refresh.
+#include <fl/gfx/crgb.h>
+#include <new>
+#endif
 
 static bool sReady = false;
 static bool sEmergency = false;
@@ -15,11 +23,16 @@ static uint32_t sLocateStartedMs = 0;
 static uint32_t sLastFrameMs = 0;
 static uint32_t sLastEmergencyRefreshMs = 0;
 static uint8_t sGlobalBrightness = 255;
-static uint16_t sConfiguredCount = 0;
+static uint16_t sConfiguredCount = SHOWDUINO_PIXEL_DEFAULT_COUNT;
 static uint16_t sCount = 0;
 static ShowduinoPixelSegmentState sSegments[SHOWDUINO_PIXEL_MAX_SEGMENTS];
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+static fl::CRGB *sFrame = nullptr;
+#else
 static uint8_t *sFrame = nullptr;
+#endif
 static Adafruit_NeoPixel *sStrip = nullptr;
+static AudioPixelOutput sShowOutput;
 
 static uint8_t scale8(uint8_t value, uint8_t a, uint8_t b) {
   return (uint8_t)(((uint32_t)value * (uint32_t)a * (uint32_t)b) / (255UL * 255UL));
@@ -30,15 +43,23 @@ static uint8_t effectScale(uint8_t value, uint8_t factor) {
 }
 
 static void clearFrame() {
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  if (sFrame) for (uint16_t i = 0; i < sCount; ++i) sFrame[i] = fl::CRGB(0, 0, 0);
+#else
   if (sFrame) memset(sFrame, 0, (size_t)sCount * 3U);
+#endif
 }
 
 static void setPixelRaw(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
   if (!sFrame || index >= sCount) return;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  sFrame[index] = fl::CRGB(r, g, b);
+#else
   const size_t base = (size_t)index * 3U;
   sFrame[base + 0] = r;
   sFrame[base + 1] = g;
   sFrame[base + 2] = b;
+#endif
 }
 
 static void setPixelScaled(uint16_t index, const ShowduinoPixelSegmentState &seg,
@@ -84,12 +105,11 @@ static ShowduinoPixelColor hsv(uint16_t hue, uint8_t sat, uint8_t val) {
 
 static bool writeFrame() {
   if (!sReady || !sStrip || !sFrame) return false;
-  for (uint16_t i = 0; i < sCount; ++i) {
-    const size_t base = (size_t)i * 3U;
-    sStrip->setPixelColor(i, sStrip->Color(sFrame[base], sFrame[base + 1], sFrame[base + 2]));
-  }
-  sStrip->show();
-  return true;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  return audioPixelWriteRgbPixels(sShowOutput, *sStrip, sFrame, sCount);
+#else
+  return audioPixelWriteRgbFrame(sShowOutput, *sStrip, sFrame, (size_t)sCount * 3U);
+#endif
 }
 
 static uint32_t periodFromSpeed(uint8_t speed, uint32_t slowMs, uint32_t fastMs) {
@@ -395,19 +415,24 @@ static void audioPixelEngineShutdown() {
     clearFrame();
     writeFrame();
   }
+  sShowOutput.end();
   sReady = false;
   sCount = 0;
   if (sStrip) {
     delete sStrip;
     sStrip = nullptr;
   }
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  delete[] sFrame;
+#else
   free(sFrame);
+#endif
   sFrame = nullptr;
 }
 
 bool audioPixelEngineSafeGpio() {
-  pinMode(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, OUTPUT);
-  digitalWrite(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, LOW);
+  pinMode(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, LOW);
   return true;
 }
 
@@ -431,29 +456,40 @@ bool audioPixelEngineBegin() {
   }
 
   sCount = sConfiguredCount;
+#if SHOWDUINO_AUDIO_FASTLED_RGB_FRAME
+  sFrame = new (std::nothrow) fl::CRGB[sCount];
+#else
   sFrame = (uint8_t *)calloc((size_t)sCount * 3U, 1);
-  sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
-                                 SHOWDUINO_AUDIO_STATUS_PIXEL_ORDER);
+#endif
+  sStrip = new Adafruit_NeoPixel(sCount, SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
+                                 SHOWDUINO_AUDIO_SHOW_PIXEL_ORDER);
   if (!sFrame || !sStrip) {
     Serial.println("[PIXEL][ERROR] Show line allocation failed (out of memory)");
     audioPixelEngineShutdown();
     return false;
   }
 
-  pinMode(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, OUTPUT);
-  digitalWrite(SHOWDUINO_AUDIO_STATUS_PIXEL_PIN, LOW);
+  pinMode(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, OUTPUT);
+  digitalWrite(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, LOW);
   sStrip->begin();
+  if (!sShowOutput.begin(SHOWDUINO_AUDIO_SHOW_PIXEL_PIN, (size_t)sCount * 3U)) {
+    audioPixelEngineShutdown();
+    return false;
+  }
   sStrip->clear();
   sReady = true;
   clearFrame();
-  writeFrame();
+  if (!writeFrame()) {
+    audioPixelEngineShutdown();
+    return false;
+  }
   Serial.printf("[PIXEL] Line initialised GPIO=%d count=%u segments=%u resistor=%uR\n",
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                 (unsigned)sCount,
                 (unsigned)SHOWDUINO_PIXEL_MAX_SEGMENTS,
-                (unsigned)SHOWDUINO_AUDIO_STATUS_PIXEL_RESISTOR_OHMS);
+                (unsigned)SHOWDUINO_AUDIO_SHOW_PIXEL_RESISTOR_OHMS);
   Serial.println("[PIXEL] Engine: READY");
-  Serial.printf("[PIXEL] GPIO: %d\n", SHOWDUINO_AUDIO_STATUS_PIXEL_PIN);
+  Serial.printf("[PIXEL] GPIO: %d\n", SHOWDUINO_AUDIO_SHOW_PIXEL_PIN);
   Serial.printf("[PIXEL] Count: %u\n", (unsigned)sCount);
   Serial.printf("[PIXEL] Brightness: %u\n", (unsigned)sGlobalBrightness);
   Serial.printf("[PIXEL] Emergency: %s\n", sEmergency ? "ACTIVE" : "INACTIVE");
@@ -463,10 +499,10 @@ bool audioPixelEngineBegin() {
 void audioPixelEngineApplyPersisted() {
   sGlobalBrightness = nodeConfigGetU8("bri", 255);
   const uint16_t n = nodeConfigGetU16("pix", 0);
-  if (n > 0 && n <= SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS) sConfiguredCount = n;
+  sConfiguredCount = showduino_pixel_boot_count(n, SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
   if (sConfiguredCount == 0) {
     Serial.printf("[PIXEL] GPIO%d not initialised — PIXEL:COUNT then PIXEL:INIT (1-%u)\n",
-                  SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                  SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                   (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
     Serial.println("[PIXEL][ERROR] Count not configured (0) — line will stay dark until set");
     return;
@@ -485,7 +521,7 @@ void audioPixelEngineApplyPersisted() {
 
 
 void audioPixelEngineSetConfiguredCount(uint16_t count) {
-  sConfiguredCount = count;
+  sConfiguredCount = showduino_pixel_boot_count(count, SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
 }
 
 void audioPixelEngineRelease() {
@@ -502,14 +538,19 @@ void audioPixelEngineBlackout() {
     sSegments[i].effect = ShowduinoPixelFx::Off;
   }
   if (!sReady) return;
-  clearFrame();
+  if (sEmergency) renderEmergencyWhite();
+  else clearFrame();
   writeFrame();
 }
 
 void audioPixelEngineOnEmergency(bool active) {
+  const bool wasEmergency = sEmergency;
+  sEmergency = active;
+  sTestActive = false;
   sLocateActive = false;
   if (!sReady) {
     if (sConfiguredCount == 0) {
+      if (active && !wasEmergency) Serial.println("[PIXEL][ERROR] Emergency GPIO22 output unavailable: strip count is zero; configure COUNT then INIT after clear");
       sEmergency = active;
       return;
     }
@@ -519,9 +560,10 @@ void audioPixelEngineOnEmergency(bool active) {
   sTestActive = false;
   if (active) {
     renderEmergencyWhite();
-    writeFrame();
+    const bool sent = writeFrame();
     sLastEmergencyRefreshMs = millis();
-    Serial.println("[PIXEL] EMERGENCY → entire configured line bright white");
+    Serial.println(sent ? "[PIXEL] EMERGENCY → entire configured line bright white (RMT frame sent)"
+                        : "[PIXEL][ERROR] EMERGENCY white frame could not be sent");
   } else {
     for (uint8_t i = 0; i < SHOWDUINO_PIXEL_MAX_SEGMENTS; ++i) sSegments[i].active = false;
     clearFrame();
@@ -592,7 +634,7 @@ uint16_t audioPixelEngineCount() { return sCount; }
 uint16_t audioPixelEngineConfiguredCount() { return sConfiguredCount; }
 uint16_t audioPixelEngineMax() { return SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS; }
 uint8_t audioPixelEngineGlobalBrightness() { return sGlobalBrightness; }
-int audioPixelEnginePin() { return SHOWDUINO_AUDIO_STATUS_PIXEL_PIN; }
+int audioPixelEnginePin() { return SHOWDUINO_AUDIO_SHOW_PIXEL_PIN; }
 
 uint8_t audioPixelEngineActiveSegments() {
   uint8_t n = 0;
@@ -604,7 +646,7 @@ uint8_t audioPixelEngineActiveSegments() {
 
 void audioPixelEnginePrintStatus() {
   Serial.printf("[PIXEL] GPIO=%d configured=%u active=%u ready=%s brightness=%u emergency=%s locate=%s\n",
-                SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+                SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
                 (unsigned)sConfiguredCount,
                 (unsigned)sCount,
                 sReady ? "YES" : "NO",
@@ -678,7 +720,7 @@ bool audioPixelEngineHandleCommand(const char *command, char *reply, size_t repl
     char line[160];
     snprintf(line, sizeof(line),
              "PIXEL:STATUS:%s:GPIO=%d:CONFIGURED=%u:COUNT=%u:MAX=%u:BRIGHTNESS=%u:EMERGENCY=%u",
-             sReady ? "READY" : "UNINIT", SHOWDUINO_AUDIO_STATUS_PIXEL_PIN,
+             sReady ? "READY" : "UNINIT", SHOWDUINO_AUDIO_SHOW_PIXEL_PIN,
              (unsigned)sConfiguredCount, (unsigned)sCount,
              (unsigned)SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS,
              (unsigned)sGlobalBrightness, sEmergency ? 1U : 0U);
@@ -696,6 +738,7 @@ bool audioPixelEngineHandleCommand(const char *command, char *reply, size_t repl
       setReply(reply, replyLen, "PIXEL:ERROR:COUNT");
       return true;
     }
+    count = showduino_pixel_boot_count(count, SHOWDUINO_AUDIO_PIXEL_MAX_PIXELS);
     sConfiguredCount = count;
     nodeConfigSetU16("pix", count);
     char line[80];

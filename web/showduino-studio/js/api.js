@@ -26,7 +26,7 @@ async function request(path, options = {}) {
     if (data && (data.error === 'p4_offline' || data.p4Online === false)) {
       return data;
     }
-    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}${data && data.reason ? ' ' + data.reason : ''}${data && data.lifecycle ? ' [' + data.lifecycle + ']' : ''}`);
+    throw new Error(`${path} → HTTP ${res.status}${data && data.error ? ' ' + data.error : ''}${data && data.reason ? ' ' + data.reason : ''}${data && data.replies ? ' ' + data.replies : ''}${data && data.lifecycle ? ' [' + data.lifecycle + ']' : ''}`);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -216,4 +216,20 @@ export async function persistShdo(text) {
 
 export function fetchDeployStatus() {
   return request('/api/productions/deploy/status');
+}
+
+// A successful dispatch is not proof of clearance; the shell follows P4 telemetry.
+export async function postEmergencyClear(confirmClear) {
+  const check = data => {
+    if (isP4Offline(data)) throw new Error('P4 OFFLINE — emergency clearance not confirmed.');
+    if (!data || data.ok === false) throw new Error(data?.replies || data?.error || 'Clear rejected');
+    return data;
+  };
+  check(await postCommand('EMERGENCY:CLEAR'));
+  if (!confirmClear()) {
+    check(await postCommand('EMERGENCY:CLEAR_CANCEL'));
+    return false;
+  }
+  check(await postCommand('EMERGENCY:CLEAR_CONFIRM'));
+  return true;
 }

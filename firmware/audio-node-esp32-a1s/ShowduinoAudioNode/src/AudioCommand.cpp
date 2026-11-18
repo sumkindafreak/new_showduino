@@ -18,6 +18,8 @@
 #include "../../../protocol/showduino_log.h"
 
 static uint32_t sActiveSeq = 0;
+// All command handlers run on the main loop; keep the 3 KB inventory off task stacks.
+static char sInventoryNames[SHOWDUINO_AUDIO_INV_MAX][SHOWDUINO_AUDIO_REL_MAX + 1];
 static char sActiveRel[SHOWDUINO_AUDIO_PATH_MAX + 1] = "";
 static uint32_t sLastAnnounce = 0;
 static uint32_t sApDueMs = 0;
@@ -157,12 +159,10 @@ static void onOwnerEdges() {
 }
 
 static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
-                       bool fromShow, int fadeMs, int priIn) {
+                       bool fromShow, int fadeMs, int priIn, uint32_t repeatGapMs = 0) {
   char absPath[SHOWDUINO_AUDIO_PATH_MAX + 1];
   const ShowduinoAudioPathStatus ps =
-      (rel && rel[0] == '/')
-          ? showduino_audio_resolve_show_path(rel, absPath, sizeof(absPath))
-          : showduino_audio_resolve_path(rel, absPath, sizeof(absPath));
+      showduino_audio_resolve_asset_path(rel, absPath, sizeof(absPath));
   if (ps != SHOWDUINO_AUDIO_PATH_OK) {
     char line[96];
     audioProtocolFormatFailed(line, sizeof(line), seq, SHOWDUINO_AUDIO_FAIL_BAD_PATH);
@@ -203,7 +203,7 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   report(acc, seq);
 
   const uint32_t t0 = millis();
-  if (!audioPlaybackStart(absPath, mode)) {
+  if (!audioPlaybackStart(absPath, mode, repeatGapMs)) {
     char line[96];
     const ShowduinoAudioFail f =
         (audioPlaybackLastError()[0] && strstr(audioPlaybackLastError(), "FILE"))
@@ -230,6 +230,8 @@ static bool startAsset(const char *rel, AudioPlayMode mode, uint32_t seq,
   } else {
     audioCodecSetVolume(audibleVolume());
   }
+  SD_LOGI("AUDIO", "Playback output=%s volume=%u", audioCodecOutputName(),
+          (unsigned)audibleVolume());
   char st[96];
   audioProtocolFormatStarted(st, sizeof(st), seq, sActiveRel);
   report(st, seq);
@@ -268,7 +270,7 @@ static void startEmergencyAsset() {
   }
 
   const bool started = startAsset(kEmergencyAssetRel, AudioPlayMode::Loop, 0, false, 0,
-                                  (int)SHOWDUINO_AUDIO_PRI_SFX);
+                                  (int)SHOWDUINO_AUDIO_PRI_SFX, 8000);
   if (started) {
     SD_LOGW("AUDIO", "Emergency playback START");
   } else if (audioPlaybackLastError()[0] &&
@@ -608,7 +610,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     return;
   }
   if (cmd == SHOWDUINO_AUDIO_CMD_INVENTORY) {
-    char names[SHOWDUINO_AUDIO_INV_MAX][40];
+    auto &names = sInventoryNames;
     const uint16_t total = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
     const uint16_t page = (uint16_t)atoi(arg);
     uint16_t start = 0, count = 0;
@@ -638,7 +640,7 @@ void audioCommandApply(const char *command, uint32_t sequence, ShowduinoCmdOrigi
     char caps[SHOWDUINO_NODE_COMMAND_MAX];
     /* Wire-safe CAPS (NODE_COMMAND_MAX=96). Full vocabulary remains in protocol header. */
     snprintf(caps, sizeof(caps),
-             "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+             "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
     report(caps, sequence);
     char meta[SHOWDUINO_NODE_COMMAND_MAX];
     snprintf(meta, sizeof(meta), "AUDIO:META:%s:%s:%s",
@@ -667,7 +669,7 @@ void audioCommandLocalTestToggle() {
     audioCommandApply("AUDIO:NODE:STOP", 0, false);
     return;
   }
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  auto &names = sInventoryNames;
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   const char *rel = SHOWDUINO_AUDIO_TEST_FILE;
   if (n > 0) {
@@ -685,7 +687,7 @@ void audioCommandLocalStop() {
 }
 
 static void stepLocal(int dir) {
-  char names[SHOWDUINO_AUDIO_INV_MAX][40];
+  auto &names = sInventoryNames;
   const uint16_t n = audioStorageInventory(names, SHOWDUINO_AUDIO_INV_MAX);
   if (n == 0) {
     Serial.println("[AUDIO] No local assets");
@@ -713,7 +715,7 @@ void audioCommandAnnounce() {
                               audioNodeStateName());
   audioEspNowSend(line, 0);
   snprintf(line, sizeof(line),
-           "AUDIO:CAPS:WAV,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
+           "AUDIO:CAPS:WAV,MP3,PLAY,LOOP,STOP,VOL,PAUSE,RESUME,FADE,DUCK,MIC,OWN,PIXEL");
   audioEspNowSend(line, 0);
 }
 

@@ -460,7 +460,7 @@ void page_08_settings_create(lv_obj_t *parent, page08_command_fn command_cb) {
   static const char *kBodies[PAGE08_CARD_COUNT] = {
     "Auto backlight dims at half timeout, then off. Touch wakes the panel.\nNEVER keeps the display on.\nCalibrate the touchscreen if taps no longer line up.",
     "Atmosphere LEDs follow the Director theme. Emergency indication always remains available.",
-    "P4 local output: Stop is live. Play needs an asset path from a loaded show.",
+    "Independent P4 ambience WAV player. Open Audio System, choose Next file, then Play or Loop. No loaded show required.",
     "Operator event history for this Director session. Filters do not change Stage logs.",
     "Backup and export act on Director-local SD only. They do not copy Stage runtime state.",
     "About and Software show versions. OTA install is not implemented. Network is SUE gateway state."

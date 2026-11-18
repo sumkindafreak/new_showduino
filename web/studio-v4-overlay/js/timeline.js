@@ -852,6 +852,7 @@ class TimelineEditor {
   _addClip(trackId, type, startMs = 0, durationMs = 5000) {
     this._pushUndo();
     const clip = SHDOModel.createClip(trackId, type, startMs, durationMs);
+    window.ShowduinoLiveLayers?.bindClip(clip, this._project());
     this._project().clips.push(clip);
     this._renderClip(clip);
     this._selectClip(clip.id);
@@ -1534,8 +1535,16 @@ class TimelineEditor {
   setSelectedClipFile(file) {
     const clip = this.getSelectedClip();
     if (clip && clip.type === 'audio') {
+      const bound = this._project().devices?.find(device => device.id === clip.targetDeviceId);
+      if (bound?.binding?.route === 'p4-ambience') {
+        alert('This browser lists Audio Node files. Set the P4 ambience filename in this clip File field.');
+        return;
+      }
       clip.params = clip.params || {};
       clip.params.file = file;
+      clip.routing = {nodeId:'audio-node', output:'audio'};
+      const target = this._project().devices?.find(device => device.binding?.route === 'audio-node');
+      if (target) clip.targetDeviceId = target.id;
       const fileEl = document.getElementById('param-file');
       if (fileEl) fileEl.value = file;
       this._autosave();

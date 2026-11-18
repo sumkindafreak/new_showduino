@@ -30,3 +30,8 @@ Thumbs.db
 credentials.json
 secrets.json
 **/LocalSecrets.h
+
+# Compiled host regression scratch files.
+.host-test-cache/
+# Host test binaries built by tools/production-tests/run_tests.sh
+tools/production-tests/*_tests
