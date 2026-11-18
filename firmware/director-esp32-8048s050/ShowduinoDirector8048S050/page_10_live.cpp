@@ -208,12 +208,8 @@ void page_10_live_create(lv_obj_t *parent, page10_command_fn command_cb) {
   lv_obj_set_style_radius(s_progress, 4, LV_PART_MAIN);
   lv_obj_set_style_radius(s_progress, 4, LV_PART_INDICATOR);
 
-  lv_obj_t *note = lv_label_create(s_main);
-  lv_label_set_text(note, "Director requests only. Stage remains the show authority.");
-  lv_obj_set_pos(note, 16, 176);
-  lv_obj_set_width(note, kBodyW - 32);
-  lv_obj_set_style_text_font(note, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(note, lv_color_hex(ShowduinoPalette::Muted), 0);
+  make_btn(s_main, "CUE LIBRARY", 566, 100, 180, "LIVE:CUE_LIBRARY", false, false);
+  lv_obj_set_size(s_progress, 452, 14);
 
   page_10_live_apply_theme();
   s_active = true;

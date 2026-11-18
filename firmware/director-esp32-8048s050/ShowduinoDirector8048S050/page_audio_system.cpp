@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "showduino_theme.h"
 #include "ShowduinoOsPalette.h"
 #include "ShowduinoOsUi.h"
@@ -30,6 +32,124 @@ static lv_obj_t *s_routing = nullptr;
 static lv_obj_t *s_cmd = nullptr;
 static page_audio_system_command_fn s_cb = nullptr;
 static bool s_active = false;
+static lv_obj_t *s_ambience_status=nullptr,*s_ambience_file=nullptr;
+static lv_obj_t *s_ambience_controls[6]={};
+static char s_ambience_path[96]="";
+static char s_ambience_report[240]="Awaiting P4 ambience status";
+static bool s_ambience_locked=false;
+static unsigned s_ambience_index=0;
+static lv_obj_t *s_picker=nullptr;
+static char s_files[48][72]={};
+static unsigned s_file_count=0;
+static bool s_scanning=false;
+static uint32_t s_scan_deadline=0;
+static lv_timer_t *s_scan_timer=nullptr;
+static void picker_selected(lv_event_t *e);
+static void request_file(unsigned index){
+  s_scan_deadline=millis()+5000;
+  char cmd[32]; snprintf(cmd,sizeof(cmd),"AMBIENCE:FILE:%u",index);
+  if(s_cb)s_cb(cmd);
+}
+static void finish_picker(){
+  s_scanning=false;
+  if(!s_picker)return;
+  lv_dropdown_clear_options(s_picker);
+  if(!s_file_count){lv_dropdown_set_options(s_picker,"No WAV files found");s_ambience_path[0]=0;return;}
+  unsigned selected=0;
+  for(unsigned i=0;i<s_file_count;++i){
+    lv_dropdown_add_option(s_picker,s_files[i],LV_DROPDOWN_POS_LAST);
+    const char *name=strrchr(s_ambience_path,'/');
+    if(name&&!strcmp(name+1,s_files[i]))selected=i;
+  }
+  lv_dropdown_set_selected(s_picker,selected);
+  snprintf(s_ambience_path,sizeof(s_ambience_path),"/showduino/audio/ambience/%s",s_files[selected]);
+  lv_dropdown_open(s_picker);
+}
+static void picker_selected(lv_event_t *e){
+  if(lv_event_get_code(e)!=LV_EVENT_VALUE_CHANGED||s_scanning)return;
+  const unsigned i=lv_dropdown_get_selected(s_picker);
+  if(i<s_file_count)snprintf(s_ambience_path,sizeof(s_ambience_path),"/showduino/audio/ambience/%s",s_files[i]);
+}
+static void update_ambience(){
+  ShowduinoOsTheme::setTextIfChanged(s_ambience_status,s_ambience_report);
+  ShowduinoOsTheme::setTextIfChanged(s_ambience_file,s_ambience_path[0]?s_ambience_path:"No file selected; tap Choose file");
+  for(unsigned i=0;i<6;++i)if(s_ambience_controls[i]){
+    bool disabled=s_ambience_locked||((i==0||i==1)&&(s_scanning||!s_ambience_path[0]));
+    if(disabled)lv_obj_add_state(s_ambience_controls[i],LV_STATE_DISABLED);else lv_obj_remove_state(s_ambience_controls[i],LV_STATE_DISABLED);
+  }
+}
+static void scan_watchdog(lv_timer_t *){
+  if(s_scanning&&(int32_t)(millis()-s_scan_deadline)>=0){
+    s_scanning=false;
+    strncpy(s_ambience_report,"P4 file-list timeout. Choose file to retry.",sizeof(s_ambience_report)-1);
+    update_ambience();
+  }
+}
+void page_audio_system_apply_ambience(const char *line){
+  if(!line)return;
+  if(!strncmp(line,"AMBIENCE:FILE:",14)){
+    const char *p=line+14;
+    if(s_scanning){
+      if(!strcmp(p,"END")){
+        snprintf(s_ambience_report,sizeof(s_ambience_report),"%u WAV files on P4 SD",s_file_count);
+        finish_picker();update_ambience();return;
+      }
+      char *end=nullptr;const unsigned index=(unsigned)strtoul(p,&end,10);
+      if(end&&*end==':'&&index==s_file_count){
+        const char *name=end+1;
+        if(!name[0]||strlen(name)>=sizeof(s_files[0])||strlen(name)+strlen("/showduino/audio/ambience/")>=sizeof(s_ambience_path)||strstr(name,"..")||strchr(name,'/')||strchr(name,'\\')||strchr(name,'\n')){
+          s_scanning=false;strncpy(s_ambience_report,"Invalid filename from P4",sizeof(s_ambience_report)-1);update_ambience();return;
+        }
+        strncpy(s_files[s_file_count++],name,sizeof(s_files[0])-1);
+        if(s_file_count==48){snprintf(s_ambience_report,sizeof(s_ambience_report),"First 48 WAV files loaded (picker limit)");finish_picker();}
+        else request_file(s_file_count);
+      }
+      update_ambience();return;
+    }
+    if(!strcmp(p,"END")){s_ambience_index=0;s_ambience_path[0]=0;strncpy(s_ambience_report,"End of WAV list; Next file starts again",sizeof(s_ambience_report)-1);}
+    else {const char *sep=strchr(p,':');if(sep){snprintf(s_ambience_path,sizeof(s_ambience_path),"/showduino/audio/ambience/%s",sep+1);s_ambience_index=((unsigned)atoi(p)+1)%1000;}}
+  }else{
+    strncpy(s_ambience_report,line,sizeof(s_ambience_report)-1);s_ambience_report[sizeof(s_ambience_report)-1]=0;
+    if(!strncmp(line,"AMBIENCE:STATUS:",16))s_ambience_locked=strstr(line,":LOCK=1")!=nullptr;
+  }
+  update_ambience();
+}
+static void ambience_event(lv_event_t *e){
+  if(lv_event_get_code(e)!=LV_EVENT_CLICKED)return;
+  const char *action=(const char*)lv_obj_get_user_data(lv_event_get_target_obj(e));char cmd[128];
+  if(!strcmp(action,"BROWSE")){
+    s_file_count=0;s_scanning=true;
+    strncpy(s_ambience_report,"Reading P4 ambience WAV list...",sizeof(s_ambience_report)-1);
+    update_ambience();request_file(0);return;
+  }
+  if(!strcmp(action,"NEXT"))snprintf(cmd,sizeof(cmd),"AMBIENCE:FILE:%u",s_ambience_index);
+  else if(!strcmp(action,"PLAY")||!strcmp(action,"LOOP")){if(!s_ambience_path[0])return;snprintf(cmd,sizeof(cmd),"AMBIENCE:%s:%s",action,s_ambience_path);}
+  else snprintf(cmd,sizeof(cmd),"AMBIENCE:%s",action);
+  if(s_cb)s_cb(cmd);
+}
+
+
+static lv_obj_t *s_system_volume=nullptr,*s_system_volume_status=nullptr;
+static void system_volume_event(lv_event_t *e) {
+  if (lv_event_get_code(e)!=LV_EVENT_RELEASED) return;
+  char command[48];
+  snprintf(command,sizeof(command),"AUDIO:SYSTEM:VOLUME:%d",(int)lv_slider_get_value(s_system_volume));
+  lv_label_set_text(s_system_volume_status,"Saving system volume - awaiting P4");
+  if(s_cb)s_cb(command);
+}
+void page_audio_system_apply_system_volume(const char *line) {
+  if(!line || !s_system_volume_status)return;
+  if(!strncmp(line,"AUDIO:SYSTEM:VOLUME:",20)) {
+    char *end=nullptr;long value=strtol(line+20,&end,10);
+    if(end==line+20 || *end || value<0 || value>100)return;
+    lv_slider_set_value(s_system_volume,(int32_t)value,LV_ANIM_OFF);
+    lv_obj_remove_state(s_system_volume,LV_STATE_DISABLED);
+    char text[96];snprintf(text,sizeof(text),"System sounds: %ld%% | Emergency audio keeps its fixed level",value);
+    lv_label_set_text(s_system_volume_status,text);
+  } else if(!strncmp(line,"ERR:AUDIO:SYSTEM:VOLUME:",24)) {
+    lv_label_set_text(s_system_volume_status,"Volume not confirmed. Tap Refresh to check the P4 setting.");
+  }
+}
 
 static void emit(const char *cmd) {
   if (s_cb && cmd) s_cb(cmd);
@@ -126,7 +246,7 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   showduino_theme_register(s_strip, SHOWDUINO_THEME_ROLE_BORDER);
 
   lv_obj_t *hint = lv_label_create(s_strip);
-  lv_label_set_text(hint, "P4 local output. Stop is live. Play needs a loaded show asset.");
+  lv_label_set_text(hint, "Independent P4 ambience: Choose file, select a WAV, then Play or Loop.");
   lv_obj_set_pos(hint, 14, 16);
   lv_obj_set_width(hint, 560);
   lv_label_set_long_mode(hint, LV_LABEL_LONG_CLIP);
@@ -158,7 +278,24 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   lv_obj_set_style_bg_opa(s_scroll, LV_OPA_TRANSP, 0);
   ShowduinoOsTheme::enableVerticalScroll(s_scroll);
 
-  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 0, 168);
+  lv_obj_t *ambience=make_section(s_scroll,"PCM5102A AMBIENCE - SD WAV",0,240);
+  s_ambience_status=make_body(ambience,38,kBodyW-40);
+  s_ambience_file=nullptr;
+  s_scan_timer=lv_timer_create(scan_watchdog,250,nullptr);
+  s_picker=lv_dropdown_create(ambience);
+  lv_obj_set_pos(s_picker,14,96);lv_obj_set_size(s_picker,kBodyW-40,38);
+  lv_dropdown_set_options(s_picker,"Choose file to read P4 SD");
+  lv_obj_add_event_cb(s_picker,picker_selected,LV_EVENT_VALUE_CHANGED,nullptr);
+  const char *labels[]={"Play","Loop","Stop","25%","75%","100%","Choose file","Status"};
+  const char *actions[]={"PLAY","LOOP","STOP","VOLUME:25","VOLUME:75","VOLUME:100","BROWSE","STATUS"};
+  for(unsigned i=0;i<8;++i){
+    lv_obj_t *button=lv_button_create(ambience);lv_obj_set_pos(button,14+(i%4)*180,142+(i/4)*46);lv_obj_set_size(button,166,40);
+    lv_obj_set_user_data(button,(void*)actions[i]);lv_obj_add_event_cb(button,ambience_event,LV_EVENT_CLICKED,nullptr);
+    lv_obj_t *label=lv_label_create(button);lv_label_set_text(label,labels[i]);lv_obj_center(label);
+    if(i<6)s_ambience_controls[i]=button;
+  }
+  update_ambience();
+  lv_obj_t *local = make_section(s_scroll, "LOCAL OUTPUT - P4 AUDIO", 248, 280);
   s_local_status = lv_label_create(local);
   lv_label_set_text(s_local_status, "Status: UNKNOWN");
   lv_obj_set_pos(s_local_status, 14, 36);
@@ -166,19 +303,32 @@ void page_audio_system_create(lv_obj_t *parent, page_audio_system_command_fn com
   lv_obj_set_style_text_color(s_local_status, lv_color_hex(ShowduinoPalette::Text), 0);
   s_local_detail = make_body(local, 64, kBodyW - 40);
 
-  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 176, 120);
+  s_system_volume_status=make_body(local,158,kBodyW-40);
+  lv_label_set_text(s_system_volume_status,"System volume: awaiting P4 (0% mutes notifications only)");
+  s_system_volume=lv_slider_create(local);
+  lv_obj_set_pos(s_system_volume,22,220);lv_obj_set_size(s_system_volume,510,12);
+  lv_slider_set_range(s_system_volume,0,100);
+  lv_obj_add_state(s_system_volume,LV_STATE_DISABLED);
+  lv_obj_add_event_cb(s_system_volume,system_volume_event,LV_EVENT_RELEASED,nullptr);
+  lv_obj_t *refresh=lv_button_create(local);lv_obj_set_pos(refresh,570,205);lv_obj_set_size(refresh,150,40);
+  lv_obj_set_user_data(refresh,(void*)"AUDIO:SYSTEM:VOLUME?");
+  lv_obj_add_event_cb(refresh,action_event,LV_EVENT_CLICKED,nullptr);
+  lv_obj_t *refreshLabel=lv_label_create(refresh);lv_label_set_text(refreshLabel,"Refresh volume");lv_obj_center(refreshLabel);
+
+  lv_obj_t *nodes = make_section(s_scroll, "REMOTE AUDIO NODES", 536, 120);
   s_nodes = make_body(nodes, 40, kBodyW - 40);
 
-  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 304, 100);
+  lv_obj_t *routing = make_section(s_scroll, "AUDIO ROUTING", 664, 100);
   s_routing = make_body(routing, 40, kBodyW - 40);
 
-  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 412, 88);
+  lv_obj_t *cmd = make_section(s_scroll, "COMMAND STATUS", 772, 88);
   s_cmd = make_body(cmd, 40, kBodyW - 40);
 
-  lv_obj_set_style_min_height(s_scroll, 520, 0);
+  // Keep the viewport fixed; the cards below define its scrollable content.
 
   page_audio_system_apply_theme();
   s_active = true;
+  emit("AUDIO:SYSTEM:VOLUME?");
 }
 
 void page_audio_system_destroy(void) {
@@ -191,6 +341,11 @@ void page_audio_system_destroy(void) {
   s_root = s_header_accent = s_btn_back = s_title = s_header_status = nullptr;
   s_strip = s_scroll = s_local_status = s_local_detail = nullptr;
   s_nodes = s_routing = s_cmd = nullptr;
+  s_ambience_status=s_ambience_file=s_picker=nullptr;
+  s_scanning=false;s_file_count=0;
+  if(s_scan_timer){lv_timer_delete(s_scan_timer);s_scan_timer=nullptr;}
+  for(auto &control:s_ambience_controls)control=nullptr;
+  s_system_volume=s_system_volume_status=nullptr;
   s_cb = nullptr;
   s_active = false;
 }

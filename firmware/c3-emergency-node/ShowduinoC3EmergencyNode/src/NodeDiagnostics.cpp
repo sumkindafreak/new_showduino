@@ -83,7 +83,7 @@ void nodeDiagPrintStatus() {
                 showduino_emergency_button_name(gEmergencyMachine.input_open),
                 (unsigned)gEmergencyMachine.latched,
                 (unsigned)gEmergencyMachine.acked,
-                emergencyEspNowHaveComms() ? 1U : 0U,
+                emergencyEspNowLinkFresh() ? 1U : 0U,
                 emergencyDisplayReady() ? "READY" : "FAIL",
                 (unsigned)emergencyEspNowChannel(),
                 (int)emergencyEspNowRssi(),

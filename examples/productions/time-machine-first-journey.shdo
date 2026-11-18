@@ -1,0 +1,2355 @@
+{
+  "schema": "showduino-production-v2",
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "project": {
+    "id": "time_machine_first_journey",
+    "name": "Time Machine - The First Journey",
+    "description": "Startup, prehistoric encounter, underwater arrival and a final electrical fault. Three minutes.",
+    "author": "Toby",
+    "version": "1.1.0",
+    "revision": 2,
+    "duration": 180000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-hand-authored",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "productionCannotDisable": true,
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "devices": [
+    {
+      "id": "p4-show-pixels",
+      "name": "P4 Show Pixels",
+      "type": "p4-pixel-line",
+      "enabled": true,
+      "binding": {
+        "route": "p4-show-pixels",
+        "nodeId": "p4",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "pixel-node-1",
+      "name": "C3 Pixel Node",
+      "type": "pixel-node",
+      "enabled": true,
+      "binding": {
+        "route": "pixel-node",
+        "nodeId": "LED-01",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "audio-node",
+      "name": "Audio Node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "AUDIO-01"
+      }
+    },
+    {
+      "id": "audio-node-pixels",
+      "name": "Audio Node Pixels",
+      "type": "audio-node-pixels",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node-pixels",
+        "nodeId": "AUDIO-01",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "lamp-node",
+      "name": "Lamp Node",
+      "type": "lamp",
+      "enabled": true,
+      "binding": {
+        "route": "lamp-node",
+        "nodeId": "LAMP-01"
+      }
+    },
+    {
+      "id": "mosfet-node",
+      "name": "MOSFET Node",
+      "type": "mosfet-node",
+      "enabled": true,
+      "binding": {
+        "route": "mosfet-node",
+        "nodeId": "MOSFET-01"
+      }
+    },
+    {
+      "id": "p4-ambience",
+      "name": "P4 Ambience DAC",
+      "type": "p4-ambience",
+      "enabled": true,
+      "binding": {
+        "route": "p4-ambience",
+        "nodeId": "p4"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-p4-pixels",
+      "name": "P4 Pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 0,
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "track-pixel-node",
+      "name": "Pixel Node",
+      "type": "pixel",
+      "enabled": true,
+      "order": 1,
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "track-audio-pixels",
+      "name": "Audio Node Pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 2,
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "track-audio",
+      "name": "Audio Node",
+      "type": "audio",
+      "enabled": true,
+      "order": 3,
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "track-lamp",
+      "name": "Lamp Node",
+      "type": "lamp",
+      "enabled": true,
+      "order": 4,
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "track-mosfet",
+      "name": "MOSFET Node",
+      "type": "mosfet",
+      "enabled": true,
+      "order": 5,
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "track-p4-bed",
+      "name": "P4 - Environment and machine bed",
+      "type": "audio",
+      "enabled": true,
+      "order": 6,
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "track-story",
+      "name": "Journey chapters",
+      "type": "log",
+      "enabled": true,
+      "order": 7
+    }
+  ],
+  "clips": [
+    {
+      "id": "a-recovery-lamp-172000",
+      "trackId": "track-lamp",
+      "name": "Electrical scene lamp baseline",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 172000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        }
+      }
+    },
+    {
+      "id": "a-recovery-lamp-156000",
+      "trackId": "track-lamp",
+      "name": "Scene lamp baseline",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 156000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        }
+      }
+    },
+    {
+      "id": "a-recovery-lamp-100000",
+      "trackId": "track-lamp",
+      "name": "Scene lamp baseline",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 100000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        }
+      }
+    },
+    {
+      "id": "a-recovery-lamp-44000",
+      "trackId": "track-lamp",
+      "name": "Scene lamp baseline",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 44000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        }
+      }
+    },
+    {
+      "id": "a-recovery-lamp-18000",
+      "trackId": "track-lamp",
+      "name": "Scene lamp baseline",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        }
+      }
+    },
+    {
+      "id": "cue-001",
+      "trackId": "track-story",
+      "name": "SCENE Machine awakening",
+      "type": "log",
+      "startMs": 0,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-002",
+      "trackId": "track-story",
+      "name": "SCENE Pressure and radio checks",
+      "type": "log",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-003",
+      "trackId": "track-story",
+      "name": "SCENE First departure",
+      "type": "log",
+      "startMs": 44000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-004",
+      "trackId": "track-story",
+      "name": "SCENE Prehistoric arrival",
+      "type": "log",
+      "startMs": 74000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-005",
+      "trackId": "track-story",
+      "name": "SCENE Second departure",
+      "type": "log",
+      "startMs": 100000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-006",
+      "trackId": "track-story",
+      "name": "SCENE Underwater arrival",
+      "type": "log",
+      "startMs": 130000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-007",
+      "trackId": "track-story",
+      "name": "SCENE Third departure - power failing",
+      "type": "log",
+      "startMs": 156000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-008",
+      "trackId": "track-story",
+      "name": "SCENE Electrical jolt",
+      "type": "log",
+      "startMs": 172000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-009",
+      "trackId": "track-story",
+      "name": "Power lost",
+      "type": "log",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-010",
+      "trackId": "track-story",
+      "name": "End of journey",
+      "type": "log",
+      "startMs": 180000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "log",
+        "params": {}
+      }
+    },
+    {
+      "id": "cue-011",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Machine awakening",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 18000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 100,
+          "b": 20,
+          "brightness": 55,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-012",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Pressure and radio checks",
+      "type": "pixel",
+      "startMs": 18000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 40,
+          "g": 255,
+          "b": 100,
+          "brightness": 95,
+          "speed": 35,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-013",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - First departure",
+      "type": "pixel",
+      "startMs": 44000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 70,
+          "g": 70,
+          "b": 255,
+          "brightness": 150,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-014",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Prehistoric arrival",
+      "type": "pixel",
+      "startMs": 74000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 10,
+          "g": 180,
+          "b": 40,
+          "brightness": 90,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-015",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Second departure",
+      "type": "pixel",
+      "startMs": 100000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 20,
+          "g": 110,
+          "b": 255,
+          "brightness": 145,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-016",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Underwater arrival",
+      "type": "pixel",
+      "startMs": 130000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 0,
+          "g": 70,
+          "b": 255,
+          "brightness": 95,
+          "speed": 18,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-017",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Third departure - power failing",
+      "type": "pixel",
+      "startMs": 156000,
+      "durationMs": 16000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 20,
+          "b": 0,
+          "brightness": 140,
+          "speed": 70,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-018",
+      "trackId": "track-p4-pixels",
+      "name": "p4-show-pixels - Electrical jolt",
+      "type": "pixel",
+      "startMs": 172000,
+      "durationMs": 6000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 210,
+          "g": 230,
+          "b": 255,
+          "brightness": 190,
+          "speed": 90,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "p4-show-pixels"
+      },
+      "targetDeviceId": "p4-show-pixels"
+    },
+    {
+      "id": "cue-019",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Machine awakening",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 18000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 100,
+          "b": 20,
+          "brightness": 55,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-020",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Pressure and radio checks",
+      "type": "pixel",
+      "startMs": 18000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 40,
+          "g": 255,
+          "b": 100,
+          "brightness": 95,
+          "speed": 35,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-021",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - First departure",
+      "type": "pixel",
+      "startMs": 44000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 70,
+          "g": 70,
+          "b": 255,
+          "brightness": 150,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-022",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Prehistoric arrival",
+      "type": "pixel",
+      "startMs": 74000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 10,
+          "g": 180,
+          "b": 40,
+          "brightness": 90,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-023",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Second departure",
+      "type": "pixel",
+      "startMs": 100000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 20,
+          "g": 110,
+          "b": 255,
+          "brightness": 145,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-024",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Underwater arrival",
+      "type": "pixel",
+      "startMs": 130000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 0,
+          "g": 70,
+          "b": 255,
+          "brightness": 95,
+          "speed": 18,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-025",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Third departure - power failing",
+      "type": "pixel",
+      "startMs": 156000,
+      "durationMs": 16000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 20,
+          "b": 0,
+          "brightness": 140,
+          "speed": 70,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-026",
+      "trackId": "track-pixel-node",
+      "name": "pixel-node-1 - Electrical jolt",
+      "type": "pixel",
+      "startMs": 172000,
+      "durationMs": 6000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 210,
+          "g": 230,
+          "b": 255,
+          "brightness": 190,
+          "speed": 90,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "pixel-node-1"
+      },
+      "targetDeviceId": "pixel-node-1"
+    },
+    {
+      "id": "cue-027",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Machine awakening",
+      "type": "pixel",
+      "startMs": 0,
+      "durationMs": 18000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 100,
+          "b": 20,
+          "brightness": 55,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-028",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Pressure and radio checks",
+      "type": "pixel",
+      "startMs": 18000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 40,
+          "g": 255,
+          "b": 100,
+          "brightness": 95,
+          "speed": 35,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-029",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - First departure",
+      "type": "pixel",
+      "startMs": 44000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 70,
+          "g": 70,
+          "b": 255,
+          "brightness": 150,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-030",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Prehistoric arrival",
+      "type": "pixel",
+      "startMs": 74000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 10,
+          "g": 180,
+          "b": 40,
+          "brightness": 90,
+          "speed": 20,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-031",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Second departure",
+      "type": "pixel",
+      "startMs": 100000,
+      "durationMs": 30000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 20,
+          "g": 110,
+          "b": 255,
+          "brightness": 145,
+          "speed": 75,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-032",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Underwater arrival",
+      "type": "pixel",
+      "startMs": 130000,
+      "durationMs": 26000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 0,
+          "g": 70,
+          "b": 255,
+          "brightness": 95,
+          "speed": 18,
+          "intensity": 85,
+          "randomness": 0,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-033",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Third departure - power failing",
+      "type": "pixel",
+      "startMs": 156000,
+      "durationMs": 16000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 255,
+          "g": 20,
+          "b": 0,
+          "brightness": 140,
+          "speed": 70,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-034",
+      "trackId": "track-audio-pixels",
+      "name": "audio-node-pixels - Electrical jolt",
+      "type": "pixel",
+      "startMs": 172000,
+      "durationMs": 6000,
+      "enabled": true,
+      "action": {
+        "type": "pixel",
+        "params": {
+          "effect": "FLICKER",
+          "startPixel": 0,
+          "count": 10,
+          "length": 10,
+          "r": 210,
+          "g": 230,
+          "b": 255,
+          "brightness": 190,
+          "speed": 90,
+          "intensity": 85,
+          "randomness": 45,
+          "blackoutAtEnd": true
+        },
+        "targetDeviceId": "audio-node-pixels"
+      },
+      "targetDeviceId": "audio-node-pixels"
+    },
+    {
+      "id": "cue-035",
+      "trackId": "track-audio",
+      "name": "Machine boot",
+      "type": "audio",
+      "startMs": 0,
+      "durationMs": 18000,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "bootingup_into_machine.wav",
+          "volume": 60,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-036",
+      "trackId": "track-audio",
+      "name": "Steam release",
+      "type": "audio",
+      "startMs": 23000,
+      "durationMs": 2800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "fx_steam.wav",
+          "volume": 65,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-037",
+      "trackId": "track-audio",
+      "name": "Radio contact 1",
+      "type": "audio",
+      "startMs": 26000,
+      "durationMs": 3800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio1.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-038",
+      "trackId": "track-audio",
+      "name": "Radio contact 2",
+      "type": "audio",
+      "startMs": 30000,
+      "durationMs": 4800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio2.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-039",
+      "trackId": "track-audio",
+      "name": "Radio contact 3",
+      "type": "audio",
+      "startMs": 35000,
+      "durationMs": 6500,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio3.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-040",
+      "trackId": "track-audio",
+      "name": "Blast shield",
+      "type": "audio",
+      "startMs": 42000,
+      "durationMs": 1800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "blast_shield.wav",
+          "volume": 65,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-041",
+      "trackId": "track-audio",
+      "name": "Dinosaur encounter",
+      "type": "audio",
+      "startMs": 74000,
+      "durationMs": 21500,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "dinosaur.wav",
+          "volume": 75,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-042",
+      "trackId": "track-audio",
+      "name": "Departure shield",
+      "type": "audio",
+      "startMs": 98000,
+      "durationMs": 1800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "blast_shield.wav",
+          "volume": 65,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-043",
+      "trackId": "track-audio",
+      "name": "Underwater radio",
+      "type": "audio",
+      "startMs": 136000,
+      "durationMs": 6000,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio4.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-044",
+      "trackId": "track-audio",
+      "name": "Departure shield",
+      "type": "audio",
+      "startMs": 154000,
+      "durationMs": 1800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "blast_shield.wav",
+          "volume": 65,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-045",
+      "trackId": "track-audio",
+      "name": "Lock warning",
+      "type": "audio",
+      "startMs": 159000,
+      "durationMs": 4800,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio9.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-046",
+      "trackId": "track-audio",
+      "name": "Power loss radio",
+      "type": "audio",
+      "startMs": 164000,
+      "durationMs": 7500,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "radio8.wav",
+          "volume": 70,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-047",
+      "trackId": "track-audio",
+      "name": "Electrical discharge",
+      "type": "audio",
+      "startMs": 172000,
+      "durationMs": 6000,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "electric.wav",
+          "volume": 75,
+          "loop": false
+        },
+        "targetDeviceId": "audio-node"
+      },
+      "targetDeviceId": "audio-node"
+    },
+    {
+      "id": "cue-048",
+      "trackId": "track-p4-bed",
+      "name": "Machine bed",
+      "type": "audio",
+      "startMs": 0,
+      "durationMs": 73900,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "machine.wav",
+          "volume": 30,
+          "loop": true
+        },
+        "targetDeviceId": "p4-ambience"
+      },
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "cue-049",
+      "trackId": "track-p4-bed",
+      "name": "Prehistoric machine idle",
+      "type": "audio",
+      "startMs": 74000,
+      "durationMs": 25900,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "machine.wav",
+          "volume": 18,
+          "loop": true
+        },
+        "targetDeviceId": "p4-ambience"
+      },
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "cue-050",
+      "trackId": "track-p4-bed",
+      "name": "Time drive",
+      "type": "audio",
+      "startMs": 100000,
+      "durationMs": 29900,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "machine.wav",
+          "volume": 38,
+          "loop": true
+        },
+        "targetDeviceId": "p4-ambience"
+      },
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "cue-051",
+      "trackId": "track-p4-bed",
+      "name": "Underwater whales",
+      "type": "audio",
+      "startMs": 130000,
+      "durationMs": 25900,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "whales.wav",
+          "volume": 45,
+          "loop": true
+        },
+        "targetDeviceId": "p4-ambience"
+      },
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "cue-052",
+      "trackId": "track-p4-bed",
+      "name": "Time drive failing",
+      "type": "audio",
+      "startMs": 156000,
+      "durationMs": 15900,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "params": {
+          "file": "machine.wav",
+          "volume": 32,
+          "loop": true
+        },
+        "targetDeviceId": "p4-ambience"
+      },
+      "targetDeviceId": "p4-ambience"
+    },
+    {
+      "id": "cue-053",
+      "trackId": "track-lamp",
+      "name": "Lamp extinguish",
+      "type": "lamp",
+      "startMs": 0,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "EXTINGUISH"
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-054",
+      "trackId": "track-lamp",
+      "name": "Lamp ignite",
+      "type": "lamp",
+      "startMs": 1000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "IGNITE"
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-055",
+      "trackId": "track-lamp",
+      "name": "Lamp unstable",
+      "type": "lamp",
+      "startMs": 44000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 70
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-056",
+      "trackId": "track-lamp",
+      "name": "Lamp ignite",
+      "type": "lamp",
+      "startMs": 74000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-057",
+      "trackId": "track-lamp",
+      "name": "Lamp unstable",
+      "type": "lamp",
+      "startMs": 100000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 65
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-058",
+      "trackId": "track-lamp",
+      "name": "Lamp ignite",
+      "type": "lamp",
+      "startMs": 130000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "STEADY_FLAME",
+          "brightness": 80
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-059",
+      "trackId": "track-lamp",
+      "name": "Lamp unstable",
+      "type": "lamp",
+      "startMs": 156000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 55
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-060",
+      "trackId": "track-lamp",
+      "name": "Lamp flare",
+      "type": "lamp",
+      "startMs": 172000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "FLARE",
+          "brightness": 100
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-061",
+      "trackId": "track-lamp",
+      "name": "Lamp extinguish",
+      "type": "lamp",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "params": {
+          "effect": "EXTINGUISH"
+        },
+        "targetDeviceId": "lamp-node"
+      },
+      "targetDeviceId": "lamp-node"
+    },
+    {
+      "id": "cue-062",
+      "trackId": "track-mosfet",
+      "name": "OUT1 console warm-up",
+      "type": "mosfet",
+      "startMs": 3000,
+      "durationMs": 12000,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "fade",
+          "duty": 25,
+          "fadeInMs": 2500,
+          "fadeOutMs": 1000,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-063",
+      "trackId": "track-mosfet",
+      "name": "OUT1 drive accent",
+      "type": "mosfet",
+      "startMs": 44250,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-064",
+      "trackId": "track-mosfet",
+      "name": "OUT1 drive accent",
+      "type": "mosfet",
+      "startMs": 100250,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-065",
+      "trackId": "track-mosfet",
+      "name": "OUT1 drive accent",
+      "type": "mosfet",
+      "startMs": 156250,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-066",
+      "trackId": "track-mosfet",
+      "name": "OUT1 drive accent",
+      "type": "mosfet",
+      "startMs": 172120,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-067",
+      "trackId": "track-mosfet",
+      "name": "OUT1 off",
+      "type": "mosfet",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out1",
+          "mode": "hold",
+          "duty": 0,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-068",
+      "trackId": "track-mosfet",
+      "name": "OUT2 console warm-up",
+      "type": "mosfet",
+      "startMs": 4000,
+      "durationMs": 12000,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "fade",
+          "duty": 25,
+          "fadeInMs": 2500,
+          "fadeOutMs": 1000,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-069",
+      "trackId": "track-mosfet",
+      "name": "OUT2 drive accent",
+      "type": "mosfet",
+      "startMs": 44500,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-070",
+      "trackId": "track-mosfet",
+      "name": "OUT2 drive accent",
+      "type": "mosfet",
+      "startMs": 100500,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-071",
+      "trackId": "track-mosfet",
+      "name": "OUT2 drive accent",
+      "type": "mosfet",
+      "startMs": 156500,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-072",
+      "trackId": "track-mosfet",
+      "name": "OUT2 drive accent",
+      "type": "mosfet",
+      "startMs": 172240,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-073",
+      "trackId": "track-mosfet",
+      "name": "OUT2 off",
+      "type": "mosfet",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out2",
+          "mode": "hold",
+          "duty": 0,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-074",
+      "trackId": "track-mosfet",
+      "name": "OUT3 console warm-up",
+      "type": "mosfet",
+      "startMs": 5000,
+      "durationMs": 12000,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "fade",
+          "duty": 25,
+          "fadeInMs": 2500,
+          "fadeOutMs": 1000,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-075",
+      "trackId": "track-mosfet",
+      "name": "OUT3 drive accent",
+      "type": "mosfet",
+      "startMs": 44750,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-076",
+      "trackId": "track-mosfet",
+      "name": "OUT3 drive accent",
+      "type": "mosfet",
+      "startMs": 100750,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-077",
+      "trackId": "track-mosfet",
+      "name": "OUT3 drive accent",
+      "type": "mosfet",
+      "startMs": 156750,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-078",
+      "trackId": "track-mosfet",
+      "name": "OUT3 drive accent",
+      "type": "mosfet",
+      "startMs": 172360,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-079",
+      "trackId": "track-mosfet",
+      "name": "OUT3 off",
+      "type": "mosfet",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out3",
+          "mode": "hold",
+          "duty": 0,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-080",
+      "trackId": "track-mosfet",
+      "name": "OUT4 console warm-up",
+      "type": "mosfet",
+      "startMs": 6000,
+      "durationMs": 12000,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "fade",
+          "duty": 25,
+          "fadeInMs": 2500,
+          "fadeOutMs": 1000,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-081",
+      "trackId": "track-mosfet",
+      "name": "OUT4 drive accent",
+      "type": "mosfet",
+      "startMs": 45000,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-082",
+      "trackId": "track-mosfet",
+      "name": "OUT4 drive accent",
+      "type": "mosfet",
+      "startMs": 101000,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-083",
+      "trackId": "track-mosfet",
+      "name": "OUT4 drive accent",
+      "type": "mosfet",
+      "startMs": 157000,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-084",
+      "trackId": "track-mosfet",
+      "name": "OUT4 drive accent",
+      "type": "mosfet",
+      "startMs": 172480,
+      "durationMs": 350,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "pulse",
+          "duty": 25,
+          "pulseMs": 350,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "cue-085",
+      "trackId": "track-mosfet",
+      "name": "OUT4 off",
+      "type": "mosfet",
+      "startMs": 178000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "mosfet",
+        "params": {
+          "out": "out4",
+          "mode": "hold",
+          "duty": 0,
+          "safeOff": true
+        },
+        "targetDeviceId": "mosfet-node"
+      },
+      "targetDeviceId": "mosfet-node"
+    },
+    {
+      "id": "recovery-bed-18000",
+      "trackId": "track-p4-bed",
+      "name": "Scene machine bed",
+      "type": "audio",
+      "targetDeviceId": "p4-ambience",
+      "startMs": 18000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "targetDeviceId": "p4-ambience",
+        "params": {
+          "file": "machine.wav",
+          "volume": 30,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "recovery-bed-44000",
+      "trackId": "track-p4-bed",
+      "name": "Scene machine bed",
+      "type": "audio",
+      "targetDeviceId": "p4-ambience",
+      "startMs": 44000,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "audio",
+        "targetDeviceId": "p4-ambience",
+        "params": {
+          "file": "machine.wav",
+          "volume": 30,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "recovery-lamp-fx-44000",
+      "trackId": "track-lamp",
+      "name": "Lamp effect after ignition",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 46500,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 70
+        }
+      }
+    },
+    {
+      "id": "recovery-lamp-fx-100000",
+      "trackId": "track-lamp",
+      "name": "Lamp effect after ignition",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 102500,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 70
+        }
+      }
+    },
+    {
+      "id": "recovery-lamp-fx-156000",
+      "trackId": "track-lamp",
+      "name": "Lamp effect after ignition",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 158500,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "UNSTABLE",
+          "brightness": 70
+        }
+      }
+    },
+    {
+      "id": "recovery-lamp-fx-172000",
+      "trackId": "track-lamp",
+      "name": "Lamp effect after ignition",
+      "type": "lamp",
+      "targetDeviceId": "lamp-node",
+      "startMs": 174500,
+      "durationMs": 0,
+      "enabled": true,
+      "action": {
+        "type": "lamp",
+        "targetDeviceId": "lamp-node",
+        "params": {
+          "effect": "FLARE",
+          "brightness": 100
+        }
+      }
+    }
+  ],
+  "markers": [
+    {
+      "id": "marker-0",
+      "name": "Machine awakening",
+      "timeMs": 0
+    },
+    {
+      "id": "marker-18",
+      "name": "Pressure and radio checks",
+      "timeMs": 18000
+    },
+    {
+      "id": "marker-44",
+      "name": "First departure",
+      "timeMs": 44000
+    },
+    {
+      "id": "marker-74",
+      "name": "Prehistoric arrival",
+      "timeMs": 74000
+    },
+    {
+      "id": "marker-100",
+      "name": "Second departure",
+      "timeMs": 100000
+    },
+    {
+      "id": "marker-130",
+      "name": "Underwater arrival",
+      "timeMs": 130000
+    },
+    {
+      "id": "marker-156",
+      "name": "Third departure - power failing",
+      "timeMs": 156000
+    },
+    {
+      "id": "marker-172",
+      "name": "Electrical jolt",
+      "timeMs": 172000
+    },
+    {
+      "id": "marker-178",
+      "name": "Power lost",
+      "timeMs": 178000
+    },
+    {
+      "id": "marker-180",
+      "name": "End of journey",
+      "timeMs": 180000
+    }
+  ],
+  "scenes": [],
+  "assets": [
+    {
+      "id": "asset-1",
+      "name": "blast_shield.wav",
+      "type": "audio",
+      "path": "blast_shield.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-2",
+      "name": "bootingup_into_machine.wav",
+      "type": "audio",
+      "path": "bootingup_into_machine.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-3",
+      "name": "dinosaur.wav",
+      "type": "audio",
+      "path": "dinosaur.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-4",
+      "name": "electric.wav",
+      "type": "audio",
+      "path": "electric.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-5",
+      "name": "fx_steam.wav",
+      "type": "audio",
+      "path": "fx_steam.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-6",
+      "name": "machine.wav",
+      "type": "audio",
+      "path": "machine.wav",
+      "storage": "p4-sd-ambience"
+    },
+    {
+      "id": "asset-7",
+      "name": "radio1.wav",
+      "type": "audio",
+      "path": "radio1.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-8",
+      "name": "radio2.wav",
+      "type": "audio",
+      "path": "radio2.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-9",
+      "name": "radio3.wav",
+      "type": "audio",
+      "path": "radio3.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-10",
+      "name": "radio4.wav",
+      "type": "audio",
+      "path": "radio4.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-11",
+      "name": "radio8.wav",
+      "type": "audio",
+      "path": "radio8.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-12",
+      "name": "radio9.wav",
+      "type": "audio",
+      "path": "radio9.wav",
+      "storage": "audio-node-sd"
+    },
+    {
+      "id": "asset-13",
+      "name": "whales.wav",
+      "type": "audio",
+      "path": "whales.wav",
+      "storage": "p4-sd-ambience"
+    }
+  ],
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 500,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "original-time-machine-adaptation",
+    "notes": "Linear 180s adaptation through the electrical jolt before wartime arrival. No emergency assertion or clear is authored. Lamp sound unverified. MOSFET channels assumed lighting at 25%. Logical node IDs LED-01/AUDIO-01/LAMP-01/MOSFET-01. P4 machine.wav is a copy of machine_only_ambience.wav. New timed-ambience firmware required.",
+    "reference": "https://github.com/sumkindafreak/new_showduino/blob/main/archive/showduino-0.1/original-time-machine-controller.ino",
+    "sceneRecovery": "Named SCENE log checkpoints carry complete scene startup. Clear emergency first, then explicit confirmed restart. Earlier cues are never replayed. Lamp baselines use STEADY_FLAME; scene FX repeat after 2.5 seconds to allow cold ignition."
+  }
+}

@@ -39,6 +39,8 @@ typedef struct ShowduinoMosfetDetailWire {
   uint8_t seen;
   char firstId[16];
   char firstState[20];
+  uint8_t haveLevels;
+  uint8_t levels[4];
 } ShowduinoMosfetDetailWire;
 
 static inline ShowduinoMosfetNodeWire showduino_parse_state_node_mosfet(const char *line) {
@@ -77,7 +79,24 @@ static inline int showduino_parse_state_node_mosfet_detail(const char *line,
   if (n >= sizeof(out->firstId)) n = sizeof(out->firstId) - 1;
   memcpy(out->firstId, c2 + 1, n);
   out->firstId[n] = '\0';
-  strncpy(out->firstState, c3 + 1, sizeof(out->firstState) - 1);
+  const char *levels = strstr(c3 + 1, ":O=");
+  n = levels ? (size_t)(levels - (c3 + 1)) : strlen(c3 + 1);
+  if (n >= sizeof(out->firstState)) n = sizeof(out->firstState) - 1;
+  memcpy(out->firstState, c3 + 1, n);
+  if (levels) {
+    const char *value = levels + 3;
+    uint8_t parsed[4];
+    for (unsigned i = 0; i < 4; ++i) {
+      char *end;
+      if (*value < '0' || *value > '9') return 1;
+      unsigned long level = strtoul(value, &end, 10);
+      if (level > 100 || (i < 3 ? *end != ',' : *end != '\0')) return 1;
+      parsed[i] = (uint8_t)level;
+      value = end + (i < 3 ? 1 : 0);
+    }
+    memcpy(out->levels, parsed, sizeof(parsed));
+    out->haveLevels = 1;
+  }
   return 1;
 }
 

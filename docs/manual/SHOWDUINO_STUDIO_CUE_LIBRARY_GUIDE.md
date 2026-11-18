@@ -1,5 +1,7 @@
 # Showduino Studio Cue Library — creator guide
 
+> Candidate clarification, 2 November 2026: this guide describes the website and its 30 October main-source comparison. This reconciliation branch preserves the owner’s active native Director Cue Library monitor/FOLLOW/checkpoint implementation; the historical disabled-tile statement below does not describe this branch. The native monitor is distinct from the website cue editor. See [candidate record](../reconciliation-update-2026-11-02.md).
+
 **Source-checked 30 October 2026.** This describes the **public Website Studio timeline Cue Library** in `sumkindafreak/showduino.com/js/timeline-fx-daw.js`, cross-checked with the Director source in `new_showduino`. The embedded S3 `/studio/` snapshot and installed firmware may differ. This is an authoring guide, not a claim of all-node hardware acceptance.
 
 ## Where the library lives

@@ -1,0 +1,134 @@
+{
+  "schema": "showduino-production-v2",
+  "project": {
+    "id": "6d9fc986-0a7d-4031-ac5c-7ca47a123b66",
+    "name": "relay-refused",
+    "description": "",
+    "version": "2.0.0",
+    "createdAt": "2026-11-11T13:58:30.960Z",
+    "updatedAt": "2026-11-11T13:58:30.960Z",
+    "bpm": 120,
+    "duration": 300000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-studio",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "devices": [
+    {
+      "id": "device-relay-1-relay",
+      "name": "relay-1",
+      "type": "custom",
+      "enabled": true,
+      "binding": {
+        "route": "unbound",
+        "nodeId": "relay-1"
+      },
+      "capabilities": {},
+      "metadata": {
+        "derivedFromLegacyRouting": true
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "1ceb3345-cc95-4dcd-8bab-0099de086cf0",
+      "name": "relay relay-1",
+      "type": "relay",
+      "enabled": true,
+      "locked": false,
+      "order": 0,
+      "targetDeviceId": "device-relay-1-relay"
+    }
+  ],
+  "clips": [
+    {
+      "id": "e91d2050-c447-4483-a8de-b03d5b6a7a38",
+      "trackId": "1ceb3345-cc95-4dcd-8bab-0099de086cf0",
+      "sceneId": "scene-main-timeline",
+      "cueId": "cue-main-timeline",
+      "name": "Relay",
+      "type": "relay",
+      "startMs": 0,
+      "durationMs": 100,
+      "enabled": true,
+      "targetDeviceId": "device-relay-1-relay",
+      "target": "relay-1",
+      "action": {
+        "type": "relay",
+        "label": "Relay",
+        "targetDeviceId": "device-relay-1-relay",
+        "target": "relay-1",
+        "delayMs": 0,
+        "durationMs": 100,
+        "value": "Relay",
+        "notes": "",
+        "params": {
+          "out": "out1",
+          "mode": "hold",
+          "state": true,
+          "pulseMs": 0,
+          "safeOff": true
+        }
+      }
+    }
+  ],
+  "markers": [],
+  "scenes": [
+    {
+      "id": "scene-main-timeline",
+      "name": "Main Timeline",
+      "description": "Timeline authored in Showduino Studio V4.",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-main-timeline",
+          "name": "Timeline",
+          "trigger": "Timeline",
+          "notes": "",
+          "clipIds": [
+            "e91d2050-c447-4483-a8de-b03d5b6a7a38"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [],
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "metadata": {
+    "studioModel": "timeline-tracks-clips-logical-devices",
+    "authoringSource": "showduino-studio-v4"
+  }
+}

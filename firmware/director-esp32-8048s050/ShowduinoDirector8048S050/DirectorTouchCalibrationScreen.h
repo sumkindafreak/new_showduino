@@ -52,6 +52,7 @@ private:
   uint8_t pointIndex_ = 0;
   uint32_t ackUntilMs_ = 0;
   uint32_t savedUntilMs_ = 0;
+  uint32_t lastSampleStampMs_ = 0;
   int32_t pressX_ = 0;
   int32_t pressY_ = 0;
   bool pressed_ = false;
@@ -68,6 +69,8 @@ private:
   void setPhase(Phase phase);
   void abortUnsaved(const char *why);
   void onPointAccepted(int32_t rawX, int32_t rawY);
+  void onFingerUp();
+  void captureWhileDown(int32_t rawX, int32_t rawY);
   void finishFit();
   void doSave();
   void doReset();

@@ -1,0 +1,997 @@
+{
+  "schema": "showduino-production-v2",
+  "package": {
+    "format": "showduino-production",
+    "version": 2,
+    "architecture": "director-comms-p4-nodes",
+    "runtimeAuthority": "esp32-p4-show-engine"
+  },
+  "project": {
+    "id": "audio_dual_pixel_bench",
+    "name": "Audio + Dual Pixel Bench",
+    "description": "60-second audio, Audio Node pixels and Emergency Node pixels test.",
+    "author": "Showduino",
+    "version": "2.0.0",
+    "revision": 1,
+    "duration": 60000
+  },
+  "architecture": {
+    "version": 1,
+    "creator": "showduino-hand-authored",
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "operator": "esp32-s3-director",
+    "transport": "esp32-s3-comms-controller",
+    "nodeAddressing": "logical-device-id"
+  },
+  "compatibility": {
+    "shdoMajor": 2,
+    "minimumStudioVersion": "2.0.0",
+    "minimumRuntimeProtocol": 1
+  },
+  "safety": {
+    "runtimeAuthority": "esp32-p4-show-engine",
+    "policy": "firmware-authoritative",
+    "productionCannotDisable": true,
+    "emergency": {
+      "stopTimeline": true,
+      "pixelOverride": "all-white",
+      "requiresManualClear": true,
+      "autoResume": false,
+      "productionCannotDisable": true
+    }
+  },
+  "devices": [
+    {
+      "id": "audio-1",
+      "name": "Audio Node",
+      "type": "audio-node",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node",
+        "nodeId": "AUDIO-01"
+      }
+    },
+    {
+      "id": "audio-pixels",
+      "name": "Audio GPIO22 pixels",
+      "type": "pixel",
+      "enabled": true,
+      "binding": {
+        "route": "audio-node-pixels",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    },
+    {
+      "id": "estop-pixels",
+      "name": "Emergency Node pixels",
+      "type": "pixel",
+      "enabled": true,
+      "binding": {
+        "route": "estop-node-pixels",
+        "pixelStart": 0,
+        "pixelCount": 10
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-audio-1",
+      "name": "Audio Node",
+      "type": "audio",
+      "enabled": true,
+      "order": 0,
+      "targetDeviceId": "audio-1"
+    },
+    {
+      "id": "track-audio-pixels",
+      "name": "Audio GPIO22 pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 1,
+      "targetDeviceId": "audio-pixels"
+    },
+    {
+      "id": "track-estop-pixels",
+      "name": "Emergency Node pixels",
+      "type": "pixel",
+      "enabled": true,
+      "order": 2,
+      "targetDeviceId": "estop-pixels"
+    }
+  ],
+  "clips": [
+    {
+      "id": "audio-loop",
+      "trackId": "track-audio-1",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-loop",
+      "name": "Bench melody loop",
+      "type": "audio",
+      "targetDeviceId": "audio-1",
+      "startMs": 2000,
+      "durationMs": 54000,
+      "enabled": true,
+      "params": {
+        "file": "bench_sync.wav",
+        "volume": 55,
+        "loop": true
+      },
+      "action": {
+        "type": "audio",
+        "label": "Bench melody loop",
+        "targetDeviceId": "audio-1",
+        "delayMs": 0,
+        "durationMs": 54000,
+        "params": {
+          "file": "bench_sync.wav",
+          "volume": 55,
+          "loop": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-0",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-0",
+      "name": "Red audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 3000,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Red audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 0,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-0",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-0",
+      "name": "Red estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 3200,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 0,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Red estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 0,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-1",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-1",
+      "name": "Green audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 10000,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 255,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Green audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 255,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-1",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-1",
+      "name": "Green estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 10200,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Green estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 0,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-2",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-2",
+      "name": "Blue audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 17000,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 0,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Blue audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 0,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-2",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-2",
+      "name": "Blue estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 17200,
+      "durationMs": 6000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 255,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Blue estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 6000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 255,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-3",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-3",
+      "name": "Rainbow audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 24000,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "RAINBOW",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Rainbow audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "RAINBOW",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 0,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-3",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-3",
+      "name": "Rainbow estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 24200,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "RAINBOW",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 0,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Rainbow estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "RAINBOW",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 0,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-4",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-4",
+      "name": "Chase audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 33000,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "CHASE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 255,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Chase audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "CHASE",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 255,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-4",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-4",
+      "name": "Chase estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 33200,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "CHASE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 160,
+        "b": 0,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Chase estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "CHASE",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 160,
+          "b": 0,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-5",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-5",
+      "name": "Breathe audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 42000,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "BREATHE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 180,
+        "g": 0,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Breathe audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "r": 180,
+          "g": 0,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-5",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-5",
+      "name": "Breathe estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 42200,
+      "durationMs": 8000,
+      "enabled": true,
+      "params": {
+        "effect": "BREATHE",
+        "startPixel": 0,
+        "count": 10,
+        "r": 0,
+        "g": 255,
+        "b": 160,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Breathe estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 8000,
+        "params": {
+          "effect": "BREATHE",
+          "startPixel": 0,
+          "count": 10,
+          "r": 0,
+          "g": 255,
+          "b": 160,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "audio-pixels-6",
+      "trackId": "track-audio-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-audio-pixels-6",
+      "name": "Final white audio-pixels",
+      "type": "pixel",
+      "targetDeviceId": "audio-pixels",
+      "startMs": 51000,
+      "durationMs": 4000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": false,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Final white audio-pixels",
+        "targetDeviceId": "audio-pixels",
+        "delayMs": 0,
+        "durationMs": 4000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": false,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "estop-pixels-6",
+      "trackId": "track-estop-pixels",
+      "sceneId": "scene-main",
+      "cueId": "cue-estop-pixels-6",
+      "name": "Final white estop-pixels",
+      "type": "pixel",
+      "targetDeviceId": "estop-pixels",
+      "startMs": 51200,
+      "durationMs": 4000,
+      "enabled": true,
+      "params": {
+        "effect": "SOLID",
+        "startPixel": 0,
+        "count": 10,
+        "r": 255,
+        "g": 255,
+        "b": 255,
+        "brightness": 96,
+        "speed": 45,
+        "intensity": 100,
+        "randomness": 0,
+        "reverse": true,
+        "blackoutAtEnd": true
+      },
+      "action": {
+        "type": "pixel",
+        "label": "Final white estop-pixels",
+        "targetDeviceId": "estop-pixels",
+        "delayMs": 0,
+        "durationMs": 4000,
+        "params": {
+          "effect": "SOLID",
+          "startPixel": 0,
+          "count": 10,
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "brightness": 96,
+          "speed": 45,
+          "intensity": 100,
+          "randomness": 0,
+          "reverse": true,
+          "blackoutAtEnd": true
+        }
+      }
+    },
+    {
+      "id": "show-end",
+      "trackId": "track-audio-1",
+      "sceneId": "scene-main",
+      "cueId": "cue-end",
+      "name": "Bench complete",
+      "type": "log",
+      "startMs": 60000,
+      "durationMs": 0,
+      "enabled": true
+    }
+  ],
+  "markers": [
+    {
+      "id": "marker-3000",
+      "name": "Red",
+      "timeMs": 3000
+    },
+    {
+      "id": "marker-10000",
+      "name": "Green",
+      "timeMs": 10000
+    },
+    {
+      "id": "marker-17000",
+      "name": "Blue",
+      "timeMs": 17000
+    },
+    {
+      "id": "marker-24000",
+      "name": "Rainbow",
+      "timeMs": 24000
+    },
+    {
+      "id": "marker-33000",
+      "name": "Chase",
+      "timeMs": 33000
+    },
+    {
+      "id": "marker-42000",
+      "name": "Breathe",
+      "timeMs": 42000
+    },
+    {
+      "id": "marker-51000",
+      "name": "Final white",
+      "timeMs": 51000
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene-main",
+      "name": "Audio + Dual Pixel Bench",
+      "order": 0,
+      "cues": [
+        {
+          "id": "cue-audio-loop",
+          "name": "Bench melody loop",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-loop"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-0",
+          "name": "Red audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-0"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-0",
+          "name": "Red estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-0"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-1",
+          "name": "Green audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-1"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-1",
+          "name": "Green estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-1"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-2",
+          "name": "Blue audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-2"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-2",
+          "name": "Blue estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-2"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-3",
+          "name": "Rainbow audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-3"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-3",
+          "name": "Rainbow estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-3"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-4",
+          "name": "Chase audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-4"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-4",
+          "name": "Chase estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-4"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-5",
+          "name": "Breathe audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-5"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-5",
+          "name": "Breathe estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-5"
+          ]
+        },
+        {
+          "id": "cue-audio-pixels-6",
+          "name": "Final white audio-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "audio-pixels-6"
+          ]
+        },
+        {
+          "id": "cue-estop-pixels-6",
+          "name": "Final white estop-pixels",
+          "trigger": "Timeline",
+          "clipIds": [
+            "estop-pixels-6"
+          ]
+        },
+        {
+          "id": "cue-end",
+          "name": "Bench complete",
+          "trigger": "Timeline",
+          "clipIds": [
+            "show-end"
+          ]
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "bench-wav",
+      "name": "bench_sync.wav",
+      "type": "audio",
+      "path": "bench_sync.wav"
+    }
+  ],
+  "globalSettings": {},
+  "config": {
+    "snapEnabled": true,
+    "snapMs": 1000,
+    "gridEnabled": true,
+    "zoom": 0.1
+  },
+  "metadata": {
+    "authoringSource": "Showduino bench test",
+    "requiresP4Firmware": "0.6.11",
+    "pixelCountPerLine": 10
+  }
+}

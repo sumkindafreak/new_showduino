@@ -155,10 +155,7 @@ static void refresh_row_styles(void) {
       lv_obj_add_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
     }
   }
-  if (s_list) {
-    const int16_t content_h = (int16_t)(s_count * (kRowH + kRowGap) + 8);
-    lv_obj_set_style_min_height(s_list, content_h > kListH ? content_h : kListH, 0);
-  }
+  // Keep the viewport fixed; visible child rows define the scrollable extent.
   update_summary_and_actions();
 }
 
@@ -278,6 +275,7 @@ static void build_list(lv_obj_t *parent) {
   lv_obj_remove_style_all(s_list);
   lv_obj_set_pos(s_list, kListX, kListY);
   lv_obj_set_size(s_list, kListW, kListH);
+  lv_obj_clear_flag(s_list, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
   lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
   lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);

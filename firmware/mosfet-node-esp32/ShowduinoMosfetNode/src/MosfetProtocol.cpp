@@ -43,6 +43,8 @@ void mosfetProtocolLoop() {
 }
 
 void mosfetProtocolLocalTest() {
+  MosfetOutputStateLock lock;
+  if (!lock) return;
   if (mosfetNodeStateOwned() || mosfetNodeStateEmergency()) return;
   mosfetOutputEnginePulse(1, 100, SHOWDUINO_MOSFET_LOCAL_TEST_MS);
   sLocalTestUntil = millis() + SHOWDUINO_MOSFET_LOCAL_TEST_MS;
@@ -61,6 +63,9 @@ static void replyStatus(uint32_t sequence) {
 
 bool mosfetProtocolApply(const char *command, uint32_t sequence, ShowduinoCmdOrigin origin) {
   if (!command || !command[0]) return false;
+  // Keep the policy check and the operation atomic with an incoming Emergency.
+  MosfetOutputStateLock lock;
+  if (!lock) return false;
   ShowduinoMosfetCmd cls = showduino_mosfet_classify_command(command);
   ShowduinoMosfetFail gate = showduino_mosfet_can_accept(mosfetNodeStateGet(), cls, origin);
   if (gate != SHOWDUINO_MOSFET_FAIL_NONE) {

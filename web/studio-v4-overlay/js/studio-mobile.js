@@ -140,6 +140,10 @@
       const id = String(clip.routing?.nodeId || '').trim();
       if (id && !result.includes(id)) result.push(id);
     });
+    for (const device of (project()?.devices || [])) {
+      const node = device.binding?.nodeId;
+      if (node && (!type || device.metadata?.layerType === type) && !result.includes(node)) result.push(node);
+    }
     return result.sort((a,b) => a.localeCompare(b));
   }
 
@@ -661,8 +665,10 @@
     return draft;
   }
 
-  function findOrCreateTrack(type) {
-    let track = tracks().find((item) => item.type === type && !item.locked);
+  function findOrCreateTrack(type, draft = null) {
+    const bound = draft && window.ShowduinoLiveLayers?.trackForClip(draft, project());
+    if (bound) return bound;
+    let track = tracks().find((item) => item.type === type && !item.locked && !item.targetDeviceId);
     if (track) return track;
     track = window.SHDOModel.createTrack(type,TYPE_META[type]?.name || `${type} Track`,tracks().length);
     project().tracks.push(track);
@@ -687,8 +693,9 @@
         current.clips[index] = draft;
       }
     } else {
-      const track = findOrCreateTrack(draft.type);
+      const track = findOrCreateTrack(draft.type, draft);
       draft.trackId = track.id;
+      window.ShowduinoLiveLayers?.bindClip(draft, current);
       current.clips.push(draft);
     }
     current.project.updatedAt = new Date().toISOString();

@@ -12,8 +12,16 @@ function Run-One($name, $srcName, $exeName) {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+Run-One "Playback telemetry freshness" "test_runtime_freshness.cpp" "runtime_freshness_tests.exe"
+Run-One "System sound volume" "test_system_sound_volume.cpp" "system_sound_volume_tests.exe"
+Run-One "Director emergency clearance" "test_emergency_clear_flow.cpp" "emergency_clear_flow_tests.exe"
 Run-One "Director lamp sheet" "test_lamp_sheet.cpp" "lamp_sheet_tests.exe"
 Run-One "Director emergency sheet" "test_emergency_sheet.cpp" "emergency_sheet_tests.exe"
+Run-One "Director audio inventory" "test_audio_inventory.cpp" "audio_inventory_tests.exe"
+Run-One "Director cue library" "test_cue_library.cpp" "cue_library_tests.exe"
+Run-One "Director emergency clearance" "test_emergency_clear_flow.cpp" "emergency_clear_flow_tests.exe"
+Run-One "System sound volume" "test_system_sound_volume.cpp" "system_sound_volume_tests.exe"
+Run-One "Runtime freshness" "test_runtime_freshness.cpp" "runtime_freshness_tests.exe"
 $calInc = Join-Path $here "..\..\firmware\director-esp32-8048s050\ShowduinoDirector8048S050"
 Write-Host "Compiling Director touch calibration..."
 $calSrc = Join-Path $here "test_touch_calibration.cpp"
@@ -23,4 +31,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Running Director touch calibration..."
 & $calOut
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-exit 0
+Write-Host "Running timeline delivery and RUN verification..."
+& node (Join-Path $here "test_timeline_delivery.cjs")
+exit $LASTEXITCODE

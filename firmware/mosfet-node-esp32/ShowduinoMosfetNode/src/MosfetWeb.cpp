@@ -209,10 +209,6 @@ static void handleOutName() {
 }
 
 static void handleTest() {
-  if (mosfetNodeStateOwned() || mosfetNodeStateEmergency()) {
-    sServer.send(403, "text/plain", "DENIED");
-    return;
-  }
   String body = sServer.arg("plain");
   int ch = 1;
   int level = 50;
@@ -223,9 +219,16 @@ static void handleTest() {
   if (ch < 1 || ch > 4) ch = 1;
   if (level < 0) level = 0;
   if (level > 100) level = 100;
-  mosfetOutputEnginePulse((uint8_t)ch, (uint8_t)level, SHOWDUINO_MOSFET_LOCAL_TEST_MS);
-  sLocalTestUntil = millis() + SHOWDUINO_MOSFET_LOCAL_TEST_MS;
-  sServer.send(200, "text/plain", "OK");
+  bool accepted = false;
+  {
+    MosfetOutputStateLock lock;
+    if (lock && !mosfetNodeStateOwned() && !mosfetNodeStateEmergency()) {
+      accepted = mosfetOutputEnginePulse((uint8_t)ch, (uint8_t)level, SHOWDUINO_MOSFET_LOCAL_TEST_MS);
+      if (accepted) sLocalTestUntil = millis() + SHOWDUINO_MOSFET_LOCAL_TEST_MS;
+    }
+  }
+  // Do not hold the state lock while sending an HTTP response.
+  sServer.send(accepted ? 200 : 403, "text/plain", accepted ? "OK" : "DENIED");
 }
 
 static void handleAllOff() {

@@ -18,7 +18,7 @@
  * OLED: same SSD1306 geometry as the C3 Pixel Node (SDA5/SCL6).
  */
 
-#define SHOWDUINO_EMERGENCY_NODE_FW             "0.3.1"
+#define SHOWDUINO_EMERGENCY_NODE_FW             "0.3.2"
 #define SHOWDUINO_EMERGENCY_NODE_BOARD          "ESP32-C3 Super Mini OLED"
 #define SHOWDUINO_EMERGENCY_NODE_GPIO_VERIFIED  0
 

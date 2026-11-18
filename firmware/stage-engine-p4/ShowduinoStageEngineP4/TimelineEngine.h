@@ -100,6 +100,16 @@ public:
     Serial.println("Playback started");
   }
 
+  bool StartAt(uint32_t timeMs) {
+    if (!cueCount || timeMs >= durationMs || playState == TimelinePlayState::Running) return false;
+    nextCue = 0;
+    while (nextCue < cueCount && cues[nextCue].timeMs < timeMs) ++nextCue;
+    elapsedMs = pausedAccumMs = timeMs;
+    anchorMs = millis();
+    playState = TimelinePlayState::Running;
+    return true; // Earlier cues are skipped, never replayed to fast-forward.
+  }
+
   void Stop() {
     if (playState != TimelinePlayState::Stopped) {
       Serial.println("Playback stopped");
