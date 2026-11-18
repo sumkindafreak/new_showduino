@@ -4,6 +4,7 @@ on:
     paths:
       - 'firmware/audio-node-esp32-a1s/**'
       - 'firmware/c3-emergency-node/**'
+      - 'firmware/c3-pixel-node/**'
       - 'firmware/s3-comms-controller/**'
       - 'firmware/mosfet-node-esp32/**'
       - 'firmware/shared-node/**'
@@ -35,6 +36,9 @@ jobs:
           - target: Emergency
             sketch: firmware/c3-emergency-node/ShowduinoC3EmergencyNode
             fqbn: 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M'
+          - target: Pixel
+            sketch: firmware/c3-pixel-node/ShowduinoC3PixelNode
+            fqbn: 'esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M'
           - target: Comms
             sketch: firmware/s3-comms-controller/ShowduinoS3CommsController
             fqbn: 'esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=8M,PSRAM=opi,PartitionScheme=default_8MB'
@@ -58,7 +62,7 @@ jobs:
             arduino-cli lib install 'ESP8266Audio@2.4.1'
           fi
           if [ '${{ matrix.target }}' = Audio-FastLED-Frame ]; then arduino-cli lib install 'FastLED@3.10.8'; fi
-          if [ '${{ matrix.target }}' = Emergency ]; then
+          if [ '${{ matrix.target }}' = Emergency ] || [ '${{ matrix.target }}' = Pixel ]; then
             arduino-cli lib install 'Adafruit BusIO@1.17.4'
             arduino-cli lib install 'Adafruit GFX Library@1.13.0'
             arduino-cli lib install 'Adafruit SSD1306@2.5.17'
