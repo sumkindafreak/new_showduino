@@ -1,54 +1,62 @@
-# Showduino: Weekend Build and First-Show Guide
+# Showduino V1 — First Show and Build Evidence Guide
 
-> **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+**Rewrite 19 November 2026 · Source `41c7c71` · RC documentation, not physical sign-off.**
 
-**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+## Use the working show as your starting point
 
-Product: 1.0.0-rc.1 / SHDO v2. Status: documentation work in progress.
+The owner reported the first combined physical audio/visual Showduino playback on **29 October 2026**, then a working **22-second local production** and a corrected local Emergency-clear path. That achievement remains valid as an observation. It is **not** a signed two-run/full-Emergency acceptance.
 
-This guide accompanies the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md), [User Manual](SHOWDUINO_USER_MANUAL.md), [Quick Start](SHOWDUINO_QUICK_START.md), [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md), and [Manual Gaps](SHOWDUINO_MANUAL_GAPS.md).
+For the **next bench gate**, use that same production and untouched local flashed firmware, not an ambitious new show. The purpose is to prove **repeatability and safe recovery**.
 
-## Capture your installed build
+## Step 1 — Preserve the known-good bench
 
-1. Photograph the three main boards in the central enclosure: Director S3 touchscreen, dedicated Comms S3, and P4 Show Engine.
-2. Photograph Audio, Lamp, Pixel, Emergency and MOSFET nodes individually. Capture both PCB sides, connectors, and fitted enclosures.
-3. For every part, record exact PCB revision, manufacturer, supplier, quantity, voltage, role, mounting, and spare availability.
-4. Record firmware Git commit, board manager core version, installed libraries, FQBN options, and physical test evidence per node.
+1. Save the P4, Comms, Director and all active Node firmware binaries/configuration, with source hashes where known.
+2. Copy the working P4 SD `/showduino/` tree, every Audio/Node media card and show assets; preserve originals.
+3. Photograph each board's silk, fitted wiring, power supplies, connectors, antenna/ground arrangement and enclosures.
+4. Record versions, Arduino board core/FQBN, libraries and physical node identities in the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md).
+5. Do **not** replace installed code with current GitHub `main` as part of this documentation work.
 
-Use the [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) as the working source for pinouts and vendor/firmware references. Do not claim a representative product photo is a verified photo of the installed module.
+## Step 2 — Perform a controlled complete run **twice**
 
-**24 October status:** Use the [finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the distinction between `main` and draft PR #29's fixed 22-second all-node test. The physical normal run and mid-show Emergency repeat are **NOT YET VERIFIED**. Do not start a different production or add new features to close this gate.
+1. Isolate hazardous effects; use safe observation or low-power loads.
+2. Boot P4 → Comms → Director → Nodes; confirm fresh **P4 state** and all production-required nodes.
+3. Select and **LOAD** the already-persisted 22-second show. Record P4 acknowledgement.
+4. **START** it from an authorised operator surface. Capture P4 state, cue timing, Audio Node output, pixel behaviour and any safe MOSFET feedback.
+5. Capture **P4 COMPLETE**, safe end state and timestamps.
+6. Repeat from a fresh loaded/ready state **without firmware or show edits**. Record a separate second result.
 
-**29 October physical milestone:** Showduino has now **played its first real combined audio/visual show on physical hardware**, as confirmed by the owner. That success must not be erased by the older 22-second fixture's `NOT RUN` status. Teething issues remain and the owner has not yet recorded a complete, repeatable P4-confirmed scenario or mid-show Emergency recovery. **For the smallest finish-line test, preserve today's working production and firmware, repeat that same show through COMPLETE, then test Emergency interruption and deliberate clear with no automatic restart.** Do not introduce new features or additional hardware for this gate. See the [29 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+A visual/audio performance without an authoritative start-to-complete log is useful progress but **not** this gate's PASS.
 
-## First show: safe workflow
+## Step 3 — Test the Emergency separately
 
-1. Consult the [Quick Start](SHOWDUINO_QUICK_START.md) and power the P4, Comms, Director, then each specialist node.
-2. Confirm the link and P4 authority before using the Director.
-3. Create one simple scene and one timed Pixel or Audio clip inside Studio. In Website Studio's **Timeline**, expand **Cue Library**, search a preset, drag it onto a compatible unlocked track (or Mixed Lane), or double-click to insert at the playhead. Select the clip and confirm its timing, logical Node ID, output and Pixel segment or Audio file. See the [Cue Library creator guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md); the Director HOME Cue Library tile is not the Studio editor.
-4. Validate and export SHDO v2. Refer to [show format](../show-file-format.md) and [Studio documentation](../studio/README.md).
-5. Verify which authored cue types the installed P4 firmware can deploy and execute; Studio preview alone is not physical proof.
-6. From Website Studio, export the `.shdo`, open the saved Communications S3 address, then use **Productions → Persist SHDO v2 to P4 SD → Persist to SD**. Wait for the P4 confirmation, separately **Load** the production, then explicitly **START** and **STOP**. Record actual hardware responses. See the [Quick Start workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
-7. Test Emergency assertion, operator-authorised clear, blackout or override, and no automatic show restart.
+1. While the controlled test show runs, press the **main physical P4 Emergency** button.
+2. Confirm latched Emergency, correct safe outputs and stopped programme audio. Release the button and confirm latch remains.
+3. When safe, request **CLEAR EMERGENCY** on the Director; deliberately **CONFIRM CLEAR**, then observe actual P4 acceptance.
+4. Confirm **NO AUTOMATIC RESUME**. A deliberate new start/resume may be tested afterward as its own action.
+5. Log failures; don't reboot as a substitute for clear or claim completion from a temporary workaround.
 
-Showduino Emergency is a theatrical show-control function and is not a certified life-safety system. Isolate risky loads during bench tests.
+The main Emergency **8-second hold** triggers **Locate**, not a clear gesture. Separate venue safety systems must remain functional at all times.
 
-## Record physical acceptance
+## Step 4 — Only then exercise a newly authored show
 
-| Test | Status (fill in after bench test) |
+Use Website Studio → export **SHDO v2** → Comms **Productions → Persist SHDO v2 to P4 SD → Persist to SD** → separate **Load** → **Start**.
+
+Do not assume every Studio preset is accepted by the installed compiler. Follow the [Studio Cue Library Guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) and record compile acceptance/rejection. The Director's Cue Library is a **live monitor**, not the Website Studio editor.
+
+## Step 5 — Record the evidence, not just a PASS word
+
+| What to capture | Required details |
 | --- | --- |
-| P4 boot, SD, system audio | NOT YET VERIFIED |
-| Comms S3 UART and ESP-NOW | NOT YET VERIFIED |
-| Director screen and touch | NOT YET VERIFIED |
-| Audio Node WAV and Emergency | NOT YET VERIFIED |
-| GPIO23 show pixels and GPIO24 signage | NOT YET VERIFIED |
-| C3 Pixel and Emergency Nodes | NOT YET VERIFIED |
-| Lamp Node | NOT YET VERIFIED |
-| MOSFET physical DC outputs | NOT YET VERIFIED |
-| Full show plus recovery | NOT YET VERIFIED |
+| Firmware provenance | Source/flash versions, relevant Git SHA, hashes, board revisions |
+| Original SD/media | Backup location, production ID, assets |
+| Both full runs | Start/end time, P4 LOAD/START/COMPLETE, cue evidence, physical outputs |
+| Emergency test | Press/release time, P4 latch, node safe state, Director request/confirm, no auto-resume |
+| Director stability | Navigation, Cue Library close/return, absence of resets |
+| MOSFET reconnect | Expected held state vs Actual and measured safe-load output |
+| Acceptance decision | Dated witness, PASS/FAIL, remaining defects, repeat plan |
 
-For each PASS, save a dated log, photograph, voltage reading if applicable, node identity and Git commit. Keep personal purchase records and credentials out of public documentation.
+No document can self-certify safety. Use the [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) for the signed gate and [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) for code provenance.
 
-## Finish-line checklist
+## Definition of operator-ready documentation
 
-The weekend documentation is complete when a technician can find the part, identify the correct PCB variant, locate its firmware, understand its wiring, restore the configuration, and repeat its commissioning test without asking the original builder.
+Another competent technician should be able to identify each fitted module, find its correct firmware, understand the safety boundaries, connect/show the source-backed operator workflow, restore from backup and repeat the tests **without asking the original builder**. Incomplete physical results are marked **PENDING**, not described as passed.

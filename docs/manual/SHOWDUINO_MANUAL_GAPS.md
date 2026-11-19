@@ -1,469 +1,63 @@
-# Showduino Commercial Manual — Verification Gaps
-
-> **2 November 2026 bench/source reconciliation:** The owner now reports that **Emergency clearance is fixed in the flashed local firmware** and that the existing **22-second full-node show runs**. These supersede the 31 October failure as the *latest owner report*, but are **not** a signed, independently logged Emergency/no-auto-resume or repeatable end-to-end acceptance. GitHub `main` still lacks that complete flashed baseline: draft [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51) preserves it and adds SHDO import hardening; draft [PRs #52–#57](https://github.com/sumkindafreak/new_showduino/pulls) stage optional FastLED-related work without claiming bench validation. A **MOSFET output drop during Director reconnect** is newly reported; draft [PR #58](https://github.com/sumkindafreak/new_showduino/pull/58) proposes a paired MOSFET/P4 fix, not yet accepted. **Do not flash, merge or call the installation release-ready from host tests alone.** See [2 November evidence update](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
-
-> **1 November 2026 bench follow-up:** The Director **CLEAR EMERGENCY** button has been observed stuck on **AWAITING STAGE**, with the Emergency state remaining latched until reboot on a failed attempt. Navigating away from **Cue Library** can also leave its old screen content visible. Temporary normal operation during a later test does **not** establish either defect is resolved. `main` at `0e3d0786` adds four generated Comms bundle/manifest commits since 31 October, not an active firmware fix. Keep Emergency clearance and Director stability blocked for physical acceptance; [see current status and safe diagnostics](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
-
-> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
-
-**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
-
-**Manual baseline date:** 20 October 2026  
-**Repository:** `sumkindafreak/new_showduino`  
-**Baseline branch:** `main`  
-**Baseline commit:** `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
-**Previous commercial-manual baseline:** `9f304cdc65786c0e8d306987010a97eb5a3ad587` (16 September 2026)  
-**Product baseline:** Showduino `1.0.0-rc.1`  
-**Manual revision:** 0.3-RC
-
-This document records anything that could not honestly be presented as finished commercial product behaviour during the repository-verified manual pass. It is deliberately conservative: uncertainty belongs here, not disguised as customer-facing fact.
-
-The categories used are:
-
-- **IMPLEMENTATION GAP** — approved or documented behaviour is not implemented at this baseline.
-- **DOCUMENTATION GAP** — code appears to define behaviour but the product documentation is incomplete or contradictory.
-- **UI/DOCUMENTATION MISMATCH** — operator wording or workflow differs between code/UI and documentation.
-- **HARDWARE VALIDATION REQUIRED** — source exists but physical acceptance is not complete.
-- **SAFETY PROCEDURE TO CONFIRM** — safety-related behaviour or operator procedure needs explicit acceptance.
-- **VERSION INFORMATION REQUIRED** — component/release version sources do not agree.
-- **PRODUCT DECISION REQUIRED** — behaviour needs an owner decision before it should be frozen into a commercial manual.
-
-Status labels used in this revision:
-
-- **OPEN**
-- **PARTIALLY RESOLVED**
-- **RESOLVED** (software) — may still carry HARDWARE VALIDATION REQUIRED
-- **SUPERSEDED**
-
----
-
-## 30 October 2026 repository reconciliation
-
-Documentation PRs #41, #44 and #45 are now merged into `main`. Compared with the 20 October firmware source baseline, current `main` (`3d4790961e`) has no non-generated active firmware implementation changes; documentation and the regenerated S3 embedded WebUI header/manifest changed. The owner-reported first combined audio/visual playback on 29 October stands, but formal complete-scenario and mid-show Emergency acceptance remain open.
-
-**Draft-fix status correction:** PR #35 (SHDO parsing) and PR #37 (WAV buffering) were closed **without merging** on 30 October. PR #36 remains open/unmerged against the #35 branch; PR #29's acceptance fixture and PR #33's Emergency persistence remain unmerged. The dated 24 October gap entries below are historical and should not be read as today's PR states. The owner's clean WAV playback is a bench observation, not proof that #37 was merged or flashed. See [current finish-line reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
-
----
-
-## 29 October 2026 field-evidence update (no change to 20 October source baseline)
-
-**Confirmed by owner:** First real Showduino show with combined audio and visual effects has played on physical hardware, with some teething issues. **Do not describe Showduino as never having played a show.** This confirms a functioning combined playback path on the installed bench configuration; it does **not** close formal all-node COMPLETE, repeatability or mid-show Emergency recovery acceptance.
-
-**Still open / evidence required:** Exact flashed builds and production, Director reset regression status, microphone calibration/threshold acknowledgements, full Emergency safe-state and authorised-clear/no-resume sequence. The existing 22-second all-node result sheet remains `NOT RUN` for its specific normal and Emergency procedure. Only mark individual gap items resolved after their relevant physical evidence is recorded. Current `main` `e57870c` has four further generated Comms bundle commits since 28 October, without active firmware-source changes.
-
----
-
-## GAP-001 — Main Emergency button 8-second Locate hold
-
-**Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
-**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
-**Severity:** Release-blocking until physical bench sign-off  
-**Current code:** `firmware/stage-engine-p4/ShowduinoStageEngineP4/src/EmergencyInput.cpp`, `BoardConfig.h`, `protocol/showduino_emergency_button.h`
-
-### Approved product requirement
-
-The momentary main-unit Emergency button must:
-
-1. assert and latch Emergency immediately on button-down;
-2. start a hold timer without delaying Emergency;
-3. if the *same continuous press* reaches 8 seconds, additionally request Director Locate;
-4. keep Emergency and Locate as independent states;
-5. never clear Emergency from the physical button.
-
-### Implementation status
-
-Implemented in firmware:
-
-- debounced press asserts Emergency immediately;
-- `SHOWDUINO_ESTOP_LOCATE_HOLD_MS` (8000) on the same uninterrupted press requests `DIRECTOR:LOCATE` once;
-- release never clears and does not accumulate hold time;
-- the retired 8-press / 6-second Locate gesture is gone;
-- the retired 3-second physical hold-to-clear gesture is gone.
-
-Physical bench acceptance of this path is still required before commercial validation.
-
----
-
-## GAP-002 — Director Locate presentation / first-touch acknowledgement
-
-**Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
-**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
-**Current code:** `DirectorLocateScreen.*`, `DirectorAmbientPixels.cpp/.h`, `backlight.cpp`, `touch_lvgl.cpp`
-
-Implemented in firmware:
-
-- `DIRECTOR:LOCATE` wakes the display and forces backlight on;
-- normal auto-off is temporarily suspended without rewriting saved settings;
-- ambient red/blue locator flashes with **no 15-second timeout**;
-- **LOCATE ACTIVE** overlay states that Emergency remains active;
-- the first deliberate touchscreen press acknowledges Locate only;
-- that press/release cycle is consumed and cannot click an underlying control;
-- Locate acknowledgement does not clear Emergency.
-
-Hardware-test sleep/wake, touch consumption and emergency-latch retention before treating this as commercially validated.
-
----
-
-## GAP-003 — Emergency clear is Director request → confirm (physical button never clears)
-
-**Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
-**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
-**Current code:** P4 `EmergencyInput.cpp` / `ShowduinoStageEngineP4.ino`; Director `DirectorEmergencyScreen.cpp`, `DirectorEmergencyClearDialog.cpp`
-
-Implemented production clear workflow:
-
-- operator chooses **CLEAR EMERGENCY** on the Director Emergency screen;
-- Director sends `EMERGENCY:CLEAR` (request);
-- P4 rejects if not latched or if GPIO25 is still pressed;
-- otherwise P4 creates a timed pending authorisation and sends `EMERGENCY:CLEAR_REQUEST`;
-- Director shows **EMERGENCY CLEARANCE REQUESTED** / **Clear Emergency Stop?**;
-- `CONFIRM CLEAR` sends `EMERGENCY:CLEAR_CONFIRM`;
-- P4 validates again (latched, pending, button released, no newer assertion) then clears;
-- a new physical/wireless Emergency assertion invalidates any stale pending confirm;
-- clear does not resume the show.
-
-Physical acceptance of this handshake is still required. Do not mark commercially validated until the bench checklist is signed.
-
----
-
-## GAP-004 — Emergency latch is not proven to persist through full power loss/reboot
-
-**Status:** OPEN  
-**Category:** SAFETY PROCEDURE TO CONFIRM / PRODUCT DECISION REQUIRED  
-**Current code:** P4 `ShowduinoStageEngineP4.ino`, `EmergencyInput.cpp`
-
-The authoritative P4 variable `emergencyLocked` is initialised `false` at boot. No persistent restore of that latch was found in the active P4 code during this pass.
-
-A physically asserted button at boot should be detected again by the input service after debounce, but that is not the same thing as persisting a previously latched momentary-button emergency through complete power removal after the button has been released.
-
-### Required resolution
-
-Decide the required commercial behaviour for reboot/power loss during a latched Emergency and physically validate it. Until then the manual must not state that the latch survives full power removal.
-
----
-
-## GAP-005 — Emergency/clear physical acceptance remains incomplete
-
-**Status:** OPEN  
-**Category:** HARDWARE VALIDATION REQUIRED / SAFETY PROCEDURE TO CONFIRM  
-**Primary evidence:** `docs/physical-test-checklist.md`, `docs/v1-feature-matrix.md`
-
-The repository explicitly states that source inspection is not physical acceptance. Release-blocking checks include:
-
-- physical GPIO25 latch;
-- output emergency states;
-- no automatic show resume;
-- Director clear workflow;
-- GPIO23/GPIO24 emergency-white behaviour;
-- node emergency behaviour (including Audio GPIO22 and ESTOP GPIO2 pixel white/black).
-
-The dated physical-acceptance record states that no attached Showduino hardware was available on the validation host and the physical items remain not run/blocked.
-
-### Required resolution
-
-Complete and sign off the physical emergency matrix before `v1.0.0` and before a final production manual revision.
-
----
-
-## GAP-006 — Full first-owner authoring journey is not yet one finished product workflow
-
-**Status:** PARTIALLY RESOLVED  
-**Category:** IMPLEMENTATION GAP / UI/DOCUMENTATION MISMATCH  
-**Primary evidence:** `docs/studio/README.md`, `web/showduino-studio/README.md`, `web/studio-v4-overlay/`
-
-The intended commercial journey is conceptually:
-
-`Create attraction/show → create scene → add devices → build timeline → validate → deploy → play`.
-
-At this baseline, two different surfaces share the Studio name:
-
-1. the S3-hosted **system console / commissioning WebUI**, which is active;
-2. the broader **Studio V4 / SHDO v2 authoring** snapshot, which now includes substantial Pixel authoring (P4, standalone Pixel Nodes, Audio Node pixels), audio cues and package/export work.
-
-What remains unfinished for a single commercial “first owner” journey:
-
-- persistent P4 production format still cannot store the full theatrical cue set (see GAP-007);
-- public HTTPS Studio may still need export when browsers cannot reach local hardware;
-- Emergency Node pixel outputs are implemented in firmware/SHDO (`estop-node-pixels`) but Studio inventory surfacing may still lag (“showduino.com follow-up” note in `docs/emergency-node.md`).
-
-### Required resolution
-
-Complete and freeze the customer-facing authoring/deployment workflow, then capture its exact current labels/screens in the manual. Until then, the main manual distinguishes live commissioning/deployment capability from the unfinished persistent mixed-device path.
-
----
-
-## GAP-007 — Persistent production format cannot yet represent the full theatrical feature set
-
-**Status:** PARTIALLY RESOLVED  
-**Category:** IMPLEMENTATION GAP  
-**Primary evidence:** `ProductionFormat.cpp`, `docs/production-storage.md`, `docs/audio-pixel-engine.md`
-
-P4 persistent production format v1 now accepts bounded `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG` cues (`ProductionFormat.cpp`). SHDO deploy can compile into that store.
-
-Still incomplete relative to the full commercial theatrical set:
-
-- no dedicated ESTOP cue type on load; `PIXEL` cues must use the `PIXEL:` command prefix (so `ESTOP:NODE:PIXEL:` is not a format-v1 PIXEL command as stored);
-- tight command-length and validation bounds;
-- Studio inventory/authoring for every pixel-capable peer is not equally complete (see GAP-021);
-- physical acceptance of mixed-device persisted shows remains open.
-
-Earlier commercial-manual wording that said “TEST/LOG only” was stale relative to current parser behaviour and has been corrected in manual revision 0.3-RC follow-up.
-
-### Required resolution
-
-Complete ESTOP/other missing persist routes, widen the theatrical cue model where product-approved, and sign off mixed-device load/run on hardware before describing full persistent theatrical shows as finished.
-
----
-
-## GAP-008 — “Studio” naming currently covers two materially different surfaces
-
-**Status:** OPEN  
-**Category:** PRODUCT DECISION REQUIRED / DOCUMENTATION GAP  
-**Primary evidence:** `docs/studio/README.md`, `web/showduino-studio/README.md`
-
-“Studio” currently refers both to the S3-hosted system/commissioning console and to the richer SHDO v2 authoring experience/blueprint. This can confuse owners reading a commercial manual.
-
-Manual 0.3-RC uses **System Console** vs **Studio** wording where practical, but product naming is not frozen in firmware/UI chrome.
-
-### Required resolution
-
-Freeze customer-facing names for:
-
-- the system/commissioning WebUI;
-- the production authoring/timeline application;
-- the `/studio/` embedded authoring snapshot.
-
-Then use those names consistently in firmware, browser navigation and documentation.
-
----
-
-## GAP-009 — Default SoftAP credential is a bench credential, not a finished venue provisioning story
-
-**Status:** OPEN  
-**Category:** PRODUCT DECISION REQUIRED / HARDWARE VALIDATION REQUIRED  
-**Current source:** Comms `BoardConfig.h`
-
-The current Communications S3 SoftAP is:
-
-- SSID: `Showduino`
-- WPA2 password: `showduino`
-
-The code itself labels this as a documented **bench** secret and says it must be changed before a public venue. During this pass, an operator-facing workflow for changing the Showduino SoftAP password itself was not verified; the Network page configures optional home/venue STA credentials.
-
-### Required resolution
-
-Define production provisioning for the Showduino AP credential (unique-at-build, first-run change, managed setting, or another explicit policy) before public deployment guidance is finalised.
-
----
-
-## GAP-010 — Network configuration is implemented but still awaiting bench acceptance
-
-**Status:** OPEN  
-**Category:** HARDWARE VALIDATION REQUIRED  
-**Primary evidence:** `docs/v1-feature-matrix.md`, `docs/physical-test-checklist.md`
-
-AP+STA behaviour, retained SoftAP, radio-channel following, Director/Audio/Lamp reconnect and non-channel-1 venue Wi-Fi operation are implemented foundations but remain on the V1 hardware acceptance list.
-
-### Required resolution
-
-Run the release-blocking radio/power-cycle matrix, especially Director stability while specialist nodes join and while venue Wi-Fi changes the operating channel.
-
----
-
-## GAP-011 — Comms self-OTA exists, but system-wide OTA does not and physical OTA proof remains a gate
-
-**Status:** PARTIALLY RESOLVED (docs) / OPEN (hardware proof)  
-**Category:** HARDWARE VALIDATION REQUIRED / DOCUMENTATION GAP  
-**Primary evidence:** `docs/comms-ota.md`, `docs/system-updates.md`, Comms OTA source
-
-Current code supports **Communications Controller self-OTA only**, with HTTPS download, SHA-256 verification, inactive-slot write, health gate and software rollback. P4, Director and specialist nodes remain USB-update components at this phase.
-
-Commercial manuals correctly describe Comms-only OTA. Physical proof of normal Comms OTA and failed-health rollback remains outstanding.
-
-### Required resolution
-
-Physically prove normal Comms OTA and failed-health rollback on the current hardware/firmware combination.
-
----
-
-## GAP-012 — Release manifest component versions lag current `main`
-
-**Status:** OPEN  
-**Category:** VERSION INFORMATION REQUIRED  
-**Sources:** `releases/showduino-1.0.0-rc.1.manifest.json`, current component `BoardConfig.h`
-
-The committed RC release manifest still lags live source. At this documentation SHA:
-
-- P4 `BoardConfig.h` reports `0.6.8`;
-- Comms `BoardConfig.h` reports `0.5.4`;
-- Director remains primarily identified via the release-manifest label `0.9.7-director` without an equally clear active BoardConfig constant.
-
-### Required resolution
-
-Publish/update an authoritative release inventory that matches the exact binaries accepted for a manual revision. The user manual therefore uses product version `1.0.0-rc.1` plus the exact repository SHA as its strongest baseline identifier.
-
----
-
-## GAP-013 — Director OS 2.0 source exists but is not the active baseline UI
-
-**Status:** OPEN (unchanged product fact)  
-**Category:** UI/DOCUMENTATION MISMATCH  
-**Current source:** Director `BoardConfig.h`
-
-`SHOWDUINO_OS2_SHELL` is `0` at the baseline SHA. The active Director is therefore the current `ShowduinoUi` page set, even though newer OS 2.0 app/service source exists in the tree.
-
-### Required resolution
-
-When the OS 2.0 shell becomes the shipping UI, revise the Director chapter and screenshots as one versioned manual change. Do not document disabled source as current behaviour.
-
----
-
-## GAP-014 — Current Director page set and diagnostics are still changing
-
-**Status:** PARTIALLY RESOLVED  
-**Category:** DOCUMENTATION GAP / HARDWARE VALIDATION REQUIRED  
-**Sources:** Director `DisplayPages.h`, `ShowduinoUi.h`, recent Git history
-
-Active titles now include dedicated **AUDIO NODE** and **LAMP NODE** pages in addition to HOME / PRODUCTIONS / SHOW DETAILS / LIVE / NODES / DIAGNOSTICS / SETTINGS / AUDIO / SYSTEM LOGS. Manual 0.3-RC was updated to match those titles. A commercial screenshot set would still become stale quickly and remains outstanding.
-
-### Required resolution
-
-Freeze a release-candidate UI build, capture screenshots from that exact binary and add figure references to a later manual revision.
-
----
-
-## GAP-015 — P4 local pixel hardware is implemented but not signed off
-
-**Status:** OPEN  
-**Category:** HARDWARE VALIDATION REQUIRED  
-**Sources:** `docs/hardware-pinout.md`, `docs/audio-pixel-engine.md`, `docs/physical-test-checklist.md`
-
-GPIO23 segmented Show Pixels and GPIO24 emergency/designated-signage pixels are implemented in source. The repository still marks the physical pixel paths as requiring hardware commissioning.
-
-### Required resolution
-
-Validate configured lengths, logic buffering, current capacity, all-white emergency load, segment behaviour, clear-to-blackout and signage grouping on production-equivalent wiring.
-
----
-
-## GAP-016 — Specialist node maturity is mixed
-
-**Status:** PARTIALLY RESOLVED (software maturation) / OPEN (hardware acceptance)  
-**Category:** HARDWARE VALIDATION REQUIRED  
-**Sources:** `docs/repository-status.md`, node-specific documentation, recent `main` commits
-
-At this baseline:
-
-- Audio Node — programme audio + full GPIO22 Pixel engine; hardware acceptance still required;
-- S3 Lamp Node — active; Adafruit Audio FX UART WAV library; physical pins confirmed; some sensor details remain unconfirmed; Director Lamp page exists;
-- C3 Pixel Node — active, hardware test required;
-- C3 Emergency + Pixel Node — software implemented (momentary GPIO4, OLED, GPIO2 full Pixel); GPIO/physical acceptance incomplete;
-- MOSFET Node — software implemented; physical GPIO/load and integrated fail-safe acceptance remain open;
-- Relay Node — legacy/retired.
-
-### Required resolution
-
-Only ship/manualise a node as a normal supported accessory once its hardware acceptance is complete. The main manual labels current RC maturity and does not present MOSFET/legacy Relay as shipping features.
-
----
-
-## GAP-017 — Wireless Emergency Nodes are not equivalent to the main momentary Emergency button
-
-**Status:** PARTIALLY RESOLVED (docs) / OPEN (physical acceptance)  
-**Category:** DOCUMENTATION GAP / SAFETY PROCEDURE TO CONFIRM  
-**Source:** `docs/emergency-node.md`, `firmware/c3-emergency-node/`
-
-The separate wireless Emergency Node design uses a **momentary pushbutton**, local software latch, OLED status, optional full Pixel Line on GPIO2, and **assert-only** wireless policy. Its physical control and clear-observation model differ from the main Showduino momentary GPIO25 button.
-
-Commercial manuals now describe the accessory separately. Physical acceptance remains open.
-
-### Required resolution
-
-Keep accessory-specific instructions separate. Never copy the main-button Locate/clear gesture into the Emergency Node chapter unless its own firmware explicitly implements it.
-
----
-
-## GAP-018 — Commercial enclosure connector labelling cannot be verified from firmware alone
-
-**Status:** OPEN  
-**Category:** HARDWARE VALIDATION REQUIRED / PRODUCT DECISION REQUIRED
-
-The repository defines board-level pins and electrical expectations, but this pass did not identify a frozen commercial enclosure drawing, rear-panel connector schedule, fuse specification, PSU rating or production wiring diagram that maps those internal resources to final customer-accessible labels.
-
-### Required resolution
-
-When enclosure/loom/power design is frozen, add controlled hardware drawings and rated connector/power specifications. Until then, the manual's Hardware Tour remains functional rather than inventing panel labels.
-
----
-
-## GAP-019 — No certification claims are supported by the repository
-
-**Status:** OPEN (accuracy boundary — intentional)  
-**Category:** PRODUCT DECISION REQUIRED
-
-No evidence was found that Showduino is certified as a fire alarm, evacuation system, machinery E-stop, safety PLC, SIL-rated system or PL-rated system.
-
-### Manual consequence
-
-The commercial manual explicitly keeps venue/fire/machinery/life-safety compliance separate from Showduino show-control emergency behaviour. This is not a negative product claim; it is an accuracy boundary until formal certification exists.
-
----
-
-## GAP-020 — Director touchscreen calibration is implemented but not hardware-accepted
-
-**Status:** RESOLVED (software) — HARDWARE VALIDATION REQUIRED  
-**Category:** IMPLEMENTED — HARDWARE ACCEPTANCE REQUIRED  
-**Current code:** `TouchCalibrationMath.h`, `TouchCalibrationStore.cpp`, `DirectorTouchCalibrationScreen.*`, `touch_lvgl.cpp`
-
-Five-point affine calibration, NVS persistence (`showduino_touch` / `cal`), factory fallback, Settings entry, USB `TOUCH:STATUS` / `TOUCH:RESET` / `TOUCH:CALIBRATE`, Emergency/Locate abort, and first-touch consumption while the wizard is open are in firmware.
-
-Do not treat corner accuracy, reboot persistence, or overlay consumption as commercially validated until the physical checklist is signed.
-
----
-
-## GAP-021 — Studio Emergency Node pixel inventory surfacing lags firmware/SHDO
-
-**Status:** OPEN (new)  
-**Category:** IMPLEMENTATION GAP / DOCUMENTATION GAP  
-**Evidence:** `docs/emergency-node.md` (“showduino.com follow-up if needed”), `protocol/showduino_shdo.h` (`estop-node-pixels`), `web/studio-v4-overlay/js/showduino-pixel-authoring.js` (Audio pixel route present; ESTOP pixel route not equivalently surfaced in the overlay inventory helpers reviewed)
-
-Firmware, P4 `EmergencyNodeLink` and SHDO compilation support `ESTOP:NODE:PIXEL:` / `estop-node-pixels`. Studio authoring inventory for ESTOP pixel outputs is not yet as complete as Audio Node pixel routing.
-
-### Required resolution
-
-Surface ESTOP pixel outputs consistently in Studio inventory/authoring, then update the Operator Guide lighting section if the operator-visible labels change.
-
----
-
-## Gap closure rule
-
-A gap is not closed merely because code has been written. Safety, radio, power, update and hardware-output gaps require the appropriate physical acceptance evidence. When a gap closes, update:
-
-1. the relevant firmware/documentation;
-2. `SHOWDUINO_MANUAL_SOURCE_MATRIX.md`;
-3. the affected customer-manual section;
-4. the manual revision/baseline SHA.
-
----
-
-## 24 October 2026 — finish-line delta since the 20 October manual baseline
-
-**Status:** OPEN — see [dated source-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md). `main` at `87963bbd017b4ca930f49db9928a3d39b32fa690` is 20 commits ahead of the manual's firmware review commit, but those commits modify documentation and the generated Comms Studio bundle/manifest rather than active firmware. The following are **draft implementation gaps or unverified hardware behaviour**, not features delivered on `main`:
-
-- **GAP-FL-A — complete 22-second all-node run:** PR #29's existing acceptance show and bench-result sheet are unmerged; its software compile/reload and target builds passed, but no physical LOAD → RUN → COMPLETE and Emergency-repeat pass is recorded.
-- **GAP-FL-B — audible WAV stutter:** physical stuttering remains reported. PR #37 is an unmerged, uncompiled/unbenchmarked buffering and I2S write repair; don't describe it as a fix until a real A1S A/B test passes.
-- **GAP-FL-C — Studio SHDO export acceptance:** PR #35 repairs action.value token consumption and PR #36 rejects silent truncation of long runtime commands. Neither is merged; test a genuine exported production on the P4 before declaring website → SD persist reliable.
-- **GAP-FL-D — Audio Node status-vs-show pins:** `main` Audio 0.4.3 uses GPIO22 for the configurable pixel line and GPIO5 for KEY6. PR #40 proposes independent **GPIO5 single indicator**, **GPIO22 show line**, KEY6 disabled and a ten-pixel minimum. No physical validation or compilation for this PR is recorded.
-- **GAP-FL-E — Emergency and outputs:** P4/C3/Audio/Emergency pixel-white response, MOSFET safe OFF, Lamp Emergency audio, Director clear/Locate, no auto-resume and full Director/P4/Comms link stability remain physical acceptance items. Emergency latch persistence PR #33 is unmerged and not hardware-qualified.
-
-**Required decision:** Keep the Director as sole creative/operator show controller; P4 is the execution/runtime and Emergency authority, and Emergency assertion must work without Director connectivity. Run the same fixed non-DMX scenario, then its mid-show Emergency repeat; log actual results and close only demonstrated gaps. No expansion work is required.
-
-## 28 October 2026 — bench corrections and newly observed Director regression
-
-This dated note **supersedes the 24 October GAP-FL-B claim that WAV stuttering remains present on the owner's installed Audio Node**. The owner reports clean ESP32-A1S WAV playback and corrected volume after physical testing. The installed firmware SHA is not yet recorded, so neither `main` nor PR #37 can be credited as the proven fix. Retest continuity during the complete persisted production before closing all-node audio acceptance.
-
-**GAP-FL-F — Director runtime stability: OPEN, observed physical regression.** After the latest Director flash, the 28 October serial log contains repeated ESP32-S3 Core 1 `LoadProhibited` resets on Home/Audio Node navigation. The exact ELF is needed to decode the backtrace; do not assign a cause from the exception name. The same log includes `legacy Stage (STATUS:READY)`, synchronisation degradation and at least one failed Stage threshold transmission. Preserve the working hardware baseline, record versions, symbolicate the crash and verify Director/Comms/P4 compatibility before full-show acceptance.
-
-**GAP-FL-G — Audio Node microphone command confirmation: OPEN.** The Node logged SOUND DISABLE, ENABLE and a transient trigger, so the command path is not wholly dead. CALIBRATE produced no observed log/ACK; threshold changes and live telemetry remain unverified. Check Director touch/dock overlap and route/ACK with playback stopped before claiming calibration works.
-
-**GAP-FL-A / GAP-FL-E remain OPEN:** the 22-second *visual* bench test and observed Emergency response are partial evidence. The persisted, timed, all-node LOAD → START → COMPLETE and comprehensive Emergency repeat are still not signed off. The separate full active-v1 release gate and 31 October target are tracked in [issue #42](https://github.com/sumkindafreak/new_showduino/issues/42), without expanding the single-scenario test scope. See [28 October audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md).
+# Showduino V1 — Open Verification and Operating Gaps
+
+**19 November 2026 · Reviewed repository commit `41c7c71`.** This is a **current issue register**. Historical GAP numbers are retained for traceability, not blindly carried forward as current failures.
+
+## Evidence states
+
+- **SOURCE IMPLEMENTED:** active code/contract supports the described operation. No physical pass implied.
+- **OWNER REPORTED:** physical observation reported, but the complete logged acceptance record is absent.
+- **HARDWARE PENDING:** pin/electrical/timing/end-to-end operation not signed off.
+- **DOCUMENTATION/UI MISMATCH:** written or displayed copy conflicts with active source.
+- **PLANNED / LEGACY:** not part of the current installed RC operator path.
+- **ACCEPTED:** only a dated, reproducible and witnessed relevant test closes a physical gap.
+
+## Known physical evidence
+
+**Owner-reported:** first combined physical audio/visual show on **29 October 2026**; later existing **22-second local show** running and local **Emergency clear** fixed after the 31 October/1 November failures. These achievements are real reports, not “never tested”.
+
+**Still required:** two consecutive logged P4-confirmed LOAD → START → COMPLETE runs; a separate mid-show main-button Emergency → protected outputs → button release → deliberate Director/P4 clear → **no automatic resume** pass. Record exact flashed versions, P4/Comms/Director logs and load feedback. [Acceptance checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md).
+
+The merged [source integration PR #72](https://github.com/sumkindafreak/new_showduino/pull/72) means that old references treating its constituent fixes as merely unmerged are **outdated**. Source integration and its host tests do **not** sign off flashed hardware. [Docs PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) is separate and was open during this rewrite.
+
+## Numbered legacy gap reconciliation
+
+| ID | Current source/documentation status | Outstanding evidence or action |
+| --- | --- | --- |
+| GAP-001 main button Locate hold | **SOURCE IMPLEMENTED:** 8-second uninterrupted hold | Physical confirmation of timing and release behaviour |
+| GAP-002 Director Locate overlay | **SOURCE IMPLEMENTED:** wake/ambient/first-touch acknowledgement | Touch consumption and Emergency retention on hardware |
+| GAP-003 Director/P4 Emergency clear | **SOURCE IMPLEMENTED; OWNER REPORTED local fix** | Full safe physical request → confirm → response/no-auto-resume pass |
+| GAP-004 Emergency across power loss | **OPEN POLICY / SAFETY GAP** | Decide, implement and test required reboot/power-loss latch policy; never claim persistence |
+| GAP-005 Emergency acceptance | **HARDWARE PENDING** | All relevant nodes, safe outputs, no auto-resume, no reset workaround |
+| GAP-006 first-owner Studio journey | **PARTIAL** | Verify current public Website Studio export vs installed P4 compiler end to end |
+| GAP-007 persistent theatrical cue set | **PARTIAL / DOC MISMATCH** | Current P4 parser now includes `ESTOP:NODE:PIXEL:` route; old production-storage prose must be updated; test cue support against flashed build |
+| GAP-008 multiple “Studio” surfaces | **DOCUMENTED DIFFERENCE** | Maintain Website vs Comms Console vs embedded `/studio/` version parity; avoid overpromising |
+| GAP-009 bench Wi-Fi credential | **OPEN PROVISIONING** | Replace public/default bench secret and record private venue provisioning method |
+| GAP-010 network commissioning | **SOURCE IMPLEMENTED / HARDWARE PENDING** | Prove SoftAP, STA/channel follow, Director/node reconnect on venue network |
+| GAP-011 OTA | **Comms self-OTA only** | Physical slot/update/rollback tests; never claim system-wide OTA |
+| GAP-012 version manifest alignment | **REQUIRES RELEASE AUDIT** | Source/manifest/flashed binaries and tags need exact reconciliation |
+| GAP-013 Director OS2 | **DISABLED in default build** | Do not describe as current interface |
+| GAP-014 active Director pages | **SOURCE IMPLEMENTED / HARDWARE PENDING** | Screen labels/navigation/readiness/Cue Library runtime tests |
+| GAP-015 P4 GPIO23 pixel line | **SOURCE IMPLEMENTED / HARDWARE PENDING** | Test power, 10+ LED count, segments, effects and Emergency white |
+| GAP-016 Node maturity | **MIXED** | Per-device input/output, recovery, permissions and load verification |
+| GAP-017 wireless Emergency stations | **ASSERT-ONLY / HARDWARE PENDING** | Physical wiring/rearm, radio loss and P4-latch assertions, no remote clear |
+| GAP-018 enclosure connectors | **INSTALLATION-SPECIFIC** | Photograph/label pinouts and voltage ratings for supplied hardware |
+| GAP-019 certification | **UNSUPPORTED CLAIM** | Independent site safety systems and competent acceptance; no certification marketing |
+| GAP-020 Director touch calibration | **SOURCE IMPLEMENTED / HARDWARE PENDING** | Verify five-point UI, NVS persistence, abort on Emergency |
+| GAP-021 ESTOP Node pixel inventory | **PARTIAL / SURFACE PARITY** | Verify Website Studio and embedded inventory route on installed versions |
+
+## New/reopened source discrepancies (19 November)
+
+| Ref | Finding | Operator consequence | Ownership |
+| --- | --- | --- | --- |
+| **DOC-022** | `web/showduino-studio/js/pages/Live.js` still says a browser clear cannot bypass a **physical 3s-hold window**, inconsistent with P4's 8-second **Locate**, and Director-confirmed clear | Browser help text **must not** be followed as a clear procedure | UI-copy correction required in a **separate** WebUI change with tests |
+| **DOC-023** | Older `SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md` described the Director Cue Library tile as disabled; reviewed `page_01_home.cpp` enables it and `DirectorCueLibrary.cpp` has monitor/scene controls | Current rewritten guide states **enabled in source**, **hardware pending** | Documentation corrected; physical navigation still pending |
+| **DOC-024** | `docs/production-storage.md` claimed `ESTOP` unsupported, but reviewed `src/ProductionFormat.cpp` includes `ESTOP` and `ESTOP:NODE:PIXEL:` prefix | Cue compatibility must follow **actual installed code**, not old source note | Documentation reconciliation in rewrite; physical compiler acceptance pending |
+| **DOC-025** | The old front matter in README/manuals repeatedly described PRs #51/#52–#60 as unmerged, while their reconciled content is now covered by merged #72 | Remove stale “main unchanged” claims; distinguish merged source and installed firmware | Documentation rewritten; firmware unchanged |
+| **BENCH-026** | Historical Director **AWAITING STAGE**, navigation freeze/resets | Prevent release until repeatable clear/navigation test | Hardware retest |
+| **BENCH-027** | Historical MOSFET output drop on **Director-only reconnect** | Node outputs must not depend on Director presence | Hardware retest against reconciled source |
+
+## What closes this phase versus hardware release
+
+A **documentation** PR may close **DOC** gaps once every operator claim is traceable to current source, the guides agree, links are checked and outstanding hardware tests are explicit. **No documentation merge** closes an incomplete physical Emergency, electrical or cue acceptance test. Never merge untested firmware merely to make a manual statement true.
+
+**Related:** [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) · [User Manual](SHOWDUINO_USER_MANUAL.md) · [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) · [18 Nov source integration PR](https://github.com/sumkindafreak/new_showduino/pull/72).
