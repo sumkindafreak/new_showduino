@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Investigate and test reliability, responsiveness, card design, graphics and effect previews for the Showduino Director, without changing the currently working Director firmware during the GitHub ↔ bench crossover audit.
+Investigate and test reliability, responsiveness, card design, graphics and effect previews for the Showduino Director, without modifying the currently working Director firmware. GitHub source reconciliation PR #72 merged on 18 November 2026; physical flashed-bench equivalence and full show/safety acceptance remain separate verification gates.
 
 ## Mandatory engineering rule
 
@@ -20,7 +20,7 @@ Non-negotiable gates:
 4. Compatibility — preserve all proven working hardware and firmware behaviour.
 5. Rollback — every proposed change must be independently testable and reversible.
 
-**No runtime changes are permitted into main until the current GitHub/bench reconciliation has finished and the upgrade's relevant acceptance tests pass.**
+**GitHub source reconciliation is complete (#72); do not merge any Director V1.1 runtime change into main without physical baseline evidence, relevant acceptance tests and explicit review.**
 
 ## Authoritative boundaries
 
@@ -41,14 +41,19 @@ The entire new Director V1.1 effort lives here until integration is expressly ap
 - **ACCEPTANCE.md** — safety, UI, performance, long-run and rollback gates.
 - **tools/bench_baseline.py** — independent offline parser for existing Director serial diagnostic logs.
 - **tests/test_bench_baseline.py** — tests for the parser.
+- **DEVELOPMENT_01.md** — details of first implemented prototypes and test commands.
+- **components/DirectorV11Performance.h** — allocation-free, bounded timing measurements.
+- **components/DirectorV11CardModel.h** — read-only, safety-prioritised status classification.
+- **components/DirectorV11CardLvgl.h** — isolated LVGL 9 card prototype.
+- **tests/test_director_v11.cpp** — native model and performance tests.
 
-The tooling is intentionally host-side, has no non-standard Python dependencies and does not access firmware or modify a device.
+The existing offline parser is entirely host-side and uses no non-standard Python dependencies. The C++ models are also portable; the LVGL 9 card prototype is isolated source only. No device firmware is changed by this workspace.
 
 ## Planned stages
 
 | Gate | Stage | Exit condition |
 | --- | --- | --- |
-| 0 | GitHub ↔ bench crossover | Confirm canonical working Director baseline |
+| 0 | GitHub source reconciliation | Merged as #72; flashed bench and hardware acceptance still require verification |
 | 1 | Performance & reliability evidence | Recorded reference metrics + failure tests |
 | 2 | Reusable active-LVGL card system | One representative card passes functional/performance tests |
 | 3 | Touch, scrolling and navigation refinement | Responsive operation, no boot-screen freeze |
@@ -67,7 +72,7 @@ Stage 2 initially targets the **active LVGL shell**. The repository contains an 
 - Diagnostics page: .../page_06_diagnostics.cpp
 - OS2 reference component (not necessarily active): .../os2/widgets/Card.h
 
-**Important:** These are GitHub references, not proof they match the latest hardware bench copy. Revalidate after the crossover.
+**Important:** These are merged GitHub source references, not proof the physical Director is flashed with the same revision. Capture installed build provenance before hardware integration.
 
 ## Protection of the current firmware
 
@@ -78,7 +83,10 @@ This R&D branch adds files under director-v1.1-evolution/ only. Do not edit, mov
 - [x] Dedicated GitHub branch and isolated workspace created.
 - [x] Source-based scouting and phase plan written.
 - [x] Offline first-pass serial-log analyser added.
-- [ ] GitHub ↔ bench baseline reconciled.
+- [x] GitHub source reconciliation merged (PR #72, 18 November 2026).
+- [x] Prototype timing collector and safety-prioritised card model created; native C++ tests passed on host.
+- [x] LVGL 9 card prototype created in isolation (not device-compiled).
+- [ ] Physical flashed-bench firmware provenance and baseline confirmed.
 - [ ] Baseline serial logs collected from physical Director.
 - [ ] Actual touch/render/heap benchmarks collected.
 - [ ] Any changes compiled/flashed/validated on Director hardware.
