@@ -1,6 +1,6 @@
 # Phase 1 — Baseline before visual changes
 
-**State:** Started as isolated, host-side diagnostic work. The actual hardware benchmark is pending the GitHub ↔ bench crossover.
+**State:** Started as isolated development. GitHub source reconciliation #72 is merged; actual hardware benchmark and installed-bench comparison are still outstanding.
 
 ## Reason
 
@@ -28,9 +28,9 @@ What the first-pass parser can observe: boot banners, init outcomes, boot-time P
 
 What it **cannot** infer: FPS, touch latency, live heap low-water mark, mean reconnect time, reliable emergency operation, a completed endurance test or performance safety. Those require explicit instrumentation and bench evidence. Never report unsupported numbers.
 
-## Step B — Add instrumentation to a separate Director test build after crossover
+## Step B — Trial the new performance component only on a separate test build
 
-Potential instrumentation:
+An allocation-free fixed-size timing collector is now available at `components/DirectorV11Performance.h`, with native host tests. It is **not** included by the active firmware. Further instrumentation candidates:
 - UI frame timing and maximum/p95 LVGL handler duration.
 - Timestamped touch down → visual response latency (only with trustworthy tracing).
 - Internal heap free, largest free allocation, allocation failures, PSRAM free.
@@ -47,7 +47,8 @@ Use ACCEPTANCE.md to record the test evidence before a merge.
 
 ## Phase 1 exit criteria
 
-- [ ] Final GitHub/bench crossover completed.
+- [x] GitHub source integration merged as PR #72.
+- [ ] Physical flashed-bench version and revision verified.
 - [ ] Baseline firmware revision and board/library versions recorded.
 - [ ] Cold boot, normal operation, comms-loss and emergency logs captured.
 - [ ] Actual FPS/frame duration, touch response and memory readings measured.
@@ -55,4 +56,4 @@ Use ACCEPTANCE.md to record the test evidence before a merge.
 - [ ] Bench metrics and thresholds reviewed before UI work.
 - [ ] No change to authoritative P4 or safety behaviour.
 
-The presence of a parser or documentation is not a successful bench test.
+The presence of host-tested components or documentation is not a successful device build or physical bench test.
