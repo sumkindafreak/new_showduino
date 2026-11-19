@@ -32,6 +32,6 @@ The **P4 decides**, Comms transports, Director commands/displays and Nodes act. 
 
 Merged [source reconciliation PR #72](https://github.com/sumkindafreak/new_showduino/pull/72) changed the source situation after the old 20 October manual review. Documentation-only [PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) was still open when this rewrite started. Source-review success, host CI and written guides cannot replace a signed physical Emergency/safe-output test.
 
-Historical audits and earlier RC notes remain in Git history and dated evidence files, but **are not current startup instructions**.
+[18 November merged-source evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-11-18.md) from the earlier documentation PR is preserved alongside this rewrite. Historical audits and earlier RC notes remain in Git history and dated evidence files, but **are not current startup instructions**.
 
 **No firmware, load wiring or safety acceptance is changed by this documentation rewrite.**

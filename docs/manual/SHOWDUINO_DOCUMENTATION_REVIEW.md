@@ -7,7 +7,7 @@
 
 The maintained manuals and 20 October source matrix did not reflect the **18 November merged source reconciliation** ([PR #72](https://github.com/sumkindafreak/new_showduino/pull/72)). Historical banners were stacked before operating procedures; the Studio Cue Library guide incorrectly stated the Director tile was disabled; some web help copy still describes an obsolete Emergency clear gesture; and the production-format reference lagged the active P4 parser.
 
-[Documentation PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) was **open** at the start of the rewrite. This branch is based on GitHub `main`, and must be reviewed for potential conflicts with #73 before merge.
+[Documentation PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) was **open** at the start of the rewrite. Its dated [18 November source-reconciliation evidence report](SHOWDUINO_FINISH_LINE_STATUS_2026-11-18.md) is copied unchanged into this branch so that a later merge of this rewrite cannot discard that evidence. This branch is based on GitHub `main`, and must be reviewed for potential conflicts with #73 before merge.
 
 ## Direct code/source reviewed
 
