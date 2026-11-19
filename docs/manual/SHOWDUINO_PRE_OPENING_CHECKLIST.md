@@ -1,244 +1,112 @@
-# SHOWDUINO — Pre-Opening Checklist
+# SHOWDUINO V1 — Pre-Opening and Bench Acceptance Checklist
+
+**19 November 2026 · Source reference `41c7c71` · Product `1.0.0-rc.1`**  
+**Use:** Before guests enter **and** as the record for the initial non-DMX physical acceptance of the actual flashed installation.
+
+> **Not yet approved for public operation on documentation alone.** Owner-reported playback and Emergency-clear fixes are not a signed full safety pass. Keep hazardous effect loads disconnected until site-specific electrical and operational checks have been completed by competent personnel. Showduino's theatrical Emergency is not a certified fire/life/machinery safety device.
+
+**Date:** __________________  **Venue/Production:** __________________  
+**Operator:** __________________  **Witness:** __________________  
+**P4 firmware/build:** __________________  **Comms:** __________________  
+**Director:** __________________  **Node IDs and versions:** __________________  
+**Source/installed mismatch noted?** YES / NO — reference: __________________
+
+Mark each item **PASS / FAIL / N/A**, attach recorded evidence and sign. A blank item is **not** a pass. **N/A** only where the production does not require that item.
+
+## A. Independent site safety and power
+
+- [ ] Site-required fire, evacuation, machinery and mains isolation systems have been verified **independently of Showduino**.
+- [ ] Hazardous smoke, motion, mains and high-power output loads are isolated for initial tests; safe test loads are identified.
+- [ ] Cabinets, PSUs, fuses, wires, strain reliefs, connectors, antennas and thermal condition are inspected.
+- [ ] LED supply current, power injection, common ground and signal conditioning are adequate **including Emergency bright white**.
+- [ ] Main P4 momentary Emergency button is physically reachable, undamaged, released and correctly wired.
+- [ ] Production media, P4 SD and required node SD cards are in place with backed-up known-good versions.
+- [ ] Exact **flashed** firmware versions, firmware source hashes, compiler/core/libs and device settings are recorded.
+
+## B. Boot, links and readiness
+
+- [ ] P4 boots and exposes normal authoritative state.
+- [ ] Comms S3 boots; **GPIO17 TX → P4 GPIO4 RX / GPIO18 RX ← P4 GPIO5 TX**, 115200 8N1 link confirmed.
+- [ ] Director links to Comms and receives fresh P4 state; does not falsely claim RUN readiness with a stale link.
+- [ ] All **required** Audio, Lamp, Pixel, MOSFET and Emergency nodes identify correctly and report healthy state; mark each optional node N/A only if truly unused.
+- [ ] P4 can list the known-good SD production; no storage or Emergency fault is present.
+- [ ] Director backlight wake, navigation, touch and Cue Library close/return function repeatedly **without freezes or unwanted resets**.
+- [ ] Optional Comms SoftAP/browser works; **P4 OFFLINE** indication is truthful. Venue Wi-Fi/Internet are not mistakenly required for a local run.
+
+## C. Baseline show — **two consecutive complete runs**
+
+Use the **same known-good 22-second (or explicitly identified existing) production**, with safe low-power effects.
+
+| Evidence | Run 1 | Run 2 |
+| --- | --- | --- |
+| Start timestamp | | |
+| P4 LOAD accepted, production ID | | |
+| P4 START accepted | | |
+| Cues/time progression logged | | |
+| Audio Node playback observed | | |
+| P4/Audio or C3 show pixels observed | | |
+| MOSFET safe-load state observed (or N/A) | | |
+| P4 COMPLETE recorded | | |
+| Output safe at end | | |
+| PASS / FAIL | | |
+
+- [ ] Both runs show P4-confirmed **LOAD → START → COMPLETE**, not just a UI animation.
+- [ ] Required physical outputs and node identities agree with the cue routing.
+- [ ] No unexpected Director reboot, running-show output loss, automatic restarts or missing node readiness occurs.
+- [ ] The known-good firmware and production remain backed up; no optional DMX/FastLED/new-lamp feature introduced to satisfy the gate.
+
+## D. **Separate** Emergency interruption and deliberate clear
+
+Run a controlled production and interrupt it with **the main P4 physical button**.
+
+- [ ] Press causes Emergency latch (after configured debounce); Director and P4 agree on the state.
+- [ ] Timeline stops progressing; hazardous outputs are safely off/isolated; MOSFET and each fitted node follow their defined Emergency rule.
+- [ ] GPIO23 Show Pixels, GPIO24 signage and fitted programmable node pixels follow their approved Emergency-white policy.
+- [ ] Programme audio stops/does not autonomously resume; P4 Emergency audio, if available, is **not** a dependency for safety.
+- [ ] **Release** main physical button: Emergency remains **latched**.
+- [ ] With button held for **8 seconds**, Locate may be tested **separately**; acknowledging Locate **does not** clear Emergency or click through the overlay.
+- [ ] **Director Emergency → CLEAR EMERGENCY → CONFIRM CLEAR** produces a P4-authorised result **only after button release**.
+- [ ] A pressed button/new assertion rejects or cancels stale clearance; no manual or browser shortcut bypasses P4.
+- [ ] After clear, signage returns to its normal indication and show output returns to its defined safe state.
+- [ ] **NO automatic timeline or programme-audio restart**. Any further playback needs a fresh operator decision.
+- [ ] No Director hang, **AWAITING STAGE** deadlock or reset-to-clear workaround occurs.
+
+**Emergency evidence:** Timestamp __________ / P4 log __________ / Director log __________ / Comms log __________ / photo/video __________ / PASS-FAIL __________
+
+## E. Required node-specific checks
+
+- [ ] **Audio:** correct A161/ES8388 board, local file, audible output, correct reported status, no unintended playback after Emergency.
+- [ ] **Pixels:** each installed line wired/sized correctly; default 10 programmable pixels versus fixed indicators understood; normal/blackout/Emergency behaviour tested.
+- [ ] **Lamp:** installed S3 lamp's ignition/controlled mode/emergency behaviour tested. **Simplified C3 lamp design is not a pass for an S3 or proposed C3 firmware.**
+- [ ] **MOSFET:** Actual feedback and physical safe-load voltage agree; slider alone does not drive output; APPLY, OFF/ALL OFF and Emergency safe-off tested.
+- [ ] **MOSFET reconnect regression:** holding a permitted output through a **Director-only reconnect** does not unexpectedly drop/restart; verify P4 remains authoritative.
+- [ ] **Wireless Emergency:** each installed station asserts P4; none can remotely clear; loss-of-link policy and local rearm validated.
+- [ ] **P4 I/O/I²C plugins:** address, voltage, bus ownership and required output behaviour checked or N/A.
+
+## F. Authoring/deploy verification (separate from original fixture)
+
+- [ ] Website Studio SHDO v2 exported and labelled with compatible source/firmware versions.
+- [ ] Comms System Console **Persist SHDO v2 to P4 SD** obtains real P4 acceptance; persisting never auto-starts.
+- [ ] Loaded compiled production matches intended cue types/segments/assets. Rejection is recorded, not bypassed.
+- [ ] Embedded `/studio/` snapshot/version distinguished from public Website Studio.
+- [ ] Unsupported authoring presets/legacy Relay, generic FX, DMX are not claimed as commissioned outputs.
+
+## G. Result and release decision
+
+| Gate | Result |
+| --- | --- |
+| Site-independent electrical/life safety | PASS / FAIL / INCOMPLETE |
+| Two controlled complete runs | PASS / FAIL / INCOMPLETE |
+| Full Emergency recovery and no auto-resume | PASS / FAIL / INCOMPLETE |
+| All required nodes and load-specific checks | PASS / FAIL / INCOMPLETE |
+| Director stability and reconnect behaviour | PASS / FAIL / INCOMPLETE |
+| Installed firmware/SD backups and records | PASS / FAIL / INCOMPLETE |
 
-> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+**Overall:** ☐ **OPEN** ☐ **DO NOT OPEN**  
+**Reason / outstanding defects:** ________________________________________
 
-**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+**Operator signature:** __________________  **Witness/approver:** __________________
 
-**Use:** before admitting guests / beginning public operation  
-**Manual baseline:** Showduino `1.0.0-rc.1` · repository SHA `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
-**Date:** ____________________  **Attraction/production:** ____________________  **Operator:** ____________________
+If any safety item fails or is incomplete, mark **DO NOT OPEN**. A source review, PR merge, screenshot, bench anecdote or CI-green result is not a physical acceptance record. Retest after every relevant firmware/hardware change.
 
-> **People first. Show second. Hardware third.** If any check reveals a safety concern, keep the attraction closed until the physical issue and Showduino state are understood.
-
----
-
-- [ ] Record the installed firmware/component versions and manual revision. Website membership, saved IP and S3 reachability are not P4 readiness or Node acceptance.
-
-## 1. Physical inspection
-
-- [ ] Main Showduino enclosure/control equipment is secure and undamaged.
-- [ ] Director touchscreen is undamaged and accessible to the operator.
-- [ ] Power and data connectors are fully seated.
-- [ ] No exposed conductor, damaged cable, overheating, unusual smell or loose connection is present.
-- [ ] External output drivers, power supplies and protective devices appear normal.
-- [ ] Pixel power supplies/cabling show no sign of overheating or damage.
-- [ ] Required SD cards/storage are fitted.
-- [ ] Main momentary **Emergency** button moves freely and is not obstructed.
-- [ ] Venue fire/evacuation/machinery safety systems required by the installation are available independently of Showduino.
-
-**Stop here if any physical condition is unsafe.**
-
----
-
-## 2. System power and core health
-
-Current RC test order is P4 → Communications → Director → Nodes.
-
-- [ ] P4 Show Engine powered and reaches ready/healthy state.
-- [ ] Communications Controller powered.
-- [ ] Director powered.
-- [ ] Director ↔ Communications link reports healthy/ready.
-- [ ] Communications ↔ P4 link reports online/ready.
-- [ ] No unexplained **CONNECTION LOST**, **FAULT** or **DEGRADED** condition remains.
-- [ ] Emergency is currently clear before beginning output tests.
-
-Remember: venue Wi-Fi/Internet status is not the same thing as P4 health.
-
----
-
-## 3. Emergency function check
-
-**Carry this out before guests enter and with the attraction in a controlled test condition.**
-
-- [ ] Confirm no person is in a position where the test can create a hazard/startle risk.
-- [ ] Press the main Showduino Emergency button.
-- [ ] Emergency asserts promptly after normal input debounce.
-- [ ] Release the momentary button.
-- [ ] Emergency **remains latched** after release.
-- [ ] Director clearly shows the Emergency state.
-- [ ] Any running test timeline stops progressing/enters Emergency pause.
-- [ ] P4 Show Pixel line changes to bright white where installed.
-- [ ] Dedicated signage pixels change to bright white where installed.
-- [ ] Attraction Audio Node stops/mutes where installed.
-- [ ] Other installed Emergency-capable Nodes enter their defined Emergency state.
-- [ ] Pixel lines on Audio Node GPIO22 and/or Wireless Emergency GPIO2 go bright white where those pixel capabilities are installed and in use.
-- [ ] Normal show controls do not override Emergency.
-
-### Clear
-
-The physical Emergency button never clears Emergency.
-
-- [ ] Release the physical button if it is still held.
-- [ ] On the Director Emergency screen, choose **CLEAR EMERGENCY**.
-- [ ] Director presents **Clear Emergency Stop?** / clearance confirmation.
-- [ ] Select **CONFIRM CLEAR** only after confirming the test area is safe.
-- [ ] P4 accepts the clear only with the physical input released.
-- [ ] Authoritative Emergency state changes to clear.
-- [ ] Signage returns to normal green-locator pattern where installed.
-- [ ] P4 show pixels return to blackout rather than the previous effect.
-- [ ] Attraction audio does **not** automatically resume.
-- [ ] The show does **not** automatically continue merely because Emergency was cleared.
-
-This firmware path is implemented and still requires physical hardware acceptance.
-
-**FAIL:** any Emergency item above fails or behaves differently from the installed/manual baseline.  
-**Action:** keep the attraction closed until diagnosed and re-tested.
-
----
-
-## 4. Required Nodes
-
-Mark N/A only if the production genuinely does not use that device.
-
-- [ ] Audio Node online / N/A.
-- [ ] Lamp Node online / N/A.
-- [ ] Pixel Node(s) online / N/A.
-- [ ] MOSFET Node(s) online / N/A (when used by this production).
-- [ ] Wireless Emergency Node(s) healthy/linked / N/A.
-- [ ] Required Plug-in Bus devices online/configured / N/A.
-- [ ] No required Node is showing FAULT, NO STORAGE or unexpected STANDALONE state.
-
-When MOSFET Nodes are used:
-
-- [ ] Expected powered outputs are OFF before opening.
-- [ ] Controlled low-voltage test of intended effect where venue procedure permits.
-- [ ] Confirm Emergency forces MOSFET outputs OFF.
-
-For wireless Emergency Nodes:
-
-- [ ] Each installed station expected for this attraction is visible/healthy.
-- [ ] Any offline Emergency Node warning has been investigated before opening.
-- [ ] No station is left locally latched/NEEDS REARM.
-- [ ] Press-test each installed station's momentary Emergency button in a controlled condition (assert only — clear still uses the Director workflow).
-- [ ] Where an ESTOP station also drives show pixels, confirm Emergency white / clear-to-black behaviour for that line.
-
-Wireless Emergency Nodes are **assert-only** and must never be used as a way to clear the P4 Emergency latch.
-
----
-
-## 5. Production
-
-- [ ] Correct production/show name selected.
-- [ ] Correct production loaded on the P4.
-- [ ] No unintended maintenance/update mode is active.
-- [ ] Runtime state is suitable for a fresh start.
-- [ ] A controlled START request is accepted by the P4.
-- [ ] Timeline/state progresses as expected.
-- [ ] PAUSE works if used by the attraction.
-- [ ] STOP works and leaves the attraction in the intended idle/safe state.
-
-**RC note:** persistent production format v1 can store `PIXEL` / `AUDIO` / `LAMP` / `MOSFET` / `TEST` / `LOG` cues, but it is not yet the complete mixed-output commercial cue format (Emergency Node pixel persistence and full theatrical coverage remain limited). Use only the production/deploy path validated for this installation.
-
----
-
-## 6. Audio
-
-- [ ] P4 system/safety audio path reports expected status / N/A if intentionally unavailable.
-- [ ] Audio Node storage is present where attraction audio is required.
-- [ ] Correct test asset plays from the Audio Node.
-- [ ] Volume is appropriate for the venue.
-- [ ] Audio stops correctly.
-- [ ] No unexpected clipping, silence, reboot or storage fault occurs.
-
-Do not use the P4 system speaker as a substitute for missing attraction/programme audio.
-
----
-
-## 7. Pixels / lighting outputs
-
-- [ ] P4 Show Pixel line initialises correctly / N/A.
-- [ ] Audio Node Pixel Line (GPIO22) initialises correctly where used / N/A.
-- [ ] Wireless Emergency Pixel Line (GPIO2) initialises correctly where used / N/A.
-- [ ] Configured segment ranges match the physical installation.
-- [ ] Controlled effect/colour test behaves as expected.
-- [ ] No flicker/data corruption caused by wiring or power issues.
-- [ ] Dedicated signage line shows the expected normal pattern / N/A.
-- [ ] Pixel supplies/cabling remain cool and stable during the intended test load.
-
-If pixels unexpectedly become **all bright white**, check authoritative Emergency state before treating it as a lighting fault.
-
----
-
-## 8. Browser / network
-
-The local Showduino browser connection is useful but is not required to stay open during a loaded show.
-
-- [ ] Local `Showduino` Wi-Fi is available if browser operation is required.
-- [ ] `http://192.168.4.1/` opens the local system console on the current RC network / N/A if installation address has been changed.
-- [ ] Browser Home shows expected P4/Comms/Director state.
-- [ ] Optional venue Wi-Fi state is correct / N/A.
-- [ ] If venue Wi-Fi is unavailable, local P4 operation is still healthy.
-- [ ] Internet availability is not being mistaken for Show Engine availability.
-
-Do not start a firmware update during public operation.
-
----
-
-## 9. Director
-
-- [ ] HOME shows expected overall state.
-- [ ] PRODUCTIONS shows/selects the intended production.
-- [ ] LIVE reflects P4-confirmed runtime state.
-- [ ] NODES shows required specialist Nodes.
-- [ ] DIAGNOSTICS contains no unresolved critical fault.
-- [ ] SYSTEM LOGS do not show repeated/recent unexplained failures.
-- [ ] Touchscreen responds normally.
-- [ ] Display brightness/auto-off setting is appropriate for the operator position.
-
-**Locate:** press and hold the main Emergency button for 8 seconds to locate the Director. First touch acknowledges Locate only and does not clear Emergency. Hardware acceptance of this path is still required.
-
----
-
-## 10. Controlled full test
-
-- [ ] Run one complete controlled cycle of the attraction/production before opening.
-- [ ] Audio events occur at expected points / N/A.
-- [ ] Pixel/lighting events occur at expected points / N/A.
-- [ ] Specialist effects/Nodes respond as expected / N/A.
-- [ ] Show reaches completion or stops correctly.
-- [ ] No unexpected Node dropout occurs.
-- [ ] No unexpected Director/Comms/P4 reconnect occurs.
-- [ ] No unexplained fault remains after the test.
-
----
-
-# OPEN / DO NOT OPEN
-
-- [ ] **OPEN** — all required checks passed and the attraction is ready for operation.
-- [ ] **DO NOT OPEN** — one or more required checks failed or remain unexplained.
-
-**Outstanding issue(s):**
-
-______________________________________________________________________________
-
-______________________________________________________________________________
-
-______________________________________________________________________________
-
-**Action taken / person responsible:**
-
-______________________________________________________________________________
-
-______________________________________________________________________________
-
-**Operator signature:** ______________________________  **Time:** ______________
-
----
-
-## Fault rule
-
-Do not clear a fault merely to make the screen look green. Find the affected layer:
-
-```text
-People / physical attraction condition
-        ↓
-P4 Show Engine authority
-        ↓
-Communications / Director
-        ↓
-required specialist Node
-        ↓
-individual output / asset / wiring
-```
-
-Correct the actual fault, then re-run the affected checklist section before opening.
+**References:** [User Manual](SHOWDUINO_USER_MANUAL.md) · [Physical test plan](../physical-test-checklist.md) · [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) · [Gaps](SHOWDUINO_MANUAL_GAPS.md) · [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md).

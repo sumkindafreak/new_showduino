@@ -1,1428 +1,310 @@
-# SHOWDUINO
+# SHOWDUINO V1 — User Manual
 
-> **17 November 2026 finish-line status (source comparison, not hardware sign-off):** Comparing GitHub `main` with 14 November commit `f907670f` identifies **six subsequent commits**, with net modifications confined to generated Comms S3 Studio assets (`WebAssets.generated.h` and `tools/embed-webui/last-build.json`). This does not demonstrate new P4, Director or Node firmware behaviour. The 29 October combined audio/visual playback and owner-reported local 22-second run and Emergency-clear correction remain the latest bench evidence available; two logged P4-confirmed LOAD → START → COMPLETE passes and an Emergency interruption/authorised-clear/no-auto-resume pass are still unrecorded. Protect the flashed local firmware. The manual's 20 October source-reviewed baseline is historical, not the current flashed version. Studio export parser (#63), pixel segment parity (#64) and embedded Studio (#66) are separate unmerged candidates, not required for replaying the existing compiled SD fixture. Director stability and MOSFET reconnect (#58) need hardware retesting if they affect the fixture. Do not add DMX or optional FastLED work to this finish line. See [17 November finish-line evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-11-17.md).
+**Edition:** 1.0-RC, source-based rewrite of 19 November 2026  
+**Product source:** `sumkindafreak/new_showduino` `main` at [`41c7c71ac617abdf9feeedf2064e6b5a9f31cc15`](https://github.com/sumkindafreak/new_showduino/tree/41c7c71ac617abdf9feeedf2064e6b5a9f31cc15)  
+**Product version:** `1.0.0-rc.1`, protocol 1.x shared headers, portable Studio package **SHDO v2**  
+**Readership:** operators, owners, system installers and supervising technicians  
+**Release state:** **source-reviewed release candidate; hardware release acceptance is outstanding**
 
+> **Read this first:** This is a guide to the **reviewed code**, not certification that the owner's flashed local firmware matches GitHub. After [source reconciliation PR #72](https://github.com/sumkindafreak/new_showduino/pull/72) was merged on 18 November, the earlier “main contains only generated Comms assets” status became historical. [Documentation PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) separately records that source/physical distinction. The working local 22-second show and Emergency-clear fix are owner-reported successes; they do **not** yet establish two logged complete runs or a signed Emergency/no-auto-resume test. Preserve the known-good bench copy and use the [acceptance checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) before venue operation.
 
-> **4 November 2026 status — local bench ahead of main:** The owner subsequently reported that Emergency clearance is fixed in the *local flashed firmware* and the 22-second show runs locally (2 November); these reports supersede the 31 October failure as the latest observation but are **not** signed Emergency recovery or repeatable LOAD → START → COMPLETE acceptance. GitHub `main` at `338e5b63` (4 November 19:44 UTC) has only generated Comms WebUI/manifest changes since 3 November; the preserved local baseline (#51), optional FastLED stack (#52–#57, #60), MOSFET reconnect candidate (#58) and this documentation branch (#59) remain unmerged. Do not flash `main` over the working local Emergency fix. Keep effect loads isolated for Emergency tests; require P4-confirmed safe clear and no automatic show restart. See [latest dated finish-line evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). Historical failures below remain for traceability.
+## Contents
 
+1. [Purpose and roles](#1-purpose-and-roles)
+2. [Safety and permitted use](#2-safety-and-permitted-use)
+3. [Hardware and physical connections](#3-hardware-and-physical-connections)
+4. [Boot and readiness](#4-boot-and-readiness)
+5. [Director touchscreen](#5-director-touchscreen)
+6. [Network and browser surfaces](#6-network-and-browser-surfaces)
+7. [Productions, cues and Studio](#7-productions-cues-and-studio)
+8. [Running and stopping a production](#running-and-stopping-a-production)
+9. [Emergency and Locate](#9-emergency-and-locate)
+10. [Audio and lighting](#10-audio-and-lighting)
+11. [Specialist nodes and outputs](#11-specialist-nodes-and-outputs)
+12. [Storage, backups and updates](#12-storage-backups-and-updates)
+13. [Diagnostics and fault recovery](#13-diagnostics-and-fault-recovery)
+14. [Technical/service reference](#14-technicalservice-reference)
+15. [Installation acceptance and limitations](#15-installation-acceptance-and-limitations)
 
-> **2 November 2026 bench/source reconciliation:** The owner now reports that **Emergency clearance is fixed in the flashed local firmware** and that the existing **22-second full-node show runs**. These supersede the 31 October failure as the *latest owner report*, but are **not** a signed, independently logged Emergency/no-auto-resume or repeatable end-to-end acceptance. GitHub `main` still lacks that complete flashed baseline: draft [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51) preserves it and adds SHDO import hardening; draft [PRs #52–#57](https://github.com/sumkindafreak/new_showduino/pulls) stage optional FastLED-related work without claiming bench validation. A **MOSFET output drop during Director reconnect** is newly reported; draft [PR #58](https://github.com/sumkindafreak/new_showduino/pull/58) proposes a paired MOSFET/P4 fix, not yet accepted. **Do not flash, merge or call the installation release-ready from host tests alone.** See [2 November evidence update](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
+## 1. Purpose and roles
 
-> **1 November 2026 bench follow-up:** The Director **CLEAR EMERGENCY** button has been observed stuck on **AWAITING STAGE**, with the Emergency state remaining latched until reboot on a failed attempt. Navigating away from **Cue Library** can also leave its old screen content visible. Temporary normal operation during a later test does **not** establish either defect is resolved. `main` at `0e3d0786` adds four generated Comms bundle/manifest commits since 31 October, not an active firmware fix. Keep Emergency clearance and Director stability blocked for physical acceptance; [see current status and safe diagnostics](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+Showduino is a modular show-control system for immersive experiences, attractions, practical effects and audio/lighting cues. It is designed to operate **one coordinated show** with one authoritative engine and multiple specialist nodes.
 
-> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+| Component | Hardware in reviewed build | Owner of |
+| --- | --- | --- |
+| **Show Engine (P4)** | Waveshare ESP32-P4 development board | Show state, timeline scheduling, production load, Emergency authority, node/outputs state as known by the system |
+| **Communications Engine** | Dedicated ESP32-S3 | ESP-NOW, UART bridge, local Wi-Fi access point, browser Console, protocol proxy |
+| **Director** | JC8048W550C ESP32-S3 800×480 GT911 touch | Operator requests, status, diagnostics and show supervision |
+| **Audio Node** | ESP32-A1S ES8388 | Local show/programme audio and its attached pixel line |
+| **Lamp, Pixel, MOSFET and Emergency Nodes** | Specialist S3/C3/ESP32 boards | Physical actions, local effects and report-back under P4 authority |
 
-> **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+**Constitutional rule:** *The Show Engine decides. Communications transports. Director commands and displays. Nodes act.*
 
-**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+A loaded P4 production runs locally. It does **not** require a browser, internet, Director or venue router to remain open. Loss of a client link and loss of the Show Engine are different failures.
 
-## Commercial Show Control System
+The older C3/SUE Comms architecture, external Mega executor and Relay Node sources are historical. The P4 onboard C6 is unused/reserved. Future DMX and other interfaces are **not** prerequisites for the present non-DMX system.
 
-# User Manual
+## 2. Safety and permitted use
 
-**Manual revision:** 0.3-RC — source-reviewed against the 20 October firmware baseline (not a claim of installed-build or physical acceptance)  
-**Applicable product:** Showduino `1.0.0-rc.1`  
-**Repository baseline:** `main` at `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2`  
-**Baseline date:** 20 October 2026  
-**Status:** Release-candidate manual. Hardware acceptance and identified product gaps remain open.
+**Showduino's Emergency function is a theatrical-control safeguard, not a certified fire alarm, evacuation device, SIL/PL controller or machinery E-stop.** Maintain all independently required venue safety systems and appropriate electrical protection. The operator must have a means to isolate dangerous loads independently.
 
-**29 October 2026 field-status addendum — FIRST REAL SHOW PLAYBACK:** The owner confirms Showduino has now **played a show with audio and visual effects together on physical hardware**. This supersedes earlier statements that no combined audio/visual show had played. Some teething issues remain. **Do not conflate first successful playback with formal full-scenario acceptance:** exact installed firmware versions, complete/terminal state, repeatability, all required nodes and mid-show Emergency recovery are not yet recorded. The prior Director resets and Audio Node microphone calibration gaps have not been explicitly retested as fixed. The existing 22-second all-node result sheet still says `NOT RUN` for its formal test; the first playback is a separate, real milestone. `main` reviewed at [`e57870c`](https://github.com/sumkindafreak/new_showduino/commit/e57870caaea2) has only generated Comms bundle/manifest updates since 28 October. See [29 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md). **This is a field observation, not a new firmware-source/manual revision or release sign-off.**
+- For initial commissioning, disconnect smoke, motion, high-power, mains-switched and other hazardous loads. Use visible, low-energy test outputs.
+- Avoid exposed wiring, unfused 5 V strips, overcurrent, inadequate grounding, liquids near electronics or unverified power supplies.
+- A **P4 Emergency** overrides entertainment effects, timeline actions and display controls. The main physical button can **assert** Emergency; it cannot clear it.
+- An Emergency **clear** requires a deliberate Director/P4 process and **never automatically resumes** the show. Do not restart until the physical cause is resolved.
+- Do not claim Emergency latch persistence through complete loss of P4 power; the current boot behaviour is not proved to restore a previously latched state after power removal.
+- A wireless Emergency Node can assert P4 Emergency but does **not** replace an independent hardwired safety chain.
+- For venue operation use the [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) and locally approved procedures, not source-code tests alone.
 
-**28 October 2026 field-status addendum (not a new firmware baseline):** The owner reports P4 and Audio Node pixels working in the 22-second visual bench test, a limited Emergency response, and clean ESP32-A1S WAV playback with volume/stuttering resolved on the installed hardware. **This does not establish a complete all-node production pass.** A newly flashed Director subsequently exhibited repeated Core 1 `LoadProhibited` resets on Home/Audio Node navigation, Stage compatibility/synchronisation warnings, and incomplete microphone calibration feedback; some SOUND enable/disable/trigger commands did reach the Audio Node. The original 20 October source/manual revision remains dated, and the full physical acceptance sheet remains unsigned. For exact observations and the current `main` SHA, see [28 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) and [release-gate issue #42](https://github.com/sumkindafreak/new_showduino/issues/42). Do not use this manual to claim the Director, Emergency path or complete show has passed physical acceptance.
+## 3. Hardware and physical connections
 
----
+The three central control boards are the **P4**, **Comms S3** and **Director**. The Audio Node is a separate specialist device, not another P4.
 
-## Finish-line status update — 27 October 2026
+### P4/Comms serial link
 
-The latest reviewed `main` is [`ddfdb6fc`](https://github.com/sumkindafreak/new_showduino/commit/ddfdb6fc78a84e7d1acaa6a7024ca100d8110d73). GitHub comparison against the 26 October review (`36215ee4`) finds **four more generated Comms Studio bundle/manifest commits only**, without changes to active firmware sources or the acceptance fixture. The manifest still reports build hash `56677901c6a2`, 42 assets, 214,954 embedded bytes and the same pinned authoring Studio source; `buildUtc` advanced to 27 October 18:23:11 UTC. The maintained firmware manual baseline remains 20 October; draft PR fixes are **not** part of `main`. The [27 October finish-line audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) records the evidence and unresolved gates. **No physical 22-second LOAD → START → COMPLETE pass or Emergency repeat has been recorded.**
+| Connection | Pin |
+| --- | --- |
+| P4 RX from Comms | P4 GPIO4 ← S3 GPIO17 TX |
+| P4 TX to Comms | P4 GPIO5 → S3 GPIO18 RX |
+| Both boards | Common ground, **115200 baud, 8N1** |
 
-## Finish-line status update — 26 October 2026
+Do not connect 5 V signals directly to 3.3 V logic, reverse TX/RX or reuse the P4 onboard C6 SDIO pins.
 
-The latest reviewed `main` is [`36215ee4`](https://github.com/sumkindafreak/new_showduino/commit/36215ee4a10c09b99ce69803e60f1cd2f402c187) (26 October 2026, 18:40 UTC). Since the previous 25 October check, four commits regenerated the Comms embedded Studio WebUI and manifest; the manifest's content hash and pinned Studio source are unchanged, and no active firmware-source changes were found. **This is not a new hardware acceptance result.** The 20 October firmware baseline of this manual is retained deliberately; see the [26 October audit addendum](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) for the current main-vs-draft distinction. The existing 22-second physical normal run and Emergency repeat are **still unverified**. Do not treat draft PR fixes, Studio preview, host tests or regenerated bundles as installed or accepted features.
+### Principal P4 resources
 
-## Finish-line status update — 24 October 2026
+| P4 pin / resource | Purpose |
+| --- | --- |
+| GPIO25, input pull-up | Main momentary Emergency to ground, active LOW, debounce |
+| GPIO23 | Theatrical segmented **Show Pixel** line |
+| GPIO24 | Separate Emergency/designated-signage pixel output |
+| I²C GPIO7 SDA, GPIO8 SCL | Shared plugin/onboard codec bus, **3.3 V** |
+| PCM5102A BCLK21 / WS20 / DOUT22 | Separate local ambience DAC |
+| Onboard ES8311 | Showduino system and safety sounds, **not** attraction audio |
+| Onboard microSD (SDMMC) | Persistent productions, configuration, assets and logs |
 
-**Read the [24 October main-versus-bench audit](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) before commissioning the existing non-DMX acceptance show.** The 20 October firmware baseline of this manual is still the active `main` firmware: later `main` commits changed documentation and generated Comms Studio assets, not the active firmware source. The 22-second all-node acceptance production, independent Audio GPIO5 status indicator, default-ten-pixel changes, WAV-stutter repair and SHDO parser fixes are on **separate unmerged PRs**, not on `main` or proven installed hardware. No complete physical normal run plus Emergency repeat is recorded. Do not confuse a passing host test or a proposed firmware version with a passed hardware test.
+The Director uses an 800×480 RGB display and **GT911** touch. Its backlight timeout does not switch off the MCU. Avoid treating similarly named ESP32 LCD boards as pin-compatible; use the exact [Director BoardConfig](../../firmware/director-esp32-8048s050/ShowduinoDirector8048S050/BoardConfig.h).
 
-## Read this first
+**Fixed pixels are not programmable line defaults:** Audio status indicator = 1, Director ambient = 2, MOSFET identifier = 4, a standard fitted lamp Jewel = 7. A new programmable show line defaults to **at least 10** where the device limit permits; valid larger saved counts are retained.
 
-Showduino is still at a release-candidate stage. This manual describes the behaviour that could be verified from the repository baseline above. It deliberately does **not** present planned features as finished product functions.
+The [Build and Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) is the place to record every fitted PCB revision, PSU, wire, pixel count and actual acceptance measurement. Do not substitute a generic product photo for your installed module.
 
-Where current firmware is implemented but has not yet passed the repository's physical acceptance gate, this manual says so. Where a newly approved product requirement differs from the firmware at this baseline, the discrepancy is recorded in `SHOWDUINO_MANUAL_GAPS.md` rather than being disguised as current behaviour.
+## 4. Boot and readiness
 
-For day-to-day use, operators should also have access to:
+1. Confirm power, accessible Emergency button, correct removable media and safe disconnected loads.
+2. Bring up **P4 → Comms S3 → Director → required specialist nodes** for a controlled RC test.
+3. Confirm P4, UART transport, ESP-NOW links and each required node independently. A connected Director or browser alone is **not** a ready P4.
+4. Confirm the correct production has been **loaded** and no Emergency, storage, node or output fault blocks the next action.
+5. Rehearse with non-hazardous loads, capture logs and record node identities and firmware hashes.
 
-- `SHOWDUINO_QUICK_START.md`
-- `SHOWDUINO_PRE_OPENING_CHECKLIST.md`
+A show already running on the P4 is **not automatically cancelled** because the Director touchscreen sleeps or the website disconnects. Do not use power cycling to clear a show-related fault without inspecting the P4.
 
----
+## 5. Director touchscreen
 
-# 1. About Showduino
+The [Director Operator Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) is the step-by-step reference for the reviewed active pages: **HOME, PRODUCTIONS, SHOW DETAILS, LIVE, CUE LIBRARY, NODES, AUDIO NODE, LAMP NODE, OUTPUTS, DIAGNOSTICS, SETTINGS, AUDIO, SYSTEM LOGS** and context-dependent system screens.
 
-Showduino is a modular show-control system for attractions, escape rooms, immersive theatre, exhibitions, scenic effects and other installations where lights, audio and specialist effect devices need to operate in a timed and repeatable way.
+- **HOME:** overview and navigation. Its RUN action depends on reported link/readiness.
+- **PRODUCTIONS:** select a saved production and ask the P4 to load it.
+- **LIVE:** observe authoritative runtime, requested actions, progress and fault/complete result.
+- **CUE LIBRARY:** a **native monitor** of active production cues; FOLLOW/BROWSE and deliberate START SCENE, not a SHDO editor. The older “tile disabled” instruction is obsolete in reviewed `main`.
+- **OUTPUTS:** MOSFET/P4 I/O/plugin desk; separate displayed Actual from requested Set. APPLY is not a guarantee of physical switching.
+- **AUDIO:** P4's system sound; the Audio Node is a different device.
+- **SETTINGS:** backlight/brightness and saved five-point touch calibration where implemented.
+- **Emergency screen:** the **only normal operator clearing workflow**, with P4 validation and deliberate confirmation.
 
-The system is designed around a simple responsibility model:
+The OS2 shell source tree is not the active default (currently `SHOWDUINO_OS2_SHELL=0`). Screen illustrations may be examples; verify physical UI labels against the installed build.
 
-> **The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.**
+## 6. Network and browser surfaces
 
-This describes **runtime acceptance**, not independent scene selection by Nodes or the P4. The **Director alone chooses and commands productions**; the P4 executes accepted requests and enforces Emergency protection independently of Director availability. No Node button may independently select or change a scene. Emergency clear never resumes a production automatically.
+The Comms S3 hosts a **Showduino** SoftAP and the **System Console**. On default bench networking the browser entry point is often `http://192.168.4.1/`; use the actual configured address and credential for your installation. Do not reuse the source development password at a public venue.
 
-In normal use, an operator should not need to understand the embedded electronics behind that model.
+The Comms **Network** page offers Wi-Fi **Scan, Connect, Disconnect, Forget, AP only**. Home/venue Wi-Fi association may change the ESP-NOW operating channel through the Comms gateway; do not force a competing radio channel on a node. External internet or GitHub availability is **not** a P4-ready signal.
 
-## 1.1 The main parts
+There are three different browser/editor concepts:
 
-### Show Engine
+1. **Comms System Console:** local Home/Productions/Live/Outputs/Devices/Network/System/Settings and P4 API proxy.
+2. **Embedded `/studio/` snapshot:** a bundled edition of Studio; may lag the website's newest authoring code.
+3. **Website Studio:** richer editing and SHDO export; independent release and compatibility boundary.
 
-The **Show Engine** is the authoritative controller. It owns the live show state, timeline, Emergency state, production loading and the final decision to accept or reject an operator request.
+If the browser loads while the P4 is offline, controls must remain unavailable. The browser is not a substitute for the Director/P4 Emergency-clear handshake. A stale text label about a “3-second hold” in current `Live.js` is erroneous; never follow it.
 
-The current Show Engine uses the ESP32-P4 platform, but the important customer-facing fact is its role: **if another screen or device disagrees with the Show Engine, the Show Engine is authoritative.**
+## 7. Productions, cues and Studio
 
-### Communications Controller
+A **production** is the named show. A **scene** is a creative or timeline subdivision, not a second runtime authority. The P4 executes the ordered cues in the loaded production.
 
-The **Communications Controller** carries messages between the Director, browser, specialist Nodes and Show Engine. It also hosts the local browser interface and can connect to optional home/venue Wi-Fi.
+### Creating a new production
 
-It does not make show decisions on behalf of the Show Engine.
+1. Open **Website Studio**, create/open a production and enter its Timeline.
+2. Add Audio, Pixel, MOSFET or other compatible lanes; use **Cue Library** presets as editable starting points.
+3. In the Inspector, assign actual logical node IDs and verified media/segment/output references. Ensure each referenced file is present on its **own device's** storage.
+4. Preview for timing and run Project Check. **This is authoring validation only.**
+5. Export an **SHDO v2** `.shdo` package; check the compiler compatibility of the **installed** P4 before deploying.
+6. In the **Comms System Console → Productions → Persist SHDO v2 to P4 SD**, choose the exported file and press **Persist to SD**. Wait for the P4 success/rejection. Persist does **not** auto-load or auto-start.
+7. Separately **Load**, confirm readiness and **Start** in a controlled test.
 
-### Director
+The P4 **compiles** supported SHDO cues to persistent runtime format v1 (rather than interpreting arbitrary authoring JSON). The canonical on-SD paths are `/showduino/productions/<id>/manifest.json` and `timeline.json`. P4 format-v1 supports typed bounded commands; see [production storage](../production-storage.md) and [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md).
 
-The **Director** is the portable 800 × 480 touchscreen operator interface. It is used to view system state and request actions such as loading, starting, stopping and monitoring a production.
+The current `ProductionFormat.cpp` includes a bounded **ESTOP** cue route with the `ESTOP:NODE:PIXEL:` prefix; older `production-storage.md` text claiming no ESTOP type is stale and must be treated as a documentation discrepancy until reconciled. No authoring palette item, particularly legacy Relay/Trigger/generic FX/DMX, should be described as deployable without current compiler **and physical** verification.
 
-A Director button press is a request. The interface should reflect the state confirmed by the Show Engine rather than pretending an action succeeded merely because the screen was touched.
+### RAM commissioning is not persistent storage
 
-### Specialist Nodes
+The Console's `/api/studio-timeline` RAM upload is a separate commissioning path (Pixel/Audio Node scope). It must not be represented as a saved SD production. A timed browser preview, a RAM test and a persisted compiled production are distinct.
 
-Specialist Nodes perform functions away from the main controller. Current repository work includes Audio, Lamp, Pixel and Emergency Nodes at different levels of physical validation.
+### Why a deployment can fail
 
-Nodes act on requests routed by the Show Engine. They are not independent show authorities while Showduino owns them.
+Likely boundaries include wrong SHDO version, unavailable node route, missing asset, invalid cue command, range/size limits, wrong timeline order, storage failure or an active Emergency. Preserve the actual rejection. Avoid upgrading/merging an untested firmware branch merely to accept a previously rejected package.
 
-### Studio / browser interface
+## Running and stopping a production
 
-The Communications Controller hosts a local browser interface for system status, commissioning, productions, outputs, devices, networking and diagnostics.
+| Request | What it means | What to verify |
+| --- | --- | --- |
+| **Load** | P4 selects/loads an SD production | Confirm loaded ID/state from P4 |
+| **Start** | P4 begins the loaded timeline if allowed | RUNNING state, cue activity and real output |
+| **Pause** | P4 pauses the runtime | PAUSED state and expected output policy |
+| **Resume** | Deliberate request from an allowed paused state | P4 confirmation; Emergency must be clear |
+| **Stop** | P4 ends the current run | Safe output result and stopped state |
+| **Unload** | Remove loaded production when allowed | P4 accepts only in an allowed state |
+| **Complete** | P4 finished the scheduled timeline | Authoritative completion, not merely UI animation |
 
-The repository currently uses the name **Studio** for more than one related surface:
+A production may be stopped or its runtime state lost for operational reasons. Never promise automatic recovery/rejoin without an explicit feature-specific test. A successful SHDO persist **never** initiates playback by itself.
 
-- the **Showduino System Console** (active S3-hosted commissioning/status UI);
-- the embedded **Showduino Studio** authoring snapshot at `/studio/` (SHDO v2 project/timeline/pixel authoring).
+For acceptance, execute the **same known-good non-DMX production twice** through P4-confirmed LOAD → START → COMPLETE, then test Emergency interruption on a separate attempt. Do not use an unverified new show to close the original benchmark.
 
-The System Console is the day-to-day browser front door. Studio authoring is substantially more capable than earlier RC wording suggested, but persistent mixed-device production storage on the P4 still has important limits. Section 10 explains the current boundary.
+## 9. Emergency and Locate
 
-## 1.2 Local operation is deliberate
+### Physical main button
 
-A loaded/running show is intended to execute locally on the Show Engine. It must not depend on:
+P4 GPIO25 is an internally pulled-up **active-LOW** momentary input. Once a valid press is debounced, the **P4 latches Emergency** and overrides entertainment requests. **Releasing** the button does **not** clear the latch.
 
-- an open browser window;
-- the Director remaining available;
-- a home or venue Wi-Fi connection;
-- an Internet connection;
-- a cloud service.
+An uninterrupted **8-second hold** additionally requests **LOCATE**. The Director wakes, marks Locate and flashes its fitted ambient pixels; the first deliberate touch acknowledges Locate without activating an underlying button. **Locate never clears Emergency.**
 
-Loss of Wi-Fi or Internet access must therefore not be confused with loss of the Show Engine itself.
+### Safe clear procedure
 
----
+1. Protect people, inspect the installation and remove the cause. Do not bypass independent venue controls.
+2. **Release the physical button.** A still-asserted input blocks clearance.
+3. On **Director Emergency**, press **CLEAR EMERGENCY**.
+4. Await the P4 request acknowledgement. At **Clear Emergency Stop?** deliberately select **CONFIRM CLEAR** or cancel.
+5. Wait for P4 authoritative clear. If the request rejects, hangs or times out, **stop operations** and diagnose with P4/Comms/Director logs.
+6. Verify safe outputs and **no automatic restart**; the operator must initiate a separate authorised run/resume after review.
 
-# 2. Safety information
+A further Emergency assertion invalidates stale pending confirmation. The audio and lamp nodes reconcile reported Emergency state with P4 authority; this is not a claim that the full node matrix has passed physical acceptance.
 
-Show control sits beside real people, scenery, electrical loads, loud audio and moving or illuminated effects. Operational decisions must therefore follow this order:
+### Emergency lighting and sound
 
-1. **People first**
-2. **The show second**
-3. **Hardware third**
+The P4 theatrical show line and designated signage drive bright white in Emergency; other configured pixel-capable nodes have their own Emergency-white rules. Emergency overrides show brightness and effects. Clearing changes signage back to its normal indication and leaves show output in a safe state rather than automatically returning to the interrupted scene. Show/programme audio must not unexpectedly resume.
 
-If an incident involves a person, do not delay a real-world response to protect a scene, complete a cue, preserve a prop position or diagnose the controller.
+The P4 plays **system** Emergency sound where hardware/media permit, but safety must not depend on a WAV file playing. Independent venue safety systems remain mandatory.
 
-## 2.1 Callout meanings
+### Critical limitations
 
-**DANGER** — reserved for a direct hazard where failure to follow the instruction could result in death or serious injury. Use only where the installation documentation identifies such a hazard.
+The P4 software latch is **not proved to persist across complete power removal** after button release. Do not assert otherwise. Wireless Emergency Nodes are **assert-only** and not certified substitutes for hardwired stops. A stuck **AWAITING STAGE** screen, no P4 confirmation or unexpected Director reset is a **failure**, not clearance.
 
-**WARNING** — a condition that could create a serious safety risk if handled incorrectly.
+## 10. Audio and lighting
 
-**CAUTION** — a condition that can damage equipment, wiring, media or an attraction installation.
+### P4 system sound versus show audio
 
-**IMPORTANT** — information that is essential for correct Showduino operation or recovery.
+The P4 onboard **ES8311** and associated amplifier provide Showduino system sounds such as boot, Emergency, error and completion. Stored system sounds live under `/showduino/audio/system/` (e.g. `boot.wav`, `emergency.wav`).
 
-**NOTE** — useful supporting information.
+The **Audio Node** (ESP32-A1S/ES8388) is for programme audio: dialogue, music, ambience, sound effects and show-timed cues. Its media lives on its **own SD card**. It does **not** fall back to the P4 system speaker if offline.
 
-## 2.2 Showduino and venue safety systems
+The P4 may also have an external **PCM5102A local ambient output** on GPIO20/21/22; this is separate from both the P4 system codec and the specialist programme Audio Node.
 
-**WARNING — Showduino show-control Emergency behaviour must not be represented as a substitute for any certified safety system required by the installation.**
+### Pixel lines
 
-The repository does not establish Showduino as a certified fire alarm, evacuation system, machinery E-stop, safety PLC, SIL-rated system or PL-rated system.
+- **P4 GPIO23:** normal segmented Show Pixel line for theatrical effects.
+- **P4 GPIO24:** separately safety-owned Emergency/designated signage; **not** a free show effect output.
+- **Audio Node GPIO22:** programme-associated configurable pixel line on the **same Audio Node identity**.
+- **C3 Pixel Node:** remote theatrical output; P4 still schedules its cues.
+- **Wireless Emergency C3 GPIO2:** pixel capability on the **same ESTOP identity**, not a fake second peer.
+- **Lamp fitted Jewel/Director ambient/MOSFET identifier:** fixed assembly indicators, not lines subject to the default 10-programmable-LED rule.
 
-Venue fire safety, emergency lighting, evacuation, machinery guarding, electrical protection and other legally or operationally required safety systems remain separate responsibilities.
+New programmable lines default to **10** valid pixels; correctly configured larger counts remain. Use a suitable 5 V supply, common ground and proper signal level-shifting/protection for installed strips. Emergency bright white must have adequate supply current.
 
-## 2.3 Electrical installation
+## 11. Specialist nodes and outputs
 
-Electrical installation and external loads should be designed, protected and inspected by a competent person appropriate to the installation.
+### Audio Node
 
-Do not assume a Showduino logic output can directly power a lamp, motor, solenoid, high-current LED installation or mains load. Use the correct driver, interface, power supply, fuse/protection and cable rating for the actual load.
+Ai-Thinker ESP32 Audio Kit V2.2 **A161/ES8388**, not AC101. Commission the node's local SD, output volume, audio route, programme files, status pixel and GPIO22 show line. P4 controls playback and Emergency; node-side local modes do not create separate P4 show authority. See [Audio Node](../audio-node.md).
 
-The P4 Plug-in Bus is a **3.3 V I²C bus**. SDA/SCL must not be pulled to 5 V. A 5 V I²C module requires an appropriate bidirectional level shifter.
+### S3 Lamp Node and proposed simplified C3 Lamp
 
-Addressable-pixel installations should use a correctly sized external supply. The repository standard for final P4 pixel data wiring is a 5 V-compatible logic buffer where required, a 470 Ω series resistor near the controller-side driver, common controller/pixel grounds and suitable bulk capacitance/current distribution.
+The active repo includes an **S3 carbide-lamp simulator** with a seven-LED Jewel, local effects/sensors and Showduino-managed mode. The **simplified single-button ESP32-C3 hurricane-lantern design** is separately specified; it is **not** the same as installed/signed-off S3 firmware or proof a ready simplified C3 firmware is deployed. See [S3 Lamp](../s3-lamp-node.md) and [C3 Lamp design status](../c3-lamp-node-simplified-integration.md).
 
-## 2.4 Inspection before operation
+### C3 Pixel Node
 
-Before opening an attraction:
+Remote pixel effects are output by its local hardware. Confirm node ID, actual GPIO mapping, LED count, supply and Emergency behaviour, and physical results before use. See [C3 Pixel](../c3-pixel-node.md).
 
-- inspect the Showduino unit, Director and Nodes for damage;
-- confirm power and external-load wiring is secure;
-- verify the Emergency control operates correctly;
-- confirm required Nodes are online;
-- check the intended production is loaded;
-- test outputs in a controlled state before admitting guests;
-- resolve unexpected Emergency, fault or offline indications rather than bypassing them.
+### Wireless Emergency + Pixel C3
 
-Use the dedicated pre-opening checklist supplied with this manual.
+Extra station asserts the **global** P4 Emergency. It **cannot clear** the latch. Its pixel line is tied to the same logical ESTOP node. Confirm physical input wiring and radio health; do not treat wireless as independent certified Emergency infrastructure. See [Emergency Node](../emergency-node.md).
 
----
+### Four-channel MOSFET Node
 
-# 3. System overview
+Provides **low-voltage DC** output control and reported Actual values. Director **Set** is a desired value, not proof of switched current. APPLY requests a change, while OFF/ALL OFF are safe-off requests with special gates. Never use this as a mains switching specification. Recheck the earlier Director-reconnect drop report on the installed board before release. See [Outputs/MOSFET](../director-outputs-mosfet.md).
 
-```text
-                         SHOWDUINO SYSTEM
+### Plug-in Bus and legacy options
 
-                     Director Touchscreen
-                              |
-                           ESP-NOW
-                              |
-                  Communications Controller
-                    /          |           \
-       local browser/WebUI     |            specialist Nodes
-                               |             Audio / Lamp /
-                          UART 115200        Pixel / Emergency
-                               |
-                               v
-                         SHOW ENGINE
-                         (authority)
-                               |
-                +--------------+--------------+
-                |              |              |
-            system audio   show pixels   signage/emergency
-             (local)        (GPIO23)       pixels (GPIO24)
-```
+The P4's **3.3 V I²C** bus uses GPIO7/8 and shares resources with its onboard codec. Only connect address/power-compatible approved devices; do not infer completion of a new plugin from discovery alone. Historical Relay code and DMX experiments are **not** present production commissioning steps.
 
-The browser path is:
+## 12. Storage, backups and updates
 
-```text
-Phone / tablet / computer
-        |
-      Wi-Fi
-        |
-Communications Controller
-        |
-   API proxy / UART
-        |
-    Show Engine
-```
+The P4 SD is the persistent backbone (productions, configuration, logs, assets), **not the Emergency safety backbone**. A timeline already loaded into RAM may continue without SD; media streaming or future loads may fail. Back up the full `/showduino/` card tree and every node's local media before changes.
 
-The browser does not become the show clock. Closing the browser does not stop an already running P4 show.
+The Comms firmware embeds the local System Console. Changing website files alone does **not** update a flashed Comms bundle; developers rebuild it separately. Operators should not hand-edit generated WebUI headers.
 
----
+**Updates:** Comms **self-OTA** is the documented limited update path subject to installation-specific physical proof. This is **not** a system-wide OTA. P4, Director and most specialist nodes remain USB-flashed in the reviewed release candidate. Never update firmware during a live show or Emergency, and never replace a working local build without backup, compatibility check, controlled test and rollback plan.
 
-# 4. Hardware tour
+No GitHub PR, clean host build, green CI or release manifest proves the binaries currently fitted in an attraction. See [System Updates](../system-updates.md) and [Comms OTA](../comms-ota.md).
 
-This revision describes functions rather than final enclosure-panel labels. A frozen commercial enclosure connector schedule has not yet been verified in the repository.
+## 13. Diagnostics and fault recovery
 
-## 4.1 Main Showduino assembly
+| Symptom | Meaning and first action |
+| --- | --- |
+| Director **CONNECTION LOST** | Director/Comms link may be down; check power and transport. **Do not assume P4 stopped.** |
+| Browser works, **P4 OFFLINE** | Comms serves UI independently; inspect P4 UART, boot and state. |
+| Production does not load/start | Look for missing card, rejected format, invalid cue, unready node or Emergency; read P4 response. |
+| **NO SD CARD** | No reliable persistent production access; inspect card/power safely, don't assume auto-load. |
+| Venue Wi-Fi down | Comms SoftAP may still work; external Internet is optional. |
+| Audio silent | Verify Audio Node online, card, file, level, amplifier, Emergency and node ID; P4 system sound is distinct. |
+| Pixels bright white | **Treat as possible Emergency**; inspect P4 authoritative latch **before** attempting effects. |
+| Show pixels black after clear | Safe post-clear behaviour; do not replay the previous effect automatically. |
+| MOSFET Actual differs from Set | Actual is node feedback; isolate load, diagnose and retest. |
+| Emergency clear stuck/rejected | Confirm physical release and P4 report; capture logs. No reset workaround. |
+| Cue Library screen stale | Source support does not prove hardware fix; log exact flashed build and steps. |
+| Node reports standalone/controlled | Observe P4 ownership and local permission rules; do not fight show authority. |
 
-The current architecture contains two main processing roles:
+For a reproducible fault: record the time, production ID, firmware hashes and **P4 → Comms → Director → Node** states; log the exact last accepted request and result. For dangerous behaviour, disconnect the effect and stop venue operation first.
 
-- **Show Engine (P4)** — show authority, local storage/runtime, system audio, local pixel engines and hardwired Emergency input;
-- **Communications S3** — Director/Node radio transport, P4 UART link, local Wi-Fi access point and browser host.
+## 14. Technical/service reference
 
-These are separate roles even when they are installed inside one enclosure.
+**Current source roots:**
 
-## 4.2 Director touchscreen
+- `firmware/stage-engine-p4/ShowduinoStageEngineP4/` — P4 authority, Emergency, production parser and runtime.
+- `firmware/s3-comms-controller/ShowduinoS3CommsController/` — S3 transport, AP, WebUI and OTA.
+- `firmware/director-esp32-8048s050/ShowduinoDirector8048S050/` — Director pages, buttons, touch and render logic.
+- `firmware/audio-node-esp32-a1s/`, `firmware/s3-lamp-node/`, `firmware/c3-pixel-node/`, `firmware/c3-emergency-node/`, `firmware/mosfet-node-esp32/` — current specialist implementations.
+- `protocol/` — shared versioning, SHDO, messages and safety/pixel contracts.
+- `web/showduino-studio/` — editable S3 Console frontend.
+- `docs/` — architecture, hardware, production, system updates and node-specific references.
 
-Current Director hardware is an ESP32-S3-based 800 × 480 capacitive touchscreen. Its operator-facing functions include productions, live show status, Nodes, diagnostics, settings, system logs and Emergency presentation.
+Use [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) for claim-by-claim evidence. Historical documents remain in Git history. A published path or function is **source evidence**, not a pinout measured on the installed enclosure.
 
-Two addressable ambient LEDs provide state/attention indications. They are presentation indicators, not show-output pixels.
+## 15. Installation acceptance and limitations
 
-## 4.3 Main Emergency button
+**Evidence known at 19 November 2026:**
 
-The main Showduino Emergency input is a **momentary pushbutton**, wired to the P4's local Emergency input. The software latch remains active when the button is released.
+- Owner-reported **first combined audio/visual physical show** on 29 October 2026.
+- Owner-reported local **22-second full-node production running**, and local Emergency-clear correction after earlier failures.
+- Merged source reconciliation [#72](https://github.com/sumkindafreak/new_showduino/pull/72), with host build/test evidence; not a physical pass.
+- **Not yet recorded/signed:** two consecutive P4-confirmed complete productions; a full mid-show Emergency → all safe outputs → physical release → Director/P4 deliberate clear → **no auto-resume** pass.
+- Director freeze/Cue Library navigation and MOSFET Director-reconnect behaviour require physical retest as relevant.
+- Unverified enclosure identification, node fault recovery, media readiness and full site safety compliance must stay **open** until documented.
 
-This must not be confused with separate wireless Emergency Node accessories, which use their own momentary pushbutton, local latch and assert-only design.
+**Release rule:** An operator procedure may be published as source-reviewed without claiming the finished installation is release-ready. The [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md) are part of this manual, not optional fine print.
 
-## 4.4 P4 local show-pixel line
+### Glossary
 
-The current local theatrical pixel output is the P4 **Show Pixel Line**. It supports segmented effects in firmware.
+**P4:** authoritative Show Engine. **Comms:** dedicated S3 transport and web gateway. **Director:** operator touchscreen. **Node:** specialist local actuator/player. **SHDO v2:** portable authoring document. **Format v1:** P4 runtime production representation. **Persist:** compile/store to SD (not load). **Load:** select production into P4 runtime (not start). **Emergency:** P4-controlled software latch. **Locate:** Director-finding indication while Emergency remains latched.
 
-It is separate from the dedicated Emergency/signage pixel output.
+### Further reading
 
-## 4.5 Emergency/designated-signage pixel line
-
-The dedicated signage line is safety-owned by Showduino, not by the production timeline. The current model groups pixels into ten-pixel sign groups:
-
-- normal: first pixel in each group green, remaining nine off;
-- Emergency: all pixels in all groups bright white.
-
-## 4.6 P4 system speaker/audio
-
-The P4 onboard ES8311 audio path is reserved for Showduino system/safety sounds such as boot, Emergency and operator notification sounds.
-
-Attraction/programme audio is handled by a specialist **Audio Node**. Showduino does not silently fall back to the P4 system speaker for attraction audio.
-
-## 4.7 Storage
-
-The Show Engine uses an SD card for configuration, persistent productions and system assets. The SD card is the persistent storage backbone, but it is **not** the safety backbone: Emergency handling must not depend on an SD file being available.
-
-## 4.8 USB/service connections
-
-USB remains a service/recovery path for components that do not yet support operator OTA updates. It is not intended as the normal day-to-day operator interface.
-
----
-
-# 5. Before first power-on
-
-For an assembled commercial unit, follow the installation information supplied with that specific hardware revision. For the current RC architecture, verify the following before applying power.
-
-## 5.1 Physical condition
-
-Check that:
-
-- the enclosure and display are undamaged;
-- no exposed conductor can short against the enclosure;
-- data and power connectors are fully seated;
-- external output interfaces are suitable for their loads;
-- the Emergency button moves freely;
-- SD cards required by the configured system are fitted;
-- speakers and audio wiring are connected to the correct audio device;
-- addressable-pixel supplies are correctly rated and grounded.
-
-## 5.2 Power
-
-Use regulated supplies suitable for the final Showduino assembly and connected accessories. Do not power substantial external pixel loads through the P4 board.
-
-## 5.3 Outputs
-
-For first commissioning, keep potentially hazardous or startling external effects isolated until the control state is known. Confirm status/diagnostics first, then commission outputs individually.
-
-## 5.4 Network
-
-Home/venue Wi-Fi is optional. A first bench setup can use the Showduino local access point without Internet access.
-
-Current RC Communications firmware uses:
-
-- SSID: **Showduino**
-- bench password: **showduino**
-- default access-point address: **192.168.4.1**
-
-**IMPORTANT:** the firmware source explicitly identifies `showduino` as a bench credential that must be changed before public-venue use. A finished operator provisioning workflow for changing the Showduino AP password is not yet verified at this baseline. See the gaps document.
-
----
-
-# 6. First power-on
-
-## 6.1 Recommended RC power sequence
-
-The repository physical-test procedure uses:
-
-1. power the **P4 Show Engine**;
-2. power the **Communications Controller**;
-3. power the **Director**;
-4. allow configured specialist Nodes to start and join.
-
-A future integrated enclosure may automate this sequence; follow the hardware revision supplied with the unit.
-
-## 6.2 What to expect
-
-On a healthy start:
-
-- the P4 initialises its core services and reaches its ready state;
-- the Communications Controller establishes its P4 UART link and local `Showduino` Wi-Fi;
-- the Director searches for and establishes its Communications link;
-- the Director requests authoritative state from the P4;
-- configured Nodes announce and obtain Show Engine ownership where appropriate.
-
-Do not rely on a fixed boot-time promise. Hardware and storage discovery can vary.
-
-## 6.3 Ready versus connected
-
-Treat these as separate questions:
-
-- **Is the Director linked to Communications?**
-- **Is the Communications Controller linked to the P4?**
-- **Is the P4 ready and authoritative?**
-- **Are the Nodes required by this production online?**
-- **Is optional home/venue Wi-Fi connected?**
-- **Is the Internet available?**
-
-A Wi-Fi or Internet problem does not automatically mean the Show Engine has failed.
-
-## 6.4 First browser connection
-
-For the current RC bench setup:
-
-1. connect a phone, tablet or computer to Wi-Fi **Showduino**;
-2. use the current bench password **showduino**;
-3. open `http://192.168.4.1/` for the local system console;
-4. the optional embedded authoring surface is available at `/studio/` on the same address.
-
-No Internet connection is required for the local interface.
-
----
-
-# 7. Director touchscreen
-
-Active page IDs/titles at this baseline include **HOME**, **PRODUCTIONS**, **SHOW DETAILS**, **LIVE**, **NODES**, **AUDIO NODE**, **LAMP NODE**, **DIAGNOSTICS**, **SETTINGS**, **AUDIO** and **SYSTEM LOGS**, plus system/modal screens such as **EMERGENCY**.
-
-The current baseline uses the active `ShowduinoUi` page set. A newer OS 2.0 shell exists in source but is disabled at this baseline and is therefore not documented as the shipping UI here.
-
-## 7.1 HOME
-
-**What it does**  
-Provides the main system overview and current availability/status information.
-
-**When to use it**  
-At startup, before opening and whenever an operator needs a quick health check.
-
-**Look for**
-
-- Show Engine/Communications link state;
-- production/show state;
-- Node availability;
-- Emergency or fault indications.
-
-## 7.2 PRODUCTIONS
-
-**What it does**  
-Shows productions visible to the current Director/storage model and allows an operator to select/load a production.
-
-**When to use it**  
-Before running an attraction or changing to a different installed production.
-
-**Important**  
-Loading a production and starting it are separate actions. Deploying a production also does not auto-start it.
-
-## 7.3 SHOW DETAILS
-
-**What it does**  
-Shows information about the selected/loaded production.
-
-**When to use it**  
-To confirm the intended production before operation.
-
-## 7.4 LIVE
-
-**What it does**  
-Displays the authoritative running-state mirror, including timing/cue progress where available, and presents show-control requests.
-
-**When to use it**  
-During normal attraction operation.
-
-**Important**  
-A control request is not considered successful merely because it was touched. Watch the confirmed P4 state.
-
-## 7.5 NODES
-
-**What it does**  
-Displays specialist-node availability/status, including current Audio, Lamp, Pixel and Emergency-node foundations where supported.
-
-**When to use it**  
-During pre-opening checks and fault diagnosis.
-
-**Important**  
-A Node can be offline while the P4 itself remains healthy. Diagnose the failed part rather than power-cycling the whole system automatically.
-
-## 7.6 AUDIO NODE
-
-**What it does**  
-Provides live Audio Node discovery, track browsing/selection, playback controls (play, loop, pause, resume, stop), volume, current file/status and related diagnostics when the Node is online.
-
-**When to use it**  
-For programme-audio commissioning and status checks.
-
-The P4 system speaker is not a replacement for an offline attraction Audio Node. Where the Audio Node also exposes its optional GPIO22 Pixel Line, theatrical pixel looks for that line are authored through Studio/Outputs rather than as a separate Director lighting desk.
-
-## 7.7 LAMP NODE
-
-**What it does**  
-Shows Lamp Node online/state and exposes operator controls such as **IGNITE**, **EXTINGUISH**, jewel/flame commissioning checks, refresh and local lamp-audio role tests where the current firmware permits them.
-
-**When to use it**  
-For interactive Lamp commissioning and live prop checks when a Lamp Node is part of the attraction.
-
-**Important**  
-Lamp local sound effects are produced by the Lamp's own Adafruit Audio FX board. They are not attraction programme tracks from the Audio Node.
-
-## 7.8 DIAGNOSTICS
-
-**What it does**  
-Provides system/connection information intended to identify which component is actually unavailable.
-
-**When to use it**  
-When the Director, P4, Communications link, storage or Nodes do not match the expected state.
-
-## 7.9 SETTINGS
-
-**What it does**  
-Contains current Director/operator settings, including display behaviour and software/network status surfaces where implemented.
-
-**When to use it**  
-For routine configuration rather than live show control.
-
-## 7.10 AUDIO
-
-This page relates to the Director/P4 system-audio presentation supported by the current UI. Attraction programme audio remains the responsibility of the Audio Node.
-
-## 7.11 SYSTEM LOGS
-
-**What it does**  
-Shows operator/system log information useful for diagnosis.
-
-**When to use it**  
-After a fault, rejected request or unexpected connection event.
-
-## 7.12 System screens
-
-The Director also defines full-screen states including:
-
-- **EMERGENCY**
-- **CONNECTION LOST**
-- **NO NETWORK**
-- **NO SD CARD**
-- **SYSTEM REBOOT**
-- **FIRMWARE UPDATE**
-- **BACKUP**
-- **RECOVERY**
-- **DISCOVERY**
-- **SHOW COMPLETE**
-
-Some are fault/state presentations rather than everyday menu pages.
-
----
-
-# 8. Display sleep / auto-off
-
-The Director does **not** enter MCU deep sleep when the screen turns off. The current implementation dims and turns off the **backlight** while the Director continues operating.
-
-## 8.1 Wake behaviour
-
-Touch/activity returns the backlight to the configured brightness and resets the inactivity timer.
-
-## 8.2 Timeout
-
-The backlight service supports an inactivity timeout in minutes. A timeout value of `0` disables automatic backlight-off.
-
-The implementation dims during the idle period and turns the backlight off at the configured timeout. The saved Director configuration may therefore differ from the service's compiled default.
-
-## 8.3 Emergency and Locate
-
-Emergency presentation is independent of ordinary show operation.
-
-Press the physical Emergency button once. Showduino immediately enters Emergency mode and remains latched after the button is released.
-
-If the Director cannot be found, press and hold the **same** Emergency button continuously for 8 seconds. Emergency still activates immediately when the button is first pressed. After 8 seconds, Director Locate activates: the Director wakes its screen, keeps the backlight on, and flashes its ambient indicator lights continuously until the screen is touched once.
-
-That first touch acknowledges Locate only. It does not clear Emergency.
-
-This firmware path is implemented and still requires physical hardware acceptance before commercial validation.
-
-## 8.4 Touchscreen calibration
-
-The Director stores touchscreen alignment on the Director itself (not on the SD card).
-
-If a valid calibration has been saved, it loads automatically at boot. If none is stored, or the stored record is invalid, the factory mapping is used. A firmware update does not force recalibration.
-
-To recalibrate:
-
-1. Open **Settings**.
-2. Open **Display**.
-3. Choose **CALIBRATE**.
-4. Touch the centre of each of the five targets, lifting your finger between targets.
-5. Check alignment on the test screen.
-6. Choose **SAVE CALIBRATION**.
-
-The new mapping becomes active immediately. It survives reboot and power removal. **RESET TOUCH** restores the factory mapping after confirmation. It does not erase other Director settings.
-
-Acknowledging Locate, or an Emergency, while calibration is open cancels the wizard without saving.
-
-This path is implemented and still requires physical hardware acceptance before commercial validation.
-
----
-
-# 9. Connecting Showduino to a network
-
-Showduino has two different networking concepts that operators should keep separate.
-
-## 9.1 Showduino local access point
-
-The Communications Controller hosts the local **Showduino** Wi-Fi access point. This is the direct route to the browser interface.
-
-The access point remains available in the intended AP-only and AP+STA modes.
-
-## 9.2 Optional home/venue Wi-Fi
-
-The Communications Controller can also join a home or venue Wi-Fi network. This is optional and is used for functions such as Internet-based update discovery/download.
-
-The current browser **Network** page provides:
-
-- **SSID**
-- **Password**
-- **Connect**
-- **Disconnect**
-- **Forget**
-- **Scan**
-- **AP only**
-
-The page reports the Showduino AP, AP IP, current mode, home Wi-Fi state, saved SSID, STA IP, signal level, radio/ESP-NOW channel and Internet state.
-
-Passwords are not returned in status responses or displayed after storage.
-
-## 9.3 Connecting to venue Wi-Fi
-
-1. Open the browser **Network** page.
-2. Select **Scan** if required.
-3. Select the venue network or enter its **SSID**.
-4. Enter the **Password**.
-5. Select **Connect**.
-6. Wait for the page to report the connection result.
-7. Confirm the Showduino local AP remains available.
-
-The Showduino radio/ESP-NOW channel follows the associated venue access point while connected. Director/compatible Nodes are designed to follow that operating channel while unlinked.
-
-## 9.4 Disconnect and Forget are different
-
-**Disconnect** returns to AP-only operation while keeping the saved venue credentials.
-
-**Forget** removes the saved venue credentials.
-
-## 9.5 If venue Wi-Fi or Internet fails
-
-Do not treat this as an automatic Show Engine failure.
-
-A loaded production is intended to continue locally. Internet is not required to run the show. Update checking/downloads may become unavailable until Internet access returns.
-
----
-
-# 10. Showduino Studio and the browser interface
-
-This section is deliberately precise because the current repository contains two related concepts under the Studio name.
-
-## 10.1 The active S3-hosted system console
-
-The live local browser console is hosted by the Communications S3 and provides these routes/pages at the current baseline:
-
-- **Home**
-- **Productions**
-- **Live**
-- **Outputs**
-- **Devices**
-- **Network**
-- **System**
-- **Settings**
-
-It is the current browser front door for status, commissioning and system management.
-
-## 10.2 The authoring Studio
-
-Showduino also has an SHDO v2 authoring model and an embedded Studio V4 snapshot (typically at `/studio/`) for project/attraction creation, scenes, timeline editing, device/output selection and Pixel cue authoring.
-
-### Studio Timeline Cue Library (source-checked 30 October 2026)
-
-The public **Website Studio** timeline provides a collapsible, searchable **Cue Library**. The available authoring presets include Audio, MOSFET, Pixel effects (25 effect patterns), FX, Triggers and legacy Relay. Add a compatible track or Mixed Lane; drag a preset to the required timeline position, or double-click it to insert at the playhead onto an unlocked compatible track. Select the inserted clip in the Inspector to configure its start/duration, physical logical Node ID, output, audio file or pixel segment. Run **Project Check** before exporting and attempting a P4 install.
-
-A library entry is an **authoring template**, not proof that its cue type is accepted by the running P4 compiler or that the required physical hardware/audio file is installed. Legacy Relay, Trigger and generic FX choices need compatibility checks; DMX remains parked. The GPIO24 Emergency/signage line is P4 safety-owned and must not become an ordinary production cue output. Public Studio, the S3-embedded snapshot and the installed P4 may be different builds. See the [Studio Cue Library creator guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) and the [Quick Start deploy workflow](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
-
-**Director distinction:** In current `new_showduino/main` source, the **HOME → CUE LIBRARY** tile is visible but disabled, not a functional Director editing page. The Director selects/commands productions; Studio authors cues; P4 governs execution and Emergency state. Do not infer that the Director Cue Library tile works because Website Studio has a cue palette.
-
-Current authoring/commissioning reality at this baseline:
-
-- shared Pixel editor vocabulary (25 effects) for the P4 Show Pixel Line, standalone Pixel Nodes and the Audio Node GPIO22 Pixel Line;
-- audio cues and RAM timeline commissioning for current `PIXEL` / `AUDIO:NODE` (including Audio Node pixel commands where routed);
-- SHDO v2 export/package support in the authoring model;
-- local RAM timeline deploy through `/api/studio-timeline` (`autoStart` remains false);
-- Emergency Node GPIO2 Pixel capability exists in firmware/protocol (`estop-node-pixels` / `ESTOP:NODE:PIXEL:`), with Studio inventory follow-up still noted in repository docs where the public HTTPS Studio snapshot has not yet finished surfacing every ESTOP pixel output.
-
-The complete commercial journey of:
-
-```text
-CREATE ATTRACTION
-        ↓
-CREATE SCENE
-        ↓
-ADD DEVICES
-        ↓
-BUILD TIMELINE
-        ↓
-VALIDATE
-        ↓
-DEPLOY
-        ↓
-PLAY
-```
-
-is substantially closer than earlier RC wording, but it is **still not one fully finished persistent on-device workflow**. In particular, the P4's persistent production format v1 remains limited (see Section 14).
-
-Public HTTPS Studio builds may also need to **export** packages when the browser cannot talk directly to local Showduino hardware. The local SoftAP System Console remains the direct on-site path.
-
-The local browser console must therefore not be described as a complete production authoring system when it currently provides a mixture of commissioning, production inventory, Studio authoring and limited deploy/runtime functions.
-
-## 10.3 Editing versus running
-
-The architectural rule remains simple:
-
-- **Studio describes authoring intent.**
-- **P4 executes the live show.**
-
-A browser can be closed after a valid production/timeline has been loaded. The live show clock remains on the P4.
-
----
-
-# 11. Creating an attraction / production
-
-The final customer-facing attraction/scene creation workflow is still an open integration item at this RC baseline.
-
-## 11.1 What is current
-
-The repository has:
-
-- an active SHDO v2 production/interchange contract;
-- an S3-hosted browser System Console;
-- an embedded Studio V4 authoring snapshot with Pixel and audio authoring;
-- a persistent P4 production store;
-- an SHDO deployment/compiler path foundation, including Audio Node and Emergency Node pixel routes in the compiler;
-- a separate RAM timeline commissioning path for current `PIXEL` and `AUDIO:NODE` commands (including Audio Node pixel routing where configured).
-
-## 11.2 What is not yet safe to promise as a finished workflow
-
-This manual does **not** claim that a new owner can currently complete every step of a polished `New Attraction → Scene → Devices → Timeline → Deploy` flow solely through the live S3 system console.
-
-That gap is explicitly tracked for completion rather than hidden behind developer procedures.
-
----
-
-## Website Studio → installed production
-
-1. Open [Website Studio](https://show-duino.com/studio.html). Create a show, use **Create my first show** if helpful, then build and preview a simple Pixel or Audio cue. Save locally and export a `.shdo` backup. Browser preview does not operate the hardware.
-2. In **Deploy**, save the **Communications S3** LAN address (not the P4 address). Use the same local network. A saved IP, a creator/cloud label or a lit screen does not verify the P4 or any Node.
-3. On the public HTTPS website, **Prepare for P4** prepares a file. Use **Open Local Console** for the S3-hosted interface. Browser private-network/mixed-content restrictions may prevent website verification even when the local console works.
-4. In that console, open **Productions → Persist SHDO v2 to P4 SD**, choose the exported file and select **Persist to SD**. Wait for the P4 result. Persistence compiles only supported cues; a rejected file is not installed. Copying an editable SHDO onto SD is not this deployment process.
-5. Persisting does **not** load or start the production. Select the intended production and **Load**, verify P4-confirmed loaded state, then use the Director **LIVE → START** when the test area is ready.
-6. Confirm actual Node outputs, stop behaviour and Emergency/recovery on isolated test loads. Save the firmware identifiers and physical test results before guest operation.
-
-Public Studio, the embedded `/studio/` snapshot and the S3 system console can be different builds. The local console's **Persist to SD** workflow writes SD; `/api/studio-timeline` is a separate temporary RAM commissioning path and does not persist a production.
-
-### Accounts, membership and indicators
-
-A free Showduino ID provides community/account access; optional Starter, Pro and Studio memberships are proposed, with no published feature/price promise or payment activation. Hardware-owner entitlements are separate and require confirmed terms; registering a browser inventory entry does not activate access or prove a device is connected. Existing Studio authoring tools remain available without paid membership.
-
-Website hardware status starts **HARDWARE NOT VERIFIED**. **S3 CONNECTED** requires a ready Showduino capability response at the configured/local address; it establishes S3 reachability only. **P4 · NOT VERIFIED** does not establish runtime health. Check authoritative P4 and required Node states in the Director/local console. **LOCAL** describes saving, and **CREATOR · TESTING** describes browser mode.
-
----
-
-# 12. Productions and scenes
-
-## 12.1 Production
-
-A **production** is the installable/run-time show package known to the P4. The persistent current runtime store uses a production folder containing a manifest and timeline.
-
-A production can be loaded without starting it.
-
-## 12.2 Scene terminology
-
-The richer authoring model uses scenes/cues/tracks as part of the intended Studio experience, but the current persistent P4 format is not yet a complete scene-based theatrical authoring runtime.
-
-Where an authoring Studio build shows **Scene**, follow that build's exact UI. Do not manually invent scene files or edit storage JSON unless working under technical/development procedures.
-
----
-
-# 13. Adding devices
-
-Showduino is intended to let owners work with meaningful devices rather than memorising microcontroller pins.
-
-Current product/device concepts include:
-
-- attraction **Audio Node** (programme audio, with optional GPIO22 Showduino Pixel Line on the same peer);
-- specialist **Lamp Node** (interactive carbide lamp + local Adafruit Audio FX sounds);
-- local **Show Pixel Line** (P4 GPIO23);
-- specialist **Pixel Node** foundation (standalone C3);
-- **Wireless Emergency + Pixel Node** (`ESTOP-xx`: assert-only Emergency plus optional GPIO2 Pixel Line on the same peer);
-- P4 Plug-in Bus devices;
-- software-implemented **MOSFET Node**, pending physical pin/load validation.
-
-The old Relay Node product direction is retired/legacy and must not be used as the basis of a new commercial workflow.
-
-DMX production control is parked/out of scope at this baseline.
-
-## 13.1 Electrical capability still matters
-
-Friendly UI labels do not remove electrical limits. A logical “light” may still require an appropriate external MOSFET, driver, relay/contactor, PSU or certified interface depending on the load.
-
----
-
-# 14. Timeline editor
-
-The long-term Studio timeline is intended to let an operator place actions against time using tracks/layers and device-oriented controls.
-
-At the current repository baseline, do not confuse that design direction with the P4 persistent production format.
-
-## 14.1 Current RAM timeline commissioning path
-
-The live browser system can send a RAM timeline through `/api/studio-timeline` for current commissioning use. The supported current subset is:
-
-- `PIXEL` commands (including routes compiled for specialist pixel-capable peers where the toolchain supports them);
-- `AUDIO:NODE` commands (including Audio Node pixel commands where routed).
-
-`autoStart` is false. Deploying the RAM timeline does not automatically run it.
-
-## 14.2 Persistent production timeline
-
-The current persistent P4 production format v1 is intentionally strict. At this baseline it accepts cue types:
-
-- `PIXEL` (commands must begin with `PIXEL:`)
-- `AUDIO` (commands must begin with `AUDIO:NODE:`)
-- `LAMP` (commands must begin with `LAMP:`)
-- `MOSFET` (commands must begin with `MOSFET:NODE:`)
-- internal `TEST` / `LOG`
-
-SHDO packages can be compiled into that store through the production deploy path. That is **not** the same as claiming every Studio authoring surface is a finished commercial persist workflow:
-
-- Emergency Node pixel routes (`ESTOP:NODE:PIXEL:` / `estop-node-pixels`) are supported in firmware/SHDO compilation, but format-v1 does **not** currently load a dedicated ESTOP cue type, and `PIXEL` cues must use the `PIXEL:` command prefix;
-- cue/command length and validation bounds remain tight;
-- hardware acceptance of mixed-device persisted shows remains required.
-
-Do not describe every visually editable Studio timeline as fully proven for public operation until the installation's deploy/load path has been validated.
-
-## 14.3 Timeline safety behaviour
-
-The P4 owns the live timeline clock. If Emergency activates during a running show, the current runtime pauses the timeline and enters the Emergency state. Emergency clear does not automatically resume it.
-
----
-
-# 15. Productions: load, start, pause, resume and stop
-
-## 15.1 Load
-
-Loading prepares a production on the P4. It does not automatically start the show.
-
-Loading/unloading is rejected while Emergency is active.
-
-## 15.2 Start
-
-Start is accepted only when the P4 considers the show/runtime valid and Emergency is clear.
-
-## 15.3 Pause
-
-Pause stops timeline progression while retaining the loaded production and current position.
-
-## 15.4 Resume
-
-Resume is rejected while Emergency is active.
-
-After an Emergency is legitimately cleared, a previously running show may remain **PAUSED**. Resuming from that point requires a separate deliberate operator action.
-
-**IMPORTANT:** your venue procedure should decide whether resuming from the interruption point is appropriate. For many guest-facing incidents, stopping/reloading/restarting the experience is the safer operational choice.
-
-## 15.5 Stop
-
-Stop terminates active timeline playback. Stop remains a safe request during Emergency; it does not clear the Emergency latch.
-
----
-
-# 16. Emergency operation
-
-This is the most important operator section in the manual.
-
-## 16.1 If there is a real incident
-
-1. **Deal with people and the physical incident first.**
-2. Press the main Showduino **Emergency** button when Showduino-controlled effects need to enter Emergency state.
-3. Do not release/clear the system merely because the immediate visual effect has stopped.
-4. Follow the attraction's own evacuation, first-aid, fire, machinery or incident procedure as applicable.
-
-## 16.2 What the main button currently does
-
-At this baseline, a valid press of the main momentary button causes the P4 to latch Emergency immediately after input debounce.
-
-Releasing the button does **not** clear Emergency.
-
-The P4 becomes the authoritative Emergency source and commands its supported outputs/Nodes into Emergency state.
-
-## 16.3 Operator-visible Emergency behaviour
-
-Current implemented behaviour includes:
-
-- Director shows the full-screen **EMERGENCY** state;
-- running show timeline is paused;
-- P4 system Emergency audio may play if the configured asset/audio path is available;
-- GPIO23 Show Pixels are overridden to bright white;
-- GPIO24 signage pixels are overridden to bright white;
-- attraction Audio Node is commanded to stop/mute and does not auto-resume;
-- compatible pixel-capable Nodes follow the global white Emergency policy;
-- normal show requests that conflict with Emergency are rejected/overridden.
-
-Emergency safety must not depend on the Emergency WAV file successfully playing.
-
-## 16.4 The Director Emergency screen
-
-Current visible text includes **EMERGENCY** and **SHOW STOPPED**, plus source/link/show context where available.
-
-Stray touches on the Emergency overlay are absorbed so controls underneath do not fire accidentally.
-
-## 16.5 Clearing Emergency
-
-**WARNING:** do not clear Emergency until the real-world reason for the Emergency has been resolved and the attraction is safe to return to a controlled idle/paused state.
-
-The physical Emergency button never clears Emergency.
-
-1. Confirm the incident is resolved and the attraction is safe.
-2. Release the physical Emergency button if it is still held.
-3. On the Director Emergency screen, choose **CLEAR EMERGENCY**.
-4. The Director displays **EMERGENCY CLEARANCE REQUESTED** and **Clear Emergency Stop?**
-5. Select **CONFIRM CLEAR** only if the area is safe.
-6. If the physical button is still pressed, the P4 rejects clearance.
-7. After accepted clearance, verify Emergency state clears on the Director/P4 before restarting any show operation.
-
-The clear request has a limited validity window. A new Emergency assertion while the confirmation dialog is open cancels the pending clear. If the request times out or is cancelled, start the authorised clear process again rather than trying to bypass it.
-
-This firmware path is implemented and still requires physical hardware acceptance.
-
-## 16.6 Clear does not resume the show
-
-An accepted clear:
-
-- stops P4 Emergency audio;
-- releases the P4 Emergency latch;
-- returns GPIO24 signage to the normal green-locator pattern;
-- returns the P4 GPIO23 show-pixel line to blackout/safe idle;
-- does not automatically restart interrupted pixel effects;
-- leaves an interrupted running timeline paused until another deliberate show command;
-- leaves the Audio Node in safe idle rather than resuming the old file.
-
-**CLEAR EMERGENCY does not mean RESUME SHOW.**
-
-## 16.7 If Emergency will not clear
-
-Check, in this order:
-
-1. Is there still a real-world reason to remain in Emergency? If yes, stop troubleshooting and handle it.
-2. Is the physical button/input still asserted? The P4 will reject clearance.
-3. Was a valid clear request created and confirmed within its timeout?
-4. Is the Director/Communications link available to present the normal confirmation path?
-5. Check Diagnostics/System Logs for the rejection reason.
-
-Do not defeat or bypass the Emergency input to restore a show.
-
-## 16.8 Emergency after power loss/reboot
-
-The current P4 latch variable is not proven to persist a previously latched momentary-button Emergency through full power removal. Do **not** assume either persistence or automatic clearance is a certified safety behaviour.
-
-After any power interruption during an incident, treat the attraction as **not ready** until the physical situation and Showduino state have both been re-checked.
-
-## 16.9 Locate Director
-
-- first press: Emergency immediately;
-- continue holding that same press for 8 seconds: additionally Locate Director once;
-- releasing before 8 seconds leaves Emergency latched and does not Locate;
-- a later uninterrupted 8-second hold can still Locate while Emergency is already latched;
-- Locate wakes/holds the Director display and flashes its ambient LEDs continuously;
-- the screen shows **LOCATE ACTIVE** and **EMERGENCY REMAINS ACTIVE**;
-- first deliberate Director touch acknowledges Locate only and is consumed so it cannot press a control underneath;
-- Emergency remains latched until the separate Director clear procedure is completed.
-
-**IMPORTANT:** acknowledging Locate does not clear Emergency. Clearing Emergency does not automatically restart the show.
-
-This firmware path is implemented and still requires physical hardware acceptance.
-
----
-
-# 17. Outputs and pixels
-
-Pixel capability can exist on several Showduino devices. Studio presents those outputs through the same Pixel editor model wherever the current authoring surface has wired them:
-
-- P4 Show Pixel Line (GPIO23);
-- standalone C3 Pixel Node;
-- Audio Node GPIO22 Pixel Line (same Audio peer — not a fake LED identity);
-- Wireless Emergency Node GPIO2 Pixel Line (same ESTOP peer — not a fake LED identity).
-
-## 17.1 P4 Show Pixel Line
-
-The P4 local Show Pixel Line supports up to 16 segment slots in the current engine. Each segment can have a range, effect, primary/secondary colour, brightness, speed, intensity, randomness, direction and duration.
-
-The shared current FX vocabulary includes:
-
-`OFF/BLACKOUT`, `SOLID`, `FADE_IN`, `FADE_OUT`, `PULSE`, `BREATHE`, `FLICKER`, `CANDLE`, `FIRE`, `LIGHTNING`, `STROBE`, `RANDOM_STROBE`, `CHASE`, `BOUNCE`, `COMET`, `WIPE`, `REVERSE_WIPE`, `BUILD`, `SPARKLE`, `TWINKLE`, `GLITCH`, `WARNING`, `PORTAL`, `RAINBOW`, and `CUSTOM_SEQUENCE`.
-
-That is **25** current Showduino FX entries shared across the Pixel-capable peers listed above.
-
-These are current engine/commissioning capabilities. Persistent format v1 accepts bounded PIXEL commands; unsupported routes and physical acceptance remain limited (Section 14.2).
-
-## 17.2 Outputs browser page
-
-The current **Outputs** page includes commissioning controls for the local Show Pixel Line and Audio Node, plus signage/Emergency state information. Specialist Pixel Nodes and pixel-capable Audio/Emergency peers appear according to what the live inventory reports.
-
-While Emergency is active, normal pixel controls must not override the Emergency state.
-
-## 17.3 Pixel hardware acceptance
-
-The repository still requires physical commissioning of pixel paths. Software may accept a configured maximum of **512** pixels on specialist Pixel / Audio / Emergency pixel lines (P4 Show Pixel capacity differs and must follow the installed configuration). That software ceiling is **not** the same thing as a commercially signed-off timing/current result for a long line.
-
-Before a production installation, validate:
-
-- configured pixel count;
-- logic level/buffer;
-- series resistor;
-- supply current and voltage drop;
-- power injection;
-- common ground;
-- all-white Emergency current demand;
-- clear-to-blackout/signage behaviour;
-- Emergency and Audio Node pixel-line timing where those accessories are used.
-
----
-
-# 18. Audio
-
-## 18.1 System/safety audio
-
-P4 system audio uses the onboard ES8311 path for Showduino sounds such as boot, Emergency, beep/tone, error, accepted and complete.
-
-If a system WAV is missing or invalid, the Show Engine must continue operating rather than treating audio playback as the safety mechanism.
-
-## 18.2 Attraction/programme audio
-
-Attraction audio is produced by the specialist **Audio Node** from its local SD card.
-
-Current playback support is WAV PCM. MP3, Ogg and FLAC are planned rather than current supported formats.
-
-Current Audio Node operations include play, loop, stop, pause, resume, volume, fade and duck/unduck.
-
-The same Audio Node peer may also expose a **Showduino Pixel Line on GPIO22**. That line uses the shared Pixel engine (count/init, segments, 25 FX). It is an additional capability of the Audio Node identity — not a second fake LED peer. Programme AUDIO remains the Audio Node's primary role.
-
-**Audio Node pin/firmware caution (24 October):** Current `main` Audio Node 0.4.3 assigns **GPIO22 to the programmable show-pixel line** and **GPIO5 to KEY6**; it does **not** have a separately active GPIO5 indicator. Draft PR #40 reserves **GPIO5 for one status NeoPixel** (KEY6 disabled) and keeps **GPIO22 for the show strip** with a proposed 10-pixel minimum. That is not yet compiled, flashed or bench-accepted. Match the installed firmware to its own BoardConfig and never connect both functions to GPIO5.
-
-**Audio continuity and deploy caution (24 October):** Audio WAV playback has a reported physical stutter; PR #37's buffer/I2S changes are a draft, not a verified cure. Genuine website SHDO exports can encounter action parsing or truncated-command problems addressed in draft PRs #35/#36. Confirm actual P4 persist → LOAD → START and uninterrupted sound on hardware before declaring the first show successful.
-
-**Audio pixel commissioning:** On a new/unconfigured Node the saved pixel count defaults to **zero**, leaving GPIO22 dark. For the fixed 10-pixel bench strip, send `PIXEL:COUNT:10` and then `PIXEL:INIT` to that Audio Node; verify `PIXEL:STATUS` reports READY and count 10 before running the show. The count persists across boots. Do not assume the firmware's count macro automatically configures a new Node, or confuse this theatrical line with an independent status LED. Physical operation remains subject to bench acceptance.
-
-## 18.3 Audio Node Emergency behaviour
-
-Emergency:
-
-- stops/closes programme playback;
-- mutes the codec/amplifier path;
-- cancels fade/duck state;
-- rejects new attraction playback;
-- forces the Audio Node Pixel Line (where configured) to bright white while Emergency is active;
-- does not auto-resume audio or the previous theatrical pixel effect after clear (pixel clear behaviour returns the line to a safe idle/black state until a new command).
-
-## 18.4 Standalone versus Show-controlled
-
-A supported specialist Node can have a local standalone WebUI when the P4 has not granted Showduino ownership.
-
-When a Node is **SHOW_CONTROLLED**, its local WebUI becomes status/diagnostics-oriented and the firmware rejects local theatrical actions that would fight the P4.
-
----
-
-# 19. Specialist Nodes
-
-Node support at this release candidate is intentionally described by maturity rather than by wish list.
-
-## 19.1 Audio Node
-
-Implemented in software and part of the active architecture; still requires final hardware acceptance. Programme audio is its primary role. The optional GPIO22 Pixel Line on the same peer uses the shared Showduino Pixel model and Studio `audio-node-pixels` routing where available.
-
-## 19.2 S3 Lamp Node
-
-Active specialist-node firmware with confirmed principal physical pins. It can operate as a Showduino-controlled or standalone interactive lamp device. Some optional sensor details remain subject to commissioning.
-
-Local Lamp sound effects use an **Adafruit Audio FX Sound Board** (UART 9600 8N1) with the current four WAV roles: strike (`flick.wav`), ignition (`fire_ign.wav`), burn loop (`flameloo.wav`) and emergency (`emergency.wav`). Those sounds are local Lamp behaviour and are separate from the attraction Audio Node and from P4 system audio. Emergency lamp audio is local Lamp behaviour, not P4 system audio.
-
-The Director **LAMP NODE** page provides live state and operator actions such as ignite/extinguish and commissioning checks. Do not treat every local WebUI diagnostic control as a normal public-operator workflow.
-
-## 19.3 C3 Pixel Node
-
-Software/routing exists and uses the same Showduino FX vocabulary, but physical hardware acceptance remains required.
-
-## 19.4 Wireless Emergency + Pixel Node
-
-Software implements a wireless **ESTOP-xx** peer with:
-
-- momentary Emergency pushbutton (INPUT_PULLUP; pressed LOW) — GPIO chosen in current firmware as **GPIO4**, still **physically unconfirmed** until bench commissioning;
-- local latch on press; release does **not** clear global Emergency;
-- assert-only policy (nodes never originate global clear);
-- SSD1306 128×64 OLED status display;
-- full shared Showduino Pixel engine on **GPIO2** (same peer — no fake LED identity);
-- software target up to **512** pixels / 16 segment slots / 25 FX, subject to physical timing validation;
-- Emergency overrides theatrical pixels to bright white; legitimate clear returns the Pixel Line to black (previous effect does not auto-resume);
-- if the button is still held when global clear is observed, the station must not simply become ready.
-
-Absolute rules:
-
-- a wireless Emergency Node may **assert** the global P4 Emergency latch;
-- it must **never clear** the global latch;
-- button release, node reboot or local WebUI must not clear P4 Emergency;
-- update/commission Emergency Nodes one at a time;
-- an offline Emergency Node is reported as a safety-node fault/warning rather than automatically asserting global Emergency.
-
-The wireless Emergency Node's momentary pushbutton behaviour is separate from the main Showduino Emergency button and does not use the main-unit 8-second Locate gesture.
-
-## 19.5 MOSFET Node
-
-Software-implemented RC specialist Node on the ESP32_MOS_X4 board (four low-voltage powered outputs).
-
-Operator-facing behaviour:
-
-- digital switching and PWM level control (0–100%);
-- timed pulse and fade;
-- strict fail-safe ALL OFF on Emergency, show stop, and loss of P4 authority;
-- recovery never resumes a previous powered state — only a fresh authorised command may energise an output again.
-
-Showduino does not claim a continuous current rating or mains switching capability for this board. PCB silk may mark a DC input range; commission only with venue-approved low-voltage loads after physical pin verification.
-
-Physical pin map is software-defined until the specific board is electrically commissioned.
-
-## 19.6 Relay Node
-
-Legacy/retired direction. Do not specify new installations around the old Relay Node merely because historical firmware remains in the repository.
-
----
-
-# 20. Plug-in Bus
-
-The P4 Plug-in Bus is a short 3.3 V I²C expansion bus for compatible local modules.
-
-Key technical limits:
-
-- 3.3 V logic;
-- SDA GPIO7;
-- SCL GPIO8;
-- current default bus speed 100 kHz;
-- keep cabling short; I²C is not an industrial fieldbus or robust hot-plug bus;
-- never pull SDA/SCL to 5 V;
-- unknown I²C devices may be detected without being assigned an operational role.
-
-Showduino separates **device identity** from **configured role**. Detecting an I/O expander does not automatically decide whether it is an input or output device.
-
-The Plug-in Bus is an owner/technical-user feature; routine operators should not alter bus wiring during operation.
-
----
-
-# 21. Storage and productions
-
-## 21.1 P4 production layout
-
-Current persistent productions are stored under:
-
-```text
-/showduino/productions/<production-id>/
-    manifest.json
-    timeline.json
-```
-
-## 21.2 Limits in current persistent format
-
-Current production format v1 is bounded and validates file size, cue count, duplicate IDs, time order, path traversal and supported cue types.
-
-At this baseline, persistent timeline cues may be `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` or `LOG`, with the command-prefix rules described in Section 14.2. This remains a release-candidate foundation: Emergency Node pixel cue persistence, full theatrical feature coverage and physical acceptance are still incomplete.
-
-## 21.3 SHDO v2
-
-SHDO v2 is Showduino's active authoring/interchange contract. The Show Engine does not treat an arbitrary authoring document as executable truth. Deployment/compilation must produce a runtime representation the P4 supports.
-
-## 21.4 SD removal
-
-A timeline already loaded into RAM may continue if the card is removed, but storage operations and SD-streamed media can fault separately.
-
-Do not remove storage during normal attraction operation unless following an explicit service procedure.
-
----
-
-# 22. Diagnostics and status
-
-Start with the user-facing status surfaces rather than developer tools.
-
-## 22.1 Director
-
-Use:
-
-- **HOME** for overall health;
-- **NODES** for specialist-node state;
-- **DIAGNOSTICS** for link/system information;
-- **SYSTEM LOGS** for recent events/rejections.
-
-## 22.2 Browser
-
-Use:
-
-- **Home** — overall Comms/P4/Director summary;
-- **Live** — current authoritative show runtime;
-- **Devices** — current device/Node/Plug-in Bus information;
-- **Network** — Showduino AP, venue Wi-Fi and P4 network diagnostics;
-- **System** — component/system/storage/log/update information.
-
-If the P4 becomes unavailable while the Communications S3 remains alive, the browser can still be served by the S3. P4-owned controls/state must then show unavailable/offline rather than inventing a value.
-
----
-
-# 23. Software updates
-
-## 23.1 Current update scope
-
-At this baseline, **only the Communications Controller supports self-OTA installation**.
-
-There is no system-wide OTA update button that safely updates every Showduino component.
-
-P4, Director, Audio, Lamp, Pixel and Emergency Node firmware remain service/USB-update components in this phase.
-
-## 23.2 Communications update prerequisites
-
-Comms self-OTA requires, among other software gates:
-
-- the candidate is for the correct Comms hardware;
-- the candidate is newer than installed firmware;
-- operator confirmation;
-- P4 alive;
-- no running show;
-- no global Emergency;
-- P4 maintenance authorisation;
-- venue/home Wi-Fi with Internet access for the GitHub download.
-
-Do not start an update during guest operation.
-
-## 23.3 Update process
-
-Current intended operator flow is approximately:
-
-1. connect Showduino to venue/home Wi-Fi from **Network**;
-2. open the software/update surface;
-3. select **Check for Updates**;
-4. confirm the Communications candidate is newer than installed;
-5. select **Update Comms** / **INSTALL UPDATE** when the system is idle and safe;
-6. allow Communications to reboot;
-7. wait for the Director/browser link to reconnect;
-8. verify P4/Comms/Director health before returning the attraction to service.
-
-During a Comms reboot, the P4 remains the show/safety authority. Wireless Nodes temporarily lose the transport bridge. The hardwired P4 Emergency input remains independent of the Comms reboot.
-
-## 23.4 OTA integrity and limitations
-
-The implemented Comms updater streams the image into the inactive slot, checks SHA-256 and runs a post-boot health gate with software rollback.
-
-The current release-manifest system is **not cryptographically signed**, and the HTTPS client configuration does not itself prove publisher authenticity. Do not describe the updater as a signed secure-boot distribution system.
-
-Physical normal-update and failed-health rollback acceptance still needs sign-off for the current release candidate.
-
----
-
-# 24. Routine operation
-
-A typical operating cycle should be deliberately boring:
-
-1. complete the pre-opening checklist;
-2. power and confirm the P4, Comms and Director reach healthy states;
-3. confirm required Nodes are online;
-4. load the correct production;
-5. perform a controlled output/audio check before guests enter;
-6. use the Director **LIVE** page for operation;
-7. respond to Emergency/fault indications before attempting to continue;
-8. after the final performance, stop the show and follow the installation's shutdown procedure.
-
-Do not use firmware updates, wiring changes, Node commissioning or pixel-count changes during live guest operation.
-
----
-
-# 25. Troubleshooting
-
-## 25.1 Director shows CONNECTION LOST
-
-Check whether the failure is:
-
-- Director ↔ Communications radio link;
-- Communications ↔ P4 UART link;
-- P4 itself.
-
-Do not assume Internet loss caused it. The Director link and venue Internet are separate states.
-
-## 25.2 Browser loads but P4 controls show OFFLINE
-
-The Communications Controller and its WebUI can be alive while the P4 link is unavailable.
-
-Do not repeatedly send commands. Check the P4 power/state and Comms↔P4 connection. If a show may already be running, avoid an unplanned P4 power cycle until the attraction is in a safe state.
-
-## 25.3 Venue Wi-Fi is offline
-
-A loaded show should not require it. Local Showduino operation remains the priority. Internet update checking will not work until connectivity returns.
-
-## 25.4 Audio Node is offline
-
-Programme/attraction audio is unavailable. The P4 system speaker is not a programme-audio fallback.
-
-Check Node power, storage and ownership/link status. Do not convert a system-audio test into an attraction playback workaround.
-
-## 25.5 Pixels are all bright white
-
-Treat this as an Emergency indication first. Do not begin ordinary colour/FX troubleshooting until authoritative Emergency state is confirmed clear.
-
-## 25.6 Show pixels remain black after Emergency clear
-
-That is expected current behaviour. The P4 show-pixel line returns to safe blackout and interrupted FX do not auto-resume.
-
-## 25.7 Production will not start
-
-Check:
-
-- Emergency is clear;
-- a valid production/timeline is loaded;
-- maintenance/update mode is not active;
-- P4 is online;
-- the runtime is in a valid start state;
-- required Nodes are available for the intended show.
-
-## 25.8 Emergency clear is rejected
-
-Likely current reasons include:
-
-- no valid pending physical clear request;
-- physical Emergency input still asserted;
-- clear-request timeout expired.
-
-Resolve the physical condition and repeat the authorised procedure. Do not bypass the input.
-
-## 25.9 Node local controls say CONTROLLED BY SHOWDUINO
-
-This is expected when the P4 has granted ownership. Use Showduino's operator/commissioning interface rather than fighting the Node locally.
-
-## 25.10 No SD card
-
-Some already-loaded RAM behaviour may continue, but persistent production/storage/media functions can be unavailable. Treat SD faults according to the production's actual asset dependencies.
-
----
-
-# 26. Technical installation notes
-
-This section is for owners/technical users, not routine operators.
-
-## 26.1 Main communication path
-
-```text
-Director ESP32-S3
-  → ESP-NOW
-Communications ESP32-S3
-  → UART 115200 8N1
-P4 Show Engine
-```
-
-Current dedicated UART wiring at board level:
-
-- Comms GPIO17 TX → P4 GPIO4 RX
-- Comms GPIO18 RX ← P4 GPIO5 TX
-- common ground
-
-## 26.2 Local P4 resources
-
-Current principal Showduino assignments include:
-
-- GPIO7/8 — Plug-in I²C bus / onboard ES8311 control;
-- GPIO23 — theatrical Show Pixel Line;
-- GPIO24 — Emergency/designated-signage pixels;
-- GPIO25 — hardwired main Emergency input;
-- onboard ES8311/NS4150B path — system/safety audio;
-- SD interface — persistent storage;
-- onboard C6 — reserved/unused in current product path.
-
-Do not repurpose reserved pins simply because they are physically accessible on a development board.
-
-## 26.3 Pixel electrical standard
-
-For final installations:
-
-```text
-P4 GPIO → appropriate 5 V-compatible logic buffer → 470 Ω → pixel DIN
-```
-
-Use an external 5 V pixel supply sized for the installed count and worst-case white output, common grounds and suitable power injection.
-
-## 26.4 Plug-in Bus
-
-Use 3.3 V only on SDA/SCL and keep the bus short. Configure device role explicitly rather than relying on an I²C address guess.
-
----
-
-# 27. Current RC capability summary
-
-| Area | Current status at this manual baseline |
-|---|---|
-| P4 authoritative runtime | Implemented |
-| Director operator UI | Implemented, current page UI active; OS2 disabled |
-| Communications S3 transport/WebUI host | Implemented |
-| Local Showduino SoftAP | Implemented; production credential provisioning gap remains |
-| Optional venue Wi-Fi | Implemented; hardware acceptance still required |
-| P4 system/safety audio | Implemented foundation; physical acceptance required |
-| Audio Node | Programme audio + optional GPIO22 Pixel Line; hardware acceptance required |
-| S3 Lamp Node | Active; Adafruit Audio FX local WAV; principal pins confirmed |
-| P4 segmented Show Pixels | Implemented; hardware acceptance required |
-| C3 Pixel Node | Software/routing active; hardware acceptance required |
-| Wireless Emergency + Pixel Node | Software implemented (momentary + OLED + GPIO2 Pixel); GPIO/physical acceptance incomplete |
-| Persistent production store | Format v1 accepts PIXEL/AUDIO/LAMP/TEST/LOG; ESTOP cue type and full theatrical set still incomplete |
-| SHDO v2 | Active authoring/interchange contract |
-| System Console + Studio V4 authoring | Console active; Studio authoring advanced; persistent mixed-device deploy still incomplete |
-| Comms self-OTA | Implemented in software; physical proof required |
-| System-wide OTA | Not implemented |
-| MOSFET Node | Software implemented — physical validation required |
-| Relay Node | Legacy/retired |
-| DMX production control | Parked / not current product scope |
-| Approved 8-second Emergency-button Locate | Implemented in firmware; hardware acceptance required |
-
----
-
-# 28. Glossary
-
-**Authoritative** — the component whose state is the official system truth. For live show/safety state, this is the P4 Show Engine.
-
-**Communications Controller / Comms** — the ESP32-S3 transport and local WebUI host between Director/browser/Nodes and P4.
-
-**Director** — the Showduino touchscreen operator interface.
-
-**Emergency latch** — Showduino's software-held Emergency state, which remains active after the main momentary button is released until an authorised clear is accepted.
-
-**ESP-NOW** — the local radio transport currently used between the Director/Nodes and Communications Controller. An operator does not need to configure ESP-NOW directly.
-
-**Node** — a specialist device such as an Audio, Lamp, Pixel or Emergency Node.
-
-**P4 / Show Engine** — the authoritative Showduino runtime controller.
-
-**Production** — an installed runtime show package known to the P4.
-
-**SHDO** — Showduino's versioned production authoring/interchange format contract.
-
-**SoftAP / access point** — the Wi-Fi network created by Showduino itself for local browser access.
-
-**Studio** — Showduino's browser authoring/commissioning family. At this RC baseline, distinguish the active S3 **System Console** from the embedded **Studio** authoring snapshot; persistent mixed-device production storage remains limited.
-
-**Timeline** — the ordered time-based show actions owned/executed by the Show Engine once loaded.
-
----
-
-# 29. Manual revision and support baseline
-
-When reporting a fault or comparing behaviour with this manual, record:
-
-- Showduino product version;
-- P4 firmware version;
-- Communications firmware version;
-- Director firmware/release identity if shown;
-- affected Node firmware version;
-- manual revision;
-- repository/firmware release identifier where supplied.
-
-For this manual revision the source baseline is:
-
-```text
-Showduino platform: 1.0.0-rc.1
-P4 source:           0.6.8 at baseline HEAD
-Comms source:        0.5.4 at baseline HEAD
-Director manifest:   0.9.7-director (release manifest; current source lacks an equivalent clear BoardConfig version constant)
-Repository SHA:      f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2
-Date:                20 October 2026
-```
-
-The committed release manifest still lists older P4/Comms component numbers than live `BoardConfig.h` values on this SHA, so the exact repository SHA is intentionally retained as the documentation baseline until release inventory is refreshed.
-
----
-
-## End of manual
-
-For unresolved implementation, validation and product decisions, see `SHOWDUINO_MANUAL_GAPS.md`. For claim-level traceability, see `SHOWDUINO_MANUAL_SOURCE_MATRIX.md`.
+[Quick Start](SHOWDUINO_QUICK_START.md) · [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) · [Studio Cue Library](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) · [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) · [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) · [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) · [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md).
