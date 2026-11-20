@@ -12,6 +12,10 @@ function Run-One($name, $srcName, $exeName) {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+Run-One "Live status refresh" "test_live_status_refresh.cpp" "live_status_refresh_tests.exe"
+& node (Join-Path $here "test_live_status_refresh.cjs")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Run-One "Playback telemetry freshness" "test_runtime_freshness.cpp" "runtime_freshness_tests.exe"
 Run-One "System sound volume" "test_system_sound_volume.cpp" "system_sound_volume_tests.exe"
 Run-One "Director emergency clearance" "test_emergency_clear_flow.cpp" "emergency_clear_flow_tests.exe"

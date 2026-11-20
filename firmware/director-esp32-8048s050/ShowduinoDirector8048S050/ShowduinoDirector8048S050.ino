@@ -1108,6 +1108,17 @@ void handleUiCommand(const String &command) {
     logEvent(LogLevel::Event, LogCategory::UserAction, "UI", command.c_str());
   }
 
+  if (command == PAGE10_CMD_STATUS) {
+    if (!ui.beginLiveStatusRefresh()) return;
+    if (linkState != LINK_READY || !sendToStage(SHOW_STATE_QUERY)) {
+      ui.failLiveStatusRefresh();
+      ui.appendLog("Live status request failed - check Stage link");
+    } else {
+      ui.appendLog("Live status requested - awaiting playback report");
+    }
+    return;
+  }
+
   if (command == "UI:ESTOP:RESUME") {
     sendToStage("SHOW:RESUME");
     ui.pushOperatorEvent("Requested SHOW:RESUME (await Stage confirmation)");
