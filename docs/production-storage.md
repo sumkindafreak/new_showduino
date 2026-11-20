@@ -66,8 +66,9 @@ Required cue fields are `id`, `timeMs`, and `type`. `target`, `action`, `value`,
 and an object-valued `parameters` field are optional. Logical target strings are
 preserved by the parser but are not routed to hardware in this milestone.
 
-Accepted cue types in reviewed `main` (`41c7c71`, 19 November 2026) are `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` and `LOG`. Confirm the exact flashed build before deployment.
+Accepted cue types in reviewed `main` (`41c7c71`, 19 November 2026) are `AMBIENCE`, `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` and `LOG`. Confirm the exact flashed build before deployment.
 
+- `AMBIENCE` cues require a command accepted by `showduinoAmbienceTimelineCommandAllowed()` in `protocol/showduino_ambience_command.h`: `AMBIENCE:PLAY:/showduino/audio/ambience/<file>.wav`, `AMBIENCE:LOOP:/showduino/audio/ambience/<file>.wav`, `AMBIENCE:VOLUME:<0-100>`, or `AMBIENCE:STOP`. Inventory/status commands are **not** timeline cues. These files must exist on the **P4 SD**.
 - `PIXEL` cues require a `command` beginning with `PIXEL:`
 - `AUDIO` cues require a `command` beginning with `AUDIO:NODE:`
 - `LAMP` cues require a `command` beginning with `LAMP:`

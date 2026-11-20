@@ -18,14 +18,14 @@ For the **next bench gate**, use that same production and untouched local flashe
 
 ## Step 2 — Perform a controlled complete run **twice**
 
-1. Isolate hazardous effects; use safe observation or low-power loads.
+1. Isolate hazardous effects; use safe observation or low-power loads. **Arrange a witness to observe each entire run in person**; a signature added later without observing that run does not count.
 2. Boot P4 → Comms → Director → Nodes; confirm fresh **P4 state** and all production-required nodes.
 3. Select and **LOAD** the already-persisted 22-second show. Record P4 acknowledgement.
 4. **START** it from an authorised operator surface. Capture P4 state, cue timing, Audio Node output, pixel behaviour and any safe MOSFET feedback.
-5. Capture **P4 COMPLETE**, safe end state and timestamps.
-6. Repeat from a fresh loaded/ready state **without firmware or show edits**. Record a separate second result.
+5. Capture **P4 COMPLETE**, safe end state and timestamps. Have the witness record their name, observation, time and signature against **Run 1** before the next run.
+6. Repeat from a fresh loaded/ready state **without firmware or show edits**, with the witness observing **Run 2** as well. Record the second P4 result and have the witness sign **Run 2** separately at the time.
 
-A visual/audio performance without an authoritative start-to-complete log is useful progress but **not** this gate's PASS.
+A visual/audio performance without an authoritative start-to-complete log **or direct witness observation of each run** is useful progress but **not** this gate's PASS.
 
 ## Step 3 — Test the Emergency separately
 

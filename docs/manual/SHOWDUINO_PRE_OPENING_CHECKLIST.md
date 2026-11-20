@@ -35,7 +35,7 @@ Mark each item **PASS / FAIL / N/A**, attach recorded evidence and sign. A blank
 
 ## C. Baseline show — **two consecutive complete runs**
 
-Use the **same known-good 22-second (or explicitly identified existing) production**, with safe low-power effects.
+Use the **same known-good 22-second (or explicitly identified existing) production**, with safe low-power effects. A named witness must **personally observe each full run** and sign/date its result at the time; retrospective approval of an unobserved run is not acceptance.
 
 | Evidence | Run 1 | Run 2 |
 | --- | --- | --- |
@@ -48,9 +48,11 @@ Use the **same known-good 22-second (or explicitly identified existing) producti
 | MOSFET safe-load state observed (or N/A) | | |
 | P4 COMPLETE recorded | | |
 | Output safe at end | | |
+| Witness observed entire run (name) | | |
+| Witness signature and time for this run | | |
 | PASS / FAIL | | |
 
-- [ ] Both runs show P4-confirmed **LOAD → START → COMPLETE**, not just a UI animation.
+- [ ] Both runs were directly **witnessed and individually signed at the time**, with P4-confirmed **LOAD → START → COMPLETE**, not just a UI animation.
 - [ ] Required physical outputs and node identities agree with the cue routing.
 - [ ] No unexpected Director reboot, running-show output loss, automatic restarts or missing node readiness occurs.
 - [ ] The known-good firmware and production remain backed up; no optional DMX/FastLED/new-lamp feature introduced to satisfy the gate.
@@ -107,6 +109,6 @@ Run a controlled production and interrupt it with **the main P4 physical button*
 
 **Operator signature:** __________________  **Witness/approver:** __________________
 
-If any safety item fails or is incomplete, mark **DO NOT OPEN**. A source review, PR merge, screenshot, bench anecdote or CI-green result is not a physical acceptance record. Retest after every relevant firmware/hardware change.
+Mark **OPEN only if every applicable gate above is PASS**, including both individually witnessed complete runs and full Emergency/authorised-clear/no-auto-resume acceptance. If **any** applicable gate fails or is incomplete (not just the safety-related rows), mark **DO NOT OPEN**. A source review, PR merge, screenshot, bench anecdote or CI-green result is not a physical acceptance record. Retest after every relevant firmware/hardware change.
 
 **References:** [User Manual](SHOWDUINO_USER_MANUAL.md) · [Physical test plan](../physical-test-checklist.md) · [Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) · [Gaps](SHOWDUINO_MANUAL_GAPS.md) · [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md).

@@ -19,7 +19,7 @@ The 30 October statement that the Director tile is disabled is superseded by dir
 2. Search by cue type, action or effect. Choose an appropriate unlocked Audio, Pixel or MOSFET lane, or a compatible Mixed Lane.
 3. Drag a preset to the desired position; the editor may snap to its grid. Alternatively double-click to insert at the playhead into an eligible lane.
 4. Select the clip. In its Inspector set **start**, **duration**, **logical node**, **physical route/output**, parameters and assets. If no suitable lane exists, add one.
-5. For Audio, verify the media filename exists on the **correct Audio Node SD**; example file names in presets are **not** copied automatically.
+5. For Audio, check the **selected route** before confirming the media location. An `audio-node` cue uses the **Audio Node's SD card**; a `p4-ambience` cue uses the **P4 SD card** under `/showduino/audio/ambience/` and emits `AMBIENCE` commands. Example file names in presets are **not** copied automatically. The actual installed P4 and node firmware must support the chosen route.
 6. For Pixel, verify logical segment, line, start LED, count and physical fitted count. P4 GPIO24 is **safety signage**, not a general show line. Programmable lines default to **10** LEDs until a valid larger count is configured.
 7. Preview, run **Project Check**, save and export **SHDO v2**. This checks authoring; it does not test the installed hardware.
 

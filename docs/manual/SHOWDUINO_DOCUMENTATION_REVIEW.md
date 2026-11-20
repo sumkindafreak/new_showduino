@@ -43,7 +43,7 @@ This was a **repository source review**, **not** a full inspection of the author
 2. **Director Cue Library:** `page_01_home.cpp` enables its tile and `DirectorCueLibrary.cpp` implements FOLLOW/BROWSE/START SCENE. The historical disabled-tile instruction is false in reviewed `main`; installed UI remains unverified.
 3. **Emergency:** GPIO25 LOW assertion latches; eight-second hold is **LOCATE**, not clear. Clear requires released input, Director confirmation and P4 authority. **Never auto-resume**.
 4. **Web UI-copy defect:** `web/showduino-studio/js/pages/Live.js` references a “3-second hold window.” This conflicts with the P4/Director workflow and should be corrected by a separate **WebUI** change with appropriate tests, not misreported in the manual.
-5. **Production format:** SHDO v2 is portable authoring; the P4 stores compiled format v1 and does not auto-load/start. `src/ProductionFormat.cpp` includes `ESTOP:NODE:PIXEL:` bounded route omitted by the older production-storage guide.
+5. **Production format:** SHDO v2 is portable authoring; the P4 stores compiled format v1 and does not auto-load/start. `src/ProductionFormat.cpp` includes bounded `ESTOP:NODE:PIXEL:` **and `AMBIENCE`** routes, both now documented in the production-storage guide. `p4-ambience` uses `/showduino/audio/ambience/` on the P4 SD.
 6. **Node distinctions:** S3 Lamp active vs simplified C3 Lamp design; wireless Emergency is assert-only; Audio Node GPIO22 pixels stay on the same identity; 10 LED programmable defaults do not apply to fixed indicators.
 
 ## Physical evidence and unresolved test scope

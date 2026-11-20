@@ -77,8 +77,9 @@
 | Persist does not load/start | `Productions.js`; `docs/production-storage.md` | CODE |
 | Separate Load/Start/Pause/Resume/Stop | P4 `ShowRuntimeOwner.h`; Console `Productions.js`, `Live.js` | CODE; state gates apply |
 | P4 persistent format v1 manifest/timeline | P4 `src/ProductionFormat.cpp`; `docs/production-storage.md` | CODE; SD physical test pending |
-| P4 parser accepts PIXEL/AUDIO/LAMP/MOSFET/ESTOP, TEST/LOG | `src/ProductionFormat.cpp` cue types | CODE; previous docs omitted ESTOP |
+| P4 parser accepts AMBIENCE/PIXEL/AUDIO/LAMP/MOSFET/ESTOP, TEST/LOG | `src/ProductionFormat.cpp` cue types | CODE; earlier docs omitted AMBIENCE and ESTOP |
 | ESTOP cue prefix is `ESTOP:NODE:PIXEL:` | `src/ProductionFormat.cpp` | CODE; editor/physical route pending |
+| `p4-ambience` stores WAV on P4 SD, emits bounded AMBIENCE cues (including STOP) | `protocol/showduino_shdo.h` `shdoCompileAudio`; `protocol/showduino_ambience_command.h`; P4 `src/ProductionFormat.cpp` | CODE; P4 media and physical playback test pending |
 | RAM `/api/studio-timeline` separate from SD persistence | `web/showduino-studio/README.md` | CODE; scoped commissioning |
 | Audio ES8388/A161 and local SD | `docs/audio-node.md`; `firmware/audio-node-esp32-a1s/` | SOURCE/DOC; flash and wiring pending |
 | Audio GPIO22 pixels under same Audio identity | `docs/audio-pixel-engine.md`; Audio firmware | SOURCE/DOC; physical pending |

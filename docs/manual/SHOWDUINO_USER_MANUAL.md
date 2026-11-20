@@ -135,7 +135,7 @@ A **production** is the named show. A **scene** is a creative or timeline subdiv
 
 1. Open **Website Studio**, create/open a production and enter its Timeline.
 2. Add Audio, Pixel, MOSFET or other compatible lanes; use **Cue Library** presets as editable starting points.
-3. In the Inspector, assign actual logical node IDs and verified media/segment/output references. Ensure each referenced file is present on its **own device's** storage.
+3. In the Inspector, assign actual logical node IDs and verified media/segment/output references. Check storage **by route**: `audio-node` uses the Audio Node SD; `p4-ambience` uses the P4 SD directory `/showduino/audio/ambience/`. Example media names are not automatically uploaded.
 4. Preview for timing and run Project Check. **This is authoring validation only.**
 5. Export an **SHDO v2** `.shdo` package; check the compiler compatibility of the **installed** P4 before deploying.
 6. In the **Comms System Console → Productions → Persist SHDO v2 to P4 SD**, choose the exported file and press **Persist to SD**. Wait for the P4 success/rejection. Persist does **not** auto-load or auto-start.
@@ -143,7 +143,7 @@ A **production** is the named show. A **scene** is a creative or timeline subdiv
 
 The P4 **compiles** supported SHDO cues to persistent runtime format v1 (rather than interpreting arbitrary authoring JSON). The canonical on-SD paths are `/showduino/productions/<id>/manifest.json` and `timeline.json`. P4 format-v1 supports typed bounded commands; see [production storage](../production-storage.md) and [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md).
 
-The current `ProductionFormat.cpp` includes a bounded **ESTOP** cue route with the `ESTOP:NODE:PIXEL:` prefix; older `production-storage.md` text claiming no ESTOP type is stale and must be treated as a documentation discrepancy until reconciled. No authoring palette item, particularly legacy Relay/Trigger/generic FX/DMX, should be described as deployable without current compiler **and physical** verification.
+The current `ProductionFormat.cpp` accepts bounded **ESTOP** pixel cues with the `ESTOP:NODE:PIXEL:` prefix and bounded **AMBIENCE** commands (including `AMBIENCE:STOP`). The [production-storage reference](../production-storage.md) has been reconciled with those parser rules; the earlier statement excluding ESTOP was historical. For `p4-ambience` audio clips, the SHDO compiler emits `AMBIENCE` playback/volume/stop cues that reference media on the **P4 SD**, not on the Audio Node. No authoring palette item, particularly legacy Relay/Trigger/generic FX/DMX, should be described as deployable without current compiler **and physical** verification.
 
 ### RAM commissioning is not persistent storage
 
