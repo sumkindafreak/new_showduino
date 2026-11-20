@@ -125,7 +125,7 @@ There are three different browser/editor concepts:
 2. **Embedded `/studio/` snapshot:** a bundled edition of Studio; may lag the website's newest authoring code.
 3. **Website Studio:** richer editing and SHDO export; independent release and compatibility boundary.
 
-If the browser loads while the P4 is offline, controls must remain unavailable. The browser is not a substitute for the Director/P4 Emergency-clear handshake. A stale text label about a “3-second hold” in current `Live.js` is erroneous; never follow it.
+If the browser loads while the P4 is offline, controls must remain unavailable. The browser is not a substitute for the Director/P4 Emergency-clear handshake. Earlier S3 browser builds incorrectly referred to a “3-second hold” for clearance. The source copy is corrected in [PR #78](https://github.com/sumkindafreak/new_showduino/pull/78); an installed S3 will continue serving its previous embedded bundle until an approved update is deployed. Never follow an outdated clear gesture.
 
 ## 7. Productions, cues and Studio
 

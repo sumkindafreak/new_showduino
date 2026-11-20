@@ -44,7 +44,7 @@ Previous bench reports mention the Cue Library screen remaining visible after na
 
 ## Known source/UI discrepancy
 
-The Comms browser `Live.js` still contains stale explanatory wording referencing a **3-second physical hold**. The current P4 main-button **8-second hold is for Locate**, never clear. Emergency clear requires Director request/confirmation and P4 authority. Treat the browser sentence as a **UI-copy defect**, not an operator instruction; see [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md).
+Older deployed Comms browser bundles contain incorrect “3-second physical hold” help text. [PR #78](https://github.com/sumkindafreak/new_showduino/pull/78) corrects the browser **source**: the P4 main-button **8-second hold is for Locate**, never clear. Emergency clear requires physical release, Director request/confirmation and P4 authority. A flashed S3 may still serve old text until the corrected generated bundle is deployed and verified. See [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md).
 
 ## Related
 
