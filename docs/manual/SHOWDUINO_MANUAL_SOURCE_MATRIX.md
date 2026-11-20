@@ -1,6 +1,6 @@
 # Showduino V1 — Source-to-Operator Claim Matrix
 
-**Rebuilt 19 November 2026** · Source: [`main` at `41c7c71ac617abdf9feeedf2064e6b5a9f31cc15`](https://github.com/sumkindafreak/new_showduino/tree/41c7c71ac617abdf9feeedf2064e6b5a9f31cc15) · Product `1.0.0-rc.1`.
+**Rebuilt 19 November 2026; UI-copy disposition updated 20 November 2026** · Source: [`main` at `41c7c71ac617abdf9feeedf2064e6b5a9f31cc15`](https://github.com/sumkindafreak/new_showduino/tree/41c7c71ac617abdf9feeedf2064e6b5a9f31cc15) · Product `1.0.0-rc.1`.
 
 **Scope:** Source review of current P4, Comms S3, Director, protocol, Comms WebUI and node-specific reference documentation; no local flashed firmware, live website build or physical hardware was accessed. This matrix supports the rewritten operator instructions, **not** a claim of complete bench or certification acceptance.
 
@@ -46,7 +46,7 @@
 | Latch persists across complete power removal | P4 startup `ShowduinoStageEngineP4.ino` | **NOT PROVEN**; never claim |
 | Wireless Emergency stations assert, cannot clear | `docs/emergency-node.md`; `firmware/c3-emergency-node/` | SOURCE/DOC; radio/hardware pending |
 | Comms Browser Live PANIC asserts Emergency | `web/showduino-studio/js/pages/Live.js` | CODE; not a normal clear path |
-| Browser phrase “physical 3s-hold” | `web/showduino-studio/js/pages/Live.js` | **UI MISMATCH**; 8s is Locate, clear is Director/P4 |
+| Previous Live-page “physical 3s-hold” wording | `web/showduino-studio/js/pages/Live.js` and [fix PR #78](https://github.com/sumkindafreak/new_showduino/pull/78) | **SOURCE CORRECTED** in #78 with regression coverage; on-device S3 bundle/physical behaviour still require deployment-specific verification |
 
 ## Director, outputs and network
 

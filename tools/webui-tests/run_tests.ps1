@@ -1,5 +1,11 @@
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+Write-Host "Running Live Emergency wording regression check..."
+$py = Get-Command python -ErrorAction SilentlyContinue
+if ($py) {
+  & python (Join-Path $here "test_live_emergency_copy.py")
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 Write-Host "Running Network gateway draft host tests..."
 $py = Get-Command python -ErrorAction SilentlyContinue
 if ($py) {

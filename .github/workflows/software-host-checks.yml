@@ -56,5 +56,7 @@ jobs:
           node tools/audio-node-tests/test_codec_playback.cjs
           node tools/audio-node-tests/test_mp3_adapter.cjs
           node tools/audio-node-tests/test_web_pixel_setup.cjs
+      - name: Live page Emergency safety-copy regression
+        run: python tools/webui-tests/test_live_emergency_copy.py
       - name: Whitespace check
         run: git diff --check
