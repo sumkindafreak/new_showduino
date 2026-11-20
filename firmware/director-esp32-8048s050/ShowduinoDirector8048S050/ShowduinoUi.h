@@ -38,6 +38,7 @@
 #include "page_06_diagnostics.h"
 #include "page_08_settings.h"
 #include "page_10_live.h"
+#include "DirectorLiveStatusRefresh.h"
 #include "DirectorCueLibrary.h"
 #include "page_logs.h"
 #include "page_audio_system.h"
@@ -545,7 +546,23 @@ public:
     statusDirty = true;
   }
 
+  bool beginLiveStatusRefresh() {
+    if (!liveStatusRefresh_.request(millis())) return false;
+    liveStatusDirty = true;
+    statusDirty = true;
+    refreshLiveStatusPanel();
+    return true;
+  }
+
+  void failLiveStatusRefresh() {
+    liveStatusRefresh_.sendFailed(millis());
+    liveStatusDirty = true;
+    statusDirty = true;
+    refreshLiveStatusPanel();
+  }
+
   void applyRuntimeMirror(const ShowRuntime &rt) {
+    liveStatusRefresh_.received(millis());
     ShowState prev = mirroredState;
     mirroredState = rt.state;
     mirroredRevision = rt.revision;
@@ -688,6 +705,10 @@ public:
   }
 
   void tickOperatorUx(unsigned long nowMs) {
+    if (liveStatusRefresh_.tick(nowMs)) {
+      liveStatusDirty = true;
+      statusDirty = true;
+    }
     /* Persistent banner pulse while runtime emergency and the full screen is not up. */
     if (persistentBannerRoot && !lv_obj_has_flag(persistentBannerRoot, LV_OBJ_FLAG_HIDDEN)) {
       bool flashOn = ((nowMs / 500UL) % 2UL) == 0;
@@ -2378,6 +2399,7 @@ private:
   bool completeOverlayVisible = false;
   bool liveStatusDirty = true;
   bool runtimeFresh_ = false;
+  DirectorLiveStatusRefresh liveStatusRefresh_;
   unsigned long emergencyActiveSinceMs = 0;
   char estopShowName[64] = "-";
   char estopPlayStateBefore[24] = "Stopped";
@@ -3884,6 +3906,30 @@ private:
     if (!runtimeFresh_ && !emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP) {
       pending = "PLAYBACK UPDATE STALE - checking Stage";
       col = OsColor::Warn;
+    }
+    if (!emergencyLocked && mirroredState != SHOW_STATE_EMERGENCY_STOP &&
+        !pendingResumeAwait && !pendingAbortAwait) {
+      using Refresh = DirectorLiveStatusRefresh;
+      switch (liveStatusRefresh_.state()) {
+        case Refresh::State::Waiting:
+          pending = "CHECKING STAGE...";
+          col = OsColor::Pending;
+          break;
+        case Refresh::State::Received:
+          pending = "STATUS RECEIVED";
+          col = OsColor::Ok;
+          break;
+        case Refresh::State::SendFailed:
+          pending = "STATUS REQUEST FAILED";
+          col = OsColor::Warn;
+          break;
+        case Refresh::State::TimedOut:
+          pending = "NO STATUS REPLY - RETRY";
+          col = OsColor::Warn;
+          break;
+        case Refresh::State::Idle:
+          break;
+      }
     }
     page_10_live_set_pending(pending, col);
     page_10_live_set_progress(liveProgressPct);

@@ -183,7 +183,7 @@ void page_10_live_create(lv_obj_t *parent, page10_command_fn command_cb) {
   make_btn(s_main, "PAUSE", 124, 44, 100, "SHOW:PAUSE", false, false);
   make_btn(s_main, "RESUME", 232, 44, 110, "SHOW:RESUME", false, false);
   make_btn(s_main, "STOP", 350, 44, 90, "SHOW:STOP", true, false);
-  make_btn(s_main, "STATUS", 448, 44, 110, "STATUS:REQUEST", false, false);
+  make_btn(s_main, "STATUS", 448, 44, 110, PAGE10_CMD_STATUS, false, false);
   make_btn(s_main, "E-CLEAR", 566, 44, 180, "EMERGENCY:CLEAR", false, true);
 
   lv_obj_t *ph = lv_label_create(s_main);

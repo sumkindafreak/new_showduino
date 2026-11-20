@@ -15,6 +15,7 @@ extern "C" {
 #endif
 
 #define PAGE10_CMD_BACK "PAGE10:BACK"
+#define PAGE10_CMD_STATUS "UI:LIVE:STATUS"
 
 typedef void (*page10_command_fn)(const char *command);
 
