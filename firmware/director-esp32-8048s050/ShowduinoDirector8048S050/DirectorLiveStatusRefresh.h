@@ -18,7 +18,9 @@ public:
     set(uint32_t(now - since_) >= TIMEOUT_MS ? State::TimedOut : State::Received, now);
   }
 
-  void sendFailed(uint32_t now) { set(State::SendFailed, now); }
+  void sendFailed(uint32_t now) {
+    if (state_ == State::Waiting) set(State::SendFailed, now);
+  }
 
   bool tick(uint32_t now) {
     if (state_ == State::Idle) return false;

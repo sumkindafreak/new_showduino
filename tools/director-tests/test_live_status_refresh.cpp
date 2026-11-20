@@ -45,5 +45,12 @@ int main() {
   assert(refresh.state() == State::Received);
   assert(refresh.tick(2600));
   assert(refresh.state() == State::Idle);
+  assert(refresh.request(30000));
+  refresh.received(30001);
+  refresh.sendFailed(30002);
+  assert(refresh.state() == State::Received);
+  assert(!refresh.tick(32500));
+  assert(refresh.tick(32501));
+  assert(refresh.state() == State::Idle);
   std::puts("PASS Live status refresh: reply, rejection, retry, timeout and rollover");
 }
