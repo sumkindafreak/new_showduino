@@ -1,35 +1,51 @@
-# Showduino Studio Cue Library — creator guide
+# Studio Cue Library — Creator Guide
 
-> Candidate clarification, 2 November 2026: this guide describes the website and its 30 October main-source comparison. This reconciliation branch preserves the owner’s active native Director Cue Library monitor/FOLLOW/checkpoint implementation; the historical disabled-tile statement below does not describe this branch. The native monitor is distinct from the website cue editor. See [candidate record](../reconciliation-update-2026-11-02.md).
+**19 November 2026 · V1 documentation rewrite · Source-reviewed, not physically accepted.**
 
-**Source-checked 30 October 2026.** This describes the **public Website Studio timeline Cue Library** in `sumkindafreak/showduino.com/js/timeline-fx-daw.js`, cross-checked with the Director source in `new_showduino`. The embedded S3 `/studio/` snapshot and installed firmware may differ. This is an authoring guide, not a claim of all-node hardware acceptance.
+## Two different Cue Libraries
 
-## Where the library lives
+| Surface | What it is | What it is **not** |
+| --- | --- | --- |
+| **Website Studio → Timeline → Cue Library** | Search/select/drag preset clips into editable audio, pixel, MOSFET and other lanes | Proof that every palette choice can run on installed P4 |
+| **Director HOME → CUE LIBRARY** | **Enabled in reviewed main** as a live cue/scene monitor with FOLLOW, BROWSE and a guarded START SCENE request | A clip authoring/editor or SHDO export tool |
+| **Embedded Comms `/studio/`** | A bundled website snapshot built into Comms firmware | Guaranteed same release/features as live Website Studio |
+| **Comms System Console → Productions** | Upload/persist compatible SHDO to P4 SD, list/load productions | The complete authoring timeline |
 
-Open [Website Studio](https://show-duino.com/studio.html), open or create a production, and enter the **Timeline** editor. The **Cue Library** is in the timeline's track-list header. Use its arrow to expand/collapse the panel and its search field to filter presets.
+The 30 October statement that the Director tile is disabled is superseded by direct inspection of `page_01_home.cpp` and `DirectorCueLibrary.cpp` at [`41c7c71`](https://github.com/sumkindafreak/new_showduino/tree/41c7c71ac617abdf9feeedf2064e6b5a9f31cc15). The website editor belongs to a separate repository and may change independently.
 
-**Do not confuse this with the Director Home tile labelled CUE LIBRARY.** In the checked `new_showduino/main` Director source, that tile is visible but **disabled**, with no active Cue Library page. The Director is for selecting/loading/running shows and viewing confirmed P4 status; it is not Studio's cue editor.
+## Create a cue in Website Studio
 
-## Add a cue to a production
+1. Open the current Website Studio Timeline and expand **Cue Library** in the track-list header.
+2. Search by cue type, action or effect. Choose an appropriate unlocked Audio, Pixel or MOSFET lane, or a compatible Mixed Lane.
+3. Drag a preset to the desired position; the editor may snap to its grid. Alternatively double-click to insert at the playhead into an eligible lane.
+4. Select the clip. In its Inspector set **start**, **duration**, **logical node**, **physical route/output**, parameters and assets. If no suitable lane exists, add one.
+5. For Audio, check the **selected route** before confirming the media location. An `audio-node` cue uses the **Audio Node's SD card**; a `p4-ambience` cue uses the **P4 SD card** under `/showduino/audio/ambience/` and emits `AMBIENCE` commands. Example file names in presets are **not** copied automatically. The actual installed P4 and node firmware must support the chosen route.
+6. For Pixel, verify logical segment, line, start LED, count and physical fitted count. P4 GPIO24 is **safety signage**, not a general show line. Programmable lines default to **10** LEDs until a valid larger count is configured.
+7. Preview, run **Project Check**, save and export **SHDO v2**. This checks authoring; it does not test the installed hardware.
 
-1. Add a compatible **Audio**, **Pixel**, **MOSFET**, or other track; a **Mixed Lane** can accept different cue types. A locked track cannot accept a dropped preset.
-2. Expand **Cue Library**, search for a suitable preset (for example `Audio Cue`, `Ambient Loop`, `MOSFET PWM`, `Pixel Flicker`, `Pixel Lightning` or `Pixel Blackout`).
-3. **Drag** the preset onto an unlocked matching-type track or Mixed Lane at the intended timeline position. With snapping enabled, drop time snaps to the timeline grid. Alternatively, **double-click** the preset to insert it at the current playhead onto the first eligible unlocked matching-type track (or Mixed Lane). If no suitable lane exists, Studio prompts you to add one.
-4. Select the inserted clip and use the **Inspector** to check start/duration, parameters and routing. Assign the *actual* logical Node ID and output. For Pixel clips verify the selected line, start pixel and segment length; for Audio clips verify a real file exists on the appropriate node and that the path matches your installation. Preset filenames such as `impact.wav` and `ambience.wav` are examples, not an automatic asset upload.
-5. Preview for creative timing, run **Project Check**, then save/export the `.shdo` production. A browser preview and a passed authoring check do **not** verify the physical P4 or nodes.
-6. Use the Communications **S3 system console → Productions → Persist SHDO v2 to P4 SD** to attempt deployment, check the P4 result, separately **Load**, then use the Director to **START** only when the physical test area is ready. Supported cue types and compiler limits depend on the installed P4 firmware. See the [Quick Start](SHOWDUINO_QUICK_START.md#website-studio--installed-production).
+The source-reviewed catalogue has Audio, Pixel and MOSFET options plus authoring-only/legacy types (including generic FX, trigger and relay). **Do not promise all presets are deployable.** Generic FX, triggers and legacy relay paths must be checked against the actual P4 compiler and live outputs.
 
-## What the preset catalogue contains
+## Persist and run the production
 
-The checked website code includes **Audio** (`Audio Cue`, `Impact Hit`, `Ambient Loop`), **MOSFET** (hold, pulse, PWM), **Pixel** (25 effect patterns plus exit-sign marker authoring preset), **FX** (including fog/air/vibration), **Trigger**, and **legacy Relay** authoring presets. Search matches names, types and Pixel effect families. Presets populate editable clip defaults; they do not certify hardware or availability.
+1. Back up the known-good installation and check the **installed P4 firmware version** before trying an unfamiliar SHDO.
+2. Open Comms System Console → **Productions** → **Persist SHDO v2 to P4 SD**, choose the file and press **Persist to SD**.
+3. Read the returned P4 acceptance/rejection. The P4 compiles supported SHDO cue types into its persistent **format-v1** manifest/timeline; a successful upload is **not** a show start.
+4. Separately **Load** the production and wait for P4 acknowledgement.
+5. Use Director/Live to **Start** a safe test. Observe actual node results and completion. Don't treat a Studio preview as evidence.
+6. If the upload is rejected, record the exact error and export. Do not alter a known-good flashed system without isolated regression tests.
 
-**Important restrictions:** Not every Studio palette item is deployable by the current P4 production compiler. In particular, legacy Relay, Trigger and generic FX authoring choices should not be represented as supported active hardware cues without confirming the exact compiler and physical output. **DMX is parked**. The P4's separate **GPIO24 Emergency/signage line is safety-owned**, not a general-purpose show Pixel output; an exit-marker preset does not override Emergency policy. The P4 retains all show-timing and Emergency authority, and clearing Emergency never restarts a show automatically.
+Direct current-source evidence: `web/showduino-studio/js/pages/Productions.js`, `src/ProductionFormat.cpp`, `protocol/showduino_version.h`, and [production storage](../production-storage.md).
 
-## Related reading
+## Director Cue Library monitor
 
-- [Quick Start — Website Studio to installed production](SHOWDUINO_QUICK_START.md#website-studio--installed-production)
-- [User Manual — Studio and browser](SHOWDUINO_USER_MANUAL.md#10-showduino-studio-and-the-browser-interface)
-- [Director Operator Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md)
-- [30 October hardware/documentation evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md)
+The Director provides **FOLLOW**, **PREVIOUS**, **NEXT**, **ALL CUES**, **START SCENE**, and **CLOSE**. It displays P4 timeline state, marks stale updates and requires deliberate confirmation before a scene restart request. It is not a drag-and-drop editor. During Emergency it closes; safety authority remains on the P4.
 
-**Evidence:** `sumkindafreak/showduino.com/js/timeline-fx-daw.js` (Cue Library UI, search, presets, insertion/drag/drop); `js/studio-v4.js` (Project Check and deploy instructions); `sumkindafreak/new_showduino/firmware/director-esp32-8048s050/ShowduinoDirector8048S050/page_01_home.cpp` and `ShowduinoUi.h` (Director Home tile disabled). Website and firmware behaviour are source-checked, not end-to-end hardware-accepted.
+Previous bench reports mention the Cue Library screen remaining visible after navigation. Source support is **not** hardware sign-off; log and retest on the installed build.
+
+## Known source/UI discrepancy
+
+The Comms browser `Live.js` still contains stale explanatory wording referencing a **3-second physical hold**. The current P4 main-button **8-second hold is for Locate**, never clear. Emergency clear requires Director request/confirmation and P4 authority. Treat the browser sentence as a **UI-copy defect**, not an operator instruction; see [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md).
+
+## Related
+
+[Quick Start](SHOWDUINO_QUICK_START.md) · [User Manual](SHOWDUINO_USER_MANUAL.md) · [Director Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) · [Studio production format](../studio/production-format.md) · [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md).

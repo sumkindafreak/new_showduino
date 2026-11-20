@@ -66,17 +66,18 @@ Required cue fields are `id`, `timeMs`, and `type`. `target`, `action`, `value`,
 and an object-valued `parameters` field are optional. Logical target strings are
 preserved by the parser but are not routed to hardware in this milestone.
 
-Accepted cue types are `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `TEST` and `LOG`.
+Accepted cue types in reviewed `main` (`41c7c71`, 19 November 2026) are `AMBIENCE`, `PIXEL`, `AUDIO`, `LAMP`, `MOSFET`, `ESTOP`, `TEST` and `LOG`. Confirm the exact flashed build before deployment.
 
+- `AMBIENCE` cues require a command accepted by `showduinoAmbienceTimelineCommandAllowed()` in `protocol/showduino_ambience_command.h`: `AMBIENCE:PLAY:/showduino/audio/ambience/<file>.wav`, `AMBIENCE:LOOP:/showduino/audio/ambience/<file>.wav`, `AMBIENCE:VOLUME:<0-100>`, or `AMBIENCE:STOP`. Inventory/status commands are **not** timeline cues. These files must exist on the **P4 SD**.
 - `PIXEL` cues require a `command` beginning with `PIXEL:`
 - `AUDIO` cues require a `command` beginning with `AUDIO:NODE:`
 - `LAMP` cues require a `command` beginning with `LAMP:`
 - `MOSFET` cues require a `command` beginning with `MOSFET:NODE:`
+- `ESTOP` pixel cues require a `command` beginning with `ESTOP:NODE:PIXEL:`; this is not an Emergency-clear action
 - for `TEST` / `LOG`, `action` when supplied must be `LOG`
 
 Cue times must be nondecreasing, IDs must be unique, and the timeline must
-contain at least one cue. Unsupported types (including a dedicated ESTOP cue
-type) are rejected. `PIXEL` commands must use the `PIXEL:` prefix, so
+contain at least one cue. Unsupported types are rejected. `PIXEL` commands must use the `PIXEL:` prefix, so
 `ESTOP:NODE:PIXEL:` is not accepted as a format-v1 PIXEL command string.
 
 ## Validation limits

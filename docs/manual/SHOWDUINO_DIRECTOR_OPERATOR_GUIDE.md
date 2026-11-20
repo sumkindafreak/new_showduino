@@ -1,282 +1,95 @@
-# Showduino | The Operator's Guide
+# Showduino Director — Operator Guide
 
-**Documentation review:** 20 October 2026 · firmware source `f4c9aeaabdcf939417f9891fb01d98e1e5d8aec2` · [review scope and evidence](SHOWDUINO_DOCUMENTATION_REVIEW.md). Source review does not establish physical acceptance.
+**19 November 2026 · 1.0-RC rewrite** · [Firmware baseline `41c7c71`](https://github.com/sumkindafreak/new_showduino/tree/41c7c71ac617abdf9feeedf2064e6b5a9f31cc15). This describes the **current repository implementation**, not proof of the firmware on any particular flashed Director.
 
-**The Director touchscreen, sound, lighting and everyday attraction operation**  
-**Audience:** first-time owners, attraction operators and non-technical staff  
-**Product baseline:** Showduino 1.0.0-rc.1 · **Guide revision:** 0.3-RC / 20 October 2026  
-**Source reviewed:** [Showduino repository](../../README.md), current active Director firmware, specialist-node documents and RC physical-test checklist.
+## What the Director does
 
-> **This is the easy-to-use companion to the complete [Showduino User Manual](SHOWDUINO_USER_MANUAL.md).** It explains what to touch and what to expect, not how to write ESP32 firmware. The product is still a release candidate; functions noted as awaiting physical acceptance are not promises of a fully commissioned public-venue installation.
+The Director is the **JC8048W550C 800 × 480 ESP32-S3 touchscreen** with **GT911** touch. It is the operator's desk, **not** the show computer: commands go over ESP-NOW to the Comms S3 and UART to the P4. Do not assume a command completed until the P4 confirms its resulting state.
 
-**About the pictures:** The labelled drawings in this guide explain the *type and role* of each component. They are **reference illustrations**, not photos of Toby's finished enclosure, an exact board revision or screenshots of the current Director UI. A final commercial print edition should replace them with photos of the actual supplied unit and screenshots captured from the accepted firmware.
+The active firmware uses LVGL pages. The optional OS2 shell source is **disabled** in the reviewed `BoardConfig.h` (`SHOWDUINO_OS2_SHELL 0`).
 
----
+## Start-of-shift routine
 
-## 1. Meet Showduino
+1. Confirm the enclosure is safe and the site's independent safety systems are operational.
+2. Boot P4, Comms S3 and Director, then required nodes. Check link and P4 readiness on the Director.
+3. Check loaded production, cue count/readiness, faults and node status. Open **NODES** for individual device information.
+4. Verify Emergency response and clear with **safe test outputs only**, following the site's approved procedure.
+5. Run a controlled rehearsal and record the result. Never leave a potentially dangerous prop energised while diagnosing a connection.
 
-Showduino is an attraction-control system. It can run timed sequences of **sound**, **coloured lights** and supported **interactive effects** while showing the operator what is happening.
+## Active screens and what they mean
 
-**Your everyday job is simple:**
-
-1. Turn on the system and check that it is ready.
-2. Choose the attraction's show on the **Director**.
-3. Press **LOAD**, then **RUN/START** when the area is ready.
-4. Keep an eye on **LIVE** and **NODES** while guests are inside.
-5. Use **STOP** when the attraction needs a normal stop, or the physical emergency button when there is an emergency.
-
-You do **not** need to understand circuit boards, IP addresses or code to run an already prepared production. An installer or show designer prepares the sound files, lighting, wiring and show timeline before you operate it.
-
-![Illustrated Director touchscreen](illustrations/director.svg)
-
-**The four main parts, in ordinary language:**
-
-| Part | What it means to the operator |
-| --- | --- |
-| **Director** | Your touchscreen control desk. You choose and monitor shows here. |
-| **Show Engine** | The computer inside Showduino that actually runs the show and owns emergency state. |
-| **Communications Controller** | The connection between your screen, browser, nodes and Show Engine. |
-| **Nodes** | Smaller boxes that make an individual sound, light or interactive prop work. |
-
-![Illustration of Show Engine and Communications Controller](illustrations/core.svg)
-
-**Remember:** tapping a button sends a *request*. The action is confirmed when the Director reports the Show Engine's new state. A show that is already loaded on the Show Engine is designed to carry on without an open browser or an active Director connection, although individual wireless effects can still be affected by a node or link fault.
-
----
-
-## 2. The Director: your main control screen
-
-The Director is a **5-inch, 800 x 480 touch display**. It may be mounted on a tilting support on the Showduino assembly. Your supplied unit's appearance and final connector labels depend on its hardware revision.
-
-The active Director interface has these main areas. **The labels below come from the current firmware; their precise arrangement may change before final release.**
-
-| Screen | What you use it for |
-| --- | --- |
-| **HOME** | Your starting point: an overview of system, show and connection status. |
-| **PRODUCTIONS** | Find a saved show, select it, and use **LOAD**, **RUN** or **DETAILS** as appropriate. |
-| **SHOW DETAILS** | Check the selected show's information before running it. |
-| **LIVE** | Follow the running show and request start, pause, resume or stop as allowed by its current state. |
-| **NODES** | See the connected specialist devices and open their status/settings panels. |
-| **AUDIO NODE** | Select and test suitable sound files, control volume and view audio status when permitted. |
-| **DIAGNOSTICS** | Check the health of connections, storage, system audio, pixels and nodes. |
-| **SETTINGS** | Configure Director display behaviour and view relevant settings. |
-| **AUDIO** | Director-facing **system-audio** information. It is not the attraction Audio Node library. |
-| **SYSTEM LOGS** | See recent system messages when something does not behave as expected. |
-
-**On-screen status words:** **ONLINE/READY** usually indicate a recognised, available device; **OFFLINE**, **FAULT**, **NO STORAGE**, **SEARCHING** or **SYNCHRONISING** mean the relevant device is not yet ready for that task. Confirm the *required* device is available rather than assuming that a lit touchscreen means the whole system is ready.
-
-### A normal start, step by step
-
-1. Check that the Showduino enclosure, Director, cables, speakers and any connected effect equipment are intact. Keep the attraction closed while commissioning.
-2. Switch on according to your supplied installation instructions. For the current RC bench arrangement the test order is **Show Engine -> Comms -> Director -> Nodes**.
-3. On **HOME**, wait for the system to report a usable Show Engine link and no unresolved emergency or fault.
-4. Open **NODES** and confirm that the devices required by *this* production are online. An attraction with no Lamp Node does not need one to appear.
-5. Open **PRODUCTIONS**. Tap the intended production and choose **LOAD**. Confirm that the correct production is loaded; simply highlighting a row is not the same as loading it.
-6. When the attraction is physically ready, use **RUN** on Productions or the available **START** action from LIVE. Check that the state changes to **RUNNING** before admitting guests.
-7. During the show, use **LIVE** to check progress. Use **PAUSE/RESUME** only where your operating procedure permits. Use **STOP** for a normal controlled stop.
-
-**Important:** uploading a show to storage, loading it into the Show Engine and starting it are *three different actions*. A newly uploaded show does not start by itself.
-
-### When the screen goes dark
-
-The Director's configured automatic display-off behaviour turns off its **backlight**, not the whole controller. Touch/activity normally wakes the display. If touches are inaccurate, the active firmware provides **Settings -> Display -> CALIBRATE**, a five-target alignment procedure saved on the Director; this still requires physical acceptance before final customer sign-off.
-
----
-
-## 3. Sounds: what actually plays the audio?
-
-**There are three different sound paths. They are not interchangeable.**
-
-![Illustrated Audio Node board and storage](illustrations/audio.svg)
-
-| Device | Sound purpose | Supported customer-facing format in this RC |
+| Page | Operator purpose | Important boundary |
 | --- | --- | --- |
-| **Audio Node** | Music, atmosphere, voices and jump-scare effects *for the attraction* | **16-bit PCM WAV** from its **own microSD card**. MP3/Ogg/FLAC decoding is **not** implemented in the current Audio Node firmware. |
-| **Show Engine's internal audio** | Showduino's own startup, notification and emergency/system sounds | Suitable **PCM WAV** system assets, not the attraction soundtrack. |
-| **Interactive Lamp Node** | Its own strike, ignition, flame-loop and emergency sounds | Four designated **WAV** roles on its local **Adafruit Audio FX Sound Board**. This is *not* the general-purpose attraction Audio Node. |
+| **HOME** | Show overview; go to productions, controls, Cue Library, Outputs | A tile is not a direct P4 output |
+| **PRODUCTIONS** | Select and request loading of SD productions | Load confirmation comes from P4 |
+| **SHOW DETAILS** | Review the selected show | Details may be unavailable until P4 reports |
+| **LIVE** | Show state, controls and cue progress | Don't mistake stale status for a live timeline |
+| **CUE LIBRARY** | Native **playback cue monitor**, Follow/Browse/scene checkpoint | **Not** the Website Studio editor |
+| **NODES** | Discover and inspect specialist node status | Offline means unavailable; no invented states |
+| **AUDIO NODE** | Status and applicable audio-node controls | Attraction playback is on the Audio Node |
+| **LAMP NODE** | View/control supported managed lamp features | Installed lamp firmware may differ |
+| **OUTPUTS** | MOSFET, P4 I/O and I²C-related commissioning | P4 determines output permissions |
+| **DIAGNOSTICS** | Faults, communications, recovery evidence | Diagnosis does not waive safety gates |
+| **SETTINGS** | Display settings and calibration | Settings changes must not affect Emergency authority |
+| **AUDIO** | P4 Showduino **system** sound/volume | Not programme music routing |
+| **SYSTEM LOGS** | See reported events | Capture logs for unresolved failures |
 
-### Playing a sound with the Director
+The reviewed `DisplayPages.h` also defines context-dependent full-screen pages for Emergency, connection loss, missing SD, reboot, update, recovery, discovery and completion. A listed page does **not** prove every feature has physical acceptance.
 
-For an Audio Node that has been installed and commissioned:
+## Cue Library — important correction
 
-1. Open **NODES -> AUDIO NODE / AUDIO DESK**, or the dedicated **AUDIO NODE** page.
-2. Confirm the node is **ONLINE** and has storage available. A node marked **NO STORAGE** cannot play files from its card.
-3. Choose **SELECT ASSET** to browse the files reported by that Audio Node. Select the required file.
-4. Use **TEST** for a commissioning check, or **PLAY** for ordinary playback when controls are enabled. **LOOP** repeats, **PAUSE/RESUME** changes playback state, **STOP** ends it, and **VOL - / VOL +** adjusts the level.
-5. Listen through the **speaker, headphone or line output connected to the Audio Node**, not through the Director touchscreen.
+Older manuals said the HOME **CUE LIBRARY** tile was disabled. This is **outdated for the reviewed GitHub source**. `page_01_home.cpp` enables it, and `DirectorCueLibrary.cpp` implements a native cue/timeline monitor with **FOLLOW**, **PREVIOUS**, **NEXT**, **ALL CUES**, **START SCENE** and **CLOSE**.
 
-The Director can display an Audio Node's input-level/noise-floor/trigger diagnostics. This does **not** mean a microphone automatically starts a scare: mapping a sound event to a show action is a separate authoring/engine feature.
+**FOLLOW** tracks the current/next cue; browsing lets the operator inspect other rows. **START SCENE** is a deliberate, confirmed playback request and must not be used as casual navigation. The interface displays stale playback information as stale and closes on Emergency. This screen does **not** create, drag or export SHDO clips. See the [Studio Cue Library Guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
 
-**Why are PLAY and LOOP greyed out?** The Director firmware can lock manual play/loop requests while the show is running or the Node is under show control. Do not attempt to bypass that lock from the Node's own webpage; the Show Engine owns live production playback.
+**Bench note:** The owner previously reported a Cue Library navigation/display fault and intermittent Director freezes. The reviewed code is not proof those symptoms have disappeared on the installed Director. Record a hardware retest before release.
 
-### Putting your own sound onto Showduino
+## Production controls
 
-Ask the installer/show designer to place an approved file on the **Audio Node's microSD card**. The firmware expects files beneath:
+- **Load:** choose a saved production; wait for P4 loaded status.
+- **Run/Start:** only when P4 linked and ready. The Director may disable RUN when link/readiness is missing; do not attempt to override it from another surface.
+- **Pause/Resume/Stop:** requests require authoritative P4 feedback. A lost Director link does not itself stop an already running P4 show.
+- **Finished:** record the completed result. Do not assume automatic restart.
 
-```text
-/showduino/audio/
-    ambience/
-    effects/
-    dialogue/
-    music/
-    stingers/
-    test/
-```
+Don't make editing, test, or troubleshooting changes during a running show unless specifically authorised by the installed system and the venue procedure.
 
-For example, a supported 16-bit PCM file stored at `/showduino/audio/effects/thunder.wav` is referenced as `effects/thunder.wav` by the Audio Node. It must be a genuine WAV file: **renaming `thunder.mp3` to `thunder.wav` does not convert it**. Export/convert the audio to 16-bit PCM WAV, typically at 44.1 or 48 kHz; the current Audio Node also supports other documented sample rates. A show file must reference the same relative file name that is present on the card.
+## Outputs and node control
 
-**No sound?** Check **NODES -> AUDIO NODE**, the node's storage status, the chosen asset, volume, amplifier/speaker connection and the current emergency state. The main Showduino system speaker is not an automatic backup for missing attraction audio.
+The MOSFET output desk shows an **Actual** value reported by the node and a separate requested **Set** value. Moving a level slider alone must not energise an output; **APPLY** requests it. **OFF** and **ALL OFF** are safe-off controls. Level changes are locked while running/paused, in Emergency, during faults or on link loss; safe-off controls have their own guarded path.
 
-### And what about local Lamp sounds?
+Never interpret a sent command as measured load power. Confirm via node feedback **and** physical observation. For wiring and testing, follow [Director Outputs](../director-outputs-mosfet.md) and [Hardware Pinout](../hardware-pinout.md).
 
-The Lamp Node is a specialised prop. Its local Audio FX library uses **`flick.wav`**, **`fire_ign.wav`**, **`flameloo.wav`** and **`emergency.wav`** on the Adafruit Audio FX board. Those roles are tied to the lamp's actions; loading a random soundtrack onto the Show Engine or Audio Node will **not** make it appear as Lamp local audio.
+## Emergency clear — deliberate and separate
 
-See the [Audio Node guide](../../docs/audio-node.md) and [Lamp Node guide](../../docs/s3-lamp-node.md) for format limits and technical setup.
+1. Emergency is **latched at the P4** when asserted. Protect people first and remove the cause. The physical button must be **released** before any clear is accepted.
+2. From the **Director Emergency screen**, select **CLEAR EMERGENCY**.
+3. The P4 may reject the request; otherwise the Director presents **Clear Emergency Stop?** with **CANCEL** and **CONFIRM CLEAR**.
+4. Press **CONFIRM CLEAR** only after checking it is safe. Wait for the **P4-authoritative clear result**; if it remains pending, rejects or times out, stop and investigate.
+5. **No automatic show resume.** The operator must make an independent start/resume decision.
 
----
+A continuous **8-second hold** on the physical Emergency button invokes **Locate** in addition to keeping Emergency asserted. The first Director acknowledgement touch is consumed by Locate; it does **not** press an underlying control or clear the latch. This is **not** a 3-second or 8-second clear gesture.
 
-## 4. Lighting: colours, effects and pixels
+During faults, do not use a reboot to claim an authorised clear. Never bypass separate venue fire, evacuation, electrical or machinery safety systems.
 
-![Illustration of a Pixel Node and LED line](illustrations/pixels.svg)
+## Display, sleep and calibration
 
-A **pixel** is one individually controllable light on a compatible addressable LED strip. Unlike an ordinary lamp that only switches on or off, a pixel line can make different parts of a prop show different colours and animations at the same time.
+The Director can dim/turn off the **backlight** after a configured timeout; the MCU continues running. Touch wakes it. Emergency/Locate override normal backlight behaviour. The **Settings → Display → CALIBRATE** operation uses the source-defined five-point touch wizard and saved calibration; abandon/retest if touch or Emergency is unstable. Hardware acceptance of calibration remains separate.
 
-Examples include fire flicker inside a lantern, lightning in a haunted corridor, a colour-chasing time machine or a slow red warning pulse. A **segment** is simply a named/selected section of one strip; it can have its own effect while another section displays something else.
+On the JC8048W550C the **GT911 is the active touch controller**; do not probe conflicting XPT2046 CS wiring or enable USB CDC on boot over the GT911 SDA/SCL GPIO19/20. Technicians should use [Director BoardConfig](../../firmware/director-esp32-8048s050/ShowduinoDirector8048S050/BoardConfig.h).
 
-### Which lighting device do I use?
+## Troubleshooting in plain English
 
-- **Main Show Pixel Line:** pixels connected to the Show Engine's **GPIO23** output. The current local engine supports segmented looks with 16 segment slots.
-- **Pixel Node:** a small separate ESP32-C3 controller for a remote pixel strip. Software supports a configured maximum of **512** pixels per node, subject to physical timing/current validation.
-- **Audio Node Pixel Line:** the same physical Audio Node can also drive a Showduino Pixel Line on **GPIO22**. It is still the Audio Node — not a fake LED peer. Programme audio remains its primary role.
-- **Emergency Node Pixel Line:** a wireless **ESTOP-xx** station can also host a Showduino Pixel Line on **GPIO2** on the same peer. Studio/SHDO can address that capability; do not invent a separate LED identity for it.
-- **Emergency/signage pixels:** the Show Engine's separate **GPIO24** output. These are reserved for Showduino's defined emergency/signage behaviour, **not** for ordinary production lighting.
-- **Lamp Node Jewel:** a seven-pixel light inside the simulated carbide lamp; its behaviour is controlled by the lamp.
-
-Studio presents Pixel-capable outputs through the same Pixel editor model. Prefer selecting the intended Pixel output there rather than trying to hand-edit protocol prefixes on the Director.
-
-### What does the Director do with lighting?
-
-Use **NODES** to see whether a remote Pixel Node has joined and to open available node information. **DIAGNOSTICS -> PIXELS** displays available pixel health/status. A Pixel Node needs a valid configured length and its line initialised before it can light correctly.
-
-The Director is **not intended to be a full timeline/lighting editor**. A show designer prepares lighting looks and cue timings through the Showduino browser System Console / Studio tools, then the operator **loads and runs the prepared show** on the Director. The browser **Outputs** page is the more detailed local pixel-commissioning surface. Studio Pixel authoring now covers the shared FX set for the P4 line, standalone Pixel Nodes and Audio Node pixels; Emergency Node pixel authoring follows the firmware/SHDO route and may still be catching up in some Studio snapshots.
-
-**If lights unexpectedly go bright white:** check **EMERGENCY** before calling it a lighting fault. The Showduino emergency override is designed to make the entire configured show-pixel line and remote pixel lines white. Effects do not automatically restart when Emergency is cleared.
-
-**Do not** connect a long/high-current strip directly to the tiny controller's power pin. Pixel lighting needs appropriately rated external power and an installation designed for its full-white emergency current.
-
----
-
-## 5. Interactive props, inputs and other nodes
-
-![Illustration of the interactive Lamp Node](illustrations/lamp.svg)
-
-**Interactive Lamp Node:** the simulated carbide lamp has a physical striker button, animated flame LEDs, microphone-based blow detection and its own local Adafruit Audio FX WAV effects. In standalone mode it can ignite and be blown out without the main Showduino show; when Showduino owns it, new show commands are authoritative. The Director **NODES -> LAMP NODE** page exposes its state and available actions, including **IGNITE**, **EXTINGUISH**, jewel/flame commissioning checks and **REFRESH** as permitted by the current state.
-
-**Sensors and switches:** an installer can connect supported inputs so the Show Engine receives trigger signals. What a specific door switch or motion detector *does* depends on the prepared show and the supported cue/runtime path; seeing a sensor in the system does not mean every possible reaction is already configured.
-
-**MOSFET Node:** software supports four low-voltage DC switched/PWM outputs, pulses and fades. Physical GPIO mapping and load acceptance remain unverified for the installed board. Emergency, authority loss and show-stop paths require outputs OFF; recovery must not restore a previous powered state. A Director tile is not electrical acceptance or a mains/motor rating.
-
-**DMX:** the Director may also contain a DMX tile. Professional DMX/E1.31 production-lighting control remains **parked**; a visible tile is not evidence that a DMX expansion has been supplied.
-
-### A short example: a chamber show
-
-The show designer prepares a sequence in which a compatible trigger starts audio from the **Audio Node**, the **Pixel Node** changes colour and the **Lamp Node** performs a flame action. An operator does not program those individual commands on the Director during a live show: they select the already tested **production**, press **RUN**, watch **LIVE**, and respond if a required node reports a fault.
-
-This is an *illustrative capability combination*, not proof that any particular mixed-device show has passed physical acceptance on your installation.
-
----
-
-## 6. Emergency and Locate: know the difference
-
-![Illustration of the main momentary emergency button](illustrations/emergency.svg)
-
-**Your Showduino main-unit emergency button is a *momentary* pushbutton.** A valid press asserts and latches the software Emergency state after input debounce. **Releasing the button does not clear it.** A continuously held press lasting **eight seconds** additionally requests **Locate** on the Director.
-
-The normal emergency response stops/pauses theatrical operation as defined by the Show Engine, interrupts attraction audio and overrides pixel-capable lighting. **Showduino is not a certified fire alarm, evacuation-lighting or machinery safety controller** and must not replace the venue's independently required safety arrangements.
-
-### Clearing Showduino Emergency
-
-Only after the real-world incident has been resolved and the area is safe:
-
-1. Release the main physical button, if it is still pressed.
-2. On the **Director EMERGENCY** screen, choose **CLEAR EMERGENCY**.
-3. Read the confirmation and choose **CONFIRM CLEAR**.
-4. Check that the Show Engine accepts the clear. A held button or a new assertion can prevent clearance.
-5. Treat the show as interrupted. **Clearing Emergency does not restart it.** Follow the attraction's approved recovery/restart procedure.
-
-**To find a sleeping or misplaced Director:** hold the same main button for eight seconds. Emergency asserts on the initial press; Locate then forces the Director screen on and flashes its ambient lights. The **first touch acknowledges Locate only**. It does **not** clear Emergency.
-
-**Wireless Emergency Nodes** are separate accessories with their own momentary pushbutton, OLED status and assert-only latch design. The same physical station may also provide a Showduino Pixel Line. They can **assert** but cannot **clear** the central Emergency. Do not assume their buttons use the main-unit's eight-second Locate gesture. The full emergency and clear procedure still needs physical sign-off on the actual installed hardware.
-
----
-
-## 7. A phone or computer: useful, but not the Director
-
-You can also use the **local browser console** for more detailed configuration, checking nodes, commissioning lighting and managing shows. On the current RC bench configuration, connect to the supplied **Showduino** Wi-Fi access point, then open:
-
-```text
-http://192.168.4.1/          local system console
-http://192.168.4.1/studio/   embedded Studio authoring snapshot
-```
-
-Your installer must confirm the actual network name, address and credentials used by your finished unit. The documented default password is a **bench credential, not a public venue password**.
-
-### Cue Library: Studio versus Director (30 October 2026 source check)
-
-The searchable **Cue Library** is available in **Website Studio → Timeline** for creating cues. Drag an Audio, Pixel or MOSFET preset to a compatible track or Mixed Lane; double-clicking inserts at the playhead where an eligible track exists. Edit the selected cue's routing and parameters in the Inspector, run Project Check, export and deploy using the [Quick Start](SHOWDUINO_QUICK_START.md#website-studio--installed-production). See the [full Cue Library guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md).
-
-The current `main` **Director HOME → CUE LIBRARY** tile is shown but **not tappable**; no Director Cue Library page is active in this checked firmware. Use **PRODUCTIONS** and **LIVE** on the Director to load/operate shows. A browser preset is not proof of P4 compiler support or physical-node acceptance.
-
-**Studio is where shows are prepared; Director is where operators run them.** The SHDO v2 authoring format, RAM timeline commissioning and persistent SD deploy path have different supported subsets. A show file being editable/exportable does not guarantee every effect in it is executable on the current firmware. Deployment, **LOAD** and **START** are separate stages.
-
-The local Show Engine does not need venue Internet to run an already loaded show. Internet access is relevant to optional functions such as checking for a Comms firmware update; **system-wide OTA is not currently available**.
-
----
-
-For the current website export → local-console persist → load → start steps, see [Quick Start: installed production](SHOWDUINO_QUICK_START.md#website-studio--installed-production). Website **S3 CONNECTED** verifies the communications endpoint only; confirm P4 and Nodes separately. Accounts and planned memberships do not determine live hardware health.
-
-## 8. Quick troubleshooting
-
-| What you see | What to check first |
+| Symptom | Operator response |
 | --- | --- |
-| **CONNECTION LOST** | Is Comms linked to the Show Engine? Is the Director linked to Comms? Do not confuse an Internet failure with a Show Engine failure. |
-| **NO SD CARD / missing production** | Check the required Show Engine SD storage and its status. Do not remove a card during an active operation. |
-| **Audio Node OFFLINE / NO STORAGE** | Check Audio Node power/link, its **own** microSD, asset name, speaker and volume. |
-| **CONTROLLED BY SHOWDUINO** on a node | This can be normal: the Show Engine owns its theatrical controls. Use approved Showduino controls rather than bypassing ownership. |
-| **Pixel line stays dark** | Check node link, stored pixel count, line initialisation, power supply and whether Emergency was recently cleared. |
-| **Every configured pixel is white** | Treat as an Emergency indication first; check the Director before changing lighting settings. |
-| **Show will not start** | Check a production is loaded, Emergency is clear, the Show Engine is ready and required nodes are present. |
-| **Emergency cannot be cleared** | Check the incident is resolved, the physical button is released and the Director clear confirmation is accepted. Never bypass a fault to force a start. |
+| Director says **CONNECTION LOST** | Check power, Comms and P4 link. Do not assume show stopped; preserve state. |
+| **P4 OFFLINE** in browser | The S3 may still host the page. Disable operational commands until P4 responds. |
+| **NO SD CARD** / missing show | Stop deployment. Check safe power/SD state; do not hot-swap into unsafe operation. |
+| Emergency won't clear / **AWAITING STAGE** | Check physical release, P4 state and logs. Stop; **never reset as a clearance workaround**. |
+| Cue Library doesn't close or display is stale | Record the firmware version and navigation/serial evidence, stop unsafe operation. |
+| MOSFET Actual differs from Set | Trust feedback and physical test, not the last requested level. |
+| Touch inaccurate | Use calibration only when stable; preserve the current calibration before altering it. |
+| Audio missing | Check Audio Node SD, state, volume and routing; P4 system audio is separate. |
 
-If the cause is not clear, open **DIAGNOSTICS** and **SYSTEM LOGS**, record the exact error and contact the person who installed/commissioned the system. Do not flash firmware, alter wiring or change safety policy during a public session.
+## References
 
----
-
-## 9. The operator's one-minute pre-opening check
-
-- [ ] Physical attraction, wiring, speakers and lighting are safe and undamaged.
-- [ ] Independent venue fire/evacuation/machinery safety arrangements are available as required.
-- [ ] Director, Comms and Show Engine show a healthy usable link; no unexplained fault is present.
-- [ ] Main Emergency input and clearance have passed the venue's approved daily check.
-- [ ] The correct production is **loaded**.
-- [ ] Every **required** Audio, Lamp, Pixel or other installed node is healthy and has its necessary assets.
-- [ ] A controlled test cycle has verified the intended sound, lighting and effect behavior.
-- [ ] The operator knows how to issue a normal **STOP** and how to respond to a real emergency.
-
-For a public installation use the full [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md), not this one-minute reminder alone.
-
----
-
-## More help and accuracy notes
-
-- [Full Showduino User Manual](SHOWDUINO_USER_MANUAL.md)
-- [Director and system quick start](SHOWDUINO_QUICK_START.md)
-- [Audio Node - supported formats and controls](../../docs/audio-node.md)
-- [Interactive S3 Lamp Node](../../docs/s3-lamp-node.md)
-- [C3 Pixel Node](../../docs/c3-pixel-node.md)
-- [Studio capabilities and limitations](../../docs/studio/README.md)
-- [Production storage and deployment](../../docs/production-storage.md)
-- [Physical acceptance checks](../../docs/physical-test-checklist.md)
-- [Manual verification gaps](SHOWDUINO_MANUAL_GAPS.md)
-
-**Editorial status:** This guide was written from the active repository and its documented RC boundaries. It is not a record of physical tests performed in this documentation session. Before printing a final customer edition, replace the reference illustrations with approved product photographs, capture Director screenshots from the *actual accepted firmware build*, record the supplied firmware versions and confirm the installer-facing network, audio and lighting setup for the shipped hardware.
+[Quick Start](SHOWDUINO_QUICK_START.md) · [User Manual](SHOWDUINO_USER_MANUAL.md) · [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) · [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) · [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md).

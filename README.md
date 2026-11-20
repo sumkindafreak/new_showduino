@@ -1,21 +1,17 @@
 # Showduino
 
-> **2 November 2026 update:** The owner reports **Emergency clearance fixed in the working local firmware** and a running **22-second full-node scenario**; formal repeatability and mid-show Emergency/no-auto-resume acceptance are still outstanding. The local firmware has **not** been merged to `main`: see draft [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51). FastLED candidates [#52–#57](https://github.com/sumkindafreak/new_showduino/pulls) are staged, opt-in or test-only and **not hardware accepted**. A newly reported MOSFET output drop on Director reconnect has a separate draft fix [#58](https://github.com/sumkindafreak/new_showduino/pull/58). Preserve the flashed bench baseline. [Detailed status](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
-
-> **31 October 2026 safety regression — NOT READY:** Bench testing now reports Emergency sometimes cannot be cleared and the Director sometimes freezes until reset. This is not a confirmed Cue Library root cause. Keep effect loads isolated, preserve logs and flashed versions, and do not operate publicly or treat reset as Emergency clearance. The 29 October first audio/visual show remains achieved; full repeatable scenario and Emergency acceptance are blocked. [Current evidence and safe next steps](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
-
-> **30 October 2026 bench milestone:** First combined audio-and-visual show playback was reported on 29 October. This does not yet constitute the signed 22-second all-node acceptance run or Emergency repeat. [Current evidence and documentation reconciliation](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md). The release candidate is not hardware-signed-off.
+> **19 November 2026 source/documentation update:** The V1 source reconciliation [PR #72](https://github.com/sumkindafreak/new_showduino/pull/72) is **merged** into GitHub `main`. Older banners describing those source candidates as all unmerged are historical. The owner reports combined audio/visual playback, an existing 22-second local show and a corrected local Emergency-clear path; **two witnessed complete P4 runs and full Emergency/authorised clear/no-auto-resume acceptance are still pending**. Preserve the known-good flashed local build and use the [new V1 operating documentation](docs/manual/README.md) and [source matrix](docs/manual/SHOWDUINO_MANUAL_SOURCE_MATRIX.md). A source merge is not a hardware release.
 
 **Modular show control for scare attractions, escape rooms, immersive experiences and interactive props.**
 
 **Current product baseline:** 1.0.0-rc.1 · **Protocol:** 1.0 · **Studio interchange:** SHDO v2  
-**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release. For the current main-vs-bench distinction and outstanding acceptance, read the [30 October finish-line reconciliation](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md); the [24–29 October audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) preserves earlier observations.
+**Status:** active development / integrated bench commissioning. This is **not** a certified or hardware-signed-off production release. For the current main-vs-bench distinction and outstanding acceptance, read the [18 November merged-source reconciliation report](docs/manual/SHOWDUINO_FINISH_LINE_STATUS_2026-11-18.md); the [24–29 October audit](docs/manual/SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) preserves earlier observations.
 
 Showduino coordinates attraction audio, addressable lighting, interactive props, trigger inputs and operator controls using a central ESP32-P4 Show Engine and specialist ESP32 nodes. A loaded show runs on the Show Engine: it does not need an open browser, a connected Director touchscreen, home/venue Wi-Fi or internet access.
 
 > **Architectural rule:** The Show Engine decides. The Communications Engine transports. The Director commands and displays. The Nodes act.
 
-**Operational clarification:** **One Director. One coordinated show. Multiple replaceable nodes.** Only the Director selects/commands the production. The P4 decides whether requests may execute and enforces runtime and Emergency safety; specialist-node buttons do not change scenes. **Emergency STOP must function independently of Director connectivity**, and clearing it never auto-restarts a show.
+**Operational clarification:** **One Director. One coordinated show. Multiple replaceable nodes.** Authorised Director and Comms Console controls **request** production actions. The P4 decides whether requests may execute and enforces runtime and Emergency safety; specialist-node buttons do not change scenes. **Emergency STOP must function independently of Director connectivity**, and clearing it never auto-restarts a show.
 
 ## At a glance
 

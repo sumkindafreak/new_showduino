@@ -1,28 +1,37 @@
-# Showduino operating documentation
+# Showduino V1 — Operating Documentation
 
-> **2 November 2026 bench/source reconciliation:** The owner now reports that **Emergency clearance is fixed in the flashed local firmware** and that the existing **22-second full-node show runs**. These supersede the 31 October failure as the *latest owner report*, but are **not** a signed, independently logged Emergency/no-auto-resume or repeatable end-to-end acceptance. GitHub `main` still lacks that complete flashed baseline: draft [PR #51](https://github.com/sumkindafreak/new_showduino/pull/51) preserves it and adds SHDO import hardening; draft [PRs #52–#57](https://github.com/sumkindafreak/new_showduino/pulls) stage optional FastLED-related work without claiming bench validation. A **MOSFET output drop during Director reconnect** is newly reported; draft [PR #58](https://github.com/sumkindafreak/new_showduino/pull/58) proposes a paired MOSFET/P4 fix, not yet accepted. **Do not flash, merge or call the installation release-ready from host tests alone.** See [2 November evidence update](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md#2-november-2026--working-local-baseline-and-staged-github-integration).
+**19 November 2026 source-based rewrite · Product `1.0.0-rc.1` · GitHub `main` `41c7c71` reviewed.**
 
-> **31 October 2026 — CRITICAL BENCH REGRESSION / NO PUBLIC OPERATION:** During testing of the recent Cue Library/show workflow, the owner reports that Emergency sometimes **will not clear** and the Director sometimes becomes **unresponsive, requiring a reset**. This is an owner-reported physical failure, **not yet diagnosed**; no evidence establishes that Cue Library caused it. Emergency assertion and the 29 October combined audio/visual show remain prior achievements, but Emergency clear/recovery and stable Director operation are **FAIL/BLOCKED** for acceptance. Do not bypass the latch, use reset as clearance, connect hazardous effect loads, or declare release-ready. Preserve flashed versions and capture Director/Comms/P4 serial logs around assert → button release → authorised clear attempt → response; confirm P4 state and no automatic restart before retesting. [31 October status](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+This is the maintained **operator documentation entry point** for the currently reviewed Showduino V1 firmware. It replaces stacked historical status banners with coherent present-tense procedures and explicit references to pending physical acceptance.
 
-> **30 October 2026 status:** On 29 October the owner reported Showduino's **first real combined audio-and-visual show playback** on physical hardware. This supersedes statements that no integrated show has ever played. It is **not** a signed pass of the 22-second all-node LOAD → START → COMPLETE fixture or mid-show Emergency repeat. Owner-reported working hardware includes Audio Node WAV playback and P4/Audio Node pixel output. Exact flashed firmware versions and complete timing logs remain unrecorded here. Previous Director Core 1 LoadProhibited resets and Audio microphone CALIBRATE/threshold acknowledgements remain unresolved until retested. Distinguish current main, unmerged PRs and flashed firmware. The 20 October source baseline remains historical. See [30 October reconciliation](SHOWDUINO_FINISH_LINE_STATUS_2026-10-30.md).
+> **Release gate:** The owner reports first combined audio/visual playback on 29 October, a local working 22-second show and a corrected local Emergency-clear path. Two witnessed P4 LOAD → START → COMPLETE runs and a complete mid-show Emergency → safe outputs → deliberate Director/P4 clear → **no auto-resume** test have **not** yet been signed off. Keep hazardous loads isolated, and do not claim public-operation readiness from these documents or a source merge.
 
-Revision 0.3-RC · reviewed 20 October 2026. Start here and match the documented baseline to the firmware installed on your unit.
+## Read in this order
 
-- [Quick Start](SHOWDUINO_QUICK_START.md) — power, network, Studio Cue Library, create/export/persist/load/start, Emergency.
-- [Studio Cue Library Guide](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) — searchable timeline presets, drag/drop, Inspector routing, compatibility and Director distinction.
-- [User Manual](SHOWDUINO_USER_MANUAL.md) — complete RC operating reference and boundaries.
-- [Director Operator Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) — everyday touchscreen operation.
-- [Pre-Opening Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) — repeat before guest operation.
-- [Build and Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) — identify actual installed boards and record evidence.
-- [First Show and Documentation Guide](SHOWDUINO_FIRST_SHOW_AND_DOCUMENTATION_GUIDE.md) — capture the build and test one simple show.
-- [Verification Gaps](SHOWDUINO_MANUAL_GAPS.md) — unfinished implementation and physical acceptance.
-- [Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) — claim lineage.
-- [October documentation review](SHOWDUINO_DOCUMENTATION_REVIEW.md) — exact baseline, corrections, checks and remaining limits.
+1. [Quick Start](SHOWDUINO_QUICK_START.md) — first connection, productions, SHDO deployment and Emergency.
+2. [Full User Manual](SHOWDUINO_USER_MANUAL.md) — system behaviour, roles, safety, operation, troubleshooting, servicing.
+3. [Director Operator Guide](SHOWDUINO_DIRECTOR_OPERATOR_GUIDE.md) — verified source page names, Cue Library monitor and controls.
+4. [Studio Cue Library](SHOWDUINO_STUDIO_CUE_LIBRARY_GUIDE.md) — Website authoring versus embedded Studio, Director Cue Library and P4 compiler.
+5. [Pre-Opening / Physical Acceptance Checklist](SHOWDUINO_PRE_OPENING_CHECKLIST.md) — reproducible non-DMX tests and release decision.
+6. [Hardware and Parts Register](SHOWDUINO_BUILD_AND_PARTS_REGISTER.md) — identify the actual installed PCB, wiring, code, media and spares.
+7. [First Show and Evidence Guide](SHOWDUINO_FIRST_SHOW_AND_DOCUMENTATION_GUIDE.md) — protect the known-good flashed build; capture repeatable results.
+8. [Claim-to-Source Matrix](SHOWDUINO_MANUAL_SOURCE_MATRIX.md) — trace source implementation, documentation limits and physical status.
+9. [Open Verification Gaps](SHOWDUINO_MANUAL_GAPS.md) — hardware tests, source/UI mismatches and incomplete workflows.
+10. [Documentation Review Record](SHOWDUINO_DOCUMENTATION_REVIEW.md) — scope, source baseline and editorial acceptance.
 
-Old Word/PDF/downloaded copies do not update themselves. Use this maintained set; source review is not physical acceptance or a final product release.
+## Source/architecture references
 
-## Latest finish-line status
+- [Constitution](../constitution.md), [Architecture](../architecture.md) and [Hardware Pinout](../hardware-pinout.md).
+- [P4 Production Storage](../production-storage.md), [P4 SD](../p4-sd-storage.md) and [Studio Production Format](../studio/production-format.md).
+- [Comms WebUI](../../web/showduino-studio/README.md), [Node Roadmap](../node-roadmap.md), [Physical Test Checklist](../physical-test-checklist.md).
+- [Firmware roots](../../firmware/) and [shared protocol](../../protocol/).
 
-- [29 October 2026 — first real audio/visual show played](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — owner confirms physical combined audio/lighting playback; teething issues remain. `main` at `e57870c` adds only four Comms bundle regenerations since 28 October. Formal complete-scenario repeat and Emergency acceptance are still open; do not erase the achieved first-show milestone or mistake it for full release sign-off.
-- [28 October 2026 addendum: physical audio/pixel progress and Director reset blocker](SHOWDUINO_FINISH_LINE_AUDIT_2026-10-24.md) — `main` at `fd0834ef` (four more generated Comms bundle commits, unchanged content hash). Owner now reports clean Audio Node WAV/volume and working visual pixels, but the newly flashed Director repeatedly crashes and microphone calibration lacks confirmation. Full 22-second all-node and Emergency acceptance remain open. The 20 October manual source baseline remains dated.
+## Evidence rule
 
+The **P4 decides**, Comms transports, Director commands/displays and Nodes act. The owner-reported local flash, current GitHub `main`, unmerged candidates, embedded WebUI and current Website Studio are **not interchangeable baselines**.
+
+Merged [source reconciliation PR #72](https://github.com/sumkindafreak/new_showduino/pull/72) changed the source situation after the old 20 October manual review. Documentation-only [PR #73](https://github.com/sumkindafreak/new_showduino/pull/73) was still open when this rewrite started. Source-review success, host CI and written guides cannot replace a signed physical Emergency/safe-output test.
+
+[18 November merged-source evidence](SHOWDUINO_FINISH_LINE_STATUS_2026-11-18.md) from the earlier documentation PR is preserved alongside this rewrite. Historical audits and earlier RC notes remain in Git history and dated evidence files, but **are not current startup instructions**.
+
+**No firmware, load wiring or safety acceptance is changed by this documentation rewrite.**
