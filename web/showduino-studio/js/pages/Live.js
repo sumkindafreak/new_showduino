@@ -6,7 +6,7 @@ import { emergencyWord, loopWord, productionLabel, showDisplayState } from '../s
 export async function LivePage(container) {
   container.append(el('p', {
     className: 'info-panel',
-    text: 'Authoritative P4 runtime. Buttons stay pending until the Show Engine confirms. Browser clear cannot bypass the physical 3s-hold window.'
+    text: 'Authoritative P4 runtime. Buttons stay pending until the Show Engine confirms. The main physical Emergency button latches Emergency; holding it for 8 seconds requests Locate, not clearance. To clear Emergency, release the button and use Director Emergency → CLEAR EMERGENCY → CONFIRM CLEAR. The P4 must authorise clearance. Clearing never automatically resumes a show.'
   }));
 
   const host = el('div', { className: 'page-stack' });
