@@ -91,3 +91,6 @@ This R&D branch adds files under director-v1.1-evolution/ only. Do not edit, mov
 - [ ] Actual touch/render/heap benchmarks collected.
 - [ ] Any changes compiled/flashed/validated on Director hardware.
 - [ ] Director V1.1 integrated with active firmware.
+
+## Development 02 (24 November 2026)
+See [DEVELOPMENT_02.md](DEVELOPMENT_02.md) for the new preview engine, health and resource diagnostics, design tokens, card redraw improvement, read-only three-port capture and host-test results. All remain isolated and require device integration/acceptance before any production use.
