@@ -17,6 +17,8 @@ struct CardHandle {
   lv_obj_t *title = nullptr;
   lv_obj_t *state = nullptr;
   lv_obj_t *rail = nullptr;
+  bool stateApplied = false;
+  CardStatus lastState = CardStatus::AwaitingState;
 };
 
 inline CardHandle createCard(lv_obj_t *parent, const char *name,
@@ -44,6 +46,9 @@ inline CardHandle createCard(lv_obj_t *parent, const char *name,
   lv_obj_set_style_bg_opa(c.rail, LV_OPA_COVER, 0);
   lv_obj_set_style_bg_color(c.rail, lv_color_hex(0xA7A7A7), 0);
   lv_obj_clear_flag(c.rail, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(c.rail, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(c.rail,
+      lv_color_hex(statusColorRgb(CardStatus::AwaitingState)), 0);
 
   c.title = lv_label_create(c.root);
   lv_label_set_text(c.title, name ? name : "NODE");
@@ -66,6 +71,10 @@ inline void updateCard(CardHandle &card, const NodeEvidence &e,
                        uint32_t staleAfterMs = 6000) {
   if (!card.root) return;
   const CardStatus state = classifyNode(e, staleAfterMs);
+  // Identical reports must not trigger style invalidation or redraw.
+  if (card.stateApplied && card.lastState == state) return;
+  card.stateApplied = true;
+  card.lastState = state;
   const lv_color_t color = lv_color_hex(statusColorRgb(state));
   if (card.state) {
     // Avoid changing LVGL object text on each incoming identical status.
