@@ -37,3 +37,9 @@ Ctrl+C ends capture. Output files are never overwritten. A report flags candidat
 
 ## Deferred
 Board-specific LVGL canvas/widget build, navigation restyle and visual approval, exact effect parity, live serial-port testing, storage and heap thresholds, recovery binary and actual performance measurements. No device compilation, flash, or production merge is implied.
+
+## Verified on host, 24 November 2026
+- New C++ preview/health and resource tests passed under g++ C++17 with warnings as errors and undefined-behaviour/bounds sanitizers. Source blob hashes matched GitHub read-back.
+- Three Python offline capture tests passed; source and tests matched GitHub blob hashes.
+- Resource monitor (`diagnostics/DirectorV11Resources.h`) tracks minimum internal heap, largest allocation, PSRAM, maximum loop and transition time; unconfigured budgets deny preview permission. Run `g++ -std=c++17 -Wall -Wextra -Werror -pedantic director-v1.1-evolution/tests/test_resources.cpp -o /tmp/director_v11_resources && /tmp/director_v11_resources`.
+- Preview cadence is capped during continuous operation; rapid reselection/re-entry must also be throttled by the future UI adapter. No LVGL, ESP32 or live USB validation yet.
