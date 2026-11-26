@@ -8,12 +8,14 @@ on:
       - "web/showduino-studio/**"
       - "web/studio-v4-overlay/**"
       - "tools/embed-webui/embed_webui.py"
+      - "tools/embed-webui/test_embed_webui.py"
       - ".github/workflows/embed-s3-studio.yml"
   pull_request:
     paths:
       - "web/showduino-studio/**"
       - "web/studio-v4-overlay/**"
       - "tools/embed-webui/embed_webui.py"
+      - "tools/embed-webui/test_embed_webui.py"
       - "firmware/s3-comms-controller/ShowduinoS3CommsController/src/web/WebAssets.h"
       - ".github/workflows/embed-s3-studio.yml"
   schedule:
@@ -42,6 +44,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+
+      - name: Test Studio fetch and retry behavior
+        run: python -m unittest discover -s tools/embed-webui -p 'test_*.py' -v
 
       - name: Regenerate commissioning + authoring assets
         run: python tools/embed-webui/embed_webui.py
