@@ -20,7 +20,10 @@ import json
 import os
 import posixpath
 import re
+import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -144,6 +147,7 @@ def bundle_js(entry: str) -> tuple[str, list[str]]:
 
 
 def fetch_bytes(url: str, timeout: int = 25) -> bytes:
+    """Fetch an asset, retrying only transient failures within a bounded budget."""
     req = urllib.request.Request(
         url,
         headers={
@@ -151,19 +155,71 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
             "Accept": "application/vnd.github+json, text/plain, */*",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return response.read()
+    for attempt in range(3):
+        delay = 2 ** attempt
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                raise
+            retry_after = exc.headers.get("Retry-After")
+            if retry_after:
+                # Do not retry earlier than requested or stall the build indefinitely.
+                try:
+                    requested = float(retry_after)
+                except ValueError:
+                    raise exc
+                if not 0 <= requested <= 15:
+                    raise
+                delay = max(delay, requested)
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 2:
+                raise
+        print(f"Temporary asset fetch failure; retrying in {delay:g}s", file=sys.stderr)
+        time.sleep(delay)
+    raise AssertionError("Unreachable retry loop")
 
 
 def resolve_authoring_commit() -> str:
+    """Resolve the canonical public Git ref without consuming REST API quota."""
     if AUTHORING_COMMIT_OVERRIDE:
         return AUTHORING_COMMIT_OVERRIDE
-    api = f"https://api.github.com/repos/{AUTHORING_REPO}/commits/{AUTHORING_REF}"
-    data = json.loads(fetch_bytes(api).decode("utf-8"))
-    sha = str(data.get("sha", "")).strip()
-    if len(sha) < 12:
-        raise RuntimeError("Could not resolve canonical website Studio commit")
-    return sha
+
+    ref = AUTHORING_REF
+    if re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+        return ref.lower()
+    if ref == "HEAD" or ref.startswith("refs/"):
+        refs = [ref]
+    else:
+        refs = [f"refs/heads/{ref}", f"refs/tags/{ref}"]
+    patterns = refs + [f"{name}^{{}}" for name in refs if name.startswith("refs/tags/")]
+    remote = f"https://github.com/{AUTHORING_REPO}.git"
+    command = ["git", "ls-remote", "--", remote, *patterns]
+    for attempt in range(3):
+        try:
+            result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=25)
+            break
+        except FileNotFoundError as exc:
+            raise RuntimeError("Git is required to resolve Studio refs; install Git or set SHOWDUINO_AUTHORING_COMMIT") from exc
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            if attempt == 2:
+                raise RuntimeError("Could not resolve canonical Studio Git ref after three attempts; existing bundle was not replaced") from exc
+            delay = 2 ** attempt
+            print(f"Temporary Studio Git lookup failure; retrying in {delay}s", file=sys.stderr)
+            time.sleep(delay)
+
+    matches = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and re.fullmatch(r"[0-9a-fA-F]{40}", fields[0]):
+            matches[fields[1]] = fields[0].lower()
+    for name in refs:
+        # Annotated tags must resolve to their peeled commit, not the tag object.
+        sha = matches.get(f"{name}^{{}}") or matches.get(name)
+        if sha:
+            return sha
+    raise RuntimeError(f"Canonical Studio Git ref {ref!r} was not found; use a branch, tag or full commit SHA")
 
 
 def authoring_raw_url(commit: str, path: str) -> str:
