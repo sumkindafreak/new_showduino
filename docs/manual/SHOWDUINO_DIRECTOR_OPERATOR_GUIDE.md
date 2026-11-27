@@ -36,6 +36,12 @@ The active firmware uses LVGL pages. The optional OS2 shell source is **disabled
 
 The reviewed `DisplayPages.h` also defines context-dependent full-screen pages for Emergency, connection loss, missing SD, reboot, update, recovery, discovery and completion. A listed page does **not** prove every feature has physical acceptance.
 
+## LIVE playback-status refresh — 20 November source update
+
+On the Director **LIVE** page, the **Live Status** action now requests a fresh `SHOW:STATE?` report through Comms from the P4. It is a **status query, not a show-control or restart command**. The interface distinguishes a pending response, a received report, a rejected send and a timeout. The reviewed refresh state machine uses a **3-second response timeout** and shows terminal feedback for approximately **2.5 seconds**. A later send-failure notification must not overwrite a playback report already received. These are source-level behaviours introduced on 20 November (`bb2752a`, `04b67fb`, `af08fe7`); host regression coverage exists, but they are **not yet confirmed on the flashed bench Director**.
+
+If the request fails or times out, do not treat the last displayed playback state as newly verified. Inspect P4/Comms connectivity and logs. Do not infer that a running P4 show stopped just because the Director cannot refresh it. This improvement is useful for observing LOAD → START → COMPLETE acceptance, but does **not** replace P4-side completion evidence or physical safety tests.
+
 ## Cue Library — important correction
 
 Older manuals said the HOME **CUE LIBRARY** tile was disabled. This is **outdated for the reviewed GitHub source**. `page_01_home.cpp` enables it, and `DirectorCueLibrary.cpp` implements a native cue/timeline monitor with **FOLLOW**, **PREVIOUS**, **NEXT**, **ALL CUES**, **START SCENE** and **CLOSE**.
